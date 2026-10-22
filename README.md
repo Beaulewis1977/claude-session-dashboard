@@ -279,13 +279,18 @@ make it that project's default; the overall default is in Settings.
   straight-line projection.
 - **Token types**: _input_ is new prompt text, _output_ is what Claude wrote, _cache write_ is
   context stored in the prompt cache, _cache read_ is context re-read from the cache. Cache reads are
-  cheap and are usually 90%+ of Claude Code's volume. Every API response is counted once (deduped by
-  message id + request id, like ccusage), including subagent transcripts and forked sessions.
-- **Cost / ≈ $**: an estimate at API list prices from the editable price table (Settings → Usage),
-  filled in from Anthropic's published prices on 22 Oct 2026. On a subscription you don't pay this;
-  it's a way to compare. The credits tracker prefers Claude Code's own `cost.total_cost_usd` for each
-  API-billed session and only falls back to the price table when that's missing. Haiku 5.5's higher
-  price above 100K-token prompts isn't modelled.
+  cheap and are usually 90%+ of Claude Code's volume. Every API response is counted once, with the
+  same rules as ccusage (see "Matching ccusage" below), including subagent transcripts and forked
+  sessions.
+- **Cost / ≈ $**: an estimate at API list prices from the editable price table (Settings → Usage).
+  The table is pre-filled from a bundled snapshot of LiteLLM's price data dated 22 Oct 2026 (the
+  source ccusage uses; it matches Anthropic's published prices). Fast mode is priced with the
+  snapshot's multiplier (×2 for Opus 5.5), and a request over a model's long-context threshold
+  (Haiku 5.5: 100K input tokens) is billed entirely at the higher tier. Old Claude Code versions
+  logged a `costUSD` per response; when it's there, it's used instead of the estimate. On a
+  subscription you don't pay this; it's a way to compare. The credits tracker prefers Claude Code's
+  own `cost.total_cost_usd` for each API-billed session and only falls back to the price table when
+  that's missing.
 - **Period cards**: the change compares with the same elapsed part of the previous day, week or month.
 - **Implied capacity**: for each window, weighted tokens used ÷ the reported %. Weights (Settings →
   Usage) default to API price ratios: output ×5, cache write ×1.25, input ×1, cache read ×0.1.
@@ -300,6 +305,35 @@ make it that project's default; the overall default is in Settings.
 - **Admin API figures** cover the whole organization (every key and person), not just this computer.
 - **Verify against ccusage** (Settings → Usage) runs `ccusage daily --json` if it's installed and
   compares per day. ccusage only reads the Windows profile, so it's compared with Windows sessions.
+  ccusage is not bundled or installed by the app.
+
+### Matching ccusage
+
+[ccusage](https://github.com/ccusage/ccusage) (MIT) was used as the reference for reading Claude Code
+logs. The app has its own code, written from ccusage's behavior; `THIRD_PARTY_NOTICES` carries its
+license. A test (`tests/ccusage-parity.test.ts`) runs a small model of ccusage's loader and the
+app's parser over every fixture file and checks that the daily and per-model token totals are the
+same. What we took from it:
+
+- **Counting a response once.** Message id + request id identify a response across all sessions.
+  Without a request id, the id only counts once per session, and placeholder ids from gateways (not
+  `msg_…`) also need the same timestamp. When copies disagree, the one with more tokens wins (a
+  main-thread copy beats a sidechain copy). A `/btw` sidechain that replays a parent message with a
+  new request id is the same response. Lines without a message id are always counted.
+- **Which lines count.** Input and output token counts must be present; lines with a non-semver
+  `version`, or an empty session id, request id, message id or model, are skipped. When
+  `cache_creation` reports the 5m/1h split, that's the cache-write count. Advisor sub-calls in
+  `usage.iterations` count as their own responses under their own model. `usage.speed: "fast"`
+  shows as e.g. "Opus 5.5 (fast)".
+- **5-hour blocks.** A block starts at the hour of its first response and takes every response up to
+  exactly 5 hours later, until a gap of more than 5 hours.
+- **Prices** come from LiteLLM's data, as ccusage's do.
+
+Where we differ on purpose: synthetic messages (Claude Code's own notices, always 0 tokens) aren't
+listed; responses copied into a fork stay with the session that logged them first; and ccusage can
+fetch current prices when it runs, while the app only uses its bundled snapshot.
+When the new rules first run, usage is re-read session by session from the logs and the archive;
+records of sessions whose files are gone are kept as they were.
 
 ### Where the data lives
 
@@ -417,6 +451,13 @@ These are choices I made where the spec left room, or had to deviate:
 - **Not detectable from logs:** whether a session ran on API billing. It comes from launch tags and
   the bridge.
 - **New dependency:** `recharts` 3.10.1 (latest stable), with `react-is` 19.3.1 as its peer.
+- **Price snapshot.** `src/shared/usage/litellm-prices.json` holds LiteLLM's Claude rows (Anthropic
+  API rows first, Bedrock's for older models LiteLLM no longer lists directly), in USD per million
+  tokens, with the source commit and date. Refresh it by downloading
+  `model_prices_and_context_window.json` and running
+  `node scripts/make-price-snapshot.mjs <file> <commit> <YYYY-MM-DD>`. Saved price tables keep your
+  edits; only the snapshot's fast-mode and long-context prices are added to them. "Reset to snapshot
+  prices" brings back the full table.
 - **Testing the PowerShell bridge:** `tests/powershell/statusline.Tests.ps1` is a Pester 5 test
   (`Invoke-Pester .\tests\powershell` on Windows). It isn't part of `npm test`, which runs anywhere;
   the `sh` bridge is tested there. Manual check:

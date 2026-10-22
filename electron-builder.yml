@@ -11,6 +11,9 @@ files:
   - package.json
   - '!**/*.map'
 npmRebuild: false
+extraFiles:
+  - from: THIRD_PARTY_NOTICES
+    to: THIRD_PARTY_NOTICES.txt
 win:
   icon: resources/icon.png
   target:

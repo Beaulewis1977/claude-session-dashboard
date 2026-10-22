@@ -1,16 +1,22 @@
 import { join } from 'node:path'
 import { app, BrowserWindow, nativeTheme, session, shell } from 'electron'
+import { FIXTURES_NOW, setClockOffset } from '@shared/clock'
+import { DEFAULT_PRICES, sanitizePrices } from '@shared/usage/pricing'
 import type { ThemePref } from '@shared/types'
 import { fixturesLayout, prepareFixtures, seedFixtureData } from './fixtures'
 import { registerIpc } from './ipc'
+import { registerUsageIpc } from './ipc-usage'
 import { createFixturesPlatform, createRealPlatform, type Platform } from './platform'
 import { Launcher } from './services/launcher'
 import { SessionService } from './services/sessions'
 import { appPaths, createMetadataStore, createSettingsStore } from './services/store'
+import { UsageService, usagePaths } from './services/usage'
 import { SourceWatcher } from './services/watcher'
 
 const FIXTURES = process.argv.includes('--fixtures') || process.env.CSD_FIXTURES === '1'
 const appRoot = app.getAppPath()
+// Fixtures mode runs on the sample data's clock, so "today" has data.
+if (FIXTURES) setClockOffset(FIXTURES_NOW - Date.now())
 
 // All of the app's own data (including Chromium's cache) lives in
 // %APPDATA%\ClaudeSessionDashboard — or .fixtures-data/appdata in fixtures mode.
@@ -78,7 +84,7 @@ async function main(): Promise<void> {
 
   let platform: Platform
   if (FIXTURES) {
-    await prepareFixtures(appRoot)
+    await prepareFixtures(appRoot, { usageHistory: true })
     const layout = fixturesLayout(appRoot)
     platform = createFixturesPlatform(layout.fixturesDir, layout.sourcesDir)
   } else {
@@ -89,17 +95,39 @@ async function main(): Promise<void> {
   const metadata = createMetadataStore(paths)
   const settings = createSettingsStore(paths)
   await Promise.all([metadata.load(), settings.load()])
+  // Settings files from before Phase 5 lack the new keys.
+  settings.update((s) => {
+    if (s.weekStart !== 'sunday') s.weekStart = 'monday'
+    s.prices = sanitizePrices(s.prices) ?? DEFAULT_PRICES.map((p) => ({ ...p }))
+  })
   if (FIXTURES) await seedFixtureData(appRoot, paths.archiveDir, metadata)
 
   const sessions = new SessionService(platform, paths, metadata, settings)
   const watcher = new SourceWatcher(sessions)
   const launcher = new Launcher(platform, sessions, () => settings.value.terminal)
-  registerIpc({ platform, paths, sessions, launcher, settings, watcher, applyTheme })
+  const usage = new UsageService(sessions, usagePaths(paths.dataDir, paths.archiveDir), () => ({
+    weekStart: settings.value.weekStart,
+    prices: settings.value.prices
+  }))
+  registerIpc({
+    platform,
+    paths,
+    sessions,
+    launcher,
+    settings,
+    watcher,
+    applyTheme,
+    onSettingsChanged: () => usage.emit('changed')
+  })
+  registerUsageIpc({ usage, platform })
 
   nativeTheme.themeSource = settings.value.theme
   createWindow(settings.value.window)
 
-  void sessions.start().then(() => watcher.restart())
+  void sessions
+    .start()
+    .then(() => watcher.restart())
+    .then(() => usage.start())
 
   let quitting = false
   app.on('before-quit', (e) => {
@@ -109,6 +137,7 @@ async function main(): Promise<void> {
     void (async () => {
       await watcher.close().catch(() => undefined)
       await sessions.idle().catch(() => undefined)
+      await usage.idle().catch(() => undefined)
       await Promise.all([metadata.flush(), settings.flush()]).catch(() => undefined)
       app.quit()
     })()

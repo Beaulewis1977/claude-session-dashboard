@@ -13,6 +13,13 @@ import type {
   SessionSummary,
   ThemePref
 } from './types'
+import type {
+  CcusageComparison,
+  SessionUsage,
+  UsageQuery,
+  UsageReport,
+  UsageStatus
+} from './usage/types'
 
 export interface SearchHit {
   key: string
@@ -53,4 +60,13 @@ export interface CsdApi {
   copyText(text: string): Promise<void>
   setTheme(theme: ThemePref, resolved: 'light' | 'dark'): Promise<void>
   openExternal(url: string): Promise<void>
+
+  // Usage (Phase 5)
+  getUsageReport(query: UsageQuery): Promise<UsageReport>
+  getSessionUsage(key: string): Promise<SessionUsage>
+  getUsageStatus(): Promise<UsageStatus>
+  onUsageChanged(cb: () => void): () => void
+  recalculateUsage(): Promise<UsageStatus>
+  exportUsageCsv(query: UsageQuery, perRecord: boolean): Promise<ExportResult>
+  verifyCcusage(): Promise<CcusageComparison>
 }

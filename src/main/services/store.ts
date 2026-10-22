@@ -48,7 +48,8 @@ export function createMetadataStore(paths: AppPaths): JsonStore<MetadataFile> {
 export function createSettingsStore(paths: AppPaths): JsonStore<SettingsFile> {
   return new JsonStore<SettingsFile>(paths.settingsFile, paths.dataDir, () => ({
     ...DEFAULT_SETTINGS,
-    extraFolders: []
+    extraFolders: [],
+    prices: DEFAULT_SETTINGS.prices.map((p) => ({ ...p }))
   }))
 }
 

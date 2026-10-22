@@ -2,6 +2,12 @@ import { contextBridge, ipcRenderer } from 'electron'
 import type { CsdApi } from '@shared/api'
 import type { SessionsPayload } from '@shared/types'
 
+function on(channel: string, cb: () => void): () => void {
+  const listener = (): void => cb()
+  ipcRenderer.on(channel, listener)
+  return () => ipcRenderer.removeListener(channel, listener)
+}
+
 const api: CsdApi = {
   getInfo: () => ipcRenderer.invoke('app:info'),
   getSessions: () => ipcRenderer.invoke('sessions:list'),
@@ -28,7 +34,15 @@ const api: CsdApi = {
   exportMarkdown: (key) => ipcRenderer.invoke('export:markdown', key),
   copyText: (text) => ipcRenderer.invoke('clipboard:write', text),
   setTheme: (theme, resolved) => ipcRenderer.invoke('theme:set', theme, resolved),
-  openExternal: (url) => ipcRenderer.invoke('shell:openExternal', url)
+  openExternal: (url) => ipcRenderer.invoke('shell:openExternal', url),
+
+  getUsageReport: (q) => ipcRenderer.invoke('usage:report', q),
+  getSessionUsage: (key) => ipcRenderer.invoke('usage:session', key),
+  getUsageStatus: () => ipcRenderer.invoke('usage:status'),
+  onUsageChanged: (cb) => on('usage:changed', cb),
+  recalculateUsage: () => ipcRenderer.invoke('usage:recalculate'),
+  exportUsageCsv: (q, perRecord) => ipcRenderer.invoke('usage:exportCsv', q, perRecord),
+  verifyCcusage: () => ipcRenderer.invoke('usage:verifyCcusage')
 }
 
 contextBridge.exposeInMainWorld('csd', api)

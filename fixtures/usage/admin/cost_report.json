@@ -1,0 +1,4284 @@
+{
+ "data": [
+  {
+   "starting_at": "2026-09-22T00:00:00Z",
+   "ending_at": "2026-09-23T00:00:00Z",
+   "results": [
+    {
+     "currency": "USD",
+     "amount": "1636.0324",
+     "workspace_id": null,
+     "description": "claude-opus-5-5 input tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-opus-5-5",
+     "service_tier": "standard",
+     "token_type": "uncached_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "2370.5060",
+     "workspace_id": null,
+     "description": "claude-opus-5-5 output tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-opus-5-5",
+     "service_tier": "standard",
+     "token_type": "output_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "901.7064",
+     "workspace_id": null,
+     "description": "claude-opus-5-5 cache_creation tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-opus-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_creation.ephemeral_5m_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "562.5138",
+     "workspace_id": null,
+     "description": "claude-opus-5-5 cache_read tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-opus-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_read_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "1695.7262",
+     "workspace_id": null,
+     "description": "claude-sonnet-5-5 input tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-sonnet-5-5",
+     "service_tier": "standard",
+     "token_type": "uncached_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "2836.2250",
+     "workspace_id": null,
+     "description": "claude-sonnet-5-5 output tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-sonnet-5-5",
+     "service_tier": "standard",
+     "token_type": "output_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "1268.7634",
+     "workspace_id": null,
+     "description": "claude-sonnet-5-5 cache_creation tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-sonnet-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_creation.ephemeral_5m_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "516.1502",
+     "workspace_id": null,
+     "description": "claude-sonnet-5-5 cache_read tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-sonnet-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_read_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "204.7553",
+     "workspace_id": null,
+     "description": "claude-haiku-5-5 input tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-haiku-5-5",
+     "service_tier": "standard",
+     "token_type": "uncached_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "363.4036",
+     "workspace_id": null,
+     "description": "claude-haiku-5-5 output tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-haiku-5-5",
+     "service_tier": "standard",
+     "token_type": "output_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "188.8258",
+     "workspace_id": null,
+     "description": "claude-haiku-5-5 cache_creation tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-haiku-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_creation.ephemeral_5m_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "172.5562",
+     "workspace_id": null,
+     "description": "claude-haiku-5-5 cache_read tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-haiku-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_read_input_tokens"
+    }
+   ]
+  },
+  {
+   "starting_at": "2026-09-23T00:00:00Z",
+   "ending_at": "2026-09-24T00:00:00Z",
+   "results": [
+    {
+     "currency": "USD",
+     "amount": "1151.6472",
+     "workspace_id": null,
+     "description": "claude-opus-5-5 input tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-opus-5-5",
+     "service_tier": "standard",
+     "token_type": "uncached_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "2078.2900",
+     "workspace_id": null,
+     "description": "claude-opus-5-5 output tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-opus-5-5",
+     "service_tier": "standard",
+     "token_type": "output_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "1189.8447",
+     "workspace_id": null,
+     "description": "claude-opus-5-5 cache_creation tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-opus-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_creation.ephemeral_5m_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "455.4405",
+     "workspace_id": null,
+     "description": "claude-opus-5-5 cache_read tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-opus-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_read_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "1243.8584",
+     "workspace_id": null,
+     "description": "claude-sonnet-5-5 input tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-sonnet-5-5",
+     "service_tier": "standard",
+     "token_type": "uncached_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "2448.5950",
+     "workspace_id": null,
+     "description": "claude-sonnet-5-5 output tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-sonnet-5-5",
+     "service_tier": "standard",
+     "token_type": "output_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "1145.8263",
+     "workspace_id": null,
+     "description": "claude-sonnet-5-5 cache_creation tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-sonnet-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_creation.ephemeral_5m_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "544.1644",
+     "workspace_id": null,
+     "description": "claude-sonnet-5-5 cache_read tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-sonnet-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_read_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "189.2690",
+     "workspace_id": null,
+     "description": "claude-haiku-5-5 input tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-haiku-5-5",
+     "service_tier": "standard",
+     "token_type": "uncached_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "375.4099",
+     "workspace_id": null,
+     "description": "claude-haiku-5-5 output tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-haiku-5-5",
+     "service_tier": "standard",
+     "token_type": "output_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "162.5158",
+     "workspace_id": null,
+     "description": "claude-haiku-5-5 cache_creation tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-haiku-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_creation.ephemeral_5m_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "179.0450",
+     "workspace_id": null,
+     "description": "claude-haiku-5-5 cache_read tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-haiku-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_read_input_tokens"
+    }
+   ]
+  },
+  {
+   "starting_at": "2026-09-24T00:00:00Z",
+   "ending_at": "2026-09-25T00:00:00Z",
+   "results": [
+    {
+     "currency": "USD",
+     "amount": "1266.8064",
+     "workspace_id": null,
+     "description": "claude-opus-5-5 input tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-opus-5-5",
+     "service_tier": "standard",
+     "token_type": "uncached_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "1918.1160",
+     "workspace_id": null,
+     "description": "claude-opus-5-5 output tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-opus-5-5",
+     "service_tier": "standard",
+     "token_type": "output_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "696.6826",
+     "workspace_id": null,
+     "description": "claude-opus-5-5 cache_creation tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-opus-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_creation.ephemeral_5m_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "483.5501",
+     "workspace_id": null,
+     "description": "claude-opus-5-5 cache_read tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-opus-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_read_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "2352.7106",
+     "workspace_id": null,
+     "description": "claude-sonnet-5-5 input tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-sonnet-5-5",
+     "service_tier": "standard",
+     "token_type": "uncached_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "3505.7170",
+     "workspace_id": null,
+     "description": "claude-sonnet-5-5 output tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-sonnet-5-5",
+     "service_tier": "standard",
+     "token_type": "output_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "1883.7396",
+     "workspace_id": null,
+     "description": "claude-sonnet-5-5 cache_creation tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-sonnet-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_creation.ephemeral_5m_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "749.2764",
+     "workspace_id": null,
+     "description": "claude-sonnet-5-5 cache_read tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-sonnet-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_read_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "167.7409",
+     "workspace_id": null,
+     "description": "claude-haiku-5-5 input tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-haiku-5-5",
+     "service_tier": "standard",
+     "token_type": "uncached_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "278.7439",
+     "workspace_id": null,
+     "description": "claude-haiku-5-5 output tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-haiku-5-5",
+     "service_tier": "standard",
+     "token_type": "output_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "158.2230",
+     "workspace_id": null,
+     "description": "claude-haiku-5-5 cache_creation tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-haiku-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_creation.ephemeral_5m_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "136.7026",
+     "workspace_id": null,
+     "description": "claude-haiku-5-5 cache_read tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-haiku-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_read_input_tokens"
+    }
+   ]
+  },
+  {
+   "starting_at": "2026-09-25T00:00:00Z",
+   "ending_at": "2026-09-26T00:00:00Z",
+   "results": [
+    {
+     "currency": "USD",
+     "amount": "1523.6584",
+     "workspace_id": null,
+     "description": "claude-opus-5-5 input tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-opus-5-5",
+     "service_tier": "standard",
+     "token_type": "uncached_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "2664.9880",
+     "workspace_id": null,
+     "description": "claude-opus-5-5 output tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-opus-5-5",
+     "service_tier": "standard",
+     "token_type": "output_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "1105.3408",
+     "workspace_id": null,
+     "description": "claude-opus-5-5 cache_creation tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-opus-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_creation.ephemeral_5m_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "582.6573",
+     "workspace_id": null,
+     "description": "claude-opus-5-5 cache_read tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-opus-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_read_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "1787.2756",
+     "workspace_id": null,
+     "description": "claude-sonnet-5-5 input tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-sonnet-5-5",
+     "service_tier": "standard",
+     "token_type": "uncached_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "3548.4710",
+     "workspace_id": null,
+     "description": "claude-sonnet-5-5 output tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-sonnet-5-5",
+     "service_tier": "standard",
+     "token_type": "output_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "1510.0377",
+     "workspace_id": null,
+     "description": "claude-sonnet-5-5 cache_creation tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-sonnet-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_creation.ephemeral_5m_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "741.0139",
+     "workspace_id": null,
+     "description": "claude-sonnet-5-5 cache_read tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-sonnet-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_read_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "203.8078",
+     "workspace_id": null,
+     "description": "claude-haiku-5-5 input tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-haiku-5-5",
+     "service_tier": "standard",
+     "token_type": "uncached_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "399.8215",
+     "workspace_id": null,
+     "description": "claude-haiku-5-5 output tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-haiku-5-5",
+     "service_tier": "standard",
+     "token_type": "output_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "155.4019",
+     "workspace_id": null,
+     "description": "claude-haiku-5-5 cache_creation tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-haiku-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_creation.ephemeral_5m_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "149.2385",
+     "workspace_id": null,
+     "description": "claude-haiku-5-5 cache_read tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-haiku-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_read_input_tokens"
+    }
+   ]
+  },
+  {
+   "starting_at": "2026-09-26T00:00:00Z",
+   "ending_at": "2026-09-27T00:00:00Z",
+   "results": [
+    {
+     "currency": "USD",
+     "amount": "397.8392",
+     "workspace_id": null,
+     "description": "claude-opus-5-5 input tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-opus-5-5",
+     "service_tier": "standard",
+     "token_type": "uncached_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "645.3560",
+     "workspace_id": null,
+     "description": "claude-opus-5-5 output tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-opus-5-5",
+     "service_tier": "standard",
+     "token_type": "output_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "314.8464",
+     "workspace_id": null,
+     "description": "claude-opus-5-5 cache_creation tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-opus-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_creation.ephemeral_5m_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "134.9391",
+     "workspace_id": null,
+     "description": "claude-opus-5-5 cache_read tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-opus-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_read_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "637.5328",
+     "workspace_id": null,
+     "description": "claude-sonnet-5-5 input tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-sonnet-5-5",
+     "service_tier": "standard",
+     "token_type": "uncached_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "1023.8110",
+     "workspace_id": null,
+     "description": "claude-sonnet-5-5 output tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-sonnet-5-5",
+     "service_tier": "standard",
+     "token_type": "output_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "406.4427",
+     "workspace_id": null,
+     "description": "claude-sonnet-5-5 cache_creation tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-sonnet-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_creation.ephemeral_5m_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "192.4630",
+     "workspace_id": null,
+     "description": "claude-sonnet-5-5 cache_read tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-sonnet-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_read_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "68.8276",
+     "workspace_id": null,
+     "description": "claude-haiku-5-5 input tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-haiku-5-5",
+     "service_tier": "standard",
+     "token_type": "uncached_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "132.1098",
+     "workspace_id": null,
+     "description": "claude-haiku-5-5 output tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-haiku-5-5",
+     "service_tier": "standard",
+     "token_type": "output_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "61.5811",
+     "workspace_id": null,
+     "description": "claude-haiku-5-5 cache_creation tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-haiku-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_creation.ephemeral_5m_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "57.4345",
+     "workspace_id": null,
+     "description": "claude-haiku-5-5 cache_read tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-haiku-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_read_input_tokens"
+    }
+   ]
+  },
+  {
+   "starting_at": "2026-09-27T00:00:00Z",
+   "ending_at": "2026-09-28T00:00:00Z",
+   "results": [
+    {
+     "currency": "USD",
+     "amount": "581.7124",
+     "workspace_id": null,
+     "description": "claude-opus-5-5 input tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-opus-5-5",
+     "service_tier": "standard",
+     "token_type": "uncached_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "951.8480",
+     "workspace_id": null,
+     "description": "claude-opus-5-5 output tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-opus-5-5",
+     "service_tier": "standard",
+     "token_type": "output_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "428.1713",
+     "workspace_id": null,
+     "description": "claude-opus-5-5 cache_creation tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-opus-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_creation.ephemeral_5m_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "242.5918",
+     "workspace_id": null,
+     "description": "claude-opus-5-5 cache_read tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-opus-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_read_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "697.4796",
+     "workspace_id": null,
+     "description": "claude-sonnet-5-5 input tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-sonnet-5-5",
+     "service_tier": "standard",
+     "token_type": "uncached_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "1229.5500",
+     "workspace_id": null,
+     "description": "claude-sonnet-5-5 output tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-sonnet-5-5",
+     "service_tier": "standard",
+     "token_type": "output_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "673.5136",
+     "workspace_id": null,
+     "description": "claude-sonnet-5-5 cache_creation tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-sonnet-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_creation.ephemeral_5m_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "264.9035",
+     "workspace_id": null,
+     "description": "claude-sonnet-5-5 cache_read tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-sonnet-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_read_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "60.1527",
+     "workspace_id": null,
+     "description": "claude-haiku-5-5 input tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-haiku-5-5",
+     "service_tier": "standard",
+     "token_type": "uncached_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "111.5876",
+     "workspace_id": null,
+     "description": "claude-haiku-5-5 output tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-haiku-5-5",
+     "service_tier": "standard",
+     "token_type": "output_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "54.1438",
+     "workspace_id": null,
+     "description": "claude-haiku-5-5 cache_creation tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-haiku-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_creation.ephemeral_5m_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "57.5676",
+     "workspace_id": null,
+     "description": "claude-haiku-5-5 cache_read tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-haiku-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_read_input_tokens"
+    }
+   ]
+  },
+  {
+   "starting_at": "2026-09-28T00:00:00Z",
+   "ending_at": "2026-09-29T00:00:00Z",
+   "results": [
+    {
+     "currency": "USD",
+     "amount": "1601.6116",
+     "workspace_id": null,
+     "description": "claude-opus-5-5 input tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-opus-5-5",
+     "service_tier": "standard",
+     "token_type": "uncached_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "2788.3140",
+     "workspace_id": null,
+     "description": "claude-opus-5-5 output tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-opus-5-5",
+     "service_tier": "standard",
+     "token_type": "output_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "1547.5794",
+     "workspace_id": null,
+     "description": "claude-opus-5-5 cache_creation tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-opus-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_creation.ephemeral_5m_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "638.1953",
+     "workspace_id": null,
+     "description": "claude-opus-5-5 cache_read tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-opus-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_read_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "1947.3534",
+     "workspace_id": null,
+     "description": "claude-sonnet-5-5 input tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-sonnet-5-5",
+     "service_tier": "standard",
+     "token_type": "uncached_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "2819.6060",
+     "workspace_id": null,
+     "description": "claude-sonnet-5-5 output tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-sonnet-5-5",
+     "service_tier": "standard",
+     "token_type": "output_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "1151.8479",
+     "workspace_id": null,
+     "description": "claude-sonnet-5-5 cache_creation tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-sonnet-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_creation.ephemeral_5m_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "530.8542",
+     "workspace_id": null,
+     "description": "claude-sonnet-5-5 cache_read tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-sonnet-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_read_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "177.9750",
+     "workspace_id": null,
+     "description": "claude-haiku-5-5 input tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-haiku-5-5",
+     "service_tier": "standard",
+     "token_type": "uncached_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "304.6658",
+     "workspace_id": null,
+     "description": "claude-haiku-5-5 output tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-haiku-5-5",
+     "service_tier": "standard",
+     "token_type": "output_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "110.3803",
+     "workspace_id": null,
+     "description": "claude-haiku-5-5 cache_creation tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-haiku-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_creation.ephemeral_5m_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "131.9725",
+     "workspace_id": null,
+     "description": "claude-haiku-5-5 cache_read tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-haiku-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_read_input_tokens"
+    }
+   ]
+  },
+  {
+   "starting_at": "2026-09-29T00:00:00Z",
+   "ending_at": "2026-09-30T00:00:00Z",
+   "results": [
+    {
+     "currency": "USD",
+     "amount": "1681.3648",
+     "workspace_id": null,
+     "description": "claude-opus-5-5 input tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-opus-5-5",
+     "service_tier": "standard",
+     "token_type": "uncached_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "2584.1200",
+     "workspace_id": null,
+     "description": "claude-opus-5-5 output tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-opus-5-5",
+     "service_tier": "standard",
+     "token_type": "output_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "1357.7493",
+     "workspace_id": null,
+     "description": "claude-opus-5-5 cache_creation tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-opus-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_creation.ephemeral_5m_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "516.5834",
+     "workspace_id": null,
+     "description": "claude-opus-5-5 cache_read tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-opus-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_read_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "1818.6568",
+     "workspace_id": null,
+     "description": "claude-sonnet-5-5 input tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-sonnet-5-5",
+     "service_tier": "standard",
+     "token_type": "uncached_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "3382.8460",
+     "workspace_id": null,
+     "description": "claude-sonnet-5-5 output tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-sonnet-5-5",
+     "service_tier": "standard",
+     "token_type": "output_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "1261.3973",
+     "workspace_id": null,
+     "description": "claude-sonnet-5-5 cache_creation tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-sonnet-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_creation.ephemeral_5m_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "806.0076",
+     "workspace_id": null,
+     "description": "claude-sonnet-5-5 cache_read tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-sonnet-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_read_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "247.9879",
+     "workspace_id": null,
+     "description": "claude-haiku-5-5 input tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-haiku-5-5",
+     "service_tier": "standard",
+     "token_type": "uncached_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "400.1646",
+     "workspace_id": null,
+     "description": "claude-haiku-5-5 output tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-haiku-5-5",
+     "service_tier": "standard",
+     "token_type": "output_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "160.3169",
+     "workspace_id": null,
+     "description": "claude-haiku-5-5 cache_creation tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-haiku-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_creation.ephemeral_5m_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "189.6687",
+     "workspace_id": null,
+     "description": "claude-haiku-5-5 cache_read tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-haiku-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_read_input_tokens"
+    }
+   ]
+  },
+  {
+   "starting_at": "2026-09-30T00:00:00Z",
+   "ending_at": "2026-10-01T00:00:00Z",
+   "results": [
+    {
+     "currency": "USD",
+     "amount": "1113.5088",
+     "workspace_id": null,
+     "description": "claude-opus-5-5 input tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-opus-5-5",
+     "service_tier": "standard",
+     "token_type": "uncached_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "1915.7680",
+     "workspace_id": null,
+     "description": "claude-opus-5-5 output tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-opus-5-5",
+     "service_tier": "standard",
+     "token_type": "output_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "1079.2941",
+     "workspace_id": null,
+     "description": "claude-opus-5-5 cache_creation tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-opus-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_creation.ephemeral_5m_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "370.7212",
+     "workspace_id": null,
+     "description": "claude-opus-5-5 cache_read tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-opus-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_read_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "1450.5782",
+     "workspace_id": null,
+     "description": "claude-sonnet-5-5 input tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-sonnet-5-5",
+     "service_tier": "standard",
+     "token_type": "uncached_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "2611.8340",
+     "workspace_id": null,
+     "description": "claude-sonnet-5-5 output tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-sonnet-5-5",
+     "service_tier": "standard",
+     "token_type": "output_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "1522.6782",
+     "workspace_id": null,
+     "description": "claude-sonnet-5-5 cache_creation tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-sonnet-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_creation.ephemeral_5m_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "507.9440",
+     "workspace_id": null,
+     "description": "claude-sonnet-5-5 cache_read tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-sonnet-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_read_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "278.0128",
+     "workspace_id": null,
+     "description": "claude-haiku-5-5 input tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-haiku-5-5",
+     "service_tier": "standard",
+     "token_type": "uncached_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "409.6497",
+     "workspace_id": null,
+     "description": "claude-haiku-5-5 output tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-haiku-5-5",
+     "service_tier": "standard",
+     "token_type": "output_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "174.4654",
+     "workspace_id": null,
+     "description": "claude-haiku-5-5 cache_creation tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-haiku-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_creation.ephemeral_5m_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "185.9761",
+     "workspace_id": null,
+     "description": "claude-haiku-5-5 cache_read tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-haiku-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_read_input_tokens"
+    }
+   ]
+  },
+  {
+   "starting_at": "2026-10-01T00:00:00Z",
+   "ending_at": "2026-10-02T00:00:00Z",
+   "results": [
+    {
+     "currency": "USD",
+     "amount": "1828.6316",
+     "workspace_id": null,
+     "description": "claude-opus-5-5 input tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-opus-5-5",
+     "service_tier": "standard",
+     "token_type": "uncached_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "2663.7140",
+     "workspace_id": null,
+     "description": "claude-opus-5-5 output tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-opus-5-5",
+     "service_tier": "standard",
+     "token_type": "output_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "1533.3197",
+     "workspace_id": null,
+     "description": "claude-opus-5-5 cache_creation tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-opus-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_creation.ephemeral_5m_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "581.6068",
+     "workspace_id": null,
+     "description": "claude-opus-5-5 cache_read tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-opus-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_read_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "1506.9030",
+     "workspace_id": null,
+     "description": "claude-sonnet-5-5 input tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-sonnet-5-5",
+     "service_tier": "standard",
+     "token_type": "uncached_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "2353.1100",
+     "workspace_id": null,
+     "description": "claude-sonnet-5-5 output tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-sonnet-5-5",
+     "service_tier": "standard",
+     "token_type": "output_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "935.6792",
+     "workspace_id": null,
+     "description": "claude-sonnet-5-5 cache_creation tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-sonnet-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_creation.ephemeral_5m_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "543.9392",
+     "workspace_id": null,
+     "description": "claude-sonnet-5-5 cache_read tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-sonnet-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_read_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "249.9909",
+     "workspace_id": null,
+     "description": "claude-haiku-5-5 input tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-haiku-5-5",
+     "service_tier": "standard",
+     "token_type": "uncached_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "389.7081",
+     "workspace_id": null,
+     "description": "claude-haiku-5-5 output tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-haiku-5-5",
+     "service_tier": "standard",
+     "token_type": "output_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "174.0049",
+     "workspace_id": null,
+     "description": "claude-haiku-5-5 cache_creation tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-haiku-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_creation.ephemeral_5m_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "152.6305",
+     "workspace_id": null,
+     "description": "claude-haiku-5-5 cache_read tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-haiku-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_read_input_tokens"
+    }
+   ]
+  },
+  {
+   "starting_at": "2026-10-02T00:00:00Z",
+   "ending_at": "2026-10-03T00:00:00Z",
+   "results": [
+    {
+     "currency": "USD",
+     "amount": "1238.9476",
+     "workspace_id": null,
+     "description": "claude-opus-5-5 input tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-opus-5-5",
+     "service_tier": "standard",
+     "token_type": "uncached_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "1808.3340",
+     "workspace_id": null,
+     "description": "claude-opus-5-5 output tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-opus-5-5",
+     "service_tier": "standard",
+     "token_type": "output_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "987.3986",
+     "workspace_id": null,
+     "description": "claude-opus-5-5 cache_creation tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-opus-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_creation.ephemeral_5m_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "367.4613",
+     "workspace_id": null,
+     "description": "claude-opus-5-5 cache_read tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-opus-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_read_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "1887.1980",
+     "workspace_id": null,
+     "description": "claude-sonnet-5-5 input tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-sonnet-5-5",
+     "service_tier": "standard",
+     "token_type": "uncached_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "2854.3560",
+     "workspace_id": null,
+     "description": "claude-sonnet-5-5 output tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-sonnet-5-5",
+     "service_tier": "standard",
+     "token_type": "output_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "1169.3452",
+     "workspace_id": null,
+     "description": "claude-sonnet-5-5 cache_creation tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-sonnet-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_creation.ephemeral_5m_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "663.3661",
+     "workspace_id": null,
+     "description": "claude-sonnet-5-5 cache_read tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-sonnet-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_read_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "182.3082",
+     "workspace_id": null,
+     "description": "claude-haiku-5-5 input tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-haiku-5-5",
+     "service_tier": "standard",
+     "token_type": "uncached_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "305.6200",
+     "workspace_id": null,
+     "description": "claude-haiku-5-5 output tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-haiku-5-5",
+     "service_tier": "standard",
+     "token_type": "output_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "125.1250",
+     "workspace_id": null,
+     "description": "claude-haiku-5-5 cache_creation tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-haiku-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_creation.ephemeral_5m_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "121.3899",
+     "workspace_id": null,
+     "description": "claude-haiku-5-5 cache_read tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-haiku-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_read_input_tokens"
+    }
+   ]
+  },
+  {
+   "starting_at": "2026-10-03T00:00:00Z",
+   "ending_at": "2026-10-04T00:00:00Z",
+   "results": [
+    {
+     "currency": "USD",
+     "amount": "323.8980",
+     "workspace_id": null,
+     "description": "claude-opus-5-5 input tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-opus-5-5",
+     "service_tier": "standard",
+     "token_type": "uncached_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "643.8160",
+     "workspace_id": null,
+     "description": "claude-opus-5-5 output tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-opus-5-5",
+     "service_tier": "standard",
+     "token_type": "output_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "355.5647",
+     "workspace_id": null,
+     "description": "claude-opus-5-5 cache_creation tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-opus-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_creation.ephemeral_5m_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "119.0510",
+     "workspace_id": null,
+     "description": "claude-opus-5-5 cache_read tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-opus-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_read_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "619.5106",
+     "workspace_id": null,
+     "description": "claude-sonnet-5-5 input tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-sonnet-5-5",
+     "service_tier": "standard",
+     "token_type": "uncached_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "968.6520",
+     "workspace_id": null,
+     "description": "claude-sonnet-5-5 output tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-sonnet-5-5",
+     "service_tier": "standard",
+     "token_type": "output_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "413.1637",
+     "workspace_id": null,
+     "description": "claude-sonnet-5-5 cache_creation tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-sonnet-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_creation.ephemeral_5m_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "237.5147",
+     "workspace_id": null,
+     "description": "claude-sonnet-5-5 cache_read tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-sonnet-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_read_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "72.1486",
+     "workspace_id": null,
+     "description": "claude-haiku-5-5 input tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-haiku-5-5",
+     "service_tier": "standard",
+     "token_type": "uncached_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "141.5024",
+     "workspace_id": null,
+     "description": "claude-haiku-5-5 output tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-haiku-5-5",
+     "service_tier": "standard",
+     "token_type": "output_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "52.2200",
+     "workspace_id": null,
+     "description": "claude-haiku-5-5 cache_creation tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-haiku-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_creation.ephemeral_5m_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "63.2610",
+     "workspace_id": null,
+     "description": "claude-haiku-5-5 cache_read tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-haiku-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_read_input_tokens"
+    }
+   ]
+  },
+  {
+   "starting_at": "2026-10-04T00:00:00Z",
+   "ending_at": "2026-10-05T00:00:00Z",
+   "results": [
+    {
+     "currency": "USD",
+     "amount": "571.3568",
+     "workspace_id": null,
+     "description": "claude-opus-5-5 input tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-opus-5-5",
+     "service_tier": "standard",
+     "token_type": "uncached_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "836.9580",
+     "workspace_id": null,
+     "description": "claude-opus-5-5 output tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-opus-5-5",
+     "service_tier": "standard",
+     "token_type": "output_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "435.1315",
+     "workspace_id": null,
+     "description": "claude-opus-5-5 cache_creation tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-opus-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_creation.ephemeral_5m_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "157.3982",
+     "workspace_id": null,
+     "description": "claude-opus-5-5 cache_read tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-opus-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_read_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "644.8082",
+     "workspace_id": null,
+     "description": "claude-sonnet-5-5 input tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-sonnet-5-5",
+     "service_tier": "standard",
+     "token_type": "uncached_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "1204.7330",
+     "workspace_id": null,
+     "description": "claude-sonnet-5-5 output tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-sonnet-5-5",
+     "service_tier": "standard",
+     "token_type": "output_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "672.4625",
+     "workspace_id": null,
+     "description": "claude-sonnet-5-5 cache_creation tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-sonnet-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_creation.ephemeral_5m_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "278.8600",
+     "workspace_id": null,
+     "description": "claude-sonnet-5-5 cache_read tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-sonnet-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_read_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "70.9199",
+     "workspace_id": null,
+     "description": "claude-haiku-5-5 input tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-haiku-5-5",
+     "service_tier": "standard",
+     "token_type": "uncached_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "130.8062",
+     "workspace_id": null,
+     "description": "claude-haiku-5-5 output tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-haiku-5-5",
+     "service_tier": "standard",
+     "token_type": "output_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "53.3193",
+     "workspace_id": null,
+     "description": "claude-haiku-5-5 cache_creation tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-haiku-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_creation.ephemeral_5m_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "67.8872",
+     "workspace_id": null,
+     "description": "claude-haiku-5-5 cache_read tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-haiku-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_read_input_tokens"
+    }
+   ]
+  },
+  {
+   "starting_at": "2026-10-05T00:00:00Z",
+   "ending_at": "2026-10-06T00:00:00Z",
+   "results": [
+    {
+     "currency": "USD",
+     "amount": "1128.7680",
+     "workspace_id": null,
+     "description": "claude-opus-5-5 input tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-opus-5-5",
+     "service_tier": "standard",
+     "token_type": "uncached_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "2216.5640",
+     "workspace_id": null,
+     "description": "claude-opus-5-5 output tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-opus-5-5",
+     "service_tier": "standard",
+     "token_type": "output_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "817.4533",
+     "workspace_id": null,
+     "description": "claude-opus-5-5 cache_creation tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-opus-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_creation.ephemeral_5m_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "420.1388",
+     "workspace_id": null,
+     "description": "claude-opus-5-5 cache_read tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-opus-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_read_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "1572.8914",
+     "workspace_id": null,
+     "description": "claude-sonnet-5-5 input tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-sonnet-5-5",
+     "service_tier": "standard",
+     "token_type": "uncached_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "2575.5600",
+     "workspace_id": null,
+     "description": "claude-sonnet-5-5 output tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-sonnet-5-5",
+     "service_tier": "standard",
+     "token_type": "output_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "1370.5971",
+     "workspace_id": null,
+     "description": "claude-sonnet-5-5 cache_creation tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-sonnet-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_creation.ephemeral_5m_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "621.1257",
+     "workspace_id": null,
+     "description": "claude-sonnet-5-5 cache_read tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-sonnet-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_read_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "171.7201",
+     "workspace_id": null,
+     "description": "claude-haiku-5-5 input tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-haiku-5-5",
+     "service_tier": "standard",
+     "token_type": "uncached_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "335.2240",
+     "workspace_id": null,
+     "description": "claude-haiku-5-5 output tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-haiku-5-5",
+     "service_tier": "standard",
+     "token_type": "output_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "165.4213",
+     "workspace_id": null,
+     "description": "claude-haiku-5-5 cache_creation tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-haiku-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_creation.ephemeral_5m_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "124.8059",
+     "workspace_id": null,
+     "description": "claude-haiku-5-5 cache_read tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-haiku-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_read_input_tokens"
+    }
+   ]
+  },
+  {
+   "starting_at": "2026-10-06T00:00:00Z",
+   "ending_at": "2026-10-07T00:00:00Z",
+   "results": [
+    {
+     "currency": "USD",
+     "amount": "1239.2948",
+     "workspace_id": null,
+     "description": "claude-opus-5-5 input tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-opus-5-5",
+     "service_tier": "standard",
+     "token_type": "uncached_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "1850.6340",
+     "workspace_id": null,
+     "description": "claude-opus-5-5 output tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-opus-5-5",
+     "service_tier": "standard",
+     "token_type": "output_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "1055.9395",
+     "workspace_id": null,
+     "description": "claude-opus-5-5 cache_creation tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-opus-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_creation.ephemeral_5m_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "344.4795",
+     "workspace_id": null,
+     "description": "claude-opus-5-5 cache_read tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-opus-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_read_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "2199.4040",
+     "workspace_id": null,
+     "description": "claude-sonnet-5-5 input tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-sonnet-5-5",
+     "service_tier": "standard",
+     "token_type": "uncached_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "3450.4470",
+     "workspace_id": null,
+     "description": "claude-sonnet-5-5 output tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-sonnet-5-5",
+     "service_tier": "standard",
+     "token_type": "output_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "1361.0217",
+     "workspace_id": null,
+     "description": "claude-sonnet-5-5 cache_creation tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-sonnet-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_creation.ephemeral_5m_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "666.3470",
+     "workspace_id": null,
+     "description": "claude-sonnet-5-5 cache_read tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-sonnet-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_read_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "187.6277",
+     "workspace_id": null,
+     "description": "claude-haiku-5-5 input tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-haiku-5-5",
+     "service_tier": "standard",
+     "token_type": "uncached_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "285.1586",
+     "workspace_id": null,
+     "description": "claude-haiku-5-5 output tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-haiku-5-5",
+     "service_tier": "standard",
+     "token_type": "output_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "124.5267",
+     "workspace_id": null,
+     "description": "claude-haiku-5-5 cache_creation tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-haiku-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_creation.ephemeral_5m_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "142.5668",
+     "workspace_id": null,
+     "description": "claude-haiku-5-5 cache_read tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-haiku-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_read_input_tokens"
+    }
+   ]
+  },
+  {
+   "starting_at": "2026-10-07T00:00:00Z",
+   "ending_at": "2026-10-08T00:00:00Z",
+   "results": [
+    {
+     "currency": "USD",
+     "amount": "1507.7556",
+     "workspace_id": null,
+     "description": "claude-opus-5-5 input tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-opus-5-5",
+     "service_tier": "standard",
+     "token_type": "uncached_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "2774.6560",
+     "workspace_id": null,
+     "description": "claude-opus-5-5 output tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-opus-5-5",
+     "service_tier": "standard",
+     "token_type": "output_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "1215.2260",
+     "workspace_id": null,
+     "description": "claude-opus-5-5 cache_creation tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-opus-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_creation.ephemeral_5m_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "678.7929",
+     "workspace_id": null,
+     "description": "claude-opus-5-5 cache_read tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-opus-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_read_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "2107.4822",
+     "workspace_id": null,
+     "description": "claude-sonnet-5-5 input tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-sonnet-5-5",
+     "service_tier": "standard",
+     "token_type": "uncached_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "3035.0000",
+     "workspace_id": null,
+     "description": "claude-sonnet-5-5 output tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-sonnet-5-5",
+     "service_tier": "standard",
+     "token_type": "output_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "1178.9392",
+     "workspace_id": null,
+     "description": "claude-sonnet-5-5 cache_creation tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-sonnet-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_creation.ephemeral_5m_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "622.5027",
+     "workspace_id": null,
+     "description": "claude-sonnet-5-5 cache_read tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-sonnet-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_read_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "208.3330",
+     "workspace_id": null,
+     "description": "claude-haiku-5-5 input tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-haiku-5-5",
+     "service_tier": "standard",
+     "token_type": "uncached_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "375.9648",
+     "workspace_id": null,
+     "description": "claude-haiku-5-5 output tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-haiku-5-5",
+     "service_tier": "standard",
+     "token_type": "output_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "167.9792",
+     "workspace_id": null,
+     "description": "claude-haiku-5-5 cache_creation tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-haiku-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_creation.ephemeral_5m_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "184.6597",
+     "workspace_id": null,
+     "description": "claude-haiku-5-5 cache_read tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-haiku-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_read_input_tokens"
+    }
+   ]
+  },
+  {
+   "starting_at": "2026-10-08T00:00:00Z",
+   "ending_at": "2026-10-09T00:00:00Z",
+   "results": [
+    {
+     "currency": "USD",
+     "amount": "1065.4848",
+     "workspace_id": null,
+     "description": "claude-opus-5-5 input tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-opus-5-5",
+     "service_tier": "standard",
+     "token_type": "uncached_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "1938.3480",
+     "workspace_id": null,
+     "description": "claude-opus-5-5 output tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-opus-5-5",
+     "service_tier": "standard",
+     "token_type": "output_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "948.7436",
+     "workspace_id": null,
+     "description": "claude-opus-5-5 cache_creation tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-opus-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_creation.ephemeral_5m_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "350.6504",
+     "workspace_id": null,
+     "description": "claude-opus-5-5 cache_read tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-opus-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_read_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "2218.2312",
+     "workspace_id": null,
+     "description": "claude-sonnet-5-5 input tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-sonnet-5-5",
+     "service_tier": "standard",
+     "token_type": "uncached_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "3526.7310",
+     "workspace_id": null,
+     "description": "claude-sonnet-5-5 output tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-sonnet-5-5",
+     "service_tier": "standard",
+     "token_type": "output_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "1869.2389",
+     "workspace_id": null,
+     "description": "claude-sonnet-5-5 cache_creation tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-sonnet-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_creation.ephemeral_5m_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "697.6791",
+     "workspace_id": null,
+     "description": "claude-sonnet-5-5 cache_read tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-sonnet-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_read_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "261.3152",
+     "workspace_id": null,
+     "description": "claude-haiku-5-5 input tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-haiku-5-5",
+     "service_tier": "standard",
+     "token_type": "uncached_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "401.0719",
+     "workspace_id": null,
+     "description": "claude-haiku-5-5 output tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-haiku-5-5",
+     "service_tier": "standard",
+     "token_type": "output_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "163.3555",
+     "workspace_id": null,
+     "description": "claude-haiku-5-5 cache_creation tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-haiku-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_creation.ephemeral_5m_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "159.7460",
+     "workspace_id": null,
+     "description": "claude-haiku-5-5 cache_read tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-haiku-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_read_input_tokens"
+    }
+   ]
+  },
+  {
+   "starting_at": "2026-10-09T00:00:00Z",
+   "ending_at": "2026-10-10T00:00:00Z",
+   "results": [
+    {
+     "currency": "USD",
+     "amount": "1342.5064",
+     "workspace_id": null,
+     "description": "claude-opus-5-5 input tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-opus-5-5",
+     "service_tier": "standard",
+     "token_type": "uncached_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "2041.3920",
+     "workspace_id": null,
+     "description": "claude-opus-5-5 output tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-opus-5-5",
+     "service_tier": "standard",
+     "token_type": "output_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "849.1734",
+     "workspace_id": null,
+     "description": "claude-opus-5-5 cache_creation tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-opus-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_creation.ephemeral_5m_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "466.7357",
+     "workspace_id": null,
+     "description": "claude-opus-5-5 cache_read tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-opus-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_read_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "1839.4152",
+     "workspace_id": null,
+     "description": "claude-sonnet-5-5 input tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-sonnet-5-5",
+     "service_tier": "standard",
+     "token_type": "uncached_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "3176.2920",
+     "workspace_id": null,
+     "description": "claude-sonnet-5-5 output tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-sonnet-5-5",
+     "service_tier": "standard",
+     "token_type": "output_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "1834.8440",
+     "workspace_id": null,
+     "description": "claude-sonnet-5-5 cache_creation tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-sonnet-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_creation.ephemeral_5m_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "643.4763",
+     "workspace_id": null,
+     "description": "claude-sonnet-5-5 cache_read tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-sonnet-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_read_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "237.6754",
+     "workspace_id": null,
+     "description": "claude-haiku-5-5 input tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-haiku-5-5",
+     "service_tier": "standard",
+     "token_type": "uncached_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "394.1617",
+     "workspace_id": null,
+     "description": "claude-haiku-5-5 output tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-haiku-5-5",
+     "service_tier": "standard",
+     "token_type": "output_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "158.1489",
+     "workspace_id": null,
+     "description": "claude-haiku-5-5 cache_creation tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-haiku-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_creation.ephemeral_5m_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "186.2657",
+     "workspace_id": null,
+     "description": "claude-haiku-5-5 cache_read tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-haiku-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_read_input_tokens"
+    }
+   ]
+  },
+  {
+   "starting_at": "2026-10-10T00:00:00Z",
+   "ending_at": "2026-10-11T00:00:00Z",
+   "results": [
+    {
+     "currency": "USD",
+     "amount": "555.4080",
+     "workspace_id": null,
+     "description": "claude-opus-5-5 input tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-opus-5-5",
+     "service_tier": "standard",
+     "token_type": "uncached_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "875.5820",
+     "workspace_id": null,
+     "description": "claude-opus-5-5 output tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-opus-5-5",
+     "service_tier": "standard",
+     "token_type": "output_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "358.1489",
+     "workspace_id": null,
+     "description": "claude-opus-5-5 cache_creation tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-opus-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_creation.ephemeral_5m_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "158.3415",
+     "workspace_id": null,
+     "description": "claude-opus-5-5 cache_read tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-opus-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_read_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "490.3136",
+     "workspace_id": null,
+     "description": "claude-sonnet-5-5 input tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-sonnet-5-5",
+     "service_tier": "standard",
+     "token_type": "uncached_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "971.5570",
+     "workspace_id": null,
+     "description": "claude-sonnet-5-5 output tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-sonnet-5-5",
+     "service_tier": "standard",
+     "token_type": "output_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "373.6001",
+     "workspace_id": null,
+     "description": "claude-sonnet-5-5 cache_creation tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-sonnet-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_creation.ephemeral_5m_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "234.8506",
+     "workspace_id": null,
+     "description": "claude-sonnet-5-5 cache_read tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-sonnet-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_read_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "60.5735",
+     "workspace_id": null,
+     "description": "claude-haiku-5-5 input tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-haiku-5-5",
+     "service_tier": "standard",
+     "token_type": "uncached_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "98.0000",
+     "workspace_id": null,
+     "description": "claude-haiku-5-5 output tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-haiku-5-5",
+     "service_tier": "standard",
+     "token_type": "output_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "55.8824",
+     "workspace_id": null,
+     "description": "claude-haiku-5-5 cache_creation tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-haiku-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_creation.ephemeral_5m_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "45.3290",
+     "workspace_id": null,
+     "description": "claude-haiku-5-5 cache_read tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-haiku-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_read_input_tokens"
+    }
+   ]
+  },
+  {
+   "starting_at": "2026-10-11T00:00:00Z",
+   "ending_at": "2026-10-12T00:00:00Z",
+   "results": [
+    {
+     "currency": "USD",
+     "amount": "594.7172",
+     "workspace_id": null,
+     "description": "claude-opus-5-5 input tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-opus-5-5",
+     "service_tier": "standard",
+     "token_type": "uncached_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "911.2940",
+     "workspace_id": null,
+     "description": "claude-opus-5-5 output tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-opus-5-5",
+     "service_tier": "standard",
+     "token_type": "output_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "446.7952",
+     "workspace_id": null,
+     "description": "claude-opus-5-5 cache_creation tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-opus-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_creation.ephemeral_5m_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "215.1206",
+     "workspace_id": null,
+     "description": "claude-opus-5-5 cache_read tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-opus-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_read_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "579.1990",
+     "workspace_id": null,
+     "description": "claude-sonnet-5-5 input tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-sonnet-5-5",
+     "service_tier": "standard",
+     "token_type": "uncached_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "953.5870",
+     "workspace_id": null,
+     "description": "claude-sonnet-5-5 output tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-sonnet-5-5",
+     "service_tier": "standard",
+     "token_type": "output_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "440.9480",
+     "workspace_id": null,
+     "description": "claude-sonnet-5-5 cache_creation tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-sonnet-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_creation.ephemeral_5m_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "196.4117",
+     "workspace_id": null,
+     "description": "claude-sonnet-5-5 cache_read tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-sonnet-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_read_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "78.0331",
+     "workspace_id": null,
+     "description": "claude-haiku-5-5 input tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-haiku-5-5",
+     "service_tier": "standard",
+     "token_type": "uncached_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "141.0953",
+     "workspace_id": null,
+     "description": "claude-haiku-5-5 output tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-haiku-5-5",
+     "service_tier": "standard",
+     "token_type": "output_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "70.2299",
+     "workspace_id": null,
+     "description": "claude-haiku-5-5 cache_creation tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-haiku-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_creation.ephemeral_5m_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "51.0658",
+     "workspace_id": null,
+     "description": "claude-haiku-5-5 cache_read tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-haiku-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_read_input_tokens"
+    }
+   ]
+  },
+  {
+   "starting_at": "2026-10-12T00:00:00Z",
+   "ending_at": "2026-10-13T00:00:00Z",
+   "results": [
+    {
+     "currency": "USD",
+     "amount": "1714.9228",
+     "workspace_id": null,
+     "description": "claude-opus-5-5 input tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-opus-5-5",
+     "service_tier": "standard",
+     "token_type": "uncached_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "2674.3460",
+     "workspace_id": null,
+     "description": "claude-opus-5-5 output tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-opus-5-5",
+     "service_tier": "standard",
+     "token_type": "output_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "1434.2522",
+     "workspace_id": null,
+     "description": "claude-opus-5-5 cache_creation tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-opus-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_creation.ephemeral_5m_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "586.4297",
+     "workspace_id": null,
+     "description": "claude-opus-5-5 cache_read tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-opus-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_read_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "1671.9794",
+     "workspace_id": null,
+     "description": "claude-sonnet-5-5 input tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-sonnet-5-5",
+     "service_tier": "standard",
+     "token_type": "uncached_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "2430.0910",
+     "workspace_id": null,
+     "description": "claude-sonnet-5-5 output tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-sonnet-5-5",
+     "service_tier": "standard",
+     "token_type": "output_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "1334.9328",
+     "workspace_id": null,
+     "description": "claude-sonnet-5-5 cache_creation tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-sonnet-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_creation.ephemeral_5m_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "631.1412",
+     "workspace_id": null,
+     "description": "claude-sonnet-5-5 cache_read tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-sonnet-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_read_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "199.4750",
+     "workspace_id": null,
+     "description": "claude-haiku-5-5 input tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-haiku-5-5",
+     "service_tier": "standard",
+     "token_type": "uncached_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "349.6179",
+     "workspace_id": null,
+     "description": "claude-haiku-5-5 output tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-haiku-5-5",
+     "service_tier": "standard",
+     "token_type": "output_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "187.9178",
+     "workspace_id": null,
+     "description": "claude-haiku-5-5 cache_creation tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-haiku-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_creation.ephemeral_5m_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "156.3548",
+     "workspace_id": null,
+     "description": "claude-haiku-5-5 cache_read tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-haiku-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_read_input_tokens"
+    }
+   ]
+  },
+  {
+   "starting_at": "2026-10-13T00:00:00Z",
+   "ending_at": "2026-10-14T00:00:00Z",
+   "results": [
+    {
+     "currency": "USD",
+     "amount": "1406.5968",
+     "workspace_id": null,
+     "description": "claude-opus-5-5 input tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-opus-5-5",
+     "service_tier": "standard",
+     "token_type": "uncached_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "2077.4220",
+     "workspace_id": null,
+     "description": "claude-opus-5-5 output tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-opus-5-5",
+     "service_tier": "standard",
+     "token_type": "output_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "1012.2601",
+     "workspace_id": null,
+     "description": "claude-opus-5-5 cache_creation tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-opus-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_creation.ephemeral_5m_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "453.2520",
+     "workspace_id": null,
+     "description": "claude-opus-5-5 cache_read tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-opus-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_read_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "1541.1812",
+     "workspace_id": null,
+     "description": "claude-sonnet-5-5 input tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-sonnet-5-5",
+     "service_tier": "standard",
+     "token_type": "uncached_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "2574.5440",
+     "workspace_id": null,
+     "description": "claude-sonnet-5-5 output tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-sonnet-5-5",
+     "service_tier": "standard",
+     "token_type": "output_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "1292.0171",
+     "workspace_id": null,
+     "description": "claude-sonnet-5-5 cache_creation tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-sonnet-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_creation.ephemeral_5m_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "620.5864",
+     "workspace_id": null,
+     "description": "claude-sonnet-5-5 cache_read tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-sonnet-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_read_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "227.2704",
+     "workspace_id": null,
+     "description": "claude-haiku-5-5 input tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-haiku-5-5",
+     "service_tier": "standard",
+     "token_type": "uncached_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "390.8182",
+     "workspace_id": null,
+     "description": "claude-haiku-5-5 output tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-haiku-5-5",
+     "service_tier": "standard",
+     "token_type": "output_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "214.5691",
+     "workspace_id": null,
+     "description": "claude-haiku-5-5 cache_creation tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-haiku-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_creation.ephemeral_5m_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "163.3127",
+     "workspace_id": null,
+     "description": "claude-haiku-5-5 cache_read tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-haiku-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_read_input_tokens"
+    }
+   ]
+  },
+  {
+   "starting_at": "2026-10-14T00:00:00Z",
+   "ending_at": "2026-10-15T00:00:00Z",
+   "results": [
+    {
+     "currency": "USD",
+     "amount": "1197.1144",
+     "workspace_id": null,
+     "description": "claude-opus-5-5 input tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-opus-5-5",
+     "service_tier": "standard",
+     "token_type": "uncached_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "2026.8920",
+     "workspace_id": null,
+     "description": "claude-opus-5-5 output tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-opus-5-5",
+     "service_tier": "standard",
+     "token_type": "output_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "1138.9018",
+     "workspace_id": null,
+     "description": "claude-opus-5-5 cache_creation tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-opus-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_creation.ephemeral_5m_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "503.6279",
+     "workspace_id": null,
+     "description": "claude-opus-5-5 cache_read tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-opus-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_read_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "1748.8406",
+     "workspace_id": null,
+     "description": "claude-sonnet-5-5 input tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-sonnet-5-5",
+     "service_tier": "standard",
+     "token_type": "uncached_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "3241.9030",
+     "workspace_id": null,
+     "description": "claude-sonnet-5-5 output tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-sonnet-5-5",
+     "service_tier": "standard",
+     "token_type": "output_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "1364.7685",
+     "workspace_id": null,
+     "description": "claude-sonnet-5-5 cache_creation tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-sonnet-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_creation.ephemeral_5m_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "665.2426",
+     "workspace_id": null,
+     "description": "claude-sonnet-5-5 cache_read tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-sonnet-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_read_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "186.6045",
+     "workspace_id": null,
+     "description": "claude-haiku-5-5 input tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-haiku-5-5",
+     "service_tier": "standard",
+     "token_type": "uncached_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "327.3006",
+     "workspace_id": null,
+     "description": "claude-haiku-5-5 output tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-haiku-5-5",
+     "service_tier": "standard",
+     "token_type": "output_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "136.6477",
+     "workspace_id": null,
+     "description": "claude-haiku-5-5 cache_creation tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-haiku-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_creation.ephemeral_5m_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "139.4692",
+     "workspace_id": null,
+     "description": "claude-haiku-5-5 cache_read tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-haiku-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_read_input_tokens"
+    }
+   ]
+  },
+  {
+   "starting_at": "2026-10-15T00:00:00Z",
+   "ending_at": "2026-10-16T00:00:00Z",
+   "results": [
+    {
+     "currency": "USD",
+     "amount": "1220.5312",
+     "workspace_id": null,
+     "description": "claude-opus-5-5 input tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-opus-5-5",
+     "service_tier": "standard",
+     "token_type": "uncached_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "2409.1100",
+     "workspace_id": null,
+     "description": "claude-opus-5-5 output tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-opus-5-5",
+     "service_tier": "standard",
+     "token_type": "output_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "1276.0555",
+     "workspace_id": null,
+     "description": "claude-opus-5-5 cache_creation tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-opus-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_creation.ephemeral_5m_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "511.8571",
+     "workspace_id": null,
+     "description": "claude-opus-5-5 cache_read tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-opus-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_read_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "2241.4120",
+     "workspace_id": null,
+     "description": "claude-sonnet-5-5 input tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-sonnet-5-5",
+     "service_tier": "standard",
+     "token_type": "uncached_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "3238.5170",
+     "workspace_id": null,
+     "description": "claude-sonnet-5-5 output tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-sonnet-5-5",
+     "service_tier": "standard",
+     "token_type": "output_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "1278.2188",
+     "workspace_id": null,
+     "description": "claude-sonnet-5-5 cache_creation tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-sonnet-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_creation.ephemeral_5m_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "764.7420",
+     "workspace_id": null,
+     "description": "claude-sonnet-5-5 cache_read tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-sonnet-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_read_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "196.1800",
+     "workspace_id": null,
+     "description": "claude-haiku-5-5 input tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-haiku-5-5",
+     "service_tier": "standard",
+     "token_type": "uncached_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "369.4145",
+     "workspace_id": null,
+     "description": "claude-haiku-5-5 output tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-haiku-5-5",
+     "service_tier": "standard",
+     "token_type": "output_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "166.7003",
+     "workspace_id": null,
+     "description": "claude-haiku-5-5 cache_creation tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-haiku-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_creation.ephemeral_5m_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "149.0936",
+     "workspace_id": null,
+     "description": "claude-haiku-5-5 cache_read tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-haiku-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_read_input_tokens"
+    }
+   ]
+  },
+  {
+   "starting_at": "2026-10-16T00:00:00Z",
+   "ending_at": "2026-10-17T00:00:00Z",
+   "results": [
+    {
+     "currency": "USD",
+     "amount": "1566.6420",
+     "workspace_id": null,
+     "description": "claude-opus-5-5 input tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-opus-5-5",
+     "service_tier": "standard",
+     "token_type": "uncached_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "2388.3280",
+     "workspace_id": null,
+     "description": "claude-opus-5-5 output tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-opus-5-5",
+     "service_tier": "standard",
+     "token_type": "output_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "1060.8306",
+     "workspace_id": null,
+     "description": "claude-opus-5-5 cache_creation tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-opus-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_creation.ephemeral_5m_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "493.1715",
+     "workspace_id": null,
+     "description": "claude-opus-5-5 cache_read tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-opus-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_read_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "1342.6974",
+     "workspace_id": null,
+     "description": "claude-sonnet-5-5 input tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-sonnet-5-5",
+     "service_tier": "standard",
+     "token_type": "uncached_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "2358.3940",
+     "workspace_id": null,
+     "description": "claude-sonnet-5-5 output tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-sonnet-5-5",
+     "service_tier": "standard",
+     "token_type": "output_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "905.8403",
+     "workspace_id": null,
+     "description": "claude-sonnet-5-5 cache_creation tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-sonnet-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_creation.ephemeral_5m_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "569.9991",
+     "workspace_id": null,
+     "description": "claude-sonnet-5-5 cache_read tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-sonnet-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_read_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "236.2496",
+     "workspace_id": null,
+     "description": "claude-haiku-5-5 input tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-haiku-5-5",
+     "service_tier": "standard",
+     "token_type": "uncached_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "344.4681",
+     "workspace_id": null,
+     "description": "claude-haiku-5-5 output tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-haiku-5-5",
+     "service_tier": "standard",
+     "token_type": "output_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "141.9751",
+     "workspace_id": null,
+     "description": "claude-haiku-5-5 cache_creation tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-haiku-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_creation.ephemeral_5m_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "139.2032",
+     "workspace_id": null,
+     "description": "claude-haiku-5-5 cache_read tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-haiku-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_read_input_tokens"
+    }
+   ]
+  },
+  {
+   "starting_at": "2026-10-17T00:00:00Z",
+   "ending_at": "2026-10-18T00:00:00Z",
+   "results": [
+    {
+     "currency": "USD",
+     "amount": "523.3400",
+     "workspace_id": null,
+     "description": "claude-opus-5-5 input tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-opus-5-5",
+     "service_tier": "standard",
+     "token_type": "uncached_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "842.7240",
+     "workspace_id": null,
+     "description": "claude-opus-5-5 output tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-opus-5-5",
+     "service_tier": "standard",
+     "token_type": "output_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "437.9936",
+     "workspace_id": null,
+     "description": "claude-opus-5-5 cache_creation tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-opus-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_creation.ephemeral_5m_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "213.9284",
+     "workspace_id": null,
+     "description": "claude-opus-5-5 cache_read tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-opus-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_read_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "693.1054",
+     "workspace_id": null,
+     "description": "claude-sonnet-5-5 input tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-sonnet-5-5",
+     "service_tier": "standard",
+     "token_type": "uncached_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "1047.5550",
+     "workspace_id": null,
+     "description": "claude-sonnet-5-5 output tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-sonnet-5-5",
+     "service_tier": "standard",
+     "token_type": "output_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "379.2405",
+     "workspace_id": null,
+     "description": "claude-sonnet-5-5 cache_creation tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-sonnet-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_creation.ephemeral_5m_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "264.1122",
+     "workspace_id": null,
+     "description": "claude-sonnet-5-5 cache_read tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-sonnet-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_read_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "72.8626",
+     "workspace_id": null,
+     "description": "claude-haiku-5-5 input tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-haiku-5-5",
+     "service_tier": "standard",
+     "token_type": "uncached_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "129.5938",
+     "workspace_id": null,
+     "description": "claude-haiku-5-5 output tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-haiku-5-5",
+     "service_tier": "standard",
+     "token_type": "output_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "61.3629",
+     "workspace_id": null,
+     "description": "claude-haiku-5-5 cache_creation tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-haiku-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_creation.ephemeral_5m_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "66.4328",
+     "workspace_id": null,
+     "description": "claude-haiku-5-5 cache_read tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-haiku-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_read_input_tokens"
+    }
+   ]
+  },
+  {
+   "starting_at": "2026-10-18T00:00:00Z",
+   "ending_at": "2026-10-19T00:00:00Z",
+   "results": [
+    {
+     "currency": "USD",
+     "amount": "467.4596",
+     "workspace_id": null,
+     "description": "claude-opus-5-5 input tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-opus-5-5",
+     "service_tier": "standard",
+     "token_type": "uncached_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "877.2500",
+     "workspace_id": null,
+     "description": "claude-opus-5-5 output tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-opus-5-5",
+     "service_tier": "standard",
+     "token_type": "output_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "489.8640",
+     "workspace_id": null,
+     "description": "claude-opus-5-5 cache_creation tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-opus-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_creation.ephemeral_5m_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "173.5727",
+     "workspace_id": null,
+     "description": "claude-opus-5-5 cache_read tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-opus-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_read_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "634.3716",
+     "workspace_id": null,
+     "description": "claude-sonnet-5-5 input tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-sonnet-5-5",
+     "service_tier": "standard",
+     "token_type": "uncached_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "1197.6290",
+     "workspace_id": null,
+     "description": "claude-sonnet-5-5 output tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-sonnet-5-5",
+     "service_tier": "standard",
+     "token_type": "output_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "550.5718",
+     "workspace_id": null,
+     "description": "claude-sonnet-5-5 cache_creation tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-sonnet-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_creation.ephemeral_5m_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "269.9531",
+     "workspace_id": null,
+     "description": "claude-sonnet-5-5 cache_read tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-sonnet-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_read_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "71.6247",
+     "workspace_id": null,
+     "description": "claude-haiku-5-5 input tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-haiku-5-5",
+     "service_tier": "standard",
+     "token_type": "uncached_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "105.6927",
+     "workspace_id": null,
+     "description": "claude-haiku-5-5 output tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-haiku-5-5",
+     "service_tier": "standard",
+     "token_type": "output_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "57.3858",
+     "workspace_id": null,
+     "description": "claude-haiku-5-5 cache_creation tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-haiku-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_creation.ephemeral_5m_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "54.0702",
+     "workspace_id": null,
+     "description": "claude-haiku-5-5 cache_read tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-haiku-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_read_input_tokens"
+    }
+   ]
+  },
+  {
+   "starting_at": "2026-10-19T00:00:00Z",
+   "ending_at": "2026-10-20T00:00:00Z",
+   "results": [
+    {
+     "currency": "USD",
+     "amount": "1354.6344",
+     "workspace_id": null,
+     "description": "claude-opus-5-5 input tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-opus-5-5",
+     "service_tier": "standard",
+     "token_type": "uncached_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "2298.8400",
+     "workspace_id": null,
+     "description": "claude-opus-5-5 output tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-opus-5-5",
+     "service_tier": "standard",
+     "token_type": "output_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "1037.3870",
+     "workspace_id": null,
+     "description": "claude-opus-5-5 cache_creation tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-opus-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_creation.ephemeral_5m_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "414.5653",
+     "workspace_id": null,
+     "description": "claude-opus-5-5 cache_read tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-opus-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_read_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "1528.1518",
+     "workspace_id": null,
+     "description": "claude-sonnet-5-5 input tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-sonnet-5-5",
+     "service_tier": "standard",
+     "token_type": "uncached_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "2943.1030",
+     "workspace_id": null,
+     "description": "claude-sonnet-5-5 output tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-sonnet-5-5",
+     "service_tier": "standard",
+     "token_type": "output_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "1625.0547",
+     "workspace_id": null,
+     "description": "claude-sonnet-5-5 cache_creation tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-sonnet-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_creation.ephemeral_5m_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "620.3314",
+     "workspace_id": null,
+     "description": "claude-sonnet-5-5 cache_read tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-sonnet-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_read_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "199.5394",
+     "workspace_id": null,
+     "description": "claude-haiku-5-5 input tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-haiku-5-5",
+     "service_tier": "standard",
+     "token_type": "uncached_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "367.6418",
+     "workspace_id": null,
+     "description": "claude-haiku-5-5 output tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-haiku-5-5",
+     "service_tier": "standard",
+     "token_type": "output_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "208.6854",
+     "workspace_id": null,
+     "description": "claude-haiku-5-5 cache_creation tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-haiku-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_creation.ephemeral_5m_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "179.3163",
+     "workspace_id": null,
+     "description": "claude-haiku-5-5 cache_read tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-haiku-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_read_input_tokens"
+    }
+   ]
+  },
+  {
+   "starting_at": "2026-10-20T00:00:00Z",
+   "ending_at": "2026-10-21T00:00:00Z",
+   "results": [
+    {
+     "currency": "USD",
+     "amount": "1573.3632",
+     "workspace_id": null,
+     "description": "claude-opus-5-5 input tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-opus-5-5",
+     "service_tier": "standard",
+     "token_type": "uncached_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "2533.2740",
+     "workspace_id": null,
+     "description": "claude-opus-5-5 output tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-opus-5-5",
+     "service_tier": "standard",
+     "token_type": "output_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "1389.5839",
+     "workspace_id": null,
+     "description": "claude-opus-5-5 cache_creation tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-opus-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_creation.ephemeral_5m_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "602.5707",
+     "workspace_id": null,
+     "description": "claude-opus-5-5 cache_read tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-opus-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_read_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "1500.3480",
+     "workspace_id": null,
+     "description": "claude-sonnet-5-5 input tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-sonnet-5-5",
+     "service_tier": "standard",
+     "token_type": "uncached_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "2414.8420",
+     "workspace_id": null,
+     "description": "claude-sonnet-5-5 output tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-sonnet-5-5",
+     "service_tier": "standard",
+     "token_type": "output_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "1119.0238",
+     "workspace_id": null,
+     "description": "claude-sonnet-5-5 cache_creation tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-sonnet-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_creation.ephemeral_5m_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "605.6314",
+     "workspace_id": null,
+     "description": "claude-sonnet-5-5 cache_read tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-sonnet-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_read_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "226.6189",
+     "workspace_id": null,
+     "description": "claude-haiku-5-5 input tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-haiku-5-5",
+     "service_tier": "standard",
+     "token_type": "uncached_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "394.8858",
+     "workspace_id": null,
+     "description": "claude-haiku-5-5 output tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-haiku-5-5",
+     "service_tier": "standard",
+     "token_type": "output_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "168.3710",
+     "workspace_id": null,
+     "description": "claude-haiku-5-5 cache_creation tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-haiku-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_creation.ephemeral_5m_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "183.4579",
+     "workspace_id": null,
+     "description": "claude-haiku-5-5 cache_read tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-haiku-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_read_input_tokens"
+    }
+   ]
+  },
+  {
+   "starting_at": "2026-10-21T00:00:00Z",
+   "ending_at": "2026-10-22T00:00:00Z",
+   "results": [
+    {
+     "currency": "USD",
+     "amount": "1191.3980",
+     "workspace_id": null,
+     "description": "claude-opus-5-5 input tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-opus-5-5",
+     "service_tier": "standard",
+     "token_type": "uncached_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "2198.3900",
+     "workspace_id": null,
+     "description": "claude-opus-5-5 output tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-opus-5-5",
+     "service_tier": "standard",
+     "token_type": "output_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "778.3604",
+     "workspace_id": null,
+     "description": "claude-opus-5-5 cache_creation tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-opus-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_creation.ephemeral_5m_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "530.0320",
+     "workspace_id": null,
+     "description": "claude-opus-5-5 cache_read tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-opus-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_read_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "2105.3082",
+     "workspace_id": null,
+     "description": "claude-sonnet-5-5 input tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-sonnet-5-5",
+     "service_tier": "standard",
+     "token_type": "uncached_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "3258.7860",
+     "workspace_id": null,
+     "description": "claude-sonnet-5-5 output tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-sonnet-5-5",
+     "service_tier": "standard",
+     "token_type": "output_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "1282.7352",
+     "workspace_id": null,
+     "description": "claude-sonnet-5-5 cache_creation tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-sonnet-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_creation.ephemeral_5m_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "813.8214",
+     "workspace_id": null,
+     "description": "claude-sonnet-5-5 cache_read tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-sonnet-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_read_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "229.4846",
+     "workspace_id": null,
+     "description": "claude-haiku-5-5 input tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-haiku-5-5",
+     "service_tier": "standard",
+     "token_type": "uncached_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "339.6075",
+     "workspace_id": null,
+     "description": "claude-haiku-5-5 output tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-haiku-5-5",
+     "service_tier": "standard",
+     "token_type": "output_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "129.6892",
+     "workspace_id": null,
+     "description": "claude-haiku-5-5 cache_creation tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-haiku-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_creation.ephemeral_5m_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "176.1257",
+     "workspace_id": null,
+     "description": "claude-haiku-5-5 cache_read tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-haiku-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_read_input_tokens"
+    }
+   ]
+  },
+  {
+   "starting_at": "2026-10-22T00:00:00Z",
+   "ending_at": "2026-10-23T00:00:00Z",
+   "results": [
+    {
+     "currency": "USD",
+     "amount": "871.9892",
+     "workspace_id": null,
+     "description": "claude-opus-5-5 input tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-opus-5-5",
+     "service_tier": "standard",
+     "token_type": "uncached_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "1683.5800",
+     "workspace_id": null,
+     "description": "claude-opus-5-5 output tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-opus-5-5",
+     "service_tier": "standard",
+     "token_type": "output_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "892.1567",
+     "workspace_id": null,
+     "description": "claude-opus-5-5 cache_creation tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-opus-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_creation.ephemeral_5m_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "323.0818",
+     "workspace_id": null,
+     "description": "claude-opus-5-5 cache_read tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-opus-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_read_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "1186.6390",
+     "workspace_id": null,
+     "description": "claude-sonnet-5-5 input tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-sonnet-5-5",
+     "service_tier": "standard",
+     "token_type": "uncached_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "1810.3230",
+     "workspace_id": null,
+     "description": "claude-sonnet-5-5 output tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-sonnet-5-5",
+     "service_tier": "standard",
+     "token_type": "output_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "976.7438",
+     "workspace_id": null,
+     "description": "claude-sonnet-5-5 cache_creation tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-sonnet-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_creation.ephemeral_5m_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "358.8602",
+     "workspace_id": null,
+     "description": "claude-sonnet-5-5 cache_read tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-sonnet-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_read_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "108.6277",
+     "workspace_id": null,
+     "description": "claude-haiku-5-5 input tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-haiku-5-5",
+     "service_tier": "standard",
+     "token_type": "uncached_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "176.4294",
+     "workspace_id": null,
+     "description": "claude-haiku-5-5 output tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-haiku-5-5",
+     "service_tier": "standard",
+     "token_type": "output_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "69.5389",
+     "workspace_id": null,
+     "description": "claude-haiku-5-5 cache_creation tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-haiku-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_creation.ephemeral_5m_input_tokens"
+    },
+    {
+     "currency": "USD",
+     "amount": "79.8448",
+     "workspace_id": null,
+     "description": "claude-haiku-5-5 cache_read tokens",
+     "cost_type": "tokens",
+     "context_window": "0-200k",
+     "model": "claude-haiku-5-5",
+     "service_tier": "standard",
+     "token_type": "cache_read_input_tokens"
+    }
+   ]
+  }
+ ],
+ "has_more": false,
+ "next_page": null
+}

@@ -1,7 +1,9 @@
 import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeTheme, shell } from 'electron'
 import { writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
+import { clockOffset } from '@shared/clock'
 import { sessionToMarkdown } from '@shared/markdown'
+import { sanitizePrices } from '@shared/usage/pricing'
 import type {
   AppInfo,
   AppSettings,
@@ -28,6 +30,7 @@ export interface IpcDeps {
   settings: JsonStore<SettingsFile>
   watcher: SourceWatcher
   applyTheme: (theme: ThemePref, resolved?: 'light' | 'dark') => void
+  onSettingsChanged?: () => void
 }
 
 const str = (v: unknown, name: string): string => {
@@ -44,7 +47,9 @@ function publicSettings(s: SettingsFile): AppSettings {
     terminal: s.terminal,
     theme: s.theme,
     extraFolders: [...s.extraFolders],
-    scanStoppedDistros: s.scanStoppedDistros
+    scanStoppedDistros: s.scanStoppedDistros,
+    weekStart: s.weekStart === 'sunday' ? 'sunday' : 'monday',
+    prices: s.prices.map((p) => ({ ...p }))
   }
 }
 
@@ -90,6 +95,7 @@ export function registerIpc(deps: IpcDeps): void {
     version: app.getVersion(),
     platform: process.platform,
     fixtures: platform.fixtures,
+    clockOffset: clockOffset(),
     dataDir: paths.dataDir,
     archiveDir: paths.archiveDir
   }))
@@ -114,7 +120,13 @@ export function registerIpc(deps: IpcDeps): void {
       if (TERMINALS.includes(p.terminal as TerminalPref)) s.terminal = p.terminal as TerminalPref
       if (THEMES.includes(p.theme as ThemePref)) s.theme = p.theme as ThemePref
       if (typeof p.scanStoppedDistros === 'boolean') s.scanStoppedDistros = p.scanStoppedDistros
+      if (p.weekStart === 'monday' || p.weekStart === 'sunday') s.weekStart = p.weekStart
+      if ('prices' in p) {
+        const prices = sanitizePrices(p.prices)
+        if (prices) s.prices = prices
+      }
     })
+    deps.onSettingsChanged?.()
     await settings.flush()
     if (p.theme) deps.applyTheme(settings.value.theme)
     if (rescanNeeded) void rescan()

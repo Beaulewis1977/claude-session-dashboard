@@ -24,6 +24,8 @@ export interface Platform {
   pathExists(p: string): Promise<boolean>
   hasWindowsTerminal(): Promise<boolean>
   spawnDetached(cmd: LaunchCommand): Promise<void>
+  /** Output of `ccusage daily --json`, or undefined if ccusage isn't installed. */
+  runCcusage(): Promise<string | undefined>
 }
 
 async function exists(p: string): Promise<boolean> {
@@ -99,6 +101,25 @@ export function createRealPlatform(): Platform {
           resolve()
         })
       })
+    },
+    runCcusage() {
+      return new Promise((resolve) => {
+        // Fixed arguments only; `shell` lets Windows find the npm `ccusage.cmd` shim.
+        execFile(
+          'ccusage',
+          ['daily', '--json'],
+          {
+            windowsHide: true,
+            timeout: 120_000,
+            maxBuffer: 64 * 1024 * 1024,
+            shell: isWindows
+          },
+          (err, stdout) => {
+            if (err && !stdout) resolve(undefined)
+            else resolve(String(stdout))
+          }
+        )
+      })
     }
   }
 }
@@ -131,6 +152,9 @@ export function createFixturesPlatform(fixturesDir: string, sourcesDir: string):
     },
     async spawnDetached() {
       // Never spawn anything in fixtures mode.
+    },
+    async runCcusage() {
+      return undefined
     }
   }
 }

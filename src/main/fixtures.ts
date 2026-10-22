@@ -47,10 +47,19 @@ export function fixturesLayout(appRoot: string): {
   }
 }
 
-export async function prepareFixtures(appRoot: string): Promise<void> {
+export async function prepareFixtures(
+  appRoot: string,
+  opts: { usageHistory?: boolean } = {}
+): Promise<void> {
   const { fixturesDir, sourcesDir } = fixturesLayout(appRoot)
   await copyMissing(join(fixturesDir, 'windows'), join(sourcesDir, 'windows'))
   await copyMissing(join(fixturesDir, 'wsl'), join(sourcesDir, 'wsl'))
+  if (opts.usageHistory) {
+    // 13 weeks of generated sessions with token usage (scripts/make-usage-fixtures.mjs).
+    const usage = join(fixturesDir, 'usage')
+    await copyMissing(join(usage, 'windows'), join(sourcesDir, 'windows'))
+    await copyMissing(join(usage, 'wsl'), join(sourcesDir, 'wsl'))
+  }
 }
 
 /** Seed user metadata and an "archived only" session on first run. */

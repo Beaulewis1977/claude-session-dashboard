@@ -1,0 +1,54 @@
+{
+  "accounts": [
+    {
+      "id": "acct-personal",
+      "nickname": "Personal credits",
+      "kind": "standard",
+      "masked": "sk-ant-api03-…Q7xA",
+      "createdAt": "2026-10-04T18:20:00Z"
+    },
+    {
+      "id": "acct-acme",
+      "nickname": "Acme org (admin)",
+      "kind": "admin",
+      "masked": "sk-ant-admin01-…m2Pd",
+      "createdAt": "2026-09-30T16:02:00Z"
+    }
+  ],
+  "grants": [
+    {
+      "id": "grant-1",
+      "accountId": "acct-personal",
+      "amountUsd": 100,
+      "receivedAt": "2026-10-04T00:00:00Z",
+      "expiresAt": "2027-01-04T00:00:00Z",
+      "note": "Anthropic credit grant"
+    },
+    {
+      "id": "grant-2",
+      "accountId": "acct-personal",
+      "amountUsd": 25,
+      "receivedAt": "2026-10-15T00:00:00Z",
+      "expiresAt": "2026-11-01T00:00:00Z",
+      "note": "Hackathon credits"
+    }
+  ],
+  "billing": {
+    "43864d18-8265-48a8-a727-f1a1f6376d2a": {
+      "mode": "api",
+      "accountId": "acct-personal"
+    },
+    "c49d393e-fdcd-4221-a375-3e2dea7762c2": {
+      "mode": "api",
+      "accountId": "acct-personal"
+    },
+    "6c8975d4-3fe2-4f41-a325-705f41c8dda5": {
+      "mode": "api",
+      "accountId": "acct-personal"
+    }
+  },
+  "projectBilling": {
+    "/home/beau/projects/ml-pipeline": "acct-personal"
+  },
+  "apiCostTotal": 6.7
+}

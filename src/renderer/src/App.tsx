@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Toaster } from 'sonner'
+import { setClockOffset } from '@shared/clock'
 import { api } from '@/lib/api'
 import { copyResumeCommand, exportMarkdown, openResume, toggleHidden } from '@/lib/actions'
 import { visibleSessions } from '@/lib/filters'
@@ -35,6 +36,7 @@ function useBootstrap(): void {
   useEffect(() => {
     void Promise.all([api.getInfo(), api.getSettings(), api.getSessions()]).then(
       ([info, settings, payload]) => {
+        setClockOffset(info.clockOffset)
         set({
           info,
           settings,

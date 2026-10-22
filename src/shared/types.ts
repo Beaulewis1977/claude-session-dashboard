@@ -1,5 +1,8 @@
 // Types shared by the main process, preload bridge and renderer.
 
+import { DEFAULT_PRICES, type ModelPrice } from './usage/pricing'
+import type { WeekStart } from './usage/types'
+
 export type EnvKind = 'windows' | 'wsl'
 
 export type SourceStatus = 'ok' | 'missing' | 'unreadable' | 'not-running' | 'skipped'
@@ -148,6 +151,10 @@ export interface AppSettings {
   extraFolders: string[]
   /** Accessing a stopped WSL distro boots it, so this is off by default. */
   scanStoppedDistros: boolean
+  /** First day of the week for usage charts. */
+  weekStart: WeekStart
+  /** API prices used for cost estimates (USD per million tokens). */
+  prices: ModelPrice[]
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -155,7 +162,9 @@ export const DEFAULT_SETTINGS: AppSettings = {
   terminal: 'wt',
   theme: 'system',
   extraFolders: [],
-  scanStoppedDistros: false
+  scanStoppedDistros: false,
+  weekStart: 'monday',
+  prices: DEFAULT_PRICES
 }
 
 export interface ScanState {
@@ -168,6 +177,8 @@ export interface AppInfo {
   version: string
   platform: string
   fixtures: boolean
+  /** Added to Date.now() for the app's clock (non-zero in fixtures mode). */
+  clockOffset: number
   dataDir: string
   archiveDir: string
 }

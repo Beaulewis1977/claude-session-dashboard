@@ -1,3 +1,4 @@
+import { SourcePicker } from '../SourceBadge'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Archive,
@@ -215,7 +216,20 @@ function Header({
         </div>
 
         <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5">
-          <EnvBadge env={session.env} distro={session.distro} />
+          {session.availability !== 'imported' && (
+            <EnvBadge env={session.env} distro={session.distro} />
+          )}
+          <SourcePicker
+            source={session.source}
+            reason={session.sourceReason}
+            manual={session.meta.source?.by === 'manual'}
+            onPick={(label) =>
+              void updateMeta(session.key, {
+                // null resets to the detected label.
+                source: label ? { label, by: 'manual' } : (null as unknown as undefined)
+              })
+            }
+          />
           <BillingBadge billing={session.billing} />
           {session.availability === 'archived-only' && (
             <Badge variant="warning">

@@ -54,6 +54,32 @@ describe('SessionService (fixtures)', () => {
     expect(sources.find((s) => s.id === 'windows')?.cleanupPeriodDays).toBeNull()
   })
 
+  it('labels each session with the product that ran it, stores it, and keeps a manual override', async () => {
+    const { sessions, metadata } = await setup()
+    const get = (id: string) => sessions.list().find((s) => s.sessionId === id)!
+    expect(get('7f3c9a12-4b8e-4d21-9c6a-1e2f3a4b5c6d').source).toBe('vscode')
+    expect(get('2b6d8e4f-1a3c-4e5f-8a7b-9c0d1e2f3a4b').source).toBe('terminal-windows')
+    expect(get('5d4c3b2a-1f0e-4d9c-8b7a-6f5e4d3c2b1a').source).toBe('terminal-wsl')
+    expect(get('a0b1c2d3-e4f5-4a6b-9c8d-7e6f5a4b3c2d').source).toBe('sdk')
+    // Legacy format: no entrypoint recorded.
+    expect(get('c41e2d7a-9b0f-4c3e-b5a6-7d8e9f0a1b2c').source).toBe('unknown')
+    expect(metadata.value.sessions['7f3c9a12-4b8e-4d21-9c6a-1e2f3a4b5c6d'].source).toMatchObject({
+      label: 'vscode',
+      by: 'auto'
+    })
+    const key = get('c41e2d7a-9b0f-4c3e-b5a6-7d8e9f0a1b2c').key
+    sessions.updateMeta(key, { source: { label: 'jetbrains', by: 'manual' } })
+    expect(get('c41e2d7a-9b0f-4c3e-b5a6-7d8e9f0a1b2c')).toMatchObject({
+      source: 'jetbrains',
+      sourceReason: 'Set by hand'
+    })
+    await sessions.rescan()
+    expect(get('c41e2d7a-9b0f-4c3e-b5a6-7d8e9f0a1b2c').source).toBe('jetbrains')
+    sessions.updateMeta(key, { source: null as unknown as undefined })
+    expect(get('c41e2d7a-9b0f-4c3e-b5a6-7d8e9f0a1b2c').source).toBe('unknown')
+    await sessions.idle()
+  })
+
   it('applies titles from metadata, summaries and first prompts', async () => {
     const { sessions } = await setup()
     const get = (id: string) => sessions.list().find((s) => s.sessionId === id)!
@@ -204,7 +230,7 @@ describe('SessionService (fixtures)', () => {
     expect(again.get(changed.key)!.userMessageCount).toBe(changed.userMessageCount + 1)
     expect(again.searchKeys('added between runs').map((h) => h.key)).toEqual([changed.key])
     expect(again.searchKeys('safari cookie')[0].key).toContain('7f3c9a12')
-    await stat(join(paths.dataDir, 'cache', 'sessions-v1.json'))
+    await stat(join(paths.dataDir, 'cache', 'sessions-v2.json'))
   })
 
   it('builds WSL previews and exports Markdown', async () => {

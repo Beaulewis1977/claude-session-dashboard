@@ -9,6 +9,7 @@ import { basename, join } from 'node:path'
 import { analyzeEvents, buildMessages, parseJsonl } from '@shared/jsonl'
 import { baseName } from '@shared/format'
 import { computeTitle } from '@shared/title'
+import { detectSource, type DetectedSource } from '@shared/source-label'
 import type {
   ArchiveRecord,
   Availability,
@@ -29,9 +30,13 @@ import { SearchIndex } from './search'
 import { detectSources, type ResolvedSource } from './sources'
 import { cleanMetaPatch, type AppPaths, type MetadataFile, type SettingsFile } from './store'
 
-type BaseSummary = Omit<SessionSummary, 'meta' | 'title' | 'titleSource'>
+type BaseSummary = Omit<
+  SessionSummary,
+  'meta' | 'title' | 'titleSource' | 'source' | 'sourceReason'
+>
 
-const CACHE_VERSION = 1
+// 2: source hints (entrypoint, IDE context, cloud link) for the source label.
+const CACHE_VERSION = 2
 
 interface CacheFile {
   version: number
@@ -139,7 +144,8 @@ export function parseSessionText(
       toolCallCount: a.toolCallCount,
       malformedLines,
       sizeBytes: file.size,
-      models: a.models
+      models: a.models,
+      sourceHints: a.sourceHints
     }
   }
 }
@@ -363,14 +369,44 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
   /** Resolves billing for a session (set by the app: tags + bridge inference). */
   billingResolver?: (sessionId: string, meta: SessionMeta) => SessionBilling | undefined
 
+  private detectSource(base: BaseSummary): DetectedSource {
+    const meta = this.metadata.value.sessions[base.sessionId] ?? {}
+    return detectSource(base.sourceHints, {
+      env: base.env,
+      cwd: base.cwd,
+      sourceUser: this.source(base.sourceId)?.user,
+      firstPrompt: base.firstPrompt,
+      launchedByApp: meta.billing?.source === 'launch',
+      imported: base.availability === 'imported'
+    })
+  }
+
   private withMeta(base: BaseSummary): SessionSummary {
     const meta = this.metadata.value.sessions[base.sessionId] ?? {}
+    const manual = meta.source?.by === 'manual' ? meta.source : undefined
+    const det = manual ? undefined : this.detectSource(base)
     return {
       ...base,
       meta,
       ...computeTitle(meta, base.summary, base.firstPrompt),
-      billing: this.billingResolver?.(base.sessionId, meta)
+      billing: this.billingResolver?.(base.sessionId, meta),
+      source: manual?.label ?? det!.label,
+      sourceReason: manual ? 'Set by hand' : det!.reason
     }
+  }
+
+  /** Keep the detected label in the app's metadata (never in Claude's files). */
+  private rememberSource(base: BaseSummary): void {
+    const meta = this.metadata.value.sessions[base.sessionId]
+    if (meta?.source?.by === 'manual') return
+    const det = this.detectSource(base)
+    if (meta?.source?.label === det.label && meta.source.reason === det.reason) return
+    this.metadata.update((d) => {
+      d.sessions[base.sessionId] = {
+        ...(d.sessions[base.sessionId] ?? {}),
+        source: { label: det.label, by: 'auto', reason: det.reason }
+      }
+    })
   }
 
   /** Tell the renderer that derived fields (e.g. billing) changed. */
@@ -588,6 +624,7 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
 
   private index(base: BaseSummary, searchText: string): void {
     this.markCacheDirty()
+    this.rememberSource(base)
     const s = this.withMeta(base)
     this.search.upsert({
       id: base.key,

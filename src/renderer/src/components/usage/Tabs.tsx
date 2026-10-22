@@ -591,7 +591,8 @@ const DIMENSIONS: { value: Dimension; label: string }[] = [
   { value: 'project', label: 'Project' },
   { value: 'env', label: 'Environment' },
   { value: 'version', label: 'Version' },
-  { value: 'billing', label: 'Billing' }
+  { value: 'billing', label: 'Billing' },
+  { value: 'source', label: 'Source' }
 ]
 
 export function RawTableTab({

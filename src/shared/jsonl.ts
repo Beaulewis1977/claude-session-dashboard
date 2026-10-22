@@ -6,6 +6,7 @@
 
 import type { ChatMessage, ContentBlock, ToolResult } from './types'
 import { toolLabel } from './tools'
+import { addHints, emptyHints, type SourceHints } from './source-label'
 
 export type RawEvent = Record<string, unknown>
 
@@ -167,6 +168,8 @@ export interface SessionAnalysis {
   models: string[]
   /** Plain text of the conversation, for full-text search. */
   searchText: string
+  /** Signals of which product ran the session (see source-label.ts). */
+  sourceHints: SourceHints
 }
 
 const SEARCH_TEXT_LIMIT = 400_000
@@ -177,7 +180,8 @@ export function analyzeEvents(events: RawEvent[]): SessionAnalysis {
     assistantMessageCount: 0,
     toolCallCount: 0,
     models: [],
-    searchText: ''
+    searchText: '',
+    sourceHints: emptyHints()
   }
   const models = new Set<string>()
   const assistantIds = new Set<string>()
@@ -193,6 +197,7 @@ export function analyzeEvents(events: RawEvent[]): SessionAnalysis {
   }
 
   for (const e of events) {
+    addHints(a.sourceHints, e)
     const type = str(e.type)
     const ts = validTimestamp(e.timestamp)
     if (ts) {

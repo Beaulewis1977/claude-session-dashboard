@@ -21,7 +21,15 @@ import type { SessionService } from './services/sessions'
 import type { UsageService } from './services/usage'
 
 const PERIODS: Period[] = ['hour', 'day', 'week', 'month']
-const DIMENSIONS: Dimension[] = ['model', 'session', 'project', 'env', 'version', 'billing']
+const DIMENSIONS: Dimension[] = [
+  'model',
+  'session',
+  'project',
+  'env',
+  'version',
+  'billing',
+  'source'
+]
 
 export function cleanQuery(v: unknown): UsageQuery {
   const o = (v ?? {}) as Record<string, unknown>
@@ -46,6 +54,7 @@ export interface UsageIpcDeps {
   sessions: SessionService
   platform: Platform
   billingOf?: (key: string) => string
+  sourceOf?: (key: string) => string
   /** Called after the bridge was enabled or disabled. */
   onBridgeChanged?: () => void
   weekStart: () => 'monday' | 'sunday'
@@ -153,7 +162,9 @@ export function registerUsageIpc(deps: UsageIpcDeps): void {
     await shell.openPath(deps.installer.backupDir)
   })
 
-  ipcMain.handle('usage:report', (_e, q) => usage.report(cleanQuery(q), deps.billingOf))
+  ipcMain.handle('usage:report', (_e, q) =>
+    usage.report(cleanQuery(q), deps.billingOf, deps.sourceOf)
+  )
   ipcMain.handle('usage:session', (_e, key) => usage.sessionUsage(String(key)))
   ipcMain.handle('usage:status', () => usage.status())
   ipcMain.handle('usage:recalculate', async () => {

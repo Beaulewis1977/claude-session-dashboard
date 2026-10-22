@@ -197,7 +197,11 @@ export class UsageService extends EventEmitter<{ changed: [] }> {
     return [...this.usageCmd.values()].sort((a, b) => a.ts - b.ts)
   }
 
-  report(query: UsageQuery, billingOf?: (key: string) => string): UsageReport {
+  report(
+    query: UsageQuery,
+    billingOf?: (key: string) => string,
+    sourceOf?: (key: string) => string
+  ): UsageReport {
     const s = this.settings()
     return buildReport(this.allRecords(), query, {
       timeZone: localTimeZone(),
@@ -206,6 +210,7 @@ export class UsageService extends EventEmitter<{ changed: [] }> {
       now: now(),
       loading: !this.loaded || (this.parsing && this.records.size === 0),
       billingOf,
+      sourceOf,
       sessionLabel: (key) => {
         const ses = this.sessions.get(key)
         return ses ? { label: ses.title, detail: ses.projectName } : undefined

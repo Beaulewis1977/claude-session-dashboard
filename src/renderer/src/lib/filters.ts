@@ -2,6 +2,7 @@
 
 import type { SearchHit } from '@shared/api'
 import type { SessionSummary } from '@shared/types'
+import { SOURCE_LABELS, type SourceLabel } from '@shared/source-label'
 
 export type SortKey = 'activity' | 'started' | 'name' | 'relevance'
 export type Visibility = 'visible' | 'hidden' | 'archived' | 'all'
@@ -19,6 +20,8 @@ export interface Filters {
   project: string | null
   tag: string | null
   date: DateRange | null
+  /** Session source label (Terminal, VS Code, …). */
+  source: string | null
 }
 
 export const EMPTY_FILTERS: Filters = {
@@ -26,7 +29,8 @@ export const EMPTY_FILTERS: Filters = {
   env: null,
   project: null,
   tag: null,
-  date: null
+  date: null,
+  source: null
 }
 
 export function envKey(s: Pick<SessionSummary, 'env' | 'distro'>): string {
@@ -85,6 +89,9 @@ export function matchesFilters(s: SessionSummary, f: Filters, ignore?: keyof Fil
     if (f.visibility === 'hidden' && !hidden) return false
     if (f.visibility === 'archived' && s.availability !== 'archived-only') return false
   }
+  // The dashboard's own Ask Claude runs only show when that source is picked.
+  if (s.source === 'ask-claude' && f.source !== 'ask-claude') return false
+  if (ignore !== 'source' && f.source && s.source !== f.source) return false
   if (ignore !== 'env' && f.env && envKey(s) !== f.env) return false
   if (ignore !== 'project' && f.project && projectKey(s) !== f.project) return false
   if (ignore !== 'tag' && f.tag && !(s.meta.tags ?? []).includes(f.tag)) return false
@@ -141,8 +148,25 @@ export function facets(sessions: SessionSummary[], filters: Filters) {
   const env = new Map<string, Facet>()
   const project = new Map<string, Facet>()
   const tag = new Map<string, Facet>()
+  const source = new Map<string, Facet>()
   const views = { visible: 0, hidden: 0, archived: 0 }
   for (const s of sessions) {
+    if (
+      matchesFilters(
+        s,
+        { ...filters, source: s.source === 'ask-claude' ? 'ask-claude' : filters.source },
+        'source'
+      )
+    ) {
+      const f = source.get(s.source) ?? {
+        key: s.source,
+        label: SOURCE_LABELS[s.source as SourceLabel] ?? s.source,
+        count: 0
+      }
+      f.count++
+      source.set(s.source, f)
+    }
+    if (s.source === 'ask-claude') continue
     if (s.meta.hidden) views.hidden++
     else views.visible++
     if (s.availability === 'archived-only') views.archived++
@@ -174,7 +198,11 @@ export function facets(sessions: SessionSummary[], filters: Filters) {
       a.key === 'windows' ? -1 : b.key === 'windows' ? 1 : byCount(a, b)
     ),
     project: [...project.values()].sort(byCount),
-    tag: [...tag.values()].sort(byCount)
+    tag: [...tag.values()].sort(byCount),
+    // The dashboard's own runs go last.
+    source: [...source.values()].sort((a, b) =>
+      a.key === 'ask-claude' ? 1 : b.key === 'ask-claude' ? -1 : byCount(a, b)
+    )
   }
 }
 

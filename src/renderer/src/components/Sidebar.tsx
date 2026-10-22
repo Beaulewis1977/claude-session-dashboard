@@ -3,6 +3,7 @@ import {
   Archive,
   ChartColumnBig,
   ChevronRight,
+  CircleHelp,
   EyeOff,
   Folder,
   Inbox,
@@ -15,6 +16,8 @@ import { facets, tagColor, type Facet, type Filters, type Visibility } from '@/l
 import { useApp } from '@/lib/store'
 import { cn, MOD } from '@/lib/utils'
 import { Tooltip } from './ui/tooltip'
+import { SOURCE_ICON } from '@/lib/source-icons'
+import type { SourceLabel } from '@shared/source-label'
 
 function Item({
   active,
@@ -168,6 +171,29 @@ export function Sidebar() {
                 onClick={() => toggle('env', e.key)}
               />
             ))}
+          </Section>
+        )}
+
+        {f.source.length > 0 && (
+          <Section title="Source">
+            {f.source.map((src) => {
+              const Icon = SOURCE_ICON[src.key as SourceLabel] ?? CircleHelp
+              return (
+                <Item
+                  key={src.key}
+                  active={filters.source === src.key}
+                  icon={<Icon />}
+                  label={src.label}
+                  count={src.count}
+                  title={
+                    src.key === 'ask-claude'
+                      ? "Runs started by the dashboard's Ask Claude. Hidden from the list unless picked here."
+                      : undefined
+                  }
+                  onClick={() => toggle('source', src.key)}
+                />
+              )
+            })}
           </Section>
         )}
 

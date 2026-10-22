@@ -20,6 +20,7 @@ import {
 import { sanitizeElsewhere, sanitizeHealth, sanitizePlanHistory } from '@shared/usage/health'
 import { sanitizePace } from '@shared/usage/pace'
 import type { ThemePref } from '@shared/types'
+import { SOURCE_LABELS } from '@shared/source-label'
 import {
   fixturesLayout,
   prepareFixtures,
@@ -219,6 +220,10 @@ async function main(): Promise<void> {
     scriptsDir: join(appRoot, 'resources', 'bridge'),
     gitBash: () => platform.gitBash()
   })
+  const sourceOf = (key: string): string => {
+    const ses = sessions.get(key)
+    return ses ? SOURCE_LABELS[ses.source] : SOURCE_LABELS.unknown
+  }
   const limits = new LimitsService(
     sessions,
     usage,
@@ -242,7 +247,9 @@ async function main(): Promise<void> {
       const n = new Notification({ title, body, icon: join(appRoot, 'resources', 'icon.png') })
       n.on('click', () => showUsage())
       n.show()
-    }
+    },
+    undefined,
+    sourceOf
   )
   bridgeGuess = (sid) => limits.billingOf(sid)
   usage.on('changed', () => limits.emit('changed'))
@@ -254,6 +261,7 @@ async function main(): Promise<void> {
     sessions,
     platform,
     weekStart: () => settings.value.weekStart,
+    sourceOf,
     billingOf: (key) => {
       const b = sessions.get(key)?.billing
       if (!b || b.mode === 'unknown') return 'Unknown'

@@ -11,6 +11,7 @@ import {
   type PlanChange
 } from './usage/health'
 import { DEFAULT_PACE, type PaceSettings } from './usage/pace'
+import type { SourceHints, SourceLabel } from './source-label'
 
 export type EnvKind = 'windows' | 'wsl'
 
@@ -50,6 +51,8 @@ export interface SessionMeta {
     source: 'launch' | 'manual'
     at?: string
   }
+  /** Which product ran the session: detected ("auto") or set by hand ("manual"). */
+  source?: { label: SourceLabel; by: 'auto' | 'manual'; reason?: string }
   updatedAt?: string
 }
 
@@ -76,8 +79,9 @@ export interface ArchiveRecord {
  * archived-only  – the original file is gone, only the app's archive copy remains.
  * source-offline – the source (e.g. a stopped WSL distro) can't be read right now;
  *                  showing the archive copy.
+ * imported       – a view-only conversation imported from a claude.ai data export.
  */
-export type Availability = 'live' | 'archived-only' | 'source-offline'
+export type Availability = 'live' | 'archived-only' | 'source-offline' | 'imported'
 
 export type TitleSource = 'name' | 'summary' | 'first-prompt' | 'fallback'
 
@@ -118,6 +122,11 @@ export interface SessionSummary {
   titleSource: TitleSource
   /** Subscription or API billing (tag, bridge inference, or unknown). */
   billing?: SessionBilling
+  /** Signals read from the file, for the source label. */
+  sourceHints?: SourceHints
+  /** Which product ran it (manual override, else detected). */
+  source: SourceLabel
+  sourceReason: string
 }
 
 export interface ToolResult {

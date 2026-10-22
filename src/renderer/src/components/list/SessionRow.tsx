@@ -1,3 +1,4 @@
+import { SourceBadge } from '../SourceBadge'
 import { memo } from 'react'
 import { Archive, EyeOff, GitBranch, MessageSquare, WifiOff } from 'lucide-react'
 import type { SearchHit } from '@shared/api'
@@ -114,6 +115,7 @@ export const SessionRow = memo(function SessionRow({
       <div className="flex min-w-0 items-center gap-2 pl-3.5 text-2xs text-subtle-foreground">
         <span className="truncate tabular-nums">{dateSpan(s)}</span>
         <span className="ml-auto flex shrink-0 items-center gap-1.5">
+          <SourceBadge source={s.source} reason={s.sourceReason} compact />
           <BillingBadge billing={s.billing} compact />
           {hit &&
             hit.fields.includes('text') &&

@@ -95,7 +95,7 @@ export interface UsageAnalysis {
 // --------------------------------------------------------------- reports
 
 export type Period = 'hour' | 'day' | 'week' | 'month'
-export type Dimension = 'model' | 'session' | 'project' | 'env' | 'version' | 'billing'
+export type Dimension = 'model' | 'session' | 'project' | 'env' | 'version' | 'billing' | 'source'
 export type WeekStart = 'monday' | 'sunday'
 
 export interface UsageQuery {

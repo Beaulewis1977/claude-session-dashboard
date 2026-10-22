@@ -49,6 +49,8 @@ export interface ReportContext {
   /** Session titles and billing labels, for breakdown rows. */
   sessionLabel?: (key: string) => { label: string; detail?: string } | undefined
   billingOf?: (key: string) => string
+  /** Source label of a session (Terminal, VS Code, …). */
+  sourceOf?: (key: string) => string
   loading?: boolean
 }
 
@@ -66,6 +68,8 @@ function dimensionKey(r: UsageRecord, d: Dimension, ctx: ReportContext): string 
       return r.version ?? '(unknown)'
     case 'billing':
       return ctx.billingOf?.(r.key) ?? 'Unknown'
+    case 'source':
+      return ctx.sourceOf?.(r.key) ?? 'Local · unknown'
   }
 }
 

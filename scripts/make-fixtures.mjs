@@ -26,8 +26,11 @@ class Session {
     gitBranch,
     start,
     model = 'claude-sonnet-4-5-20250929',
-    legacy = false
+    legacy = false,
+    // Claude Code 2.x records which product ran it ("cli", "claude-vscode", "sdk-cli", …).
+    entrypoint = legacy || /^[01]\./.test(version) ? undefined : 'cli'
   }) {
+    this.entrypoint = entrypoint
     this.id = id
     this.cwd = cwd
     this.version = version
@@ -52,6 +55,7 @@ class Session {
       sessionId: this.id,
       version: this.version
     }
+    if (this.entrypoint) e.entrypoint = this.entrypoint
     if (this.gitBranch && !this.legacy) e.gitBranch = this.gitBranch
     e.type = type
     e.uuid = uuidValue
@@ -173,6 +177,7 @@ const ubuntuRootProjects = join(root, 'wsl', 'Ubuntu', 'root', '.claude', 'proje
   const cwd = 'C:\\Users\\beau\\code\\acme-web'
   const s = new Session({
     id: '7f3c9a12-4b8e-4d21-9c6a-1e2f3a4b5c6d',
+    entrypoint: 'claude-vscode',
     cwd,
     version: '2.0.14',
     gitBranch: 'fix/login-redirect',
@@ -581,6 +586,7 @@ curl 'localhost:8080/orders?cursor=eyJ0IjoiMjAyNi0xMC0yMFQxNTo0NTowMFoiLCJpIjo5O
   const cwd = '/root/infra scripts'
   const s = new Session({
     id: 'a0b1c2d3-e4f5-4a6b-9c8d-7e6f5a4b3c2d',
+    entrypoint: 'sdk-cli',
     cwd,
     version: '2.0.14',
     gitBranch: 'ops/backups',

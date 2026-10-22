@@ -56,9 +56,10 @@ describe('WSL paths', () => {
   it('parses UNC paths', () => {
     expect(parseWslUnc('\\\\wsl.localhost\\Ubuntu\\home\\me')).toEqual({
       distro: 'Ubuntu',
-      linuxPath: '/home/me'
+      linuxPath: '/home/me',
+      root: '\\\\wsl.localhost\\Ubuntu'
     })
-    expect(parseWslUnc('\\\\wsl$\\Debian')).toEqual({ distro: 'Debian', linuxPath: '/' })
+    expect(parseWslUnc('\\\\wsl$\\Debian')).toMatchObject({ distro: 'Debian', linuxPath: '/' })
     expect(parseWslUnc('C:\\x')).toBeUndefined()
   })
 

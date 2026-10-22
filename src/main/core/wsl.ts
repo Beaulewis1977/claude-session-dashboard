@@ -52,14 +52,16 @@ export function linuxToUnc(root: string, linuxPath: string): string {
 }
 
 /** Parse `\\wsl.localhost\<distro>\rest` or `\\wsl$\<distro>\rest`. */
-export function parseWslUnc(p: string): { distro: string; linuxPath: string } | undefined {
-  const m = /^[\\/]{2}(?:wsl\.localhost|wsl\$)[\\/]([^\\/]+)(?:[\\/](.*))?$/i.exec(p)
+export function parseWslUnc(
+  p: string
+): { distro: string; linuxPath: string; root: string } | undefined {
+  const m = /^([\\/]{2}(?:wsl\.localhost|wsl\$)[\\/]([^\\/]+))(?:[\\/](.*))?$/i.exec(p)
   if (!m) return undefined
-  const rest = (m[2] ?? '')
+  const rest = (m[3] ?? '')
     .split(/[\\/]+/)
     .filter(Boolean)
     .join('/')
-  return { distro: m[1], linuxPath: `/${rest}` }
+  return { distro: m[2], linuxPath: `/${rest}`, root: m[1] }
 }
 
 /**

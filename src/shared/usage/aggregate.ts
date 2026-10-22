@@ -1,7 +1,7 @@
 // Turning usage records into the numbers the Usage view shows: time series,
 // breakdowns, period cards and 5-hour blocks.
 
-import { estimateCost, modelLabel, type ModelPrice } from './pricing'
+import { modelLabel, recordCost, type ModelPrice } from './pricing'
 import { totalTokens } from './parse'
 import {
   addDays,
@@ -100,7 +100,7 @@ export function breakdown(
     const k = dimensionKey(r, d, ctx)
     let t = groups.get(k)
     if (!t) groups.set(k, (t = emptyTotals()))
-    addRecord(t, r, costs?.get(r) ?? estimateCost(r, ctx.prices))
+    addRecord(t, r, costs?.get(r) ?? recordCost(r, ctx.prices))
     grand += totalTokens(r)
   }
   return [...groups.entries()]
@@ -329,7 +329,10 @@ export function fiveHourBlocks(
   const blocks: UsageBlock[] = []
   let cur: (UsageBlock & { modelSet: Set<string> }) | undefined
   for (const r of sorted) {
-    if (!cur || r.ts >= cur.end || r.ts - cur.lastActivity >= BLOCK_MS) {
+    // As in ccusage: a block starts at the hour of its first response and
+    // holds every response within 5 hours of that start, until a gap of more
+    // than 5 hours.
+    if (!cur || r.ts - cur.start > BLOCK_MS || r.ts - cur.lastActivity > BLOCK_MS) {
       if (cur) blocks.push(finishBlock(cur, now))
       const start = Math.floor(r.ts / 3_600_000) * 3_600_000
       cur = {
@@ -342,7 +345,7 @@ export function fiveHourBlocks(
         ...emptyTotals()
       }
     }
-    addRecord(cur, r, estimateCost(r, prices))
+    addRecord(cur, r, recordCost(r, prices))
     cur.lastActivity = r.ts
     cur.modelSet.add(r.model)
   }
@@ -374,7 +377,7 @@ export function buildReport(
   ctx: ReportContext
 ): UsageReport {
   const costs = new Map<UsageRecord, number>()
-  for (const r of all) costs.set(r, estimateCost(r, ctx.prices))
+  for (const r of all) costs.set(r, recordCost(r, ctx.prices))
   const inRange = filterRecords(all, query)
   const totals = emptyTotals()
   const extra = new Set<string>()
@@ -459,7 +462,7 @@ export function toCsv(
           r.cacheWrite,
           r.cacheRead,
           totalTokens(r),
-          estimateCost(r, ctx.prices).toFixed(6)
+          recordCost(r, ctx.prices).toFixed(6)
         ]
           .map(esc)
           .join(',')
@@ -473,7 +476,7 @@ export function toCsv(
     const k = `${date}|${r.model}`
     let t = rows.get(k)
     if (!t) rows.set(k, (t = { date, model: r.model, ...emptyTotals() }))
-    addRecord(t, r, estimateCost(r, ctx.prices))
+    addRecord(t, r, recordCost(r, ctx.prices))
   }
   const lines = ['date,model,responses,input,output,cache_write,cache_read,total,est_cost_usd']
   for (const t of [...rows.values()].sort((a, b) =>

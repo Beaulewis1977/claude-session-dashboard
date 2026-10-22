@@ -13,9 +13,9 @@ export interface TokenCounts {
   cacheRead: number
 }
 
-/** One API response, counted once (deduped by message id + request id). */
+/** One API response, counted once (deduped with ccusage's rules, see dedupe.ts). */
 export interface UsageRecord extends TokenCounts {
-  /** Dedupe key: `${message.id}:${requestId}`, or a fallback. */
+  /** Dedupe key: `${message.id}:${requestId}`, or a fallback (see `recordId`). */
   id: string
   /** Epoch ms. */
   ts: number
@@ -30,6 +30,21 @@ export interface UsageRecord extends TokenCounts {
   cw1h?: number
   /** Other numeric usage fields, flattened (e.g. `server_tool_use.web_search_requests`). */
   extra?: Record<string, number>
+  /** Cost Claude Code logged itself (`costUSD`, old versions only). Used instead of the estimate. */
+  loggedCost?: number
+  // Fields used only for deduplication:
+  /** `message.id` */
+  mid?: string
+  /** `requestId` */
+  rid?: string
+  /** The entry's session id (its `sessionId` field, else the file's). */
+  sid?: string
+  /** The entry was logged as a sidechain (subagent or /btw). */
+  sc?: true
+  /** `usage.speed`, when present (e.g. "fast"). */
+  speed?: string
+  /** Other ids this response was logged under (copies that matched it). */
+  aka?: string[]
 }
 
 /** One user turn: a prompt and everything Claude did until the next prompt. */

@@ -9,7 +9,7 @@ import {
   shell
 } from 'electron'
 import { FIXTURES_NOW, setClockOffset } from '@shared/clock'
-import { DEFAULT_PRICES, sanitizePrices } from '@shared/usage/pricing'
+import { addSnapshotExtras, DEFAULT_PRICES, sanitizePrices } from '@shared/usage/pricing'
 import {
   DEFAULT_WEIGHTS,
   PLAN_LABEL,
@@ -126,7 +126,8 @@ async function main(): Promise<void> {
   // Settings files from before Phase 5 lack the new keys.
   settings.update((s) => {
     if (s.weekStart !== 'sunday') s.weekStart = 'monday'
-    s.prices = sanitizePrices(s.prices) ?? DEFAULT_PRICES.map((p) => ({ ...p }))
+    const saved = sanitizePrices(s.prices)
+    s.prices = saved ? addSnapshotExtras(saved) : DEFAULT_PRICES.map((p) => ({ ...p }))
     s.plan = sanitizePlan(s.plan) ?? 'max5'
     if (typeof s.alertsEnabled !== 'boolean') s.alertsEnabled = true
     s.alertThresholds = sanitizeThresholds(s.alertThresholds) ?? [75, 90]

@@ -1,7 +1,16 @@
 import { describe, expect, it } from 'vitest'
 import { parseJsonl } from '@shared/jsonl'
-import { analyzeUsage, parseUsageObject, usageKey } from '@shared/usage/parse'
-import { estimateCost, findPrice, modelLabel, DEFAULT_PRICES } from '@shared/usage/pricing'
+import { analyzeUsage, parseUsageObject } from '@shared/usage/parse'
+import { recordId } from '@shared/usage/dedupe'
+import {
+  addSnapshotExtras,
+  estimateCost,
+  findPrice,
+  modelLabel,
+  DEFAULT_PRICES,
+  PRICES_FILLED_IN,
+  sanitizePrices
+} from '@shared/usage/pricing'
 import { line } from './helpers'
 
 const ctx = { key: 'windows:s1', project: 'acme-web', env: 'windows' as const }
@@ -74,10 +83,11 @@ describe('usage extraction', () => {
     expect(analyzeUsage(parseJsonl(text).events, ctx).records).toHaveLength(2)
   })
 
-  it('falls back to the message id, then the event uuid, for the dedupe key', () => {
-    expect(usageKey({ message: { id: 'm' } })).toBe('m')
-    expect(usageKey({ uuid: 'x' })).toBe('uuid:x')
-    expect(usageKey({})).toBeUndefined()
+  it('scopes requestless dedupe keys to the session, and gateway ids to the timestamp', () => {
+    expect(recordId('msg_1', 'req_1', 's1', 5, 'f')).toBe('msg_1:req_1')
+    expect(recordId('msg_1', undefined, 's1', 5, 'f')).toBe('msg_1|s1')
+    expect(recordId('gw', undefined, 's1', 5, 'f')).toBe('gw|s1|5')
+    expect(recordId(undefined, 'req_1', 's1', 5, 'f')).toBe('f')
   })
 
   it('keeps unknown numeric usage fields and ignores strings', () => {
@@ -238,7 +248,7 @@ describe('usage extraction', () => {
   })
 
   it('uses the version in effect when each response was written', () => {
-    const u = { output_tokens: 1 }
+    const u = { input_tokens: 1, output_tokens: 1 }
     const text = [
       line({
         type: 'user',
@@ -286,7 +296,37 @@ describe('pricing', () => {
     ).toBe(0)
   })
 
+  it('pre-fills prices from the bundled LiteLLM snapshot', () => {
+    expect(PRICES_FILLED_IN).toMatch(/^\d{4}-\d{2}-\d{2}$/)
+    expect(findPrice('claude-opus-5-5', DEFAULT_PRICES)).toMatchObject({
+      label: 'Claude Opus 5.5',
+      input: 4,
+      output: 20,
+      cacheWrite5m: 5,
+      cacheWrite1h: 8,
+      cacheRead: 0.2,
+      fast: 2
+    })
+    expect(findPrice('claude-3-5-haiku-20241022', DEFAULT_PRICES)?.input).toBe(0.8)
+    // Tables saved before the snapshot get its fast and long-context prices; edits stay.
+    const saved = sanitizePrices([
+      { model: 'claude-opus-5-5', label: 'Mine', input: 3, output: 20 }
+    ])!
+    expect(addSnapshotExtras(saved)[0]).toMatchObject({ label: 'Mine', input: 3, fast: 2 })
+  })
+
+  it('bills a whole request at the long-context tier above its threshold', () => {
+    const haiku = (input: number) =>
+      estimateCost(
+        { model: 'claude-haiku-5-5', input, output: 1_000_000, cacheWrite: 0, cacheRead: 0 },
+        DEFAULT_PRICES
+      )
+    expect(haiku(100_000)).toBeCloseTo((100_000 * 0.1 + 1_000_000 * 0.5) / 1e6, 10)
+    expect(haiku(100_001)).toBeCloseTo((100_001 * 0.5 + 1_000_000 * 2.5) / 1e6, 10)
+  })
+
   it('makes short model labels', () => {
+    expect(modelLabel('claude-opus-5-5-fast')).toBe('Opus 5.5 (fast)')
     expect(modelLabel('claude-sonnet-4-5-20250929')).toBe('Sonnet 4.5')
     expect(modelLabel('claude-opus-4-20250514')).toBe('Opus 4')
     expect(modelLabel('claude-opus-5-5')).toBe('Opus 5.5')

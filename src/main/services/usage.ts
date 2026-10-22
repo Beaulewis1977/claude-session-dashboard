@@ -1,6 +1,6 @@
 // Token usage from session logs. Every session (live or archived) is parsed
-// once, every API response is counted once (deduped across files by message
-// id + request id), and the results are kept in the app's data folder as
+// once, every API response is counted once (deduped across files with
+// ccusage's rules, see shared/usage/dedupe.ts), and the results are kept in the app's data folder as
 // monthly NDJSON files, so history survives Claude Code's cleanup and startup
 // only parses files that changed.
 
@@ -12,6 +12,7 @@ import { parseJsonl } from '@shared/jsonl'
 import { now } from '@shared/clock'
 import { buildReport, breakdown, emptyTotals, addRecord, toCsv } from '@shared/usage/aggregate'
 import { analyzeUsage } from '@shared/usage/parse'
+import { UsageDeduper } from '@shared/usage/dedupe'
 import { estimateCost, type ModelPrice } from '@shared/usage/pricing'
 import { localTimeZone } from '@shared/usage/time'
 import type {
@@ -30,7 +31,8 @@ import { listFiles, readNdjson, writeNdjson } from '../core/ndjson'
 import { assertAppDataWrite, isInside } from '../core/safe-paths'
 import type { SessionService } from './sessions'
 
-const INDEX_VERSION = 1
+// 2: dedupe follows ccusage (session-scoped requestless ids, sidechain replays).
+const INDEX_VERSION = 2
 
 interface IndexFile {
   version: number
@@ -85,7 +87,9 @@ export async function listSubagentFiles(
 }
 
 export class UsageService extends EventEmitter<{ changed: [] }> {
-  private records = new Map<string, UsageRecord>()
+  private records = new UsageDeduper()
+  /** Sessions whose stored records predate the current parser (purged on reparse). */
+  private stale = new Set<string>()
   private turns = new Map<string, TurnSample>()
   private hits = new Map<string, LimitHit>()
   private index: IndexFile = { version: INDEX_VERSION, sessions: {} }
@@ -145,7 +149,8 @@ export class UsageService extends EventEmitter<{ changed: [] }> {
     await this.running
     const months = new Set([...this.records.values()].map((r) => storageMonth(r.ts)))
     const turnMonths = new Set([...this.turns.values()].map((t) => storageMonth(t.ts)))
-    this.records.clear()
+    this.records = new UsageDeduper()
+    this.stale.clear()
     this.turns.clear()
     this.hits.clear()
     this.index = { version: INDEX_VERSION, sessions: {} }
@@ -236,17 +241,24 @@ export class UsageService extends EventEmitter<{ changed: [] }> {
 
   private async load(): Promise<void> {
     const dir = this.paths.usageDir
+    let current = true
     try {
       const idx = JSON.parse(await readFile(join(dir, 'index.json'), 'utf8')) as IndexFile
       if (idx.version === INDEX_VERSION && idx.sessions) this.index = idx
+      else current = false
     } catch {
       // first run
     }
+    const loaded: UsageRecord[] = []
     for (const f of await listFiles(dir, /^records-\d{4}-\d{2}\.ndjson$/)) {
       for (const r of await readNdjson<UsageRecord>(join(dir, f))) {
-        if (r && typeof r.id === 'string' && typeof r.ts === 'number') this.records.set(r.id, r)
+        if (r && typeof r.id === 'string' && typeof r.ts === 'number') loaded.push(r)
       }
     }
+    this.records = new UsageDeduper(loaded)
+    // Records from an older parser are replaced session by session as each
+    // session is parsed again. Sessions whose files are gone keep theirs.
+    if (!current) for (const r of loaded) this.stale.add(r.key)
     for (const f of await listFiles(dir, /^turns-\d{4}-\d{2}\.ndjson$/)) {
       for (const t of await readNdjson<TurnSample>(join(dir, f))) {
         if (t && typeof t.id === 'string' && typeof t.ts === 'number') this.turns.set(t.id, t)
@@ -257,6 +269,14 @@ export class UsageService extends EventEmitter<{ changed: [] }> {
     }
     this.loaded = true
     this.invalidate()
+  }
+
+  private purge(key: string): void {
+    for (const r of [...this.records.values()]) {
+      if (r.key !== key) continue
+      this.records.remove(r.id)
+      this.dirtyMonths.add(storageMonth(r.ts))
+    }
   }
 
   private async signature(s: SessionSummary): Promise<{ sig: string; subagents: string[] }> {
@@ -276,6 +296,7 @@ export class UsageService extends EventEmitter<{ changed: [] }> {
       for (const s of list) {
         const { sig, subagents } = await this.signature(s)
         if (!force && this.index.sessions[s.key] === sig) continue
+        if (this.stale.delete(s.key)) this.purge(s.key)
         const ok = await this.parseFile(s.filePath, s)
         for (const file of subagents) await this.parseFile(file, s)
         if (s.availability === 'live') await this.archiveSubagents(s, subagents)
@@ -306,24 +327,19 @@ export class UsageService extends EventEmitter<{ changed: [] }> {
       return false
     }
     const { events } = parseJsonl(text)
-    const a = analyzeUsage(events, { key: s.key, project: s.projectName, env: s.env })
+    const a = analyzeUsage(events, {
+      key: s.key,
+      project: s.projectName,
+      env: s.env,
+      sessionId: s.sessionId,
+      file: basename(path)
+    })
     for (const r of a.records) {
-      const prev = this.records.get(r.id)
-      if (!prev) {
-        this.records.set(r.id, r)
-        this.dirtyMonths.add(storageMonth(r.ts))
-      } else if (
-        prev.key === r.key &&
-        (r.output > prev.output ||
-          r.input > prev.input ||
-          r.cacheRead > prev.cacheRead ||
-          r.cacheWrite > prev.cacheWrite ||
-          r.stop !== prev.stop)
-      ) {
-        // The response was still streaming when we read it last time.
-        this.records.set(r.id, { ...prev, ...r })
-        this.dirtyMonths.add(storageMonth(r.ts))
-      }
+      // New, or a copy with more tokens (it was still streaming last time).
+      const { result, stored, previous } = this.records.add(r)
+      if (result === 'duplicate') continue
+      this.dirtyMonths.add(storageMonth(stored.ts))
+      if (previous) this.dirtyMonths.add(storageMonth(previous.ts))
     }
     for (const t of a.turns) {
       const prev = this.turns.get(t.id)

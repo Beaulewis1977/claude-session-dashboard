@@ -1,10 +1,11 @@
 // API prices per model, in USD per million tokens. Used for cost estimates
-// only. Fully editable in Settings.
+// only. Pre-filled from a bundled snapshot of LiteLLM's price data (MIT, see
+// THIRD_PARTY_NOTICES; refresh with scripts/make-price-snapshot.mjs). Prices
+// are never fetched at runtime, and the table is fully editable in Settings.
 
-export interface ModelPrice {
-  /** Model id or id prefix, e.g. "claude-sonnet-4-5" matches "claude-sonnet-4-5-20250929". */
-  model: string
-  label: string
+import snapshot from './litellm-prices.json'
+
+export interface PriceTier {
   input: number
   output: number
   cacheWrite5m: number
@@ -12,42 +13,41 @@ export interface ModelPrice {
   cacheRead: number
 }
 
-/** Date the defaults below were copied from Anthropic's published pricing page. */
-export const PRICES_FILLED_IN = '2026-10-22'
-export const PRICES_SOURCE = 'https://platform.claude.com/docs/en/about-claude/pricing'
+export interface ModelPrice extends PriceTier {
+  /** Model id or id prefix, e.g. "claude-sonnet-4-5" matches "claude-sonnet-4-5-20250929". */
+  model: string
+  label: string
+  /** Price multiplier for fast mode (`usage.speed: "fast"`). */
+  fast?: number
+  /** Requests with more input tokens than `above` are billed at these prices. */
+  longContext?: PriceTier & { above: number }
+}
 
-const p = (
-  model: string,
-  label: string,
-  input: number,
-  cacheWrite5m: number,
-  cacheWrite1h: number,
-  cacheRead: number,
-  output: number
-): ModelPrice => ({ model, label, input, output, cacheWrite5m, cacheWrite1h, cacheRead })
+/** Date of the bundled LiteLLM snapshot. */
+export const PRICES_FILLED_IN: string = snapshot.date
+export const PRICES_SOURCE: string = snapshot.source
+export const PRICES_COMMIT: string = snapshot.commit
 
-export const DEFAULT_PRICES: ModelPrice[] = [
-  p('claude-fable-5-1', 'Claude Fable 5.1', 10, 12.5, 20, 0.25, 50),
-  p('claude-mythos-5-1', 'Claude Mythos 5.1', 10, 12.5, 20, 0.25, 50),
-  p('claude-fable-5', 'Claude Fable 5', 10, 12.5, 20, 1, 50),
-  p('claude-mythos-5', 'Claude Mythos 5', 10, 12.5, 20, 1, 50),
-  p('claude-opus-5-5', 'Claude Opus 5.5', 4, 5, 8, 0.2, 20),
-  p('claude-opus-5', 'Claude Opus 5', 5, 6.25, 10, 0.5, 25),
-  p('claude-opus-4-8', 'Claude Opus 4.8', 5, 6.25, 10, 0.5, 25),
-  p('claude-opus-4-7', 'Claude Opus 4.7', 5, 6.25, 10, 0.5, 25),
-  p('claude-opus-4-6', 'Claude Opus 4.6', 5, 6.25, 10, 0.5, 25),
-  p('claude-opus-4-5', 'Claude Opus 4.5', 5, 6.25, 10, 0.5, 25),
-  p('claude-opus-4-1', 'Claude Opus 4.1', 15, 18.75, 30, 1.5, 75),
-  p('claude-opus-4', 'Claude Opus 4', 15, 18.75, 30, 1.5, 75),
-  p('claude-sonnet-5-5', 'Claude Sonnet 5.5', 2, 2.5, 4, 0.1, 10),
-  p('claude-sonnet-5', 'Claude Sonnet 5', 2, 2.5, 4, 0.2, 10),
-  p('claude-sonnet-4-6', 'Claude Sonnet 4.6', 3, 3.75, 6, 0.3, 15),
-  p('claude-sonnet-4-5', 'Claude Sonnet 4.5', 3, 3.75, 6, 0.3, 15),
-  p('claude-sonnet-4', 'Claude Sonnet 4', 3, 3.75, 6, 0.3, 15),
-  p('claude-haiku-5-5', 'Claude Haiku 5.5', 0.1, 0.125, 0.2, 0.01, 0.5),
-  p('claude-haiku-4-5', 'Claude Haiku 4.5', 1, 1.25, 2, 0.1, 5),
-  p('claude-3-5-haiku', 'Claude Haiku 3.5', 0.8, 1, 1.6, 0.08, 4)
-]
+interface SnapshotRow extends PriceTier {
+  model: string
+  fast?: number
+  longContext?: PriceTier & { above: number }
+}
+
+export const DEFAULT_PRICES: ModelPrice[] = (snapshot.models as SnapshotRow[]).map((r) => {
+  const p: ModelPrice = {
+    model: r.model,
+    label: `Claude ${modelLabel(r.model)}${r.model.endsWith('-preview') ? ' Preview' : ''}`,
+    input: r.input,
+    output: r.output,
+    cacheWrite5m: r.cacheWrite5m,
+    cacheWrite1h: r.cacheWrite1h,
+    cacheRead: r.cacheRead
+  }
+  if (r.fast) p.fast = r.fast
+  if (r.longContext) p.longContext = { ...r.longContext }
+  return p
+})
 
 /** Find the price entry for a model id: exact match first, then the longest prefix. */
 export function findPrice(model: string, table: ModelPrice[]): ModelPrice | undefined {
@@ -74,24 +74,34 @@ export interface CostInput {
 
 /** Estimated cost in USD, or 0 when the model isn't in the table. */
 export function estimateCost(r: CostInput, table: ModelPrice[]): number {
-  const price = findPrice(r.model, table)
+  const fast = r.model.endsWith('-fast')
+  const price = findPrice(fast ? r.model.slice(0, -5) : r.model, table)
   if (!price) return 0
+  // Long context: the whole request is billed at the higher tier.
+  const lc = price.longContext
+  const tier: PriceTier = lc && r.input + r.cacheWrite + r.cacheRead > lc.above ? lc : price
   const cw1h = Math.min(r.cw1h ?? 0, r.cacheWrite)
   const cw5 = r.cacheWrite - cw1h
-  return (
-    (r.input * price.input +
-      r.output * price.output +
-      cw5 * price.cacheWrite5m +
-      cw1h * price.cacheWrite1h +
-      r.cacheRead * price.cacheRead) /
+  const usd =
+    (r.input * tier.input +
+      r.output * tier.output +
+      cw5 * tier.cacheWrite5m +
+      cw1h * tier.cacheWrite1h +
+      r.cacheRead * tier.cacheRead) /
     1_000_000
-  )
+  return fast ? usd * (price.fast ?? 1) : usd
+}
+
+/** A record's cost: what Claude Code logged (old versions), else the estimate. */
+export function recordCost(r: CostInput & { loggedCost?: number }, table: ModelPrice[]): number {
+  return r.loggedCost ?? estimateCost(r, table)
 }
 
 /** Short, friendly model name: "claude-sonnet-4-5-20250929" → "Sonnet 4.5". */
 export function modelLabel(model: string): string {
   const m = /^claude-(?:(\d)-(\d)-)?([a-z]+)(?:-(\d{1,2})(?!\d))?(?:-(\d)(?!\d))?/i.exec(model)
   if (!m) return model
+  if (model.endsWith('-fast')) return `${modelLabel(model.slice(0, -5))} (fast)`
   if (m[1]) return `${cap(m[3])} ${m[1]}.${m[2]}`
   const major = m[4]
   const minor = m[5]
@@ -109,20 +119,44 @@ export function sanitizePrices(v: unknown): ModelPrice[] | undefined {
   const out: ModelPrice[] = []
   const n = (x: unknown): number =>
     typeof x === 'number' && Number.isFinite(x) && x >= 0 ? Math.min(x, 100_000) : 0
+  const tier = (r: Record<string, unknown>): PriceTier => ({
+    input: n(r.input),
+    output: n(r.output),
+    cacheWrite5m: n(r.cacheWrite5m),
+    cacheWrite1h: n(r.cacheWrite1h),
+    cacheRead: n(r.cacheRead)
+  })
   for (const row of v.slice(0, 200)) {
     if (!row || typeof row !== 'object') continue
     const r = row as Record<string, unknown>
     const model = typeof r.model === 'string' ? r.model.trim().slice(0, 100) : ''
     if (!model) continue
-    out.push({
+    const price: ModelPrice = {
       model,
       label: typeof r.label === 'string' && r.label.trim() ? r.label.trim().slice(0, 100) : model,
-      input: n(r.input),
-      output: n(r.output),
-      cacheWrite5m: n(r.cacheWrite5m),
-      cacheWrite1h: n(r.cacheWrite1h),
-      cacheRead: n(r.cacheRead)
-    })
+      ...tier(r)
+    }
+    if (typeof r.fast === 'number' && Number.isFinite(r.fast) && r.fast > 0)
+      price.fast = Math.min(r.fast, 100)
+    const lc = r.longContext as Record<string, unknown> | undefined
+    if (lc && typeof lc === 'object' && typeof lc.above === 'number' && lc.above > 0)
+      price.longContext = { above: Math.round(lc.above), ...tier(lc) }
+    out.push(price)
   }
   return out
+}
+
+/**
+ * Tables saved before the snapshot had no fast-mode or long-context prices:
+ * add them from the snapshot for the same model id. Edited values are kept.
+ */
+export function addSnapshotExtras(table: ModelPrice[]): ModelPrice[] {
+  return table.map((row) => {
+    const d = DEFAULT_PRICES.find((p) => p.model === row.model)
+    if (!d) return row
+    const out = { ...row }
+    if (out.fast === undefined && d.fast) out.fast = d.fast
+    if (!out.longContext && d.longContext) out.longContext = { ...d.longContext }
+    return out
+  })
 }

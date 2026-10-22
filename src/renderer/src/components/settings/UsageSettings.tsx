@@ -3,7 +3,7 @@ import { toast } from 'sonner'
 import { Calculator, Info, RefreshCw, RotateCcw, Scale } from 'lucide-react'
 import type { AppSettings } from '@shared/types'
 import type { CcusageComparison, UsageStatus } from '@shared/usage/types'
-import { DEFAULT_PRICES, PRICES_FILLED_IN, type ModelPrice } from '@shared/usage/pricing'
+import { DEFAULT_PRICES, PRICES_FILLED_IN, type PriceTier } from '@shared/usage/pricing'
 import { DEFAULT_WEIGHTS, type CapacityWeights } from '@shared/usage/limits'
 import { formatInt, formatTokens } from '@shared/format'
 import { api } from '@/lib/api'
@@ -15,7 +15,7 @@ import { Segmented } from '../ui/segmented'
 import { Tooltip } from '../ui/tooltip'
 import { Row, Section } from '../SettingsView'
 
-const PRICE_COLS: { key: keyof Omit<ModelPrice, 'model' | 'label'>; label: string }[] = [
+const PRICE_COLS: { key: keyof PriceTier; label: string }[] = [
   { key: 'input', label: 'Input' },
   { key: 'output', label: 'Output' },
   { key: 'cacheWrite5m', label: 'Cache write 5m' },
@@ -72,7 +72,7 @@ export function UsageSettings({ update }: { update: (p: Partial<AppSettings>) =>
     return api.onUsageChanged(load)
   }, [])
 
-  const setPrice = (i: number, key: keyof ModelPrice, v: number): void => {
+  const setPrice = (i: number, key: keyof PriceTier, v: number): void => {
     const prices = settings.prices.map((p, j) => (j === i ? { ...p, [key]: v } : p))
     void update({ prices })
   }
@@ -227,17 +227,18 @@ export function UsageSettings({ update }: { update: (p: Partial<AppSettings>) =>
             size="sm"
             onClick={() => void update({ prices: DEFAULT_PRICES.map((p) => ({ ...p })) })}
           >
-            <RotateCcw /> Reset to published prices
+            <RotateCcw /> Reset to snapshot prices
           </Button>
         </div>
         <p className="mb-2 text-xs text-muted-foreground">
-          USD per million tokens. Filled in from Anthropic&apos;s published API prices on{' '}
+          USD per million tokens. Pre-filled from a bundled snapshot of LiteLLM&apos;s price data
+          (the source ccusage uses), dated{' '}
           {new Date(`${PRICES_FILLED_IN}T12:00:00`).toLocaleDateString('en-US', {
             month: 'long',
             day: 'numeric',
             year: 'numeric'
           })}
-          . Edit any value; models match by id prefix.
+          . Prices are never downloaded. Edit any value; models match by id prefix.
         </p>
         <div className="overflow-x-auto rounded-lg border border-border">
           <table className="w-full min-w-[620px] text-xs">
@@ -257,6 +258,17 @@ export function UsageSettings({ update }: { update: (p: Partial<AppSettings>) =>
                   <td className="px-2.5 py-1">
                     <div className="font-medium">{p.label}</div>
                     <div className="font-mono text-[10.5px] text-subtle-foreground">{p.model}</div>
+                    {(p.fast || p.longContext) && (
+                      <div className="text-[10.5px] text-subtle-foreground">
+                        {[
+                          p.fast && `Fast mode ×${p.fast}`,
+                          p.longContext &&
+                            `Over ${formatTokens(p.longContext.above)} input: $${p.longContext.input} / $${p.longContext.output}`
+                        ]
+                          .filter(Boolean)
+                          .join(' · ')}
+                      </div>
+                    )}
                   </td>
                   {PRICE_COLS.map((c) => (
                     <td key={c.key} className="w-[92px] px-1 py-1">

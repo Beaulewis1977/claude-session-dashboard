@@ -4,12 +4,17 @@
 
 import type { EnvKind } from '../types'
 import { classifyUserText, str, type RawEvent } from '../jsonl'
+import { recordId, UsageDeduper } from './dedupe'
 import type { LimitHit, TurnSample, UsageAnalysis, UsageRecord } from './types'
 
 export interface UsageContext {
   key: string
   project: string
   env: EnvKind
+  /** Session id of the file (a subagent file uses its parent's). Default: the end of `key`. */
+  sessionId?: string
+  /** File name, to tell apart lines without a message id in subagent files. */
+  file?: string
 }
 
 function obj(v: unknown): Record<string, unknown> | undefined {
@@ -67,8 +72,9 @@ export function parseUsageObject(u: unknown): ParsedUsage | undefined {
   const cc = obj(o.cache_creation)
   const cw5 = num(cc?.ephemeral_5m_input_tokens)
   const cw1h = num(cc?.ephemeral_1h_input_tokens)
-  // Some versions only report the nested split; use whichever is larger.
-  const cacheWrite = Math.max(num(o.cache_creation_input_tokens), cw5 + cw1h)
+  // When the 5m/1h split is reported it is the source of truth (as in ccusage);
+  // older versions only have the total.
+  const cacheWrite = cc ? cw5 + cw1h : num(o.cache_creation_input_tokens)
   const p: ParsedUsage = {
     input: num(o.input_tokens),
     output: num(o.output_tokens),
@@ -78,7 +84,7 @@ export function parseUsageObject(u: unknown): ParsedUsage | undefined {
   if (cw1h) p.cw1h = cw1h
   const extra: Record<string, number> = {}
   for (const [k, v] of Object.entries(o)) {
-    if (KNOWN_USAGE.has(k)) continue
+    if (KNOWN_USAGE.has(k) || k === 'iterations') continue
     if (typeof v === 'number' && Number.isFinite(v)) extra[k] = v
     else if (obj(v)) flattenNumbers(v as Record<string, unknown>, k, extra)
   }
@@ -93,28 +99,33 @@ export function parseUsageObject(u: unknown): ParsedUsage | undefined {
   return p
 }
 
-/** Dedupe key for an assistant event: message id + request id (as ccusage does). */
-export function usageKey(e: RawEvent): string | undefined {
+const count = (v: unknown): boolean => typeof v === 'number' && Number.isInteger(v) && v >= 0
+
+/**
+ * The checks ccusage applies before counting a line: input and output token
+ * counts must be present, the other counts valid when present, the version
+ * semver-like, and ids and the model non-empty when present.
+ */
+export function isCountableUsage(e: RawEvent, usage: Record<string, unknown>): boolean {
+  if (!count(usage.input_tokens) || !count(usage.output_tokens)) return false
+  for (const k of ['cache_creation_input_tokens', 'cache_read_input_tokens'])
+    if (usage[k] !== undefined && !count(usage[k])) return false
+  if (typeof e.version === 'string' && !/^\d+\.\d+\.\d/.test(e.version)) return false
   const m = obj(e.message)
-  const id = str(m?.id)
-  const req = str(e.requestId) ?? str(e.request_id)
-  if (id && req) return `${id}:${req}`
-  if (id) return id
-  const uuid = str(e.uuid)
-  return uuid ? `uuid:${uuid}` : undefined
+  for (const v of [e.sessionId, e.requestId, m?.id, m?.model]) if (v === '') return false
+  return true
 }
 
-function mergeMax(a: UsageRecord, b: ParsedUsage, stop?: string): void {
-  a.input = Math.max(a.input, b.input)
-  a.output = Math.max(a.output, b.output)
-  a.cacheWrite = Math.max(a.cacheWrite, b.cacheWrite)
-  a.cacheRead = Math.max(a.cacheRead, b.cacheRead)
-  if (b.cw1h) a.cw1h = Math.max(a.cw1h ?? 0, b.cw1h)
-  if (b.extra) {
-    a.extra ??= {}
-    for (const [k, v] of Object.entries(b.extra)) a.extra[k] = Math.max(a.extra[k] ?? 0, v)
+/** Advisor sub-calls are billed separately, under their own model. */
+function advisorUsages(usage: Record<string, unknown>): { model: string; usage: unknown }[] {
+  if (!Array.isArray(usage.iterations)) return []
+  const out: { model: string; usage: unknown }[] = []
+  for (const it of usage.iterations) {
+    const o = obj(it)
+    const model = str(o?.model)
+    if (o?.type === 'advisor_message' && model) out.push({ model, usage: o })
   }
-  if (stop) a.stop = stop
+  return out
 }
 
 // ------------------------------------------------------------- limit hits
@@ -166,8 +177,8 @@ const CORRECTION_RE = /^(no\b|nope\b|wrong\b|that'?s not\b|that is not\b|not wha
  * events. Records are deduped within the file; the caller dedupes across files.
  */
 export function analyzeUsage(events: RawEvent[], ctx: UsageContext): UsageAnalysis {
-  const byKey = new Map<string, UsageRecord>()
-  const records: UsageRecord[] = []
+  const local = new UsageDeduper()
+  const sessionId = ctx.sessionId ?? ctx.key.slice(ctx.key.lastIndexOf(':') + 1)
   const turns: TurnSample[] = []
   const limitHits: LimitHit[] = []
   let version: string | undefined
@@ -181,7 +192,9 @@ export function analyzeUsage(events: RawEvent[], ctx: UsageContext): UsageAnalys
     turnMsgIds.clear()
   }
 
+  let lineNo = 0
   for (const e of events) {
+    lineNo++
     const v = str(e.version)
     if (v) version = v
     const type = str(e.type)
@@ -292,49 +305,82 @@ export function analyzeUsage(events: RawEvent[], ctx: UsageContext): UsageAnalys
       }
     }
 
-    const usage = parseUsageObject(message?.usage)
-    const key = usageKey(e)
-    if (!usage || !key || ts === undefined || !model) continue
-    const stop = str(message?.stop_reason)
-    const existing = byKey.get(key)
-    if (existing) {
-      const beforeOut = existing.output
-      const beforeIn = existing.input
-      const beforeRead = existing.cacheRead
-      mergeMax(existing, usage, stop)
-      if (turn && !sidechain) {
-        turn.outputTokens += existing.output - beforeOut
-        turn.inputTokens += existing.input - beforeIn
-        turn.cacheReadTokens += existing.cacheRead - beforeRead
-      }
-      continue
-    }
-    const rec: UsageRecord = {
-      id: key,
+    const rawUsage = obj(message?.usage)
+    if (!rawUsage || ts === undefined || !model || !isCountableUsage(e, rawUsage)) continue
+    const speed = str(rawUsage.speed)
+    const base: Omit<
+      UsageRecord,
+      'id' | 'model' | 'input' | 'output' | 'cacheWrite' | 'cacheRead'
+    > = {
       ts,
       key: ctx.key,
       project: ctx.project,
       env: ctx.env,
-      model,
       version,
-      input: usage.input,
-      output: usage.output,
-      cacheWrite: usage.cacheWrite,
-      cacheRead: usage.cacheRead
+      sid: str(e.sessionId) ?? sessionId
     }
-    if (stop) rec.stop = stop
-    if (usage.cw1h) rec.cw1h = usage.cw1h
-    if (usage.extra) rec.extra = { ...usage.extra }
-    byKey.set(key, rec)
-    records.push(rec)
-    if (turn && !sidechain) {
-      turn.outputTokens += rec.output
-      turn.inputTokens += rec.input
-      turn.cacheReadTokens += rec.cacheRead
+    const rid = str(e.requestId) ?? str(e.request_id)
+    if (rid) base.rid = rid
+    if (sidechain) base.sc = true
+    if (speed) base.speed = speed
+    const stop = str(message?.stop_reason)
+    const entries: UsageRecord[] = []
+    const main = toRecord(rawUsage, {
+      ...base,
+      mid: msgId,
+      model: speed === 'fast' && !model.endsWith('-fast') ? `${model}-fast` : model,
+      // Lines without a message id are never deduped (as in ccusage).
+      fallback: `${ctx.key}:${ctx.file ?? ''}:L${lineNo}`
+    })
+    if (main) {
+      if (stop) main.stop = stop
+      const cost = e.costUSD
+      if (typeof cost === 'number' && Number.isFinite(cost) && cost >= 0) main.loggedCost = cost
+      entries.push(main)
+    }
+    advisorUsages(rawUsage).forEach((a, i) => {
+      const r = toRecord(a.usage, {
+        ...base,
+        mid: msgId ? `${msgId}:advisor:${i}` : undefined,
+        model: a.model,
+        fallback: `${main?.id ?? ctx.key}:advisor:${i}`
+      })
+      if (r) entries.push(r)
+    })
+    for (const rec of entries) {
+      const { result, stored, previous } = local.add(rec)
+      if (!turn || sidechain || result === 'duplicate') continue
+      turn.outputTokens += stored.output - (previous?.output ?? 0)
+      turn.inputTokens += stored.input - (previous?.input ?? 0)
+      turn.cacheReadTokens += stored.cacheRead - (previous?.cacheRead ?? 0)
     }
   }
   closeTurn()
-  return { records, turns, limitHits }
+  return { records: [...local.values()], turns, limitHits }
+}
+
+function toRecord(
+  usage: unknown,
+  f: Omit<UsageRecord, 'id' | 'input' | 'output' | 'cacheWrite' | 'cacheRead'> & {
+    fallback: string
+  }
+): UsageRecord | undefined {
+  const u = parseUsageObject(usage)
+  if (!u) return undefined
+  const { fallback, ...rest } = f
+  const rec: UsageRecord = {
+    id: recordId(f.mid, f.rid, f.sid ?? '', f.ts, fallback),
+    ...rest,
+    input: u.input,
+    output: u.output,
+    cacheWrite: u.cacheWrite,
+    cacheRead: u.cacheRead
+  }
+  if (!rec.mid) delete rec.mid
+  if (rec.version === undefined) delete rec.version
+  if (u.cw1h) rec.cw1h = u.cw1h
+  if (u.extra) rec.extra = { ...u.extra }
+  return rec
 }
 
 export function totalTokens(t: {

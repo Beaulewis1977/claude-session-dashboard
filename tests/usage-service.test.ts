@@ -159,6 +159,32 @@ describe('UsageService', () => {
     expect(usage.allRecords()).toHaveLength(n)
   })
 
+  it('replaces records from an older parser session by session, keeping orphans', async () => {
+    const { make, paths } = await setup()
+    const usage = make()
+    await usage.start()
+    await usage.idle()
+    const n = usage.allRecords().length
+    const live = usage.allRecords()[0]
+    const dir = join(paths.dataDir, 'usage')
+    const idx = JSON.parse(await readFile(join(dir, 'index.json'), 'utf8'))
+    await writeFile(join(dir, 'index.json'), JSON.stringify({ ...idx, version: 1 }))
+    const old = (id: string, key: string) =>
+      JSON.stringify({ ...live, id, key, mid: undefined, sid: undefined, aka: undefined })
+    // An old-style id for a session that still exists, and one whose file is gone.
+    await appendFile(
+      join(dir, 'records-2026-10.ndjson'),
+      `${old('msg_old_style', live.key)}\n${old('msg_orphan', 'windows:gone')}\n`
+    )
+    const again = make()
+    await again.start()
+    await again.idle()
+    const ids = again.allRecords().map((r) => r.id)
+    expect(ids).not.toContain('msg_old_style')
+    expect(ids).toContain('msg_orphan')
+    expect(ids).toHaveLength(n + 1)
+  })
+
   it('loads the generated usage history for fixtures mode', async () => {
     const { make } = await setup(true)
     const usage = make()

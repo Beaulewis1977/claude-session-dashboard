@@ -29,6 +29,7 @@ import { BridgeDialog } from '../settings/BridgeDialog'
 import { CreditsHeroCard, LimitCard } from './Hero'
 import { MainChart, ModelShare, SummaryCards, TopSessions } from './Overview'
 import { CapacityChange, CreditsTab, LimitHistoryTab, RawTableTab } from './Tabs'
+import { TrendsTab } from './Trends'
 
 type RangeId = 'today' | 'week' | 'month' | '7d' | '30d' | '90d' | '1y' | 'all' | 'custom'
 
@@ -167,7 +168,7 @@ function RangePicker({
   )
 }
 
-type Tab = 'limits' | 'credits' | 'raw'
+type Tab = 'trends' | 'limits' | 'credits' | 'raw'
 
 export function UsageView() {
   const limits = useApp((s) => s.limits)
@@ -182,7 +183,7 @@ export function UsageView() {
   const [period, setPeriod] = useState<Period>('day')
   const [models, setModels] = useState<string[]>([])
   const [groupBy, setGroupBy] = useState<Dimension>('model')
-  const [tab, setTab] = useState<Tab>('limits')
+  const [tab, setTab] = useState<Tab>('trends')
   const [bridge, setBridge] = useState<BridgeEnv | null>(null)
   const [version, setVersion] = useState(0)
 
@@ -261,6 +262,7 @@ export function UsageView() {
 
         {/* 1. Hero row */}
         <div
+          data-shot="hero"
           className={cn(
             'mt-5 grid gap-4',
             hasCredits
@@ -328,10 +330,12 @@ export function UsageView() {
           <div
             role="tablist"
             aria-label="Details"
+            data-shot="tabs"
             className="mb-4 flex items-center gap-1 border-b border-border"
           >
             {(
               [
+                ['trends', 'Trends'],
                 ['limits', 'Limit history'],
                 ['credits', 'Credits'],
                 ['raw', 'Raw table']
@@ -369,6 +373,7 @@ export function UsageView() {
               </Button>
             </span>
           </div>
+          {tab === 'trends' && <TrendsTab />}
           {tab === 'limits' && <LimitHistoryTab limits={limits} report={report} />}
           {tab === 'credits' && <CreditsTab credits={credits} />}
           {tab === 'raw' && (

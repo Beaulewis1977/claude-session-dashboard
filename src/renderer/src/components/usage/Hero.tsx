@@ -169,9 +169,14 @@ export function LimitCard({
             </Tooltip>
           </div>
           {g.resetsAt && (
-            <div className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
-              <CalendarClock className="size-3.5 shrink-0 text-subtle-foreground" />
-              <span className="truncate">Resets {when(g.resetsAt, t)}</span>
+            <div>
+              <div className="text-2xs font-medium tracking-wide text-subtle-foreground uppercase">
+                Resets
+              </div>
+              <div className="flex min-w-0 items-center gap-1.5 text-[13px] font-medium">
+                <CalendarClock className="size-3.5 shrink-0 text-subtle-foreground" />
+                <span className="truncate">{when(g.resetsAt, t)}</span>
+              </div>
             </div>
           )}
           {level !== 'calm' && (

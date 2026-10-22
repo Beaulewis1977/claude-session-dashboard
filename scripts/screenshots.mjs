@@ -1,4 +1,4 @@
-/* global window */
+/* global window, document */
 // Launches the built app in fixtures mode and saves screenshots to docs/.
 // Usage: npm run screenshots   (on Linux without a display: xvfb-run -a npm run screenshots)
 
@@ -42,6 +42,20 @@ const setTheme = async (theme) => {
   await win.waitForSelector('[role="option"]')
   await win.waitForTimeout(700)
 }
+const scrollUsage = async (top) => {
+  await win.evaluate(
+    (y) => document.querySelector('[data-scroll="usage"]')?.scrollTo({ top: y }),
+    top
+  )
+  await win.waitForTimeout(500)
+}
+const scrollUsageBy = async (dy) => {
+  await win.evaluate(
+    (d) => document.querySelector('[data-scroll="usage"]')?.scrollBy({ top: d }),
+    dy
+  )
+  await win.waitForTimeout(400)
+}
 const selectByTitle = async (text) => {
   await win.locator('[role="option"]', { hasText: text }).first().dispatchEvent('mousedown')
   await win.waitForTimeout(500)
@@ -73,12 +87,17 @@ for (const theme of ['dark', 'light']) {
     await win.keyboard.press('Escape')
 
     // Archived-only session + resume dialog with restore.
+    // (Older sessions are far down the list, so filter to "Archived only" first.)
+    await win.getByRole('button', { name: /Archived only/ }).click()
+    await win.waitForTimeout(400)
     await selectByTitle('Canvas particle demo')
     await shot('archived')
     await win.keyboard.press('Control+Enter')
     await win.waitForSelector('[role="dialog"]')
     await shot('resume-dialog')
     await win.keyboard.press('Escape')
+    await win.getByRole('button', { name: /All sessions/ }).click()
+    await win.waitForTimeout(300)
 
     // Command palette.
     await win.keyboard.press('Control+k')
@@ -107,6 +126,64 @@ for (const theme of ['dark', 'light']) {
   await win.keyboard.press('Control+,')
   await win.waitForTimeout(400)
   await shot(`settings${suffix}`)
+  await win.keyboard.press('Escape')
+
+  // Usage & limits (Phase 5).
+  await win.keyboard.press('Control+u')
+  await win.waitForSelector('[data-shot="hero"]')
+  await win.waitForTimeout(1200)
+  await shot(`usage${suffix}`)
+  const hero = win.locator('[data-shot="hero"]')
+  await hero.screenshot({ path: join(out, `limits${suffix}.png`) })
+  console.log('saved', `limits${suffix}`)
+  await hero
+    .locator(':scope > :nth-child(3)')
+    .screenshot({ path: join(out, `credits${suffix}.png`) })
+  console.log('saved', `credits${suffix}`)
+  await scrollUsage(640)
+  await shot(`usage-charts${suffix}`)
+  await win.locator('[data-shot="tabs"]').scrollIntoViewIfNeeded()
+  await scrollUsageBy(-12)
+  await shot(`trends${suffix}`)
+  if (theme === 'dark') {
+    await win.getByRole('tab', { name: 'Limit history' }).click()
+    await win.waitForTimeout(500)
+    await shot('limit-history')
+    await win.getByRole('tab', { name: 'Credits' }).click()
+    await win.waitForTimeout(500)
+    await shot('credits-tab')
+    await win.getByRole('tab', { name: 'Trends' }).click()
+
+    // Mini meter.
+    if (!(await win.evaluate(() => window.csd.toggleMiniMeter())))
+      await win.evaluate(() => window.csd.toggleMiniMeter())
+    await win.waitForTimeout(2500)
+    const mini = app.windows().find((w) => w.url().includes('#mini'))
+    if (mini) {
+      await mini.screenshot({ path: join(out, 'mini-meter.png') })
+      console.log('saved', 'mini-meter')
+    }
+    await win.evaluate(() => window.csd.toggleMiniMeter())
+
+    // The enable dialog with the exact settings.json diff.
+    await win.keyboard.press('Control+,')
+    await win.waitForTimeout(500)
+    await win.getByText('Live limits', { exact: true }).scrollIntoViewIfNeeded()
+    await win.waitForTimeout(300)
+    await shot('settings-live-limits')
+    await win.getByRole('button', { name: 'Disable' }).first().click()
+    await win.waitForSelector('[role="dialog"]')
+    await win.waitForTimeout(600)
+    await shot('disable-live-limits')
+    await win.keyboard.press('Escape')
+    await win.waitForTimeout(300)
+    await win.getByRole('button', { name: 'Enable live limits' }).first().click()
+    await win.waitForSelector('[role="dialog"]')
+    await win.waitForTimeout(600)
+    await shot('enable-live-limits')
+    await win.keyboard.press('Escape')
+    await win.keyboard.press('Escape')
+  }
   await win.keyboard.press('Escape')
 }
 

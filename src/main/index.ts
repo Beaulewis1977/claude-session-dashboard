@@ -240,6 +240,7 @@ async function main(): Promise<void> {
     installer,
     sessions,
     platform,
+    weekStart: () => settings.value.weekStart,
     billingOf: (key) => {
       const b = sessions.get(key)?.billing
       if (!b || b.mode === 'unknown') return 'Unknown'

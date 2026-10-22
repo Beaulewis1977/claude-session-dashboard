@@ -22,6 +22,7 @@ import type {
 } from './usage/types'
 import type { BridgeApplyResult, BridgePlan, LimitsState } from './usage/limits'
 import type { Account, CreditGrant, CreditsState } from './usage/credits'
+import type { CompareResult, CompareSide, TrendGroupBy, TrendsReport } from './usage/trends'
 
 export interface SearchHit {
   key: string
@@ -71,6 +72,8 @@ export interface CsdApi {
   recalculateUsage(): Promise<UsageStatus>
   exportUsageCsv(query: UsageQuery, perRecord: boolean): Promise<ExportResult>
   verifyCcusage(): Promise<CcusageComparison>
+  getTrends(groupBy: TrendGroupBy): Promise<TrendsReport>
+  compareTrends(a: CompareSide, b: CompareSide): Promise<CompareResult>
 
   // Live limits and the status line bridge
   getLimits(): Promise<LimitsState>

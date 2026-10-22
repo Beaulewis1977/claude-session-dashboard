@@ -6,6 +6,12 @@ import { writeFile } from 'node:fs/promises'
 import { now } from '@shared/clock'
 import { dayKey, localTimeZone } from '@shared/usage/time'
 import { totalTokens } from '@shared/usage/parse'
+import {
+  buildTrends,
+  compareTrends,
+  type CompareSide,
+  type TrendGroupBy
+} from '@shared/usage/trends'
 import type { CcusageComparison, Dimension, Period, UsageQuery } from '@shared/usage/types'
 import { assertUserWrite } from './core/safe-paths'
 import type { Platform } from './platform'
@@ -42,6 +48,7 @@ export interface UsageIpcDeps {
   billingOf?: (key: string) => string
   /** Called after the bridge was enabled or disabled. */
   onBridgeChanged?: () => void
+  weekStart: () => 'monday' | 'sunday'
 }
 
 /** Parse `ccusage daily --json` output into per-day totals. */
@@ -82,6 +89,35 @@ export function registerUsageIpc(deps: UsageIpcDeps): void {
     return src
   }
   ipcMain.handle('limits:state', () => deps.limits.state())
+
+  const side = (v: unknown): CompareSide => {
+    const o = (v ?? {}) as Record<string, unknown>
+    const n = (x: unknown): number | undefined =>
+      typeof x === 'number' && Number.isFinite(x) ? x : undefined
+    const t = (x: unknown): string | undefined =>
+      typeof x === 'string' && x ? x.slice(0, 100) : undefined
+    return { from: n(o.from), to: n(o.to), version: t(o.version), model: t(o.model) }
+  }
+  ipcMain.handle('usage:trends', async (_e, groupBy) => {
+    const by: TrendGroupBy = groupBy === 'model' || groupBy === 'version' ? groupBy : 'all'
+    const state = await deps.limits.state()
+    return buildTrends({
+      records: usage.allRecords(),
+      turns: usage.allTurns(),
+      readings: deps.limits.readings(),
+      capacity: state.capacity5h,
+      timeZone: localTimeZone(),
+      weekStart: deps.weekStart(),
+      groupBy: by
+    })
+  })
+  ipcMain.handle('usage:compare', (_e, a, b) =>
+    compareTrends(
+      { records: usage.allRecords(), turns: usage.allTurns(), readings: deps.limits.readings() },
+      side(a),
+      side(b)
+    )
+  )
   ipcMain.handle('bridge:plan', (_e, id, a) => deps.installer.plan(source(id), action(a)))
   ipcMain.handle('bridge:apply', async (_e, id, a, token) => {
     const res = await deps.installer.apply(source(id), action(a), String(token))

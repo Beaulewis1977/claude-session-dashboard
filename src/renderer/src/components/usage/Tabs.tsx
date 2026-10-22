@@ -70,6 +70,16 @@ export function CapacityChange({ limits }: { limits: LimitsState | null }) {
   )
 }
 
+/** Points are colored by the window's main model family (the "model mix"). */
+const MIX_VAR: Record<string, string> = {
+  opus: 'var(--model-opus)',
+  sonnet: 'var(--model-sonnet)',
+  haiku: 'var(--model-haiku)',
+  fable: 'var(--model-fable)',
+  mythos: 'var(--model-fable)'
+}
+const mixColor = (mix?: string): string => MIX_VAR[mix ?? ''] ?? 'var(--model-other)'
+
 function CapacityChart({
   points,
   median
@@ -157,10 +167,21 @@ function CapacityChart({
           <Line
             type="monotone"
             dataKey="capacity"
-            stroke="var(--gauge-calm)"
-            strokeWidth={2}
-            dot={{ r: 3, fill: 'var(--gauge-calm)', stroke: 'var(--card)', strokeWidth: 2 }}
-            activeDot={{ r: 5, stroke: 'var(--card)', strokeWidth: 2 }}
+            stroke="var(--chart-axis)"
+            strokeOpacity={0.6}
+            strokeWidth={1.5}
+            dot={(props: { cx?: number; cy?: number; index?: number; payload?: CapacityPoint }) => (
+              <circle
+                key={props.index}
+                cx={props.cx}
+                cy={props.cy}
+                r={4}
+                fill={mixColor(props.payload?.mix)}
+                stroke="var(--card)"
+                strokeWidth={2}
+              />
+            )}
+            activeDot={{ r: 6, stroke: 'var(--card)', strokeWidth: 2 }}
             animationDuration={380}
           />
         </LineChart>

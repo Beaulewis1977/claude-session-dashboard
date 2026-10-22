@@ -90,7 +90,10 @@ export function BridgeDialog({
         <div className="space-y-3 px-5 pt-3 pb-5">
           <div className="flex items-center gap-2 font-mono text-[11.5px] text-muted-foreground">
             <span className="truncate" title={env.settingsPath}>
-              {env.settingsPath}
+              {env.env === 'windows'
+                ? '%USERPROFILE%\\.claude\\settings.json'
+                : `${env.user === 'root' ? '/root' : `/home/${env.user ?? '…'}`}/.claude/settings.json`}
+              {env.env === 'wsl' && ` (${env.label.replace('WSL: ', '')})`}
             </span>
             {plan?.createsFile && (
               <span className="shrink-0 rounded bg-secondary px-1 font-sans text-[10px]">

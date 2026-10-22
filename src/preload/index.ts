@@ -43,6 +43,8 @@ const api: CsdApi = {
   recalculateUsage: () => ipcRenderer.invoke('usage:recalculate'),
   exportUsageCsv: (q, perRecord) => ipcRenderer.invoke('usage:exportCsv', q, perRecord),
   verifyCcusage: () => ipcRenderer.invoke('usage:verifyCcusage'),
+  getTrends: (groupBy) => ipcRenderer.invoke('usage:trends', groupBy),
+  compareTrends: (a, b) => ipcRenderer.invoke('usage:compare', a, b),
 
   getLimits: () => ipcRenderer.invoke('limits:state'),
   onLimitsChanged: (cb) => on('limits:changed', cb),

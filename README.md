@@ -22,6 +22,10 @@ resumes any session in a terminal with its full context.
   the archived copy back first (it never overwrites an existing file).
 - **Full-text search** across names, descriptions, tags and all message text, plus filters for
   project, environment, tag, date range and hidden sessions.
+- **Usage & limits** (<kbd>Ctrl</kbd>+<kbd>U</kbd>): your real 5-hour and weekly plan percentages
+  (opt-in), every token you've used since the first session, per model / session / project / day,
+  API credits and cost, model trends ("is it nerfed?") and a limit-change detector. Also in the
+  tray, a mini meter and the title bar. See [Usage, limits and API credits](#usage-limits-and-api-credits).
 - **Keyboard first.** <kbd>Ctrl</kbd>+<kbd>K</kbd> command palette, <kbd>J</kbd>/<kbd>K</kbd> to move,
   <kbd>Ctrl</kbd>+<kbd>Enter</kbd> to resume, <kbd>?</kbd> for every shortcut. Light, dark and
   system themes.
@@ -41,6 +45,17 @@ The app is built around these rules (see `CLAUDE.md`):
 4. **No network calls.** All outgoing requests from the window are blocked, remote images in
    transcripts aren't loaded, and fonts are bundled. Links in transcripts open in your browser only
    when you click them.
+
+Phase 5 ([`docs/PHASE-5-USAGE-TRACKING.md`](docs/PHASE-5-USAGE-TRACKING.md)) adds exactly two
+exceptions, and each one only happens after you approve it in the app:
+
+- **Live limits** changes the `statusLine` key in a `~/.claude/settings.json`, and nothing else in
+  `.claude`. You see the exact diff first, the file is backed up to the app's data folder, and
+  **Disable** puts the previous value back exactly. The only other files it writes are its own, in
+  `~/.claude-session-dashboard/`. A write guard refuses any other path inside `.claude`.
+- **Admin API keys** let the app call two read-only reporting endpoints on `https://api.anthropic.com`
+  (usage report and cost report). No other host, no other endpoint, and never any session content.
+  Standard API keys cause no network calls at all.
 
 ## Run it on Windows
 
@@ -80,18 +95,19 @@ The executables aren't code-signed, so Windows SmartScreen may warn you the firs
 
 ### Other scripts
 
-| Command                          | What it does                                                  |
-| -------------------------------- | ------------------------------------------------------------- |
-| `npm run dev`                    | Run with hot reload. Add `-- --fixtures` for sample data.     |
-| `npm start`                      | Run the last production build (`npm run build` first).        |
-| `npm test`                       | Unit and integration tests (Vitest).                          |
-| `npm run typecheck`              | TypeScript checks for the main process and the renderer.      |
-| `npm run lint`                   | ESLint.                                                       |
-| `npm run check`                  | Typecheck, lint, test and build in one go.                    |
-| `npm run dist`                   | Build the Windows NSIS installer and the portable exe.        |
-| `npm run dist:dir`               | Build an unpacked app folder (quick packaging check).         |
-| `npm run screenshots`            | Run the app in fixtures mode and save screenshots to `docs/`. |
-| `node scripts/make-fixtures.mjs` | Regenerate the sample sessions in `fixtures/`.                |
+| Command                                | What it does                                                                                                   |
+| -------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `npm run dev`                          | Run with hot reload. Add `-- --fixtures` for sample data.                                                      |
+| `npm start`                            | Run the last production build (`npm run build` first).                                                         |
+| `npm test`                             | Unit and integration tests (Vitest).                                                                           |
+| `npm run typecheck`                    | TypeScript checks for the main process and the renderer.                                                       |
+| `npm run lint`                         | ESLint.                                                                                                        |
+| `npm run check`                        | Typecheck, lint, test and build in one go.                                                                     |
+| `npm run dist`                         | Build the Windows NSIS installer and the portable exe.                                                         |
+| `npm run dist:dir`                     | Build an unpacked app folder (quick packaging check).                                                          |
+| `npm run screenshots`                  | Run the app in fixtures mode and save screenshots to `docs/` (delete `.fixtures-data/` first for a clean run). |
+| `node scripts/make-fixtures.mjs`       | Regenerate the sample sessions in `fixtures/`.                                                                 |
+| `node scripts/make-usage-fixtures.mjs` | Regenerate the 13 weeks of sample usage in `fixtures/usage/`.                                                  |
 
 ## Using it
 
@@ -103,6 +119,7 @@ The executables aren't code-signed, so Windows SmartScreen may warn you the firs
   another folder. Fork adds `--fork-session` so the original session stays untouched.
 - **Search:** press <kbd>/</kbd> and type. Results are sorted by relevance; a small "in messages" label
   means the match is in the conversation rather than the name or tags.
+- **New session:** "New session in this folder…" in a session's ⋯ menu or the command palette.
 - **Settings** (<kbd>Ctrl</kbd>+<kbd>,</kbd>): theme, terminal, the default for skipping permissions,
   scan sources with their status, extra folders, the archive location and size, and each Claude
   home's `cleanupPeriodDays` (read-only).
@@ -128,13 +145,182 @@ anyway, but if you also want Claude Code to keep them, add this to `%USERPROFILE
 { "cleanupPeriodDays": 3650 }
 ```
 
+## Usage, limits and API credits
+
+![Usage & limits](docs/usage.png)
+
+Open it from the sidebar (**Usage & limits**), with <kbd>Ctrl</kbd>+<kbd>U</kbd>, by clicking the
+gauges in the title bar, or from the tray icon.
+
+- **Live limits:** two ring gauges for the **5-hour window** and **this week**, the same percentages
+  Claude Code shows in `/usage`, with a reset countdown, the tokens you used in that window (from your
+  logs) and a pace line ("On pace to hit 100% at 4:30 PM"). Desktop notifications at 75% and 90%
+  (Settings → Live limits; change or turn off).
+- **Every token, forever:** read from every session file and from the app's archive, so history
+  survives Claude Code's cleanup. Today / this week / this month / all-time cards (click one to
+  filter the charts), a stacked chart of input, output, cache-write and cache-read tokens by
+  day/week/month with a date range picker and model filter, a model share donut, the top sessions,
+  and a raw table with breakdowns by model, session, project, environment, Claude Code version or
+  billing. CSV export. Per-session usage appears at the top of each session.
+- **API credits:** run any session on an API key instead of your plan, track credit grants, spending,
+  burn rate and "lasts ~N days", and (with an Admin key) your organization's cost report.
+- **Trends ("is it nerfed?") and limit history:** weekly indicators per model and per Claude Code
+  version, with markers for new models, updates and capacity changes, a compare mode, and the
+  implied-capacity history that flags "Your effective 5-hour capacity looks ~25% lower than last month".
+- **At a glance:** small gauges in the title bar, a tray icon with the 5-hour % (hover for both
+  windows, click to open Usage), and an always-on-top **mini meter** you can drag anywhere (it
+  remembers where).
+
+|                                          |                                                 |
+| ---------------------------------------- | ----------------------------------------------- |
+| ![Limit gauges (dark)](docs/limits.png)  | ![Limit gauges (light)](docs/limits-light.png)  |
+| ![Credits card (dark)](docs/credits.png) | ![Credits card (light)](docs/credits-light.png) |
+| ![Charts](docs/usage-charts.png)         | ![Trends](docs/trends.png)                      |
+| ![Limit history](docs/limit-history.png) | ![Credits tab](docs/credits-tab.png)            |
+| ![Usage (light)](docs/usage-light.png)   | ![Mini meter](docs/mini-meter.png)              |
+
+### Turn on live limits
+
+Claude Code passes a JSON payload to its status line command on every update, and for Pro and Max
+subscribers that payload includes `rate_limits.five_hour` and `rate_limits.seven_day` (used % and
+reset time). This is the only supported way to get your real plan percentages locally, so the app
+installs a tiny **status line bridge** that saves that payload for it.
+
+1. Open **Settings → Live limits** (or click **Enable live limits** on the Usage view).
+2. Pick your plan (default **Max 5x**).
+3. Click **Enable live limits** next to each environment you use: **Windows**, and each WSL distro
+   user (for example **WSL: Ubuntu · beau**).
+4. Read the dialog. It shows the exact change to that environment's `settings.json` and, if you
+   already have a status line, the command the bridge will pass the data on to. Click **Enable live
+   limits**.
+5. Send any message in Claude Code. The gauges fill in after its next status line update.
+
+What it changes:
+
+```diff
+ {
+   "theme": "dark",
+   "statusLine": {
+     "type": "command",
+-    "command": "~/.claude/statusline.sh",
++    "command": "powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"C:/Users/you/.claude-session-dashboard/bin/statusline.ps1\"",
+     "padding": 0
+   }
+ }
+```
+
+- Only the `statusLine` value changes. Other keys, their order and the file's formatting stay
+  byte-for-byte the same. `padding` and `refreshInterval` are kept.
+- Before writing, `settings.json` is copied to
+  `%APPDATA%\ClaudeSessionDashboard\backups\settings\<environment>-<time>-settings.json`
+  (**Backups** opens the folder). The app refuses to edit a `settings.json` that isn't valid JSON, or
+  one that changed after you reviewed the diff.
+- The bridge script goes to `%USERPROFILE%\.claude-session-dashboard\bin\statusline.ps1` on Windows
+  and `~/.claude-session-dashboard/bin/statusline.sh` in WSL (POSIX `sh`, no `jq` or `node` needed).
+  It saves each payload atomically to `~/.claude-session-dashboard/live/<session-id>.json` and
+  `latest.json`.
+- **Your existing status line keeps working.** If you had one, the bridge passes it the same JSON and
+  prints its output (on Windows through Git Bash when Claude Code uses it, otherwise PowerShell). If you
+  didn't, it prints `Opus · 5h 23% · week 41% · ctx 8%`. On any error it prints nothing and exits 0.
+- **Disable** (same dialog) restores your previous `statusLine` exactly: the original file when
+  nothing else changed since, otherwise just the old `statusLine` value. If there was no
+  `settings.json` before, Disable leaves `{}` (the app never deletes files in `.claude`).
+- Every reading is kept forever in `%APPDATA%\ClaudeSessionDashboard\limits-history.ndjson`.
+- Settings shows each environment's status and when data last arrived. Without the bridge, the
+  5-hour gauge falls back to a log-only estimate of the current 5-hour block (like `ccusage blocks`).
+
+Notes: the `sh` bridge runs in about 20 ms. On Windows, PowerShell's own startup adds roughly
+0.2–0.4 s; Claude Code runs the status line in the background, so you won't wait on it. `rate_limits`
+only appears for Claude subscriptions, and only after the first response in a session.
+
+### Add an API key
+
+**Settings → Accounts & API credits → Add API key…**, give it a nickname and paste the key.
+
+- **Standard keys** (`sk-ant-api…`) let you run sessions on API credits and track what they cost.
+  The app makes no network calls with them.
+- **Admin keys** (`sk-ant-admin…`) also pull your organization's daily usage and cost from the
+  Usage & Cost Admin API (refresh on demand, or every 15 min / hourly / 6 h). Individual accounts
+  can't create Admin keys; they need an organization in the Claude Console.
+- Keys are encrypted with Windows (Electron `safeStorage`, which uses DPAPI) and stored only as
+  ciphertext in `%APPDATA%\ClaudeSessionDashboard\accounts.json`. They're shown masked
+  (`sk-ant-api03-…Q7xA`), never logged, never sent to the window, and never written in plain text. If
+  encryption isn't available, the app refuses to store the key.
+- **Credit grants:** there's no API for your remaining balance, so enter each grant you receive
+  (amount, date, optional expiry) under the key. The Usage view shows the balance, spending this
+  week and month, the burn rate, how long the credits last at this pace, and grants that expire soon.
+
+**Running a session on API credits:** in the Resume, Fork or **New session** dialog, change **Billing**
+from **Subscription (Max 5x)** to **API key: <nickname>**. Tick **Always use this for <project>** to
+make it that project's default; the overall default is in Settings.
+
+- The key goes only into the environment of that one terminal: `ANTHROPIC_API_KEY` for Windows
+  sessions, and `ANTHROPIC_API_KEY` plus `WSLENV=ANTHROPIC_API_KEY/u` for WSL sessions. It's never put
+  on the command line (where other programs could see it), in `settings.json`, in shell profiles, in
+  global environment variables or in logs. "Copy resume command" never includes it.
+- API-billed launches open **PowerShell** instead of Windows Terminal: a new Windows Terminal window
+  can join one that's already running and get that window's environment instead of the key. The
+  dialog says so.
+- Claude Code may ask once to confirm that it should use the key.
+- Sessions get a **Max** or **API · nickname** badge. Sessions launched outside the app are inferred
+  from the status line bridge: `rate_limits` means your subscription; a cost without `rate_limits`
+  most likely means API. Otherwise the billing shows as unknown. You can't detect it from the log
+  files alone.
+
+### What the numbers mean (and their limits)
+
+- **5-hour / weekly %**: exactly what Claude Code reported in its last status line update. "Updated
+  35 min ago" tells you how old it is; after 1 hour it says "open Claude Code to refresh". A window
+  whose reset time has passed shows 0% until the next update.
+- **Tokens in this window**: subscription-billed tokens from your logs since the window started
+  (reset time minus 5 hours or 7 days).
+- **Pace**: for the 5-hour window, the trend of the last 90 minutes of readings; for the week, the
+  average since the week started (so nights and days off count). "On pace to hit 100% at …" is a
+  straight-line projection.
+- **Token types**: _input_ is new prompt text, _output_ is what Claude wrote, _cache write_ is
+  context stored in the prompt cache, _cache read_ is context re-read from the cache. Cache reads are
+  cheap and are usually 90%+ of Claude Code's volume. Every API response is counted once (deduped by
+  message id + request id, like ccusage), including subagent transcripts and forked sessions.
+- **Cost / ≈ $**: an estimate at API list prices from the editable price table (Settings → Usage),
+  filled in from Anthropic's published prices on 22 Oct 2026. On a subscription you don't pay this;
+  it's a way to compare. The credits tracker prefers Claude Code's own `cost.total_cost_usd` for each
+  API-billed session and only falls back to the price table when that's missing. Haiku 5.5's higher
+  price above 100K-token prompts isn't modelled.
+- **Period cards**: the change compares with the same elapsed part of the previous day, week or month.
+- **Implied capacity**: for each window, weighted tokens used ÷ the reported %. Weights (Settings →
+  Usage) default to API price ratios: output ×5, cache write ×1.25, input ×1, cache read ×0.1.
+  Anthropic's limits aren't purely token counts, so read this as a trend: a lasting drop of 15% or
+  more versus the previous month is flagged. Points are colored by the window's main model family.
+- **Trends**: weekly per model or per Claude Code version: output per response and per request,
+  response time (median, ignoring gaps over 10 minutes), tool error rate, API errors and retries,
+  assistant turns and tool calls per request, interruptions and corrections (messages after an
+  interruption, or starting with "no", "wrong", "that's not"), cache read ratio, thinking blocks and
+  their length (newer Claude Code versions often don't save thinking text), and context window use
+  (from the bridge). They depend on what you were working on, so they're indicators, not proof.
+- **Admin API figures** cover the whole organization (every key and person), not just this computer.
+- **Verify against ccusage** (Settings → Usage) runs `ccusage daily --json` if it's installed and
+  compares per day. ccusage only reads the Windows profile, so it's compared with Windows sessions.
+
+### Where the data lives
+
+| File (in `%APPDATA%\ClaudeSessionDashboard\`)           | What's in it                                                                                                   |
+| ------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `usage\records-YYYY-MM.ndjson`                          | One line per API response: time, session, project, environment, model, version, stop reason, every token count |
+| `usage\turns-YYYY-MM.ndjson`, `usage\limit-hits.ndjson` | Per-request metrics for Trends, and every "usage limit reached" message                                        |
+| `limits-history.ndjson`                                 | Every status line reading                                                                                      |
+| `accounts.json`                                         | API keys (encrypted), credit grants, cached Admin reports                                                      |
+| `bridge.json`, `backups\settings\`                      | What the installer changed, and the `settings.json` backups                                                    |
+
+**Recalculate usage** (Usage view or Settings → Usage) re-reads every session from scratch.
+
 ## Screenshots
 
-|                                   |                                              |
-| --------------------------------- | -------------------------------------------- |
-| ![Tool calls](docs/tools.png)     | ![Resume dialog](docs/resume-dialog.png)     |
-| ![Find in session](docs/find.png) | ![Command palette](docs/command-palette.png) |
-| ![Settings](docs/settings.png)    | ![Light theme](docs/main-light.png)          |
+|                                                    |                                                      |
+| -------------------------------------------------- | ---------------------------------------------------- |
+| ![Tool calls](docs/tools.png)                      | ![Resume dialog](docs/resume-dialog.png)             |
+| ![Find in session](docs/find.png)                  | ![Command palette](docs/command-palette.png)         |
+| ![Settings](docs/settings.png)                     | ![Light theme](docs/main-light.png)                  |
+| ![Enable live limits](docs/enable-live-limits.png) | ![Disable live limits](docs/disable-live-limits.png) |
 
 ## How it works
 
@@ -201,11 +387,51 @@ These are choices I made where the spec left room, or had to deviate:
 - **Code fonts:** JetBrains Mono ligatures are turned off so code shows the characters that are really
   there (`=>` stays `=>`).
 
+### Phase 5 decisions
+
+- **Dates and fixtures clock.** Fixtures mode runs on a clock fixed at the end of the sample data
+  (22 Oct 2026, 3:40 PM UTC), so "today", countdowns and trends always look full. The real app uses
+  the real clock.
+- **The bridge lives in `~/.claude-session-dashboard/`**, next to `.claude` in each environment's home
+  (as the spec's `live/` folder does), so the WSL script runs from the Linux file system and stays
+  fast. The app writes nothing else outside its data folder.
+- **Status line format** was checked against Claude Code's current docs
+  (`code.claude.com/docs/en/statusline`): `rate_limits.*.used_percentage` and `resets_at` in epoch
+  seconds, `cost.total_cost_usd`, `context_window.used_percentage`. Parsing still accepts epoch
+  milliseconds and ISO dates, missing windows and nulls.
+- **Windows command uses forward slashes** in the script path, because Claude Code on Windows runs
+  status line commands through Git Bash when it's installed, and Git Bash drops backslashes.
+- **API billing always opens PowerShell** (not Windows Terminal), because the key can't be passed to
+  a new Windows Terminal tab safely. Verified by design rather than on a real Windows Terminal, since
+  this was built in a Linux cloud session.
+- **Admin API calls use Node's `fetch` in the main process**, so the window's own network block
+  stays in place. URLs are built by one function that only allows the two reporting endpoints.
+- **Status bar gauges** sit in the title bar, which is the app's existing status area.
+- **Tray icon** is drawn by the window (a ring with the 5-hour %) and handed to the tray as a PNG.
+- **Colors** were checked with a color-blind-safety validator in both themes: token types are blue
+  (cache read), aqua (cache write), violet (input) and pink (output); model families are orange
+  (Opus), blue (Sonnet), aqua (Haiku) and violet (Fable), with older versions in lighter shades.
+  Red only ever means a limit over 90%.
+- **Implied capacity uses one reading per window** (the last, highest one), and skips readings under
+  10% (5-hour) or 8% (weekly), which are too coarse.
+- **Not detectable from logs:** whether a session ran on API billing. It comes from launch tags and
+  the bridge.
+- **New dependency:** `recharts` 3.10.1 (latest stable), with `react-is` 19.3.1 as its peer.
+- **Testing the PowerShell bridge:** `tests/powershell/statusline.Tests.ps1` is a Pester 5 test
+  (`Invoke-Pester .\tests\powershell` on Windows). It isn't part of `npm test`, which runs anywhere;
+  the `sh` bridge is tested there. Manual check:
+  `'{"session_id":"t","model":{"display_name":"Opus"},"rate_limits":{"five_hour":{"used_percentage":12,"resets_at":1738425600}}}' | powershell -NoProfile -File resources\bridge\statusline.ps1`
+  should print `Opus · 5h 12%` and create `%USERPROFILE%\.claude-session-dashboard\live\t.json`.
+
 ## Troubleshooting
 
 - **A WSL distro shows "Can't read".** Open the distro once (for example `wsl -d Ubuntu`), then press
   <kbd>F5</kbd> in the app to rescan.
 - **Resume opens a window that closes immediately (WSL).** Check that `claude` works in a login shell:
   `wsl -d <distro> -- bash -lic "claude --version"`.
+- **The gauges stay empty after enabling live limits.** Send a message in Claude Code (the bridge
+  only runs on status line updates), and check that the environment says "Receiving data" in
+  Settings → Live limits. `rate_limits` only exists for Pro/Max subscriptions. In WSL, check
+  `sh ~/.claude-session-dashboard/bin/statusline.sh < ~/.claude-session-dashboard/live/latest.json`.
 - **Nothing shows up.** Open Settings and check the scan sources. Add your `.claude` folder with
   **Add folder…** if it lives somewhere unusual.

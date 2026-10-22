@@ -42,7 +42,13 @@ const api: CsdApi = {
   onUsageChanged: (cb) => on('usage:changed', cb),
   recalculateUsage: () => ipcRenderer.invoke('usage:recalculate'),
   exportUsageCsv: (q, perRecord) => ipcRenderer.invoke('usage:exportCsv', q, perRecord),
-  verifyCcusage: () => ipcRenderer.invoke('usage:verifyCcusage')
+  verifyCcusage: () => ipcRenderer.invoke('usage:verifyCcusage'),
+
+  getLimits: () => ipcRenderer.invoke('limits:state'),
+  onLimitsChanged: (cb) => on('limits:changed', cb),
+  planBridge: (id, action) => ipcRenderer.invoke('bridge:plan', id, action),
+  applyBridge: (id, action, token) => ipcRenderer.invoke('bridge:apply', id, action, token),
+  openBackupFolder: () => ipcRenderer.invoke('bridge:openBackups')
 }
 
 contextBridge.exposeInMainWorld('csd', api)

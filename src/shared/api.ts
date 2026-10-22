@@ -20,6 +20,7 @@ import type {
   UsageReport,
   UsageStatus
 } from './usage/types'
+import type { BridgeApplyResult, BridgePlan, LimitsState } from './usage/limits'
 
 export interface SearchHit {
   key: string
@@ -69,4 +70,15 @@ export interface CsdApi {
   recalculateUsage(): Promise<UsageStatus>
   exportUsageCsv(query: UsageQuery, perRecord: boolean): Promise<ExportResult>
   verifyCcusage(): Promise<CcusageComparison>
+
+  // Live limits and the status line bridge
+  getLimits(): Promise<LimitsState>
+  onLimitsChanged(cb: () => void): () => void
+  planBridge(sourceId: string, action: 'install' | 'uninstall'): Promise<BridgePlan>
+  applyBridge(
+    sourceId: string,
+    action: 'install' | 'uninstall',
+    token: string
+  ): Promise<BridgeApplyResult>
+  openBackupFolder(): Promise<void>
 }

@@ -7,6 +7,7 @@ directories:
 files:
   - out/**
   - resources/icon.png
+  - resources/bridge/**
   - package.json
   - '!**/*.map'
 npmRebuild: false

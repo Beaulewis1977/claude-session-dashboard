@@ -4,6 +4,7 @@ import { dirname } from 'node:path'
 import { clockOffset } from '@shared/clock'
 import { sessionToMarkdown } from '@shared/markdown'
 import { sanitizePrices } from '@shared/usage/pricing'
+import { sanitizePlan, sanitizeThresholds, sanitizeWeights } from '@shared/usage/limits'
 import type {
   AppInfo,
   AppSettings,
@@ -49,7 +50,11 @@ function publicSettings(s: SettingsFile): AppSettings {
     extraFolders: [...s.extraFolders],
     scanStoppedDistros: s.scanStoppedDistros,
     weekStart: s.weekStart === 'sunday' ? 'sunday' : 'monday',
-    prices: s.prices.map((p) => ({ ...p }))
+    prices: s.prices.map((p) => ({ ...p })),
+    plan: s.plan,
+    alertsEnabled: s.alertsEnabled,
+    alertThresholds: [...s.alertThresholds],
+    capacityWeights: { ...s.capacityWeights }
   }
 }
 
@@ -125,6 +130,13 @@ export function registerIpc(deps: IpcDeps): void {
         const prices = sanitizePrices(p.prices)
         if (prices) s.prices = prices
       }
+      const plan = sanitizePlan(p.plan)
+      if (plan) s.plan = plan
+      if (typeof p.alertsEnabled === 'boolean') s.alertsEnabled = p.alertsEnabled
+      const th = sanitizeThresholds(p.alertThresholds)
+      if (th) s.alertThresholds = th
+      const w = sanitizeWeights(p.capacityWeights)
+      if (w && 'capacityWeights' in p) s.capacityWeights = w
     })
     deps.onSettingsChanged?.()
     await settings.flush()

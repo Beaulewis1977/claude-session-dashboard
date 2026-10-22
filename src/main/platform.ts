@@ -26,6 +26,8 @@ export interface Platform {
   spawnDetached(cmd: LaunchCommand): Promise<void>
   /** Output of `ccusage daily --json`, or undefined if ccusage isn't installed. */
   runCcusage(): Promise<string | undefined>
+  /** Git Bash (Claude Code on Windows runs status line commands with it when installed). */
+  gitBash(): Promise<string | undefined>
 }
 
 async function exists(p: string): Promise<boolean> {
@@ -102,6 +104,30 @@ export function createRealPlatform(): Platform {
         })
       })
     },
+    async gitBash() {
+      if (!isWindows) return undefined
+      const candidates = [
+        process.env.CLAUDE_CODE_GIT_BASH_PATH,
+        join(process.env.ProgramFiles ?? 'C:\\Program Files', 'Git', 'bin', 'bash.exe'),
+        join(
+          process.env['ProgramFiles(x86)'] ?? 'C:\\Program Files (x86)',
+          'Git',
+          'bin',
+          'bash.exe'
+        ),
+        process.env.LOCALAPPDATA &&
+          join(process.env.LOCALAPPDATA, 'Programs', 'Git', 'bin', 'bash.exe')
+      ]
+      for (const c of candidates) if (c && (await exists(c))) return c
+      const git = await new Promise<string | undefined>((resolve) =>
+        execFile('where.exe', ['git.exe'], { windowsHide: true, timeout: 4000 }, (err, out) =>
+          resolve(err ? undefined : String(out).split(/\r?\n/)[0]?.trim())
+        )
+      )
+      // ...\Git\cmd\git.exe → ...\Git\bin\bash.exe
+      const bash = git ? join(git, '..', '..', 'bin', 'bash.exe') : undefined
+      return bash && (await exists(bash)) ? bash : undefined
+    },
     runCcusage() {
       return new Promise((resolve) => {
         // Fixed arguments only; `shell` lets Windows find the npm `ccusage.cmd` shim.
@@ -154,6 +180,9 @@ export function createFixturesPlatform(fixturesDir: string, sourcesDir: string):
       // Never spawn anything in fixtures mode.
     },
     async runCcusage() {
+      return undefined
+    },
+    async gitBash() {
       return undefined
     }
   }

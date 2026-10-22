@@ -30,3 +30,33 @@ export function assertUserWrite(target: string): void {
     throw new UnsafeWriteError(`Refusing to write inside a .claude folder: ${target}`)
   }
 }
+
+const BRIDGE_DIR = '.claude-session-dashboard'
+
+/**
+ * Exception #1 (Phase 5): the opt-in status line installer may write exactly
+ * one kind of file inside `.claude`: `<home>/.claude/settings.json`.
+ */
+export function assertClaudeSettingsWrite(target: string): void {
+  const parts = resolve(target).split(/[\\/]+/)
+  const name = parts[parts.length - 1]?.toLowerCase()
+  const parent = parts[parts.length - 2]?.toLowerCase()
+  if (
+    parent !== '.claude' ||
+    !(name === 'settings.json' || /^settings\.json\.csd-[0-9a-f]+\.tmp$/.test(name ?? ''))
+  ) {
+    throw new UnsafeWriteError(
+      `Refusing to write anything in .claude except settings.json: ${target}`
+    )
+  }
+}
+
+/** The bridge's own folder in each Claude home: `<home>/.claude-session-dashboard`. */
+export function assertBridgeWrite(target: string): void {
+  const segs = resolve(target)
+    .split(/[\\/]+/)
+    .map((s) => s.toLowerCase())
+  if (isInsideClaudeDir(target) || !segs.includes(BRIDGE_DIR)) {
+    throw new UnsafeWriteError(`Refusing to write outside the bridge folder: ${target}`)
+  }
+}

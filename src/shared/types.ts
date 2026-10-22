@@ -2,6 +2,7 @@
 
 import { DEFAULT_PRICES, type ModelPrice } from './usage/pricing'
 import type { WeekStart } from './usage/types'
+import { DEFAULT_WEIGHTS, type CapacityWeights, type Plan } from './usage/limits'
 
 export type EnvKind = 'windows' | 'wsl'
 
@@ -155,6 +156,13 @@ export interface AppSettings {
   weekStart: WeekStart
   /** API prices used for cost estimates (USD per million tokens). */
   prices: ModelPrice[]
+  /** Claude plan, for labels and expectations. */
+  plan: Plan
+  /** Desktop notifications when a limit window passes these percentages. */
+  alertsEnabled: boolean
+  alertThresholds: number[]
+  /** Token weights for the implied-capacity estimate. */
+  capacityWeights: CapacityWeights
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -164,7 +172,11 @@ export const DEFAULT_SETTINGS: AppSettings = {
   extraFolders: [],
   scanStoppedDistros: false,
   weekStart: 'monday',
-  prices: DEFAULT_PRICES
+  prices: DEFAULT_PRICES,
+  plan: 'max5',
+  alertsEnabled: true,
+  alertThresholds: [75, 90],
+  capacityWeights: DEFAULT_WEIGHTS
 }
 
 export interface ScanState {

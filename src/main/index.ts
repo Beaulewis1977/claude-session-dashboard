@@ -1,13 +1,27 @@
 import { join } from 'node:path'
-import { app, BrowserWindow, nativeTheme, session, shell } from 'electron'
+import { app, BrowserWindow, nativeTheme, Notification, session, shell } from 'electron'
 import { FIXTURES_NOW, setClockOffset } from '@shared/clock'
 import { DEFAULT_PRICES, sanitizePrices } from '@shared/usage/pricing'
+import {
+  DEFAULT_WEIGHTS,
+  sanitizePlan,
+  sanitizeThresholds,
+  sanitizeWeights
+} from '@shared/usage/limits'
 import type { ThemePref } from '@shared/types'
-import { fixturesLayout, prepareFixtures, seedFixtureData } from './fixtures'
+import {
+  fixturesLayout,
+  prepareFixtures,
+  seedFixtureBridge,
+  seedFixtureData,
+  seedFixtureUsage
+} from './fixtures'
 import { registerIpc } from './ipc'
 import { registerUsageIpc } from './ipc-usage'
 import { createFixturesPlatform, createRealPlatform, type Platform } from './platform'
+import { BridgeInstaller, createBridgeStore } from './services/bridge'
 import { Launcher } from './services/launcher'
+import { LimitsService } from './services/limits'
 import { SessionService } from './services/sessions'
 import { appPaths, createMetadataStore, createSettingsStore } from './services/store'
 import { UsageService, usagePaths } from './services/usage'
@@ -99,8 +113,15 @@ async function main(): Promise<void> {
   settings.update((s) => {
     if (s.weekStart !== 'sunday') s.weekStart = 'monday'
     s.prices = sanitizePrices(s.prices) ?? DEFAULT_PRICES.map((p) => ({ ...p }))
+    s.plan = sanitizePlan(s.plan) ?? 'max5'
+    if (typeof s.alertsEnabled !== 'boolean') s.alertsEnabled = true
+    s.alertThresholds = sanitizeThresholds(s.alertThresholds) ?? [75, 90]
+    s.capacityWeights = sanitizeWeights(s.capacityWeights) ?? { ...DEFAULT_WEIGHTS }
   })
-  if (FIXTURES) await seedFixtureData(appRoot, paths.archiveDir, metadata)
+  if (FIXTURES) {
+    await seedFixtureData(appRoot, paths.archiveDir, metadata)
+    await seedFixtureUsage(appRoot, paths.dataDir)
+  }
 
   const sessions = new SessionService(platform, paths, metadata, settings)
   const watcher = new SourceWatcher(sessions)
@@ -119,7 +140,36 @@ async function main(): Promise<void> {
     applyTheme,
     onSettingsChanged: () => usage.emit('changed')
   })
-  registerUsageIpc({ usage, platform })
+  const bridgeStore = createBridgeStore(paths.dataDir)
+  await bridgeStore.load()
+  const installer = new BridgeInstaller(bridgeStore, {
+    dataDir: paths.dataDir,
+    scriptsDir: join(appRoot, 'resources', 'bridge'),
+    gitBash: () => platform.gitBash()
+  })
+  const limits = new LimitsService(
+    sessions,
+    usage,
+    installer,
+    bridgeStore,
+    join(paths.dataDir, 'limits-history.ndjson'),
+    paths.dataDir,
+    () => ({
+      plan: settings.value.plan,
+      alertsEnabled: settings.value.alertsEnabled,
+      alertThresholds: settings.value.alertThresholds,
+      weights: settings.value.capacityWeights,
+      prices: settings.value.prices
+    }),
+    (title, body) => {
+      if (!Notification.isSupported()) return
+      const n = new Notification({ title, body, icon: join(appRoot, 'resources', 'icon.png') })
+      n.on('click', () => showUsage())
+      n.show()
+    }
+  )
+  usage.on('changed', () => limits.emit('changed'))
+  registerUsageIpc({ usage, limits, installer, sessions, platform })
 
   nativeTheme.themeSource = settings.value.theme
   createWindow(settings.value.window)
@@ -127,7 +177,10 @@ async function main(): Promise<void> {
   void sessions
     .start()
     .then(() => watcher.restart())
-    .then(() => usage.start())
+    .then(() => Promise.all([usage.start(), limits.start()]))
+    .then(async () => {
+      if (FIXTURES) await seedFixtureBridge(paths.dataDir, sessions, installer)
+    })
 
   let quitting = false
   app.on('before-quit', (e) => {
@@ -138,6 +191,8 @@ async function main(): Promise<void> {
       await watcher.close().catch(() => undefined)
       await sessions.idle().catch(() => undefined)
       await usage.idle().catch(() => undefined)
+      limits.stop()
+      await bridgeStore.flush().catch(() => undefined)
       await Promise.all([metadata.flush(), settings.flush()]).catch(() => undefined)
       app.quit()
     })()
@@ -209,6 +264,15 @@ async function main(): Promise<void> {
 
     if (process.env.ELECTRON_RENDERER_URL) void win.loadURL(process.env.ELECTRON_RENDERER_URL)
     else void win.loadFile(join(__dirname, '../renderer/index.html'))
+  }
+
+  function showUsage(): void {
+    const w = mainWindow
+    if (!w || w.isDestroyed()) return
+    if (w.isMinimized()) w.restore()
+    w.show()
+    w.focus()
+    w.webContents.send('app:showUsage')
   }
 
   app.on('window-all-closed', () => app.quit())

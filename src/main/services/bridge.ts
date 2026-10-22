@@ -1,0 +1,372 @@
+// Installing and removing the status line bridge (Phase 5, exception #1).
+//
+// Only when the user clicks "Enable live limits" (and confirms the exact
+// diff), the app:
+//   1. backs up settings.json to the app data folder,
+//   2. writes the bridge script to <home>/.claude-session-dashboard/bin/,
+//   3. changes only the `statusLine` key of <home>/.claude/settings.json.
+// "Disable" puts the previous `statusLine` back exactly. Nothing is deleted.
+
+import { createHash, randomBytes } from 'node:crypto'
+import { copyFile, mkdir, readFile, rename, unlink, writeFile } from 'node:fs/promises'
+import { dirname, join } from 'node:path'
+import type { BridgeApplyResult, BridgeEnv, BridgePlan } from '@shared/usage/limits'
+import type { SourceInfo } from '@shared/types'
+import { JsonStore } from '../core/json-store'
+import {
+  assertAppDataWrite,
+  assertBridgeWrite,
+  assertClaudeSettingsWrite
+} from '../core/safe-paths'
+import { diffLines, rawMember, removeMember, scanTopLevel, setMember } from '../core/settings-edit'
+
+export const BRIDGE_DIR_NAME = '.claude-session-dashboard'
+const MARKER = `${BRIDGE_DIR_NAME}/bin/statusline`
+
+export interface InstallRecord {
+  installedAt: string
+  settingsPath: string
+  bridgeDir: string
+  command: string
+  /** Did settings.json exist before? */
+  fileExisted: boolean
+  /** Exact text of the previous statusLine value, if there was one. */
+  previousRaw?: string
+  /** Exact text of settings.json before and after the change. */
+  originalText?: string
+  writtenText: string
+  backupPath?: string
+}
+
+export interface BridgeFile {
+  version: 1
+  installs: Record<string, InstallRecord>
+  /** Alerts already shown, keyed by `${window}:${resetsAt}`. */
+  alerted: Record<string, number[]>
+}
+
+export function createBridgeStore(dataDir: string): JsonStore<BridgeFile> {
+  return new JsonStore<BridgeFile>(join(dataDir, 'bridge.json'), dataDir, () => ({
+    version: 1,
+    installs: {},
+    alerted: {}
+  }))
+}
+
+export interface BridgeHost {
+  /** Where the app data lives (backups go to <dataDir>/backups/settings). */
+  dataDir: string
+  /** Bridge script sources (resources/bridge). */
+  scriptsDir: string
+  /** Git Bash, used on Windows to run a chained bash status line. */
+  gitBash: () => Promise<string | undefined>
+}
+
+export interface EnvPaths {
+  sourceId: string
+  label: string
+  env: SourceInfo['env']
+  user?: string
+  /** Host paths. */
+  home: string
+  settingsPath: string
+  bridgeDir: string
+  /** The command Claude Code will run. */
+  command: string
+}
+
+const shQuote = (s: string): string =>
+  /^[A-Za-z0-9_./~-]+$/.test(s) ? s : `'${s.replace(/'/g, `'\\''`)}'`
+
+/** Paths and the status line command for one Claude home source. */
+export function envPaths(src: SourceInfo): EnvPaths | undefined {
+  if (src.kind !== 'auto' || !src.claudeSettingsPath) return undefined
+  const settingsPath = src.claudeSettingsPath
+  const home = dirname(dirname(settingsPath))
+  const bridgeDir = join(home, BRIDGE_DIR_NAME)
+  let command: string
+  if (src.env === 'windows') {
+    // Forward slashes: Claude Code may run this through Git Bash, which eats backslashes.
+    const script = `${bridgeDir.replace(/\\/g, '/')}/bin/statusline.ps1`
+    command = `powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "${script}"`
+  } else {
+    const linuxHome = src.user === 'root' ? '/root' : `/home/${src.user ?? ''}`
+    command = `sh ${shQuote(`${linuxHome}/${BRIDGE_DIR_NAME}/bin/statusline.sh`)}`
+  }
+  return {
+    sourceId: src.id,
+    label: src.label,
+    env: src.env,
+    user: src.user,
+    home,
+    settingsPath,
+    bridgeDir,
+    command
+  }
+}
+
+export function isBridgeCommand(cmd: unknown): boolean {
+  return typeof cmd === 'string' && cmd.replace(/\\/g, '/').includes(MARKER)
+}
+
+async function readText(p: string): Promise<string | undefined> {
+  try {
+    return await readFile(p, 'utf8')
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return undefined
+    throw err
+  }
+}
+
+const tokenOf = (text: string | undefined): string =>
+  createHash('sha256')
+    .update(text ?? '\0missing')
+    .digest('hex')
+    .slice(0, 32)
+
+function statusLineOf(text: string | undefined): Record<string, unknown> | undefined {
+  if (!text) return undefined
+  const v = (JSON.parse(text) as Record<string, unknown>).statusLine
+  return v && typeof v === 'object' && !Array.isArray(v)
+    ? (v as Record<string, unknown>)
+    : undefined
+}
+
+function commandOf(text: string | undefined): string | undefined {
+  const c = statusLineOf(text)?.command
+  return typeof c === 'string' && c.trim() ? c : undefined
+}
+
+/** settings.json with the bridge as the status line (keeps padding/refreshInterval). */
+function installedText(before: string | undefined, command: string): string {
+  const current = statusLineOf(before)
+  const value: Record<string, unknown> = { type: 'command', command }
+  if (typeof current?.padding === 'number') value.padding = current.padding
+  if (typeof current?.refreshInterval === 'number') value.refreshInterval = current.refreshInterval
+  return before === undefined
+    ? `${JSON.stringify({ statusLine: value }, null, 2)}\n`
+    : setMember(before, 'statusLine', value)
+}
+
+/** Write settings.json atomically in place (temp file in the same folder, then rename). */
+async function writeSettings(path: string, text: string): Promise<void> {
+  assertClaudeSettingsWrite(path)
+  const tmp = `${path}.csd-${randomBytes(4).toString('hex')}.tmp`
+  assertClaudeSettingsWrite(tmp)
+  await writeFile(tmp, text, 'utf8')
+  let lastErr: unknown
+  for (let i = 0; i < 5; i++) {
+    try {
+      await rename(tmp, path)
+      return
+    } catch (err) {
+      lastErr = err
+      await new Promise((r) => setTimeout(r, 60 * (i + 1)))
+    }
+  }
+  await unlink(tmp).catch(() => undefined)
+  throw lastErr
+}
+
+async function writeBridgeFile(path: string, text: string): Promise<void> {
+  assertBridgeWrite(path)
+  await mkdir(dirname(path), { recursive: true })
+  const tmp = `${path}.${randomBytes(4).toString('hex')}.tmp`
+  await writeFile(tmp, text, 'utf8')
+  await rename(tmp, path)
+}
+
+export class BridgeInstaller {
+  constructor(
+    private readonly store: JsonStore<BridgeFile>,
+    private readonly host: BridgeHost
+  ) {}
+
+  get backupDir(): string {
+    return join(this.host.dataDir, 'backups', 'settings')
+  }
+
+  record(sourceId: string): InstallRecord | undefined {
+    return this.store.value.installs[sourceId]
+  }
+
+  async describe(src: SourceInfo, lastReceivedAt?: number): Promise<BridgeEnv | undefined> {
+    const p = envPaths(src)
+    if (!p) return undefined
+    const rec = this.record(src.id)
+    const env: BridgeEnv = {
+      sourceId: p.sourceId,
+      label: p.label,
+      env: p.env,
+      user: p.user,
+      settingsPath: p.settingsPath,
+      bridgeDir: p.bridgeDir,
+      installed: false,
+      lastReceivedAt
+    }
+    if (src.status !== 'ok' && src.status !== 'missing') {
+      env.unavailable = src.statusMessage ?? "This environment can't be read right now."
+      env.installed = !!rec
+      env.installedAt = rec?.installedAt
+      return env
+    }
+    try {
+      const text = await readText(p.settingsPath)
+      const cmd = commandOf(text)
+      env.installed = isBridgeCommand(cmd)
+      if (rec) {
+        env.installedAt = rec.installedAt
+        env.chained = rec.previousRaw ? commandOf(`{"statusLine":${rec.previousRaw}}`) : undefined
+        env.changedSinceInstall = !env.installed
+      }
+    } catch {
+      env.unavailable = "settings.json isn't valid JSON, so the app won't change it."
+    }
+    return env
+  }
+
+  /** Compute the exact change, without writing anything. */
+  async plan(src: SourceInfo, action: 'install' | 'uninstall'): Promise<BridgePlan> {
+    const p = envPaths(src)
+    const base = {
+      sourceId: src.id,
+      action,
+      label: src.label,
+      settingsPath: p?.settingsPath ?? '',
+      backupDir: this.backupDir,
+      createsFile: false,
+      diff: [],
+      token: ''
+    }
+    if (!p) return { ...base, error: 'Live limits can only be enabled for a Claude home folder.' }
+    let before: string | undefined
+    try {
+      before = await readText(p.settingsPath)
+    } catch (err) {
+      return { ...base, error: `Can't read settings.json: ${(err as Error).message}` }
+    }
+    let after: string
+    let chained: string | undefined
+    try {
+      if (before !== undefined) {
+        JSON.parse(before) // must be valid JSON
+        scanTopLevel(before)
+      }
+      const current = statusLineOf(before)
+      if (action === 'install') {
+        if (isBridgeCommand(current?.command))
+          return { ...base, noop: true, token: tokenOf(before) }
+        chained = commandOf(before)
+        after = installedText(before, p.command)
+      } else {
+        if (!isBridgeCommand(current?.command))
+          return { ...base, noop: true, token: tokenOf(before) }
+        const rec = this.record(src.id)
+        after = this.restoredText(before!, rec)
+        chained = rec?.previousRaw ? commandOf(`{"statusLine":${rec.previousRaw}}`) : undefined
+      }
+      JSON.parse(after) // sanity: the result must still be valid JSON
+    } catch (err) {
+      return {
+        ...base,
+        error: `settings.json isn't valid JSON (${(err as Error).message}), so the app won't change it.`
+      }
+    }
+    return {
+      ...base,
+      createsFile: before === undefined,
+      diff: diffLines(before ?? '', after),
+      chained,
+      token: tokenOf(before)
+    }
+  }
+
+  /** What "Disable" writes: the original file if nothing else changed, else just the old statusLine. */
+  private restoredText(current: string, rec: InstallRecord | undefined): string {
+    if (rec && rec.originalText !== undefined && current === rec.writtenText)
+      return rec.originalText
+    if (rec && current === rec.writtenText && !rec.fileExisted)
+      return removeMember(current, 'statusLine')
+    if (rec?.previousRaw !== undefined)
+      return setMember(current, 'statusLine', undefined, rec.previousRaw)
+    return removeMember(current, 'statusLine')
+  }
+
+  async apply(
+    src: SourceInfo,
+    action: 'install' | 'uninstall',
+    token: string
+  ): Promise<BridgeApplyResult> {
+    const p = envPaths(src)
+    if (!p) return { ok: false, error: 'Not a Claude home folder.' }
+    const plan = await this.plan(src, action)
+    if (plan.error) return { ok: false, error: plan.error }
+    if (plan.token !== token) {
+      return {
+        ok: false,
+        error: 'settings.json changed since you reviewed it. Review the change again.'
+      }
+    }
+    if (plan.noop) return { ok: true }
+    const before = await readText(p.settingsPath)
+
+    // 1. Back up settings.json first.
+    let backupPath: string | undefined
+    if (before !== undefined) {
+      const stamp = new Date().toISOString().replace(/[:.]/g, '-')
+      backupPath = join(
+        this.backupDir,
+        `${src.id.replace(/[^A-Za-z0-9._-]+/g, '_')}-${stamp}-settings.json`
+      )
+      assertAppDataWrite(backupPath, this.host.dataDir)
+      await mkdir(this.backupDir, { recursive: true })
+      await copyFile(p.settingsPath, backupPath)
+    }
+
+    if (action === 'install') {
+      // 2. The bridge script and the chained command (outside .claude).
+      const scriptName = p.env === 'windows' ? 'statusline.ps1' : 'statusline.sh'
+      let script = await readFile(join(this.host.scriptsDir, scriptName), 'utf8')
+      script =
+        p.env === 'windows' ? script.replace(/\r?\n/g, '\r\n') : script.replace(/\r\n/g, '\n')
+      await writeBridgeFile(join(p.bridgeDir, 'bin', scriptName), script)
+      const previous = commandOf(before)
+      if (p.env === 'windows') {
+        const shell = previous ? await this.host.gitBash() : undefined
+        await writeBridgeFile(
+          join(p.bridgeDir, 'chain.json'),
+          JSON.stringify({ command: previous ?? '', shell: shell ?? null }, null, 2) + '\n'
+        )
+      } else {
+        await writeBridgeFile(join(p.bridgeDir, 'chain.sh'), previous ? `${previous}\n` : '')
+      }
+      await mkdir(join(p.bridgeDir, 'live'), { recursive: true }).catch(() => undefined)
+
+      // 3. Only the statusLine key.
+      const after = installedText(before, p.command)
+      await writeSettings(p.settingsPath, after)
+      this.store.update((d) => {
+        d.installs[src.id] = {
+          installedAt: new Date().toISOString(),
+          settingsPath: p.settingsPath,
+          bridgeDir: p.bridgeDir,
+          command: p.command,
+          fileExisted: before !== undefined,
+          previousRaw: before !== undefined ? rawMember(before, 'statusLine') : undefined,
+          originalText: before,
+          writtenText: after,
+          backupPath
+        }
+      })
+    } else {
+      const rec = this.record(src.id)
+      const after = this.restoredText(before!, rec)
+      await writeSettings(p.settingsPath, after)
+      this.store.update((d) => {
+        delete d.installs[src.id]
+      })
+    }
+    await this.store.flush()
+    return { ok: true, backupPath }
+  }
+}

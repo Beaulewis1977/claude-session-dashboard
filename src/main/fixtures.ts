@@ -3,9 +3,12 @@
 // Files are only copied when missing; nothing is ever deleted.
 
 import { constants } from 'node:fs'
-import { access, copyFile, mkdir, readdir, readFile } from 'node:fs/promises'
+import { access, copyFile, mkdir, readdir, readFile, utimes, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
+import { FIXTURES_NOW } from '@shared/clock'
 import type { JsonStore } from './core/json-store'
+import type { BridgeInstaller } from './services/bridge'
+import type { SessionService } from './services/sessions'
 import type { MetadataFile } from './services/store'
 
 async function exists(p: string): Promise<boolean> {
@@ -102,4 +105,51 @@ export async function seedFixtureData(
     }
   })
   await metadata.flush()
+}
+
+/** Seed the limits history and the bridge's live files from fixtures/usage. */
+export async function seedFixtureUsage(appRoot: string, dataDir: string): Promise<void> {
+  const { fixturesDir, sourcesDir } = fixturesLayout(appRoot)
+  const usage = join(fixturesDir, 'usage')
+  const history = join(dataDir, 'limits-history.ndjson')
+  if (!(await exists(history))) {
+    await mkdir(dataDir, { recursive: true })
+    await copyFile(join(usage, 'limits-history.ndjson'), history, constants.COPYFILE_EXCL).catch(
+      () => undefined
+    )
+  }
+  const homes: Record<string, string> = {
+    windows: join(sourcesDir, 'windows', 'Users', 'beau'),
+    'wsl-Ubuntu-beau': join(sourcesDir, 'wsl', 'Ubuntu', 'home', 'beau')
+  }
+  for (const [source, home] of Object.entries(homes)) {
+    const from = join(usage, 'live', source)
+    if (!(await exists(from))) continue
+    const to = join(home, '.claude-session-dashboard', 'live')
+    await copyMissing(from, to, (n) => n.endsWith('.json'))
+    // Give the files the capture time on the fixtures clock.
+    const captured = Date.parse(
+      (await readFile(join(from, 'captured-at.txt'), 'utf8').catch(() => '')).trim()
+    )
+    if (!Number.isFinite(captured)) continue
+    const real = new Date(captured - (FIXTURES_NOW - Date.now()))
+    for (const n of await readdir(from)) {
+      if (n.endsWith('.json')) await utimes(join(to, n), real, real).catch(() => undefined)
+    }
+  }
+}
+
+/** Enable the bridge for the WSL home once, so Settings shows both states. */
+export async function seedFixtureBridge(
+  dataDir: string,
+  sessions: SessionService,
+  installer: BridgeInstaller
+): Promise<void> {
+  const marker = join(dataDir, '.bridge-seeded')
+  if (await exists(marker)) return
+  const src = sessions.source('wsl-Ubuntu-beau')
+  if (!src) return
+  const plan = await installer.plan(src, 'install')
+  if (!plan.error && !plan.noop) await installer.apply(src, 'install', plan.token)
+  await writeFile(marker, `${new Date().toISOString()}\n`).catch(() => undefined)
 }

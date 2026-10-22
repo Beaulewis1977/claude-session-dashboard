@@ -1,6 +1,7 @@
 // IPC for the Usage view (Phase 5).
 
-import { BrowserWindow, dialog, ipcMain } from 'electron'
+import { BrowserWindow, dialog, ipcMain, shell } from 'electron'
+import { mkdir } from 'node:fs/promises'
 import { writeFile } from 'node:fs/promises'
 import { now } from '@shared/clock'
 import { dayKey, localTimeZone } from '@shared/usage/time'
@@ -8,6 +9,9 @@ import { totalTokens } from '@shared/usage/parse'
 import type { CcusageComparison, Dimension, Period, UsageQuery } from '@shared/usage/types'
 import { assertUserWrite } from './core/safe-paths'
 import type { Platform } from './platform'
+import type { BridgeInstaller } from './services/bridge'
+import type { LimitsService } from './services/limits'
+import type { SessionService } from './services/sessions'
 import type { UsageService } from './services/usage'
 
 const PERIODS: Period[] = ['day', 'week', 'month']
@@ -31,8 +35,13 @@ export function cleanQuery(v: unknown): UsageQuery {
 
 export interface UsageIpcDeps {
   usage: UsageService
+  limits: LimitsService
+  installer: BridgeInstaller
+  sessions: SessionService
   platform: Platform
   billingOf?: (key: string) => string
+  /** Called after the bridge was enabled or disabled. */
+  onBridgeChanged?: () => void
 }
 
 /** Parse `ccusage daily --json` output into per-day totals. */
@@ -60,6 +69,30 @@ export function registerUsageIpc(deps: UsageIpcDeps): void {
 
   usage.on('changed', () => {
     for (const w of BrowserWindow.getAllWindows()) w.webContents.send('usage:changed')
+  })
+  deps.limits.on('changed', () => {
+    for (const w of BrowserWindow.getAllWindows()) w.webContents.send('limits:changed')
+  })
+
+  const action = (v: unknown): 'install' | 'uninstall' =>
+    v === 'uninstall' ? 'uninstall' : 'install'
+  const source = (id: unknown) => {
+    const src = deps.sessions.source(String(id))
+    if (!src) throw new Error('Unknown environment')
+    return src
+  }
+  ipcMain.handle('limits:state', () => deps.limits.state())
+  ipcMain.handle('bridge:plan', (_e, id, a) => deps.installer.plan(source(id), action(a)))
+  ipcMain.handle('bridge:apply', async (_e, id, a, token) => {
+    const res = await deps.installer.apply(source(id), action(a), String(token))
+    deps.onBridgeChanged?.()
+    void deps.limits.scan()
+    deps.limits.emit('changed')
+    return res
+  })
+  ipcMain.handle('bridge:openBackups', async () => {
+    await mkdir(deps.installer.backupDir, { recursive: true })
+    await shell.openPath(deps.installer.backupDir)
   })
 
   ipcMain.handle('usage:report', (_e, q) => usage.report(cleanQuery(q), deps.billingOf))

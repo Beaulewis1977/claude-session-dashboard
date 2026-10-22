@@ -10,6 +10,7 @@ import { analyzeEvents, buildMessages, parseJsonl } from '@shared/jsonl'
 import { baseName } from '@shared/format'
 import { computeTitle } from '@shared/title'
 import { detectSource, type DetectedSource } from '@shared/source-label'
+import { askQuestionOf } from '@shared/ask'
 import type {
   ArchiveRecord,
   Availability,
@@ -385,10 +386,14 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
     const meta = this.metadata.value.sessions[base.sessionId] ?? {}
     const manual = meta.source?.by === 'manual' ? meta.source : undefined
     const det = manual ? undefined : this.detectSource(base)
+    const title = computeTitle(meta, base.summary, base.firstPrompt)
+    // The dashboard's own Ask Claude runs: title them by the question.
+    const asked = title.titleSource === 'first-prompt' ? askQuestionOf(base.firstPrompt) : undefined
+    if (asked) title.title = `Ask Claude: ${asked}`
     return {
       ...base,
       meta,
-      ...computeTitle(meta, base.summary, base.firstPrompt),
+      ...title,
       billing: this.billingResolver?.(base.sessionId, meta),
       source: manual?.label ?? det!.label,
       sourceReason: manual ? 'Set by hand' : det!.reason

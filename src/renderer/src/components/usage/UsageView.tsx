@@ -5,7 +5,8 @@ import {
   Download,
   PictureInPicture2,
   PlugZap,
-  RefreshCw
+  RefreshCw,
+  Sparkles
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { now } from '@shared/clock'
@@ -30,6 +31,7 @@ import { CreditsHeroCard, LimitCard } from './Hero'
 import { MainChart, ModelShare, SummaryCards, TopSessions } from './Overview'
 import { CapacityChange, CreditsTab, LimitHistoryTab, RawTableTab } from './Tabs'
 import { TrendsTab } from './Trends'
+import { AskClaudePanel } from './AskClaude'
 
 type RangeId = 'today' | 'week' | 'month' | '7d' | '30d' | '90d' | '1y' | 'all' | 'custom'
 
@@ -186,6 +188,7 @@ export function UsageView() {
   const [tab, setTab] = useState<Tab>('trends')
   const [bridge, setBridge] = useState<BridgeEnv | null>(null)
   const [version, setVersion] = useState(0)
+  const [ask, setAsk] = useState(false)
 
   useEffect(() => api.onUsageChanged(() => setVersion((v) => v + 1)), [])
 
@@ -228,6 +231,9 @@ export function UsageView() {
               limits
             </p>
           </div>
+          <Button variant="outline" size="sm" onClick={() => setAsk(true)}>
+            <Sparkles className="text-primary" /> Ask Claude
+          </Button>
           <Button variant="ghost" size="sm" onClick={() => void api.toggleMiniMeter()}>
             <PictureInPicture2 /> Mini meter
           </Button>
@@ -382,6 +388,7 @@ export function UsageView() {
         </div>
       </div>
       {bridge && <BridgeDialog env={bridge} action="install" onClose={() => setBridge(null)} />}
+      <AskClaudePanel open={ask} onClose={() => setAsk(false)} />
     </div>
   )
 }

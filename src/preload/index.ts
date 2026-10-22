@@ -63,6 +63,12 @@ const api: CsdApi = {
   removeGrant: (id) => ipcRenderer.invoke('grants:remove', id),
   refreshAdmin: (id) => ipcRenderer.invoke('admin:refresh', id),
 
+  askStatus: () => ipcRenderer.invoke('ask:status'),
+  askPreview: (q) => ipcRenderer.invoke('ask:preview', q),
+  askRun: (id) => ipcRenderer.invoke('ask:run', id),
+  askCancel: (id) => ipcRenderer.invoke('ask:cancel', id),
+  askHistory: () => ipcRenderer.invoke('ask:history'),
+
   toggleMiniMeter: () => ipcRenderer.invoke('mini:toggle'),
   closeMiniMeter: () => ipcRenderer.invoke('mini:close'),
   setTrayImage: (dataUrl, tooltip) => ipcRenderer.invoke('tray:set', dataUrl, tooltip),

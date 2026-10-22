@@ -33,6 +33,7 @@ import { registerIpc } from './ipc'
 import { createMeter } from './meter'
 import { registerUsageIpc } from './ipc-usage'
 import { registerAccountsIpc } from './ipc-accounts'
+import { registerAskIpc } from './ipc-ask'
 import { AccountsService, createAccountsStore, type Encryptor } from './services/accounts'
 import { BillingService } from './services/billing'
 import { createFixturesPlatform, createRealPlatform, type Platform } from './platform'
@@ -283,6 +284,13 @@ async function main(): Promise<void> {
     })
   }
   registerAccountsIpc(creditsDeps)
+  const askIpc = await registerAskIpc({
+    dataDir: paths.dataDir,
+    usage,
+    limits,
+    settings,
+    simulate: FIXTURES
+  })
   limits.on('changed', () => accounts.emit('changed'))
 
   nativeTheme.themeSource = settings.value.theme
@@ -324,6 +332,7 @@ async function main(): Promise<void> {
       accounts.stop()
       await accountsStore.flush().catch(() => undefined)
       await bridgeStore.flush().catch(() => undefined)
+      await askIpc.flush().catch(() => undefined)
       await Promise.all([metadata.flush(), settings.flush()]).catch(() => undefined)
       app.quit()
     })()

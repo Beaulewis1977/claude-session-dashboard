@@ -22,6 +22,7 @@ import type {
 } from './usage/types'
 import type { BridgeApplyResult, BridgePlan, LimitsState } from './usage/limits'
 import type { CompareRange, HealthCompare } from './usage/health'
+import type { AskHistoryItem } from './ask'
 import type { Account, CreditGrant, CreditsState } from './usage/credits'
 import type { CompareResult, CompareSide, TrendGroupBy, TrendsReport } from './usage/trends'
 
@@ -113,6 +114,13 @@ export interface CsdApi {
   addGrant(grant: Omit<CreditGrant, 'id'>): Promise<CreditGrant | undefined>
   removeGrant(id: string): Promise<void>
   refreshAdmin(id: string): Promise<void>
+
+  // Ask Claude (claude -p with aggregated numbers only)
+  askStatus(): Promise<{ available: boolean; where?: string; simulated: boolean }>
+  askPreview(question: string): Promise<{ id: string; prompt: string; bytes: number }>
+  askRun(previewId: string): Promise<AskHistoryItem>
+  askCancel(previewId: string): Promise<void>
+  askHistory(): Promise<AskHistoryItem[]>
 
   // Tray and mini meter
   toggleMiniMeter(): Promise<boolean>

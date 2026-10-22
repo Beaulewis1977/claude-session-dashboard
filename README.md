@@ -23,9 +23,17 @@ resumes any session in a terminal with its full context.
 - **Full-text search** across names, descriptions, tags and all message text, plus filters for
   project, environment, tag, date range and hidden sessions.
 - **Usage & limits** (<kbd>Ctrl</kbd>+<kbd>U</kbd>): your real 5-hour and weekly plan percentages
-  (opt-in), every token you've used since the first session, per model / session / project / day,
-  API credits and cost, model trends ("is it nerfed?") and a limit-change detector. Also in the
-  tray, a mini meter and the title bar. See [Usage, limits and API credits](#usage-limits-and-api-credits).
+  (opt-in) with pacing, every token you've used since the first session, per model / session /
+  project / source / day, API credits and cost, model trends ("is it nerfed?") and **Limit health**,
+  which checks whether each 1% of your plan still buys as much work as it used to. Also in the tray,
+  a mini meter and the title bar. See [Usage, limits and API credits](#usage-limits-and-api-credits).
+- **Where each session came from.** Every session is labelled with the product that ran it
+  (Terminal on Windows or WSL, VS Code, JetBrains, the desktop app, the SDK / `claude -p`, or a cloud
+  session teleported here), with a Source filter in the sidebar.
+- **Ask Claude** about your usage ("Have my limits dropped?") through the official CLI on your own
+  plan. Only aggregated numbers are sent, and you see exactly what first.
+- **claude.ai conversations too.** Import a claude.ai data export to read and search those
+  conversations next to your sessions (view only).
 - **Keyboard first.** <kbd>Ctrl</kbd>+<kbd>K</kbd> command palette, <kbd>J</kbd>/<kbd>K</kbd> to move,
   <kbd>Ctrl</kbd>+<kbd>Enter</kbd> to resume, <kbd>?</kbd> for every shortcut. Light, dark and
   system themes.
@@ -47,7 +55,8 @@ The app is built around these rules (see `CLAUDE.md`):
    when you click them.
 
 Phase 5 ([`docs/PHASE-5-USAGE-TRACKING.md`](docs/PHASE-5-USAGE-TRACKING.md)) adds exactly two
-exceptions, and each one only happens after you approve it in the app:
+exceptions, and each one only happens after you approve it in the app (the later additions below
+add none):
 
 - **Live limits** changes the `statusLine` key in a `~/.claude/settings.json`, and nothing else in
   `.claude`. You see the exact diff first, the file is backed up to the app's data folder, and
@@ -56,6 +65,11 @@ exceptions, and each one only happens after you approve it in the app:
 - **Admin API keys** let the app call two read-only reporting endpoints on `https://api.anthropic.com`
   (usage report and cost report). No other host, no other endpoint, and never any session content.
   Standard API keys cause no network calls at all.
+
+Two later features stay inside the rules: **Import claude.ai data export** only reads the zip you
+pick (it is never written) and stores the conversations in the app's archive, and **Ask Claude**
+makes no network call itself: it starts your own `claude` CLI, which talks to Anthropic as it always
+does, with no tools, and only after you've seen what will be sent.
 
 ## Run it on Windows
 
@@ -120,6 +134,18 @@ The executables aren't code-signed, so Windows SmartScreen may warn you the firs
 - **Search:** press <kbd>/</kbd> and type. Results are sorted by relevance; a small "in messages" label
   means the match is in the conversation rather than the name or tags.
 - **New session:** "New session in this folder…" in a session's ⋯ menu or the command palette.
+- **Source labels:** each session card has a small badge for the product that ran it, and the
+  sidebar's **Source** section filters by it. The label comes from the `entrypoint` Claude Code 2.x
+  writes on every line (`cli`, `claude-vscode`, `claude-desktop`, `sdk-cli` for `claude -p`,
+  `remote…` for cloud sessions), the claude.ai/code link a cloud session logs, IDE context attached
+  to a CLI session (JetBrains when the IDE is named), whether the app launched it, and finally the
+  working folder. Older versions record none of these, so their sessions show **Local · unknown**.
+  Click the badge in a session's header to set it by hand; labels are kept in the app's metadata.
+- **claude.ai conversations:** Settings → Archive → **Import claude.ai data export** (the zip from
+  claude.ai → Settings → Privacy → Export data). The conversations appear under the claude.ai
+  environment with a claude.ai badge: readable, searchable and exportable to Markdown, but with no
+  token stats and no Resume (they never ran in Claude Code). Importing again updates changed
+  conversations; the zip itself is only read.
 - **Settings** (<kbd>Ctrl</kbd>+<kbd>,</kbd>): theme, terminal, the default for skipping permissions,
   scan sources with their status, extra folders, the archive location and size, and each Claude
   home's `cleanupPeriodDays` (read-only).
@@ -154,30 +180,43 @@ gauges in the title bar, or from the tray icon.
 
 - **Live limits:** two ring gauges for the **5-hour window** and **this week**, the same percentages
   Claude Code shows in `/usage`, with a reset countdown, the tokens you used in that window (from your
-  logs) and a pace line ("On pace to hit 100% at 4:30 PM"). Desktop notifications at 75% and 90%
+  logs) and a projection ("On pace to hit 100% at 4:30 PM"). Desktop notifications at 75% and 90%
   (Settings → Live limits; change or turn off).
+- **Pacing:** a tick on each gauge marks where your usage should be by now to end the window at
+  your cap (90% by default), with **Behind / On pace / Ahead** and the room you have left per hour.
+  A line of advice under the gauges treats the weekly window as the main limit.
+- **Limit health:** is each 1% of your plan buying less work than it used to? See
+  [Limit health](#limit-health-did-my-limits-get-smaller) below. Next to it, **Where your limits
+  went** splits the current windows by source, with an "Elsewhere" slice for usage your logs don't
+  explain (claude.ai, the apps, cloud sessions).
+- **Ask Claude:** a side panel with suggested questions and a free-text box. See
+  [Ask Claude](#ask-claude).
 - **Every token, forever:** read from every session file and from the app's archive, so history
   survives Claude Code's cleanup. Today / this week / this month / all-time cards (click one to
   filter the charts), a stacked chart of input, output, cache-write and cache-read tokens by
   day/week/month with a date range picker and model filter, a model share donut, the top sessions,
-  and a raw table with breakdowns by model, session, project, environment, Claude Code version or
-  billing. CSV export. Per-session usage appears at the top of each session.
+  and a raw table with breakdowns by model, session, project, environment, Claude Code version,
+  billing or source. CSV export. Per-session usage appears at the top of each session.
 - **API credits:** run any session on an API key instead of your plan, track credit grants, spending,
   burn rate and "lasts ~N days", and (with an Admin key) your organization's cost report.
 - **Trends ("is it nerfed?") and limit history:** weekly indicators per model and per Claude Code
-  version, with markers for new models, updates and capacity changes, a compare mode, and the
-  implied-capacity history that flags "Your effective 5-hour capacity looks ~25% lower than last month".
+  version, with markers for new models, updates, plan changes and $-per-1% changes, and a compare
+  mode. The Limit history tab lists every "limit reached" message, recent 5-hour blocks, and the
+  times you marked as "used Claude elsewhere".
 - **At a glance:** small gauges in the title bar, a tray icon with the 5-hour % (hover for both
   windows, click to open Usage), and an always-on-top **mini meter** you can drag anywhere (it
   remembers where).
 
-|                                          |                                                 |
-| ---------------------------------------- | ----------------------------------------------- |
-| ![Limit gauges (dark)](docs/limits.png)  | ![Limit gauges (light)](docs/limits-light.png)  |
-| ![Credits card (dark)](docs/credits.png) | ![Credits card (light)](docs/credits-light.png) |
-| ![Charts](docs/usage-charts.png)         | ![Trends](docs/trends.png)                      |
-| ![Limit history](docs/limit-history.png) | ![Credits tab](docs/credits-tab.png)            |
-| ![Usage (light)](docs/usage-light.png)   | ![Mini meter](docs/mini-meter.png)              |
+|                                                    |                                                      |
+| -------------------------------------------------- | ---------------------------------------------------- |
+| ![Limit gauges (dark)](docs/limits.png)            | ![Limit gauges (light)](docs/limits-light.png)       |
+| ![Credits card (dark)](docs/credits.png)           | ![Credits card (light)](docs/credits-light.png)      |
+| ![Charts](docs/usage-charts.png)                   | ![Trends](docs/trends.png)                           |
+| ![Limit history](docs/limit-history.png)           | ![Credits tab](docs/credits-tab.png)                 |
+| ![Usage (light)](docs/usage-light.png)             | ![Mini meter](docs/mini-meter.png)                   |
+| ![Limit health](docs/limit-health.png)             | ![Limit health (light)](docs/limit-health-light.png) |
+| ![Compare two date ranges](docs/limit-compare.png) | ![Ask Claude](docs/ask-claude.png)                   |
+| ![What Ask Claude sends](docs/ask-preview.png)     |                                                      |
 
 ### Turn on live limits
 
@@ -267,6 +306,76 @@ make it that project's default; the overall default is in Settings.
   most likely means API. Otherwise the billing shows as unknown. You can't detect it from the log
   files alone.
 
+### Limit health ("did my limits get smaller?")
+
+![Limit health](docs/limit-health.png)
+
+Each 5-hour (and weekly) window gets one score: **API-equivalent dollars per 1%**. The app prices
+the tokens you used in the window (from your logs, subagents included, each response counted once)
+at the price table's API rates for input, output, cache reads and 5-minute / 1-hour cache writes,
+and divides by the % the window reached. A higher score means 1% bought more work.
+
+1. **Pick your normal dates** on the card: a stretch when your limits felt normal. The median score
+   of those windows is your **baseline**, stored per 1x of plan.
+2. **Plan history** (Settings → Limit health): Pro = 1x, Max 5x = 5x, Max 20x = 20x, or a custom
+   multiplier, each with a start date. Every window is compared with baseline × the multiplier of
+   the plan it ran on, so one baseline works across plans and an upgrade doesn't read as a cut. With
+   no history, your current plan (Max 5x by default) applies to every window; changing the plan in
+   Settings records the switch for you. The chart marks plan changes.
+3. **The verdict.** "Possible reduction" only when the last **2** finished windows in a row (setting)
+   fell below baseline ÷ **1.5** (setting). Windows under **10%** are skipped as too coarse. Until
+   there are enough windows it says "Not enough data yet, N windows needed".
+4. **Token mix.** Hover a bar to see how its dollars split between input, output, cache reads and
+   cache writes; a big shift in mix can move the score on its own.
+5. **Compare** two date ranges side by side ($ per 1% per 1x, as measured, plans and mix) with the %
+   change.
+
+Details that keep the score honest:
+
+- **One price per model family** (on by default): every Opus model is priced at the newest Opus in
+  your price table, and the same for Sonnet and Haiku. Without it, moving to a model with lower API
+  prices (Opus 5.5 costs less than Opus 5) looks like a smaller limit.
+- **Usage elsewhere.** Usage from claude.ai, the apps, cloud sessions or another computer raises
+  the % with no matching local tokens, which looks like a cut. When the % rose while nothing ran on
+  this computer, that part is clear evidence; windows where it's 25% or more (setting) are left out
+  of the baseline and the verdict, and drawn dashed. The rest is estimated from your baseline and
+  shown as a warning on the window, because a real cut looks the same. You can also mark time
+  ranges as "used Claude elsewhere" (Limit history tab).
+- **Backfill.** If you ran `/usage` in Claude Code before turning on live limits, the percentages it
+  printed are in your transcripts. The app reads them as extra readings (reset times like "Resets
+  7pm (America/Los_Angeles)" are parsed in that time zone).
+- It's a trend indicator, not proof: Anthropic's limits aren't published as token counts.
+
+The method comes from [claude-nerf-watcher](https://github.com/One-Lyf/claude-nerf-watcher) and the
+pacing from [claude-usage-pacer](https://github.com/One-Lyf/claude-usage-pacer) (both MIT). Both of
+those read Claude's OAuth token and call an undocumented usage endpoint; this app does neither. Its
+percentages come only from the status line bridge and recorded `/usage` output.
+
+### Ask Claude
+
+![Ask Claude](docs/ask-claude.png)
+
+**Ask Claude** (Usage view, or the Limit health card) answers questions like "Have my limits
+dropped?", "Why did I hit my limit Tuesday?" or "Compare this month to last month".
+
+- It runs your own Claude Code: the Windows install if there is one, otherwise the default WSL
+  distro. The command is fixed:
+  `claude -p --output-format json --tools "" --strict-mcp-config`, so Claude has **no tools** and no
+  MCP servers, and `--dangerously-skip-permissions` is never used. The question and the data go in
+  on **stdin**, never on the command line. `ANTHROPIC_API_KEY` is removed from its environment so
+  your plan is used.
+- **Only aggregated numbers are sent**, as compact JSON: window scores and ratios, the baseline,
+  plan history, pace, daily and monthly token totals, the dates models and Claude Code versions
+  first appeared, untracked-usage estimates and when limits were reached. No session titles,
+  project names, ids or conversation text. Before the first question you see exactly what will be
+  sent, with "Don't show again" (Settings → Ask Claude turns the preview back on).
+- A timeout (180 s by default) and **Cancel** stop the run. Answers show as formatted text with a
+  Copy button, and every question and answer is kept in the app's `ask-history.json`.
+- **It uses your plan's usage**, like any Claude Code prompt. Claude Code also logs each run as a
+  session; the app recognises them by the marker at the start of the prompt, labels them **Ask
+  Claude (dashboard)** and hides them from the list (pick that source in the sidebar to see them).
+  Their tokens still count in Usage.
+
 ### What the numbers mean (and their limits)
 
 - **5-hour / weekly %**: exactly what Claude Code reported in its last status line update. "Updated
@@ -292,10 +401,14 @@ make it that project's default; the overall default is in Settings.
   own `cost.total_cost_usd` for each API-billed session and only falls back to the price table when
   that's missing.
 - **Period cards**: the change compares with the same elapsed part of the previous day, week or month.
-- **Implied capacity**: for each window, weighted tokens used ÷ the reported %. Weights (Settings →
-  Usage) default to API price ratios: output ×5, cache write ×1.25, input ×1, cache read ×0.1.
-  Anthropic's limits aren't purely token counts, so read this as a trend: a lasting drop of 15% or
-  more versus the previous month is flagged. Points are colored by the window's main model family.
+- **Pace target**: cap × the share of the window that has passed. Within ±5 points (setting) is on
+  pace; "room left per hour" is how many points per hour you can still use and end at the cap.
+- **$ per 1%** (Limit health): see above. The older **implied capacity** (weighted tokens ÷ %, with
+  the weights in Settings → Usage) is still computed, but the Limit health score replaces its chart,
+  its banner and its trend markers.
+- **Where your limits went**: the local part of a window's % is split by each source's share of the
+  API-equivalent dollars; "Elsewhere" is the part your logs don't explain (estimated from the
+  baseline when you have one, otherwise only rises while nothing ran here).
 - **Trends**: weekly per model or per Claude Code version: output per response and per request,
   response time (median, ignoring gaps over 10 minutes), tool error rate, API errors and retries,
   assistant turns and tool calls per request, interruptions and corrections (messages after an
@@ -342,6 +455,9 @@ records of sessions whose files are gone are kept as they were.
 | `usage\records-YYYY-MM.ndjson`                          | One line per API response: time, session, project, environment, model, version, stop reason, every token count |
 | `usage\turns-YYYY-MM.ndjson`, `usage\limit-hits.ndjson` | Per-request metrics for Trends, and every "usage limit reached" message                                        |
 | `limits-history.ndjson`                                 | Every status line reading                                                                                      |
+| `usage\usage-readings.ndjson`                           | Limit readings found in `/usage` output in transcripts (backfill)                                              |
+| `ask-history.json`                                      | Ask Claude questions and answers                                                                               |
+| `archive\claude-ai\`                                    | Conversations imported from a claude.ai data export                                                            |
 | `accounts.json`                                         | API keys (encrypted), credit grants, cached Admin reports                                                      |
 | `bridge.json`, `backups\settings\`                      | What the installer changed, and the `settings.json` backups                                                    |
 
@@ -463,6 +579,34 @@ These are choices I made where the spec left room, or had to deviate:
   the `sh` bridge is tested there. Manual check:
   `'{"session_id":"t","model":{"display_name":"Opus"},"rate_limits":{"five_hour":{"used_percentage":12,"resets_at":1738425600}}}' | powershell -NoProfile -File resources\bridge\statusline.ps1`
   should print `Opus · 5h 12%` and create `%USERPROFILE%\.claude-session-dashboard\live\t.json`.
+
+### Limit health, sources and Ask Claude: decisions
+
+- **What came from each reference.** From claude-nerf-watcher: the $-per-1% score, family pricing,
+  the median baseline over trusted dates stored per 1x, plan history with multipliers and chart
+  markers, the streak flag (threshold 1.5, streak 2), skipping windows under 10%, showing the token
+  mix, and backfilling readings from transcripts. From claude-usage-pacer: the cap × elapsed pace
+  target, Behind / On pace / Ahead with a tolerance, room per hour, and weekly-first advice. The
+  code is our own (TypeScript, on bridge data); `THIRD_PARTY_NOTICES` carries both MIT notices.
+- **Family pricing is on by default** because the sample data showed the problem: moving from
+  Opus 5 to the cheaper Opus 5.5 alone made the score drop ~25%.
+- **Only clear outside usage excludes a window.** The estimated part can't tell usage elsewhere from
+  a real cut (both mean local tokens explain less of the %), so excluding on it would hide the very
+  thing the detector looks for. It is shown as a warning instead.
+- **The sample data stays "Normal"** on purpose: it was generated with a ~25% cut on Oct 1, which
+  shows as ~0.8x, above the default flag line (0.67x). Lower the threshold to see it flagged, or
+  use Compare (−23%).
+- **Source detection** was checked against real Claude Code 2.1 transcripts (`entrypoint`,
+  `remote_session_change`) and the CLI's own list of entrypoints. JetBrains runs the plain CLI, so
+  it's only recognised when IDE context names the IDE.
+- **`/usage` output format**: the "Current session / Current week (all models) … N% used · Resets …"
+  panel text; other sections (Sonnet only, extra usage) are ignored.
+- **Ask Claude flags** were checked against `claude --help` (2.1.309): `--tools ""` disables every
+  built-in tool and `--strict-mcp-config` without `--mcp-config` loads no MCP servers. The runs
+  keep their session logs (no `--no-session-persistence`) so their tokens are counted.
+- **Implied capacity chart** in the Limit history tab was replaced by the "Used Claude elsewhere"
+  list, since the Limit health card supersedes it.
+- **The claude.ai importer** has its own small zip reader (Node's zlib), so no new dependency.
 
 ## Troubleshooting
 

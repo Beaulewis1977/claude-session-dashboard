@@ -1,0 +1,197 @@
+// Pure filtering / sorting for the session list.
+
+import type { SearchHit } from '@shared/api'
+import type { SessionSummary } from '@shared/types'
+
+export type SortKey = 'activity' | 'started' | 'name' | 'relevance'
+export type Visibility = 'visible' | 'hidden' | 'archived' | 'all'
+
+export interface DateRange {
+  /** yyyy-mm-dd, inclusive, local time */
+  from?: string
+  to?: string
+  preset?: 'today' | '7d' | '30d' | 'year' | 'custom'
+}
+
+export interface Filters {
+  visibility: Visibility
+  env: string | null
+  project: string | null
+  tag: string | null
+  date: DateRange | null
+}
+
+export const EMPTY_FILTERS: Filters = {
+  visibility: 'visible',
+  env: null,
+  project: null,
+  tag: null,
+  date: null
+}
+
+export function envKey(s: Pick<SessionSummary, 'env' | 'distro'>): string {
+  return s.env === 'wsl' ? `wsl:${s.distro ?? ''}` : 'windows'
+}
+
+export function envLabel(key: string): string {
+  return key === 'windows' ? 'Windows' : `WSL: ${key.slice(4)}`
+}
+
+export function projectKey(s: Pick<SessionSummary, 'cwd' | 'projectDir' | 'env'>): string {
+  const p = s.cwd ?? s.projectDir
+  return s.env === 'windows' ? p.toLowerCase() : p
+}
+
+function dayStart(ymd: string): number {
+  const [y, m, d] = ymd.split('-').map(Number)
+  return new Date(y, m - 1, d).getTime()
+}
+
+export function toYmd(d: Date): string {
+  const p = (n: number): string => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`
+}
+
+export function presetRange(preset: NonNullable<DateRange['preset']>, now = new Date()): DateRange {
+  const today = toYmd(now)
+  const ago = (days: number): string =>
+    toYmd(new Date(now.getFullYear(), now.getMonth(), now.getDate() - days))
+  switch (preset) {
+    case 'today':
+      return { preset, from: today, to: today }
+    case '7d':
+      return { preset, from: ago(6), to: today }
+    case '30d':
+      return { preset, from: ago(29), to: today }
+    case 'year':
+      return { preset, from: `${now.getFullYear()}-01-01`, to: today }
+    case 'custom':
+      return { preset, from: ago(6), to: today }
+  }
+}
+
+export function inDateRange(iso: string | undefined, range: DateRange): boolean {
+  if (!iso) return false
+  const t = Date.parse(iso)
+  if (range.from && t < dayStart(range.from)) return false
+  if (range.to && t >= dayStart(range.to) + 86_400_000) return false
+  return true
+}
+
+export function matchesFilters(s: SessionSummary, f: Filters, ignore?: keyof Filters): boolean {
+  if (ignore !== 'visibility') {
+    const hidden = s.meta.hidden === true
+    if (f.visibility === 'visible' && hidden) return false
+    if (f.visibility === 'hidden' && !hidden) return false
+    if (f.visibility === 'archived' && s.availability !== 'archived-only') return false
+  }
+  if (ignore !== 'env' && f.env && envKey(s) !== f.env) return false
+  if (ignore !== 'project' && f.project && projectKey(s) !== f.project) return false
+  if (ignore !== 'tag' && f.tag && !(s.meta.tags ?? []).includes(f.tag)) return false
+  if (ignore !== 'date' && f.date && !inDateRange(s.lastActivityAt ?? s.startedAt, f.date))
+    return false
+  return true
+}
+
+const time = (iso?: string): number => (iso ? Date.parse(iso) : 0)
+
+export function sortSessions(
+  list: SessionSummary[],
+  sort: SortKey,
+  hits?: Map<string, SearchHit> | null
+): SessionSummary[] {
+  const out = [...list]
+  const byActivity = (a: SessionSummary, b: SessionSummary): number =>
+    time(b.lastActivityAt ?? b.startedAt) - time(a.lastActivityAt ?? a.startedAt)
+  if (sort === 'relevance' && hits) {
+    out.sort(
+      (a, b) => (hits.get(b.key)?.score ?? 0) - (hits.get(a.key)?.score ?? 0) || byActivity(a, b)
+    )
+  } else if (sort === 'started') {
+    out.sort((a, b) => time(b.startedAt) - time(a.startedAt))
+  } else if (sort === 'name') {
+    out.sort((a, b) =>
+      a.title.localeCompare(b.title, undefined, { sensitivity: 'base', numeric: true })
+    )
+  } else {
+    out.sort(byActivity)
+  }
+  return out
+}
+
+export function visibleSessions(
+  sessions: SessionSummary[],
+  filters: Filters,
+  sort: SortKey,
+  hits: Map<string, SearchHit> | null
+): SessionSummary[] {
+  const filtered = sessions.filter((s) => matchesFilters(s, filters) && (!hits || hits.has(s.key)))
+  return sortSessions(filtered, sort, hits)
+}
+
+export interface Facet {
+  key: string
+  label: string
+  count: number
+  detail?: string
+}
+
+/** Counts for the sidebar, honouring every filter except the facet's own. */
+export function facets(sessions: SessionSummary[], filters: Filters) {
+  const env = new Map<string, Facet>()
+  const project = new Map<string, Facet>()
+  const tag = new Map<string, Facet>()
+  const views = { visible: 0, hidden: 0, archived: 0 }
+  for (const s of sessions) {
+    if (s.meta.hidden) views.hidden++
+    else views.visible++
+    if (s.availability === 'archived-only') views.archived++
+    if (matchesFilters(s, filters, 'env')) {
+      const k = envKey(s)
+      const f = env.get(k) ?? { key: k, label: envLabel(k), count: 0 }
+      f.count++
+      env.set(k, f)
+    }
+    if (matchesFilters(s, filters, 'project')) {
+      const k = projectKey(s)
+      const f = project.get(k) ?? { key: k, label: s.projectName, count: 0, detail: s.cwd }
+      f.count++
+      project.set(k, f)
+    }
+    if (matchesFilters(s, filters, 'tag')) {
+      for (const t of s.meta.tags ?? []) {
+        const f = tag.get(t) ?? { key: t, label: t, count: 0 }
+        f.count++
+        tag.set(t, f)
+      }
+    }
+  }
+  const byCount = (a: Facet, b: Facet): number =>
+    b.count - a.count || a.label.localeCompare(b.label)
+  return {
+    views,
+    env: [...env.values()].sort((a, b) =>
+      a.key === 'windows' ? -1 : b.key === 'windows' ? 1 : byCount(a, b)
+    ),
+    project: [...project.values()].sort(byCount),
+    tag: [...tag.values()].sort(byCount)
+  }
+}
+
+/** A stable color for a tag name. */
+const TAG_COLORS = [
+  '#e5484d',
+  '#f76b15',
+  '#ffc53d',
+  '#46a758',
+  '#12a594',
+  '#0090ff',
+  '#6e56cf',
+  '#d6409f',
+  '#8e8c99'
+]
+export function tagColor(tag: string): string {
+  let h = 0
+  for (let i = 0; i < tag.length; i++) h = (h * 31 + tag.charCodeAt(i)) >>> 0
+  return TAG_COLORS[h % TAG_COLORS.length]
+}

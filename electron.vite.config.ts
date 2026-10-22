@@ -3,7 +3,7 @@ import { defineConfig } from 'electron-vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 
-const shared = resolve(__dirname, 'src/shared')
+const shared = resolve(import.meta.dirname, 'src/shared')
 
 export default defineConfig({
   main: {
@@ -21,16 +21,16 @@ export default defineConfig({
     }
   },
   renderer: {
-    root: resolve(__dirname, 'src/renderer'),
+    root: resolve(import.meta.dirname, 'src/renderer'),
     resolve: {
       alias: {
-        '@': resolve(__dirname, 'src/renderer/src'),
+        '@': resolve(import.meta.dirname, 'src/renderer/src'),
         '@shared': shared
       }
     },
     plugins: [react(), tailwindcss()],
     build: {
-      rollupOptions: { input: resolve(__dirname, 'src/renderer/index.html') }
+      rollupOptions: { input: resolve(import.meta.dirname, 'src/renderer/index.html') }
     }
   }
 })

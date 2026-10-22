@@ -4,6 +4,8 @@
 import type { BridgeReading, LimitWindow } from './bridge'
 import type { EnvKind } from '../types'
 import type { LimitHit, UsageBlock, UsageRecord } from './types'
+import type { HealthReport, WindowSplit } from './health'
+import type { PaceAdvice, PaceState } from './pace'
 
 export type Plan = 'pro' | 'max5' | 'max20' | 'api' | 'team'
 
@@ -410,4 +412,15 @@ export interface LimitsState {
   alertsEnabled: boolean
   alertThresholds: number[]
   weights: CapacityWeights
+  /** Limit health ($ per 1% vs. the baseline) per window kind. */
+  health5h?: HealthReport
+  health7d?: HealthReport
+  pace5h?: PaceState
+  pace7d?: PaceState
+  advice?: PaceAdvice
+  /** The current windows' % split by source, plus "elsewhere". */
+  split5h?: WindowSplit
+  split7d?: WindowSplit
+  /** Readings found in /usage output in old transcripts. */
+  backfilled?: number
 }

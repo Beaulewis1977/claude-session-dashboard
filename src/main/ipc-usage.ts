@@ -89,6 +89,17 @@ export function registerUsageIpc(deps: UsageIpcDeps): void {
     return src
   }
   ipcMain.handle('limits:state', () => deps.limits.state())
+  const range = (v: unknown): { from: string; to: string } => {
+    const o = (v ?? {}) as Record<string, unknown>
+    const ymd = (x: unknown): string =>
+      typeof x === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(x) ? x : '1970-01-01'
+    const from = ymd(o.from)
+    const to = ymd(o.to ?? o.from)
+    return from <= to ? { from, to } : { from: to, to: from }
+  }
+  ipcMain.handle('limits:compareHealth', (_e, kind, a, b) =>
+    deps.limits.compare(kind === 'seven_day' ? 'seven_day' : 'five_hour', range(a), range(b))
+  )
 
   const side = (v: unknown): CompareSide => {
     const o = (v ?? {}) as Record<string, unknown>
@@ -100,12 +111,23 @@ export function registerUsageIpc(deps: UsageIpcDeps): void {
   }
   ipcMain.handle('usage:trends', async (_e, groupBy) => {
     const by: TrendGroupBy = groupBy === 'model' || groupBy === 'version' ? groupBy : 'all'
-    const state = await deps.limits.state()
+    // Limit-health scores ($ per 1%, per 1x of plan) mark capacity changes.
+    const health = deps.limits.health('five_hour')
     return buildTrends({
       records: usage.allRecords(),
       turns: usage.allTurns(),
       readings: deps.limits.readings(),
-      capacity: state.capacity5h,
+      capacity: health.windows
+        .filter((w) => w.closed && !w.excluded && w.dollars > 0)
+        .map((w) => ({
+          ts: w.resetsAt,
+          kind: 'five_hour' as const,
+          pct: w.pct,
+          weighted: w.dollars,
+          capacity: w.perPct / w.mult,
+          mix: ''
+        })),
+      plans: health.plans,
       timeZone: localTimeZone(),
       weekStart: deps.weekStart(),
       groupBy: by

@@ -15,6 +15,7 @@ import { analyzeUsage } from '@shared/usage/parse'
 import { UsageDeduper } from '@shared/usage/dedupe'
 import { estimateCost, type ModelPrice } from '@shared/usage/pricing'
 import { localTimeZone } from '@shared/usage/time'
+import type { UsageCommandReading } from '@shared/usage/usage-command'
 import type {
   LimitHit,
   SessionUsage,
@@ -32,7 +33,8 @@ import { assertAppDataWrite, isInside } from '../core/safe-paths'
 import type { SessionService } from './sessions'
 
 // 2: dedupe follows ccusage (session-scoped requestless ids, sidechain replays).
-const INDEX_VERSION = 2
+// 3: /usage output is read as limit readings (backfill).
+const INDEX_VERSION = 3
 
 interface IndexFile {
   version: number
@@ -92,6 +94,7 @@ export class UsageService extends EventEmitter<{ changed: [] }> {
   private stale = new Set<string>()
   private turns = new Map<string, TurnSample>()
   private hits = new Map<string, LimitHit>()
+  private usageCmd = new Map<string, UsageCommandReading>()
   private index: IndexFile = { version: INDEX_VERSION, sessions: {} }
   private dirtyMonths = new Set<string>()
   private dirtyTurnMonths = new Set<string>()
@@ -153,6 +156,7 @@ export class UsageService extends EventEmitter<{ changed: [] }> {
     this.stale.clear()
     this.turns.clear()
     this.hits.clear()
+    this.usageCmd.clear()
     this.index = { version: INDEX_VERSION, sessions: {} }
     // Rewrite every existing month file (possibly as empty).
     for (const m of months) this.dirtyMonths.add(m)
@@ -186,6 +190,11 @@ export class UsageService extends EventEmitter<{ changed: [] }> {
 
   limitHits(): LimitHit[] {
     return [...this.hits.values()].sort((a, b) => a.ts - b.ts)
+  }
+
+  /** Limit readings from /usage output in transcripts (backfill). */
+  usageCommandReadings(): UsageCommandReading[] {
+    return [...this.usageCmd.values()].sort((a, b) => a.ts - b.ts)
   }
 
   report(query: UsageQuery, billingOf?: (key: string) => string): UsageReport {
@@ -266,6 +275,9 @@ export class UsageService extends EventEmitter<{ changed: [] }> {
     }
     for (const h of await readNdjson<LimitHit>(join(dir, 'limit-hits.ndjson'))) {
       if (h && typeof h.id === 'string') this.hits.set(h.id, h)
+    }
+    for (const r of await readNdjson<UsageCommandReading>(join(dir, 'usage-readings.ndjson'))) {
+      if (r && typeof r.id === 'string' && typeof r.ts === 'number') this.usageCmd.set(r.id, r)
     }
     this.loaded = true
     this.invalidate()
@@ -355,6 +367,12 @@ export class UsageService extends EventEmitter<{ changed: [] }> {
         this.hitsDirty = true
       }
     }
+    for (const r of a.usageReadings) {
+      if (!this.usageCmd.has(r.id)) {
+        this.usageCmd.set(r.id, r)
+        this.hitsDirty = true
+      }
+    }
     return true
   }
 
@@ -419,6 +437,7 @@ export class UsageService extends EventEmitter<{ changed: [] }> {
       if (this.hitsDirty) {
         this.hitsDirty = false
         await writeNdjson(join(dir, 'limit-hits.ndjson'), this.limitHits(), dataDir)
+        await writeNdjson(join(dir, 'usage-readings.ndjson'), this.usageCommandReadings(), dataDir)
       }
       if (this.indexDirty) {
         this.indexDirty = false

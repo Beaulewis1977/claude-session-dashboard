@@ -66,3 +66,74 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+--------------------------------------------------------------------------------
+claude-nerf-watcher — https://github.com/One-Lyf/claude-nerf-watcher
+--------------------------------------------------------------------------------
+
+Used as a reference (commit bf7a533). The limit-health method in
+src/shared/usage/health.ts is adapted from nerf.py: scoring each 5-hour window
+as API-equivalent dollars per 1% of the limit, pricing a model family at one
+rate, the median baseline over trusted dates stored per 1x of plan, the plan
+history with pro/max5/max20/custom multipliers, the "N low windows in a row
+below baseline ÷ threshold" flag (defaults 1.5 and 2), skipping windows under
+10%, showing each window's token mix, and backfilling readings from old
+transcripts (src/shared/usage/usage-command.ts). The app does not read
+Claude's OAuth token or call the usage endpoint nerf-watcher relies on; its
+percentages come only from the status line bridge and recorded /usage output.
+
+MIT License
+
+Copyright (c) 2026 One-Lyf
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+--------------------------------------------------------------------------------
+claude-usage-pacer — https://github.com/One-Lyf/claude-usage-pacer
+--------------------------------------------------------------------------------
+
+Used as a reference (commit 09fdc86). The pacing in src/shared/usage/pace.ts is
+adapted from usage.py: the target line cap × elapsed ÷ window length for the
+5-hour and 7-day windows (default cap 90%), the Behind / On pace / Ahead
+status with a ±5 point tolerance, "room left per hour", and advice that treats
+the weekly window as the binding limit. The app does not read Claude's OAuth
+token or call the usage endpoint usage-pacer relies on; it paces the
+percentages from the status line bridge.
+
+MIT License
+
+Copyright (c) 2026 One-Lyf
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.

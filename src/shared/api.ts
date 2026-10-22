@@ -21,6 +21,7 @@ import type {
   UsageStatus
 } from './usage/types'
 import type { BridgeApplyResult, BridgePlan, LimitsState } from './usage/limits'
+import type { CompareRange, HealthCompare } from './usage/health'
 import type { Account, CreditGrant, CreditsState } from './usage/credits'
 import type { CompareResult, CompareSide, TrendGroupBy, TrendsReport } from './usage/trends'
 
@@ -77,6 +78,11 @@ export interface CsdApi {
 
   // Live limits and the status line bridge
   getLimits(): Promise<LimitsState>
+  compareHealth(
+    kind: 'five_hour' | 'seven_day',
+    a: CompareRange,
+    b: CompareRange
+  ): Promise<HealthCompare>
   onLimitsChanged(cb: () => void): () => void
   planBridge(sourceId: string, action: 'install' | 'uninstall'): Promise<BridgePlan>
   applyBridge(

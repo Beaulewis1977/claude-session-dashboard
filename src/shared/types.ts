@@ -4,6 +4,13 @@ import { DEFAULT_PRICES, type ModelPrice } from './usage/pricing'
 import type { WeekStart } from './usage/types'
 import type { SessionBilling } from './usage/credits'
 import { DEFAULT_WEIGHTS, type CapacityWeights, type Plan } from './usage/limits'
+import {
+  DEFAULT_HEALTH,
+  type ElsewhereRange,
+  type HealthSettings,
+  type PlanChange
+} from './usage/health'
+import { DEFAULT_PACE, type PaceSettings } from './usage/pace'
 
 export type EnvKind = 'windows' | 'wsl'
 
@@ -179,6 +186,18 @@ export interface AppSettings {
   projectBilling: Record<string, string>
   /** How often to refresh Admin API reports (minutes, 0 = only on demand). */
   adminRefreshMinutes: number
+  /** Plan changes over time, for the limit-health score. Empty = `plan` all along. */
+  planHistory: PlanChange[]
+  /** Limit-health detector: baseline dates, threshold, streak. */
+  health: HealthSettings
+  /** Pace targets for the gauges. */
+  pace: PaceSettings
+  /** Time ranges marked by hand as "used Claude elsewhere". */
+  elsewhere: ElsewhereRange[]
+  /** Ask Claude: skip the "what will be sent" preview. */
+  askSkipPreview: boolean
+  /** Ask Claude: give up after this many seconds. */
+  askTimeoutSec: number
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -195,7 +214,13 @@ export const DEFAULT_SETTINGS: AppSettings = {
   capacityWeights: DEFAULT_WEIGHTS,
   defaultBilling: 'subscription',
   projectBilling: {},
-  adminRefreshMinutes: 60
+  adminRefreshMinutes: 60,
+  planHistory: [],
+  health: DEFAULT_HEALTH,
+  pace: DEFAULT_PACE,
+  elsewhere: [],
+  askSkipPreview: false,
+  askTimeoutSec: 180
 }
 
 export interface ScanState {

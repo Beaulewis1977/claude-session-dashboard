@@ -6,6 +6,8 @@ import type { EnvKind } from '../types'
 import { classifyUserText, str, type RawEvent } from '../jsonl'
 import { recordId, UsageDeduper } from './dedupe'
 import type { LimitHit, TurnSample, UsageAnalysis, UsageRecord } from './types'
+import { parseUsageCommandOutput, type UsageCommandReading } from './usage-command'
+import { localTimeZone } from './time'
 
 export interface UsageContext {
   key: string
@@ -15,6 +17,24 @@ export interface UsageContext {
   sessionId?: string
   /** File name, to tell apart lines without a message id in subagent files. */
   file?: string
+  /** Time zone for /usage reset times without one. Default: the machine's. */
+  timeZone?: string
+}
+
+const STDOUT_RE = /<local-command-stdout>([\s\S]*?)<\/local-command-stdout>/
+
+/** Output of a local slash command (e.g. /usage), in either logged form. */
+export function commandOutput(e: RawEvent): string | undefined {
+  const m = obj(e.message)
+  const c = m && 'content' in m ? m.content : e.content
+  let text = ''
+  if (typeof c === 'string') text = c
+  else if (Array.isArray(c))
+    text = c.map((b) => (obj(b)?.type === 'text' ? String(obj(b)?.text ?? '') : '')).join('\n')
+  if (!text.includes('% used')) return undefined
+  const out = STDOUT_RE.exec(text)?.[1]
+  if (out) return out
+  return e.type === 'system' && str(e.subtype) === 'local_command' ? text : undefined
 }
 
 function obj(v: unknown): Record<string, unknown> | undefined {
@@ -181,6 +201,8 @@ export function analyzeUsage(events: RawEvent[], ctx: UsageContext): UsageAnalys
   const sessionId = ctx.sessionId ?? ctx.key.slice(ctx.key.lastIndexOf(':') + 1)
   const turns: TurnSample[] = []
   const limitHits: LimitHit[] = []
+  const usageReadings: UsageCommandReading[] = []
+  const zone = ctx.timeZone ?? localTimeZone()
   let version: string | undefined
   let turn: TurnSample | undefined
   let interruptedPending = false
@@ -201,6 +223,16 @@ export function analyzeUsage(events: RawEvent[], ctx: UsageContext): UsageAnalys
     const ts = time(e.timestamp)
     const message = obj(e.message)
     const role = type ?? str(message?.role)
+
+    if (ts !== undefined && e.isSidechain !== true) {
+      const out = commandOutput(e)
+      if (out) {
+        const id = str(e.uuid) ?? `${ctx.key}:${ts}`
+        for (const r of parseUsageCommandOutput(out, ts, zone))
+          usageReadings.push({ id: `${id}:${r.kind}`, ts, key: ctx.key, ...r })
+        continue
+      }
+    }
 
     if (type === 'system') {
       // Retries after an API error are logged as system events.
@@ -356,7 +388,7 @@ export function analyzeUsage(events: RawEvent[], ctx: UsageContext): UsageAnalys
     }
   }
   closeTurn()
-  return { records: [...local.values()], turns, limitHits }
+  return { records: [...local.values()], turns, limitHits, usageReadings }
 }
 
 function toRecord(

@@ -1,3 +1,5 @@
+import { DEFAULT_HEALTH } from '@shared/usage/health'
+import { DEFAULT_PACE } from '@shared/usage/pace'
 import { cp, mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -230,7 +232,11 @@ describe('LimitsService (fixtures)', () => {
         alertsEnabled: true,
         alertThresholds: [75, 90],
         weights: DEFAULT_WEIGHTS,
-        prices: DEFAULT_PRICES
+        prices: DEFAULT_PRICES,
+        health: { ...DEFAULT_HEALTH, baselineFrom: '2026-09-01', baselineTo: '2026-09-30' },
+        planHistory: [],
+        pace: DEFAULT_PACE,
+        elsewhere: []
       }),
       (t) => notes.push(t)
     )
@@ -249,6 +255,17 @@ describe('LimitsService (fixtures)', () => {
     expect(s.change5h?.changePct).toBeLessThan(-18)
     expect(s.change5h?.changePct).toBeGreaterThan(-32)
     expect(s.capacity5h.length).toBeGreaterThan(30)
+    // Limit health: baseline from September, the Oct 1 cut (~25%) shows as ~0.8x,
+    // under the default flag line (1 ÷ 1.5 = 0.67x), so the verdict stays normal.
+    expect(s.health5h?.baseline?.n).toBeGreaterThan(10)
+    const oct = s.health5h!.windows.filter((w) => w.closed && w.resetsAt > Date.parse('2026-10-02'))
+    const avg = oct.reduce((a, w) => a + w.ratio!, 0) / oct.length
+    expect(avg).toBeGreaterThan(0.68)
+    expect(avg).toBeLessThan(0.88)
+    expect(s.health5h?.verdict.status).toBe('normal')
+    expect(s.health7d?.windows.length).toBeGreaterThan(8)
+    expect(s.pace7d?.status).toBe('behind')
+    expect(s.split5h?.pct).toBeCloseTo(47.1)
     expect(s.limitHits.length).toBeGreaterThan(0)
     expect(s.envs.find((e) => e.sourceId === 'wsl-Ubuntu-beau')?.installed).toBe(true)
     expect(s.envs.find((e) => e.sourceId === 'windows')).toMatchObject({

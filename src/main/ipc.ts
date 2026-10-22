@@ -5,6 +5,14 @@ import { clockOffset } from '@shared/clock'
 import { sessionToMarkdown } from '@shared/markdown'
 import { sanitizePrices } from '@shared/usage/pricing'
 import { sanitizePlan, sanitizeThresholds, sanitizeWeights } from '@shared/usage/limits'
+import {
+  PLAN_MULT,
+  sanitizeElsewhere,
+  sanitizeHealth,
+  sanitizePlanHistory,
+  toYmd
+} from '@shared/usage/health'
+import { sanitizePace } from '@shared/usage/pace'
 import type {
   AppInfo,
   AppSettings,
@@ -57,7 +65,13 @@ function publicSettings(s: SettingsFile): AppSettings {
     capacityWeights: { ...s.capacityWeights },
     defaultBilling: s.defaultBilling,
     projectBilling: { ...s.projectBilling },
-    adminRefreshMinutes: s.adminRefreshMinutes
+    adminRefreshMinutes: s.adminRefreshMinutes,
+    planHistory: s.planHistory.map((p) => ({ ...p })),
+    health: { ...s.health },
+    pace: { ...s.pace },
+    elsewhere: s.elsewhere.map((e) => ({ ...e })),
+    askSkipPreview: s.askSkipPreview,
+    askTimeoutSec: s.askTimeoutSec
   }
 }
 
@@ -141,8 +155,26 @@ export function registerIpc(deps: IpcDeps): void {
         const prices = sanitizePrices(p.prices)
         if (prices) s.prices = prices
       }
+      if ('planHistory' in p) s.planHistory = sanitizePlanHistory(p.planHistory)
       const plan = sanitizePlan(p.plan)
+      if (plan && plan !== s.plan && !('planHistory' in p)) {
+        // Record the switch so older windows keep their old plan's multiplier.
+        const today = toYmd(new Date())
+        const hist = s.planHistory.length
+          ? s.planHistory
+          : [{ from: '2000-01-01', plan: s.plan, mult: PLAN_MULT[s.plan] }]
+        s.planHistory = sanitizePlanHistory([
+          ...hist.filter((h) => h.from !== today),
+          { from: today, plan, mult: PLAN_MULT[plan] }
+        ])
+      }
       if (plan) s.plan = plan
+      if ('health' in p) s.health = sanitizeHealth({ ...s.health, ...(p.health ?? {}) })
+      if ('pace' in p) s.pace = sanitizePace({ ...s.pace, ...(p.pace ?? {}) })
+      if ('elsewhere' in p) s.elsewhere = sanitizeElsewhere(p.elsewhere)
+      if (typeof p.askSkipPreview === 'boolean') s.askSkipPreview = p.askSkipPreview
+      if (typeof p.askTimeoutSec === 'number' && p.askTimeoutSec >= 15)
+        s.askTimeoutSec = Math.min(1800, Math.round(p.askTimeoutSec))
       if (typeof p.alertsEnabled === 'boolean') s.alertsEnabled = p.alertsEnabled
       const th = sanitizeThresholds(p.alertThresholds)
       if (th) s.alertThresholds = th

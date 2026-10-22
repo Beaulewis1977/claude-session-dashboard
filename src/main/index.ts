@@ -17,6 +17,8 @@ import {
   sanitizeThresholds,
   sanitizeWeights
 } from '@shared/usage/limits'
+import { sanitizeElsewhere, sanitizeHealth, sanitizePlanHistory } from '@shared/usage/health'
+import { sanitizePace } from '@shared/usage/pace'
 import type { ThemePref } from '@shared/types'
 import {
   fixturesLayout,
@@ -135,6 +137,12 @@ async function main(): Promise<void> {
     if (typeof s.defaultBilling !== 'string') s.defaultBilling = 'subscription'
     if (!s.projectBilling || typeof s.projectBilling !== 'object') s.projectBilling = {}
     if (typeof s.adminRefreshMinutes !== 'number') s.adminRefreshMinutes = 60
+    s.planHistory = sanitizePlanHistory(s.planHistory)
+    s.health = sanitizeHealth(s.health)
+    s.pace = sanitizePace(s.pace)
+    s.elsewhere = sanitizeElsewhere(s.elsewhere)
+    if (typeof s.askSkipPreview !== 'boolean') s.askSkipPreview = false
+    if (typeof s.askTimeoutSec !== 'number') s.askTimeoutSec = 180
   })
   if (FIXTURES) {
     await seedFixtureData(appRoot, paths.archiveDir, metadata)
@@ -223,7 +231,11 @@ async function main(): Promise<void> {
       alertsEnabled: settings.value.alertsEnabled,
       alertThresholds: settings.value.alertThresholds,
       weights: settings.value.capacityWeights,
-      prices: settings.value.prices
+      prices: settings.value.prices,
+      health: settings.value.health,
+      planHistory: settings.value.planHistory,
+      pace: settings.value.pace,
+      elsewhere: settings.value.elsewhere
     }),
     (title, body) => {
       if (!Notification.isSupported()) return

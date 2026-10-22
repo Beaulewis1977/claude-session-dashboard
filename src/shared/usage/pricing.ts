@@ -72,24 +72,37 @@ export interface CostInput {
   cw1h?: number
 }
 
-/** Estimated cost in USD, or 0 when the model isn't in the table. */
-export function estimateCost(r: CostInput, table: ModelPrice[]): number {
+export interface CostParts {
+  input: number
+  output: number
+  cacheRead: number
+  /** 5-minute and 1-hour cache writes together. */
+  cacheWrite: number
+}
+
+/** Estimated cost in USD per token type (all 0 when the model isn't in the table). */
+export function costParts(r: CostInput, table: ModelPrice[]): CostParts {
   const fast = r.model.endsWith('-fast')
   const price = findPrice(fast ? r.model.slice(0, -5) : r.model, table)
-  if (!price) return 0
+  if (!price) return { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }
   // Long context: the whole request is billed at the higher tier.
   const lc = price.longContext
   const tier: PriceTier = lc && r.input + r.cacheWrite + r.cacheRead > lc.above ? lc : price
   const cw1h = Math.min(r.cw1h ?? 0, r.cacheWrite)
   const cw5 = r.cacheWrite - cw1h
-  const usd =
-    (r.input * tier.input +
-      r.output * tier.output +
-      cw5 * tier.cacheWrite5m +
-      cw1h * tier.cacheWrite1h +
-      r.cacheRead * tier.cacheRead) /
-    1_000_000
-  return fast ? usd * (price.fast ?? 1) : usd
+  const m = (fast ? (price.fast ?? 1) : 1) / 1_000_000
+  return {
+    input: r.input * tier.input * m,
+    output: r.output * tier.output * m,
+    cacheRead: r.cacheRead * tier.cacheRead * m,
+    cacheWrite: (cw5 * tier.cacheWrite5m + cw1h * tier.cacheWrite1h) * m
+  }
+}
+
+/** Estimated cost in USD, or 0 when the model isn't in the table. */
+export function estimateCost(r: CostInput, table: ModelPrice[]): number {
+  const p = costParts(r, table)
+  return p.input + p.output + p.cacheRead + p.cacheWrite
 }
 
 /** A record's cost: what Claude Code logged (old versions), else the estimate. */

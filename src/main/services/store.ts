@@ -19,6 +19,8 @@ export interface MetadataFile {
 
 export interface SettingsFile extends AppSettings {
   window?: { width: number; height: number; x?: number; y?: number; maximized?: boolean }
+  /** The always-on-top mini meter: open or not, and where. */
+  miniMeter?: { open?: boolean; x?: number; y?: number }
 }
 
 export interface AppPaths {

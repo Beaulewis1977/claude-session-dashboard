@@ -6,7 +6,7 @@
    "results": [
     {
      "currency": "USD",
-     "amount": "1636.0324",
+     "amount": "1314.3704",
      "workspace_id": null,
      "description": "claude-opus-5-5 input tokens",
      "cost_type": "tokens",
@@ -17,7 +17,7 @@
     },
     {
      "currency": "USD",
-     "amount": "2370.5060",
+     "amount": "2516.2120",
      "workspace_id": null,
      "description": "claude-opus-5-5 output tokens",
      "cost_type": "tokens",
@@ -28,7 +28,7 @@
     },
     {
      "currency": "USD",
-     "amount": "901.7064",
+     "amount": "1117.4093",
      "workspace_id": null,
      "description": "claude-opus-5-5 cache_creation tokens",
      "cost_type": "tokens",
@@ -39,7 +39,7 @@
     },
     {
      "currency": "USD",
-     "amount": "562.5138",
+     "amount": "463.5759",
      "workspace_id": null,
      "description": "claude-opus-5-5 cache_read tokens",
      "cost_type": "tokens",
@@ -50,7 +50,7 @@
     },
     {
      "currency": "USD",
-     "amount": "1695.7262",
+     "amount": "1373.7816",
      "workspace_id": null,
      "description": "claude-sonnet-5-5 input tokens",
      "cost_type": "tokens",
@@ -61,7 +61,7 @@
     },
     {
      "currency": "USD",
-     "amount": "2836.2250",
+     "amount": "2372.2550",
      "workspace_id": null,
      "description": "claude-sonnet-5-5 output tokens",
      "cost_type": "tokens",
@@ -72,7 +72,7 @@
     },
     {
      "currency": "USD",
-     "amount": "1268.7634",
+     "amount": "1188.3930",
      "workspace_id": null,
      "description": "claude-sonnet-5-5 cache_creation tokens",
      "cost_type": "tokens",
@@ -83,7 +83,7 @@
     },
     {
      "currency": "USD",
-     "amount": "516.1502",
+     "amount": "504.1601",
      "workspace_id": null,
      "description": "claude-sonnet-5-5 cache_read tokens",
      "cost_type": "tokens",
@@ -94,7 +94,7 @@
     },
     {
      "currency": "USD",
-     "amount": "204.7553",
+     "amount": "241.8293",
      "workspace_id": null,
      "description": "claude-haiku-5-5 input tokens",
      "cost_type": "tokens",
@@ -105,7 +105,7 @@
     },
     {
      "currency": "USD",
-     "amount": "363.4036",
+     "amount": "377.6565",
      "workspace_id": null,
      "description": "claude-haiku-5-5 output tokens",
      "cost_type": "tokens",
@@ -116,7 +116,7 @@
     },
     {
      "currency": "USD",
-     "amount": "188.8258",
+     "amount": "158.4934",
      "workspace_id": null,
      "description": "claude-haiku-5-5 cache_creation tokens",
      "cost_type": "tokens",
@@ -127,7 +127,7 @@
     },
     {
      "currency": "USD",
-     "amount": "172.5562",
+     "amount": "141.8065",
      "workspace_id": null,
      "description": "claude-haiku-5-5 cache_read tokens",
      "cost_type": "tokens",
@@ -144,7 +144,7 @@
    "results": [
     {
      "currency": "USD",
-     "amount": "1151.6472",
+     "amount": "1568.5628",
      "workspace_id": null,
      "description": "claude-opus-5-5 input tokens",
      "cost_type": "tokens",
@@ -155,7 +155,7 @@
     },
     {
      "currency": "USD",
-     "amount": "2078.2900",
+     "amount": "2289.2740",
      "workspace_id": null,
      "description": "claude-opus-5-5 output tokens",
      "cost_type": "tokens",
@@ -166,7 +166,7 @@
     },
     {
      "currency": "USD",
-     "amount": "1189.8447",
+     "amount": "855.5342",
      "workspace_id": null,
      "description": "claude-opus-5-5 cache_creation tokens",
      "cost_type": "tokens",
@@ -177,7 +177,7 @@
     },
     {
      "currency": "USD",
-     "amount": "455.4405",
+     "amount": "436.8393",
      "workspace_id": null,
      "description": "claude-opus-5-5 cache_read tokens",
      "cost_type": "tokens",
@@ -188,7 +188,7 @@
     },
     {
      "currency": "USD",
-     "amount": "1243.8584",
+     "amount": "1805.4140",
      "workspace_id": null,
      "description": "claude-sonnet-5-5 input tokens",
      "cost_type": "tokens",
@@ -199,7 +199,7 @@
     },
     {
      "currency": "USD",
-     "amount": "2448.5950",
+     "amount": "3026.3240",
      "workspace_id": null,
      "description": "claude-sonnet-5-5 output tokens",
      "cost_type": "tokens",
@@ -210,7 +210,7 @@
     },
     {
      "currency": "USD",
-     "amount": "1145.8263",
+     "amount": "1573.2191",
      "workspace_id": null,
      "description": "claude-sonnet-5-5 cache_creation tokens",
      "cost_type": "tokens",
@@ -221,7 +221,7 @@
     },
     {
      "currency": "USD",
-     "amount": "544.1644",
+     "amount": "556.4017",
      "workspace_id": null,
      "description": "claude-sonnet-5-5 cache_read tokens",
      "cost_type": "tokens",
@@ -232,7 +232,7 @@
     },
     {
      "currency": "USD",
-     "amount": "189.2690",
+     "amount": "215.1959",
      "workspace_id": null,
      "description": "claude-haiku-5-5 input tokens",
      "cost_type": "tokens",
@@ -243,7 +243,7 @@
     },
     {
      "currency": "USD",
-     "amount": "375.4099",
+     "amount": "379.6238",
      "workspace_id": null,
      "description": "claude-haiku-5-5 output tokens",
      "cost_type": "tokens",
@@ -254,7 +254,7 @@
     },
     {
      "currency": "USD",
-     "amount": "162.5158",
+     "amount": "144.9689",
      "workspace_id": null,
      "description": "claude-haiku-5-5 cache_creation tokens",
      "cost_type": "tokens",
@@ -265,7 +265,7 @@
     },
     {
      "currency": "USD",
-     "amount": "179.0450",
+     "amount": "149.4385",
      "workspace_id": null,
      "description": "claude-haiku-5-5 cache_read tokens",
      "cost_type": "tokens",
@@ -282,7 +282,7 @@
    "results": [
     {
      "currency": "USD",
-     "amount": "1266.8064",
+     "amount": "1371.6896",
      "workspace_id": null,
      "description": "claude-opus-5-5 input tokens",
      "cost_type": "tokens",
@@ -293,7 +293,7 @@
     },
     {
      "currency": "USD",
-     "amount": "1918.1160",
+     "amount": "2701.2040",
      "workspace_id": null,
      "description": "claude-opus-5-5 output tokens",
      "cost_type": "tokens",
@@ -304,7 +304,7 @@
     },
     {
      "currency": "USD",
-     "amount": "696.6826",
+     "amount": "1527.8616",
      "workspace_id": null,
      "description": "claude-opus-5-5 cache_creation tokens",
      "cost_type": "tokens",
@@ -315,7 +315,7 @@
     },
     {
      "currency": "USD",
-     "amount": "483.5501",
+     "amount": "583.4546",
      "workspace_id": null,
      "description": "claude-opus-5-5 cache_read tokens",
      "cost_type": "tokens",
@@ -326,7 +326,7 @@
     },
     {
      "currency": "USD",
-     "amount": "2352.7106",
+     "amount": "1892.7732",
      "workspace_id": null,
      "description": "claude-sonnet-5-5 input tokens",
      "cost_type": "tokens",
@@ -337,7 +337,7 @@
     },
     {
      "currency": "USD",
-     "amount": "3505.7170",
+     "amount": "2888.1100",
      "workspace_id": null,
      "description": "claude-sonnet-5-5 output tokens",
      "cost_type": "tokens",
@@ -348,7 +348,7 @@
     },
     {
      "currency": "USD",
-     "amount": "1883.7396",
+     "amount": "1062.1227",
      "workspace_id": null,
      "description": "claude-sonnet-5-5 cache_creation tokens",
      "cost_type": "tokens",
@@ -359,7 +359,7 @@
     },
     {
      "currency": "USD",
-     "amount": "749.2764",
+     "amount": "619.7742",
      "workspace_id": null,
      "description": "claude-sonnet-5-5 cache_read tokens",
      "cost_type": "tokens",
@@ -370,7 +370,7 @@
     },
     {
      "currency": "USD",
-     "amount": "167.7409",
+     "amount": "267.1536",
      "workspace_id": null,
      "description": "claude-haiku-5-5 input tokens",
      "cost_type": "tokens",
@@ -381,7 +381,7 @@
     },
     {
      "currency": "USD",
-     "amount": "278.7439",
+     "amount": "392.2723",
      "workspace_id": null,
      "description": "claude-haiku-5-5 output tokens",
      "cost_type": "tokens",
@@ -392,7 +392,7 @@
     },
     {
      "currency": "USD",
-     "amount": "158.2230",
+     "amount": "218.9417",
      "workspace_id": null,
      "description": "claude-haiku-5-5 cache_creation tokens",
      "cost_type": "tokens",
@@ -403,7 +403,7 @@
     },
     {
      "currency": "USD",
-     "amount": "136.7026",
+     "amount": "155.9409",
      "workspace_id": null,
      "description": "claude-haiku-5-5 cache_read tokens",
      "cost_type": "tokens",
@@ -420,7 +420,7 @@
    "results": [
     {
      "currency": "USD",
-     "amount": "1523.6584",
+     "amount": "1259.0216",
      "workspace_id": null,
      "description": "claude-opus-5-5 input tokens",
      "cost_type": "tokens",
@@ -431,7 +431,7 @@
     },
     {
      "currency": "USD",
-     "amount": "2664.9880",
+     "amount": "2282.9260",
      "workspace_id": null,
      "description": "claude-opus-5-5 output tokens",
      "cost_type": "tokens",
@@ -442,7 +442,7 @@
     },
     {
      "currency": "USD",
-     "amount": "1105.3408",
+     "amount": "1308.9935",
      "workspace_id": null,
      "description": "claude-opus-5-5 cache_creation tokens",
      "cost_type": "tokens",
@@ -453,7 +453,7 @@
     },
     {
      "currency": "USD",
-     "amount": "582.6573",
+     "amount": "514.1570",
      "workspace_id": null,
      "description": "claude-opus-5-5 cache_read tokens",
      "cost_type": "tokens",
@@ -464,7 +464,7 @@
     },
     {
      "currency": "USD",
-     "amount": "1787.2756",
+     "amount": "1574.4948",
      "workspace_id": null,
      "description": "claude-sonnet-5-5 input tokens",
      "cost_type": "tokens",
@@ -475,7 +475,7 @@
     },
     {
      "currency": "USD",
-     "amount": "3548.4710",
+     "amount": "2808.4270",
      "workspace_id": null,
      "description": "claude-sonnet-5-5 output tokens",
      "cost_type": "tokens",
@@ -486,7 +486,7 @@
     },
     {
      "currency": "USD",
-     "amount": "1510.0377",
+     "amount": "1567.8111",
      "workspace_id": null,
      "description": "claude-sonnet-5-5 cache_creation tokens",
      "cost_type": "tokens",
@@ -497,7 +497,7 @@
     },
     {
      "currency": "USD",
-     "amount": "741.0139",
+     "amount": "664.8511",
      "workspace_id": null,
      "description": "claude-sonnet-5-5 cache_read tokens",
      "cost_type": "tokens",
@@ -508,7 +508,7 @@
     },
     {
      "currency": "USD",
-     "amount": "203.8078",
+     "amount": "149.5173",
      "workspace_id": null,
      "description": "claude-haiku-5-5 input tokens",
      "cost_type": "tokens",
@@ -519,7 +519,7 @@
     },
     {
      "currency": "USD",
-     "amount": "399.8215",
+     "amount": "282.4339",
      "workspace_id": null,
      "description": "claude-haiku-5-5 output tokens",
      "cost_type": "tokens",
@@ -530,7 +530,7 @@
     },
     {
      "currency": "USD",
-     "amount": "155.4019",
+     "amount": "102.9059",
      "workspace_id": null,
      "description": "claude-haiku-5-5 cache_creation tokens",
      "cost_type": "tokens",
@@ -541,7 +541,7 @@
     },
     {
      "currency": "USD",
-     "amount": "149.2385",
+     "amount": "106.4574",
      "workspace_id": null,
      "description": "claude-haiku-5-5 cache_read tokens",
      "cost_type": "tokens",
@@ -558,7 +558,7 @@
    "results": [
     {
      "currency": "USD",
-     "amount": "397.8392",
+     "amount": "464.5492",
      "workspace_id": null,
      "description": "claude-opus-5-5 input tokens",
      "cost_type": "tokens",
@@ -569,7 +569,7 @@
     },
     {
      "currency": "USD",
-     "amount": "645.3560",
+     "amount": "757.2800",
      "workspace_id": null,
      "description": "claude-opus-5-5 output tokens",
      "cost_type": "tokens",
@@ -580,7 +580,7 @@
     },
     {
      "currency": "USD",
-     "amount": "314.8464",
+     "amount": "348.5242",
      "workspace_id": null,
      "description": "claude-opus-5-5 cache_creation tokens",
      "cost_type": "tokens",
@@ -591,7 +591,7 @@
     },
     {
      "currency": "USD",
-     "amount": "134.9391",
+     "amount": "144.7678",
      "workspace_id": null,
      "description": "claude-opus-5-5 cache_read tokens",
      "cost_type": "tokens",
@@ -602,7 +602,7 @@
     },
     {
      "currency": "USD",
-     "amount": "637.5328",
+     "amount": "463.7054",
      "workspace_id": null,
      "description": "claude-sonnet-5-5 input tokens",
      "cost_type": "tokens",
@@ -613,7 +613,7 @@
     },
     {
      "currency": "USD",
-     "amount": "1023.8110",
+     "amount": "864.4250",
      "workspace_id": null,
      "description": "claude-sonnet-5-5 output tokens",
      "cost_type": "tokens",
@@ -624,7 +624,7 @@
     },
     {
      "currency": "USD",
-     "amount": "406.4427",
+     "amount": "452.1506",
      "workspace_id": null,
      "description": "claude-sonnet-5-5 cache_creation tokens",
      "cost_type": "tokens",
@@ -635,7 +635,7 @@
     },
     {
      "currency": "USD",
-     "amount": "192.4630",
+     "amount": "218.7213",
      "workspace_id": null,
      "description": "claude-sonnet-5-5 cache_read tokens",
      "cost_type": "tokens",
@@ -646,7 +646,7 @@
     },
     {
      "currency": "USD",
-     "amount": "68.8276",
+     "amount": "70.8245",
      "workspace_id": null,
      "description": "claude-haiku-5-5 input tokens",
      "cost_type": "tokens",
@@ -657,7 +657,7 @@
     },
     {
      "currency": "USD",
-     "amount": "132.1098",
+     "amount": "119.0268",
      "workspace_id": null,
      "description": "claude-haiku-5-5 output tokens",
      "cost_type": "tokens",
@@ -668,7 +668,7 @@
     },
     {
      "currency": "USD",
-     "amount": "61.5811",
+     "amount": "67.9664",
      "workspace_id": null,
      "description": "claude-haiku-5-5 cache_creation tokens",
      "cost_type": "tokens",
@@ -679,7 +679,7 @@
     },
     {
      "currency": "USD",
-     "amount": "57.4345",
+     "amount": "53.7224",
      "workspace_id": null,
      "description": "claude-haiku-5-5 cache_read tokens",
      "cost_type": "tokens",
@@ -696,7 +696,7 @@
    "results": [
     {
      "currency": "USD",
-     "amount": "581.7124",
+     "amount": "556.5288",
      "workspace_id": null,
      "description": "claude-opus-5-5 input tokens",
      "cost_type": "tokens",
@@ -707,7 +707,7 @@
     },
     {
      "currency": "USD",
-     "amount": "951.8480",
+     "amount": "957.5300",
      "workspace_id": null,
      "description": "claude-opus-5-5 output tokens",
      "cost_type": "tokens",
@@ -718,7 +718,7 @@
     },
     {
      "currency": "USD",
-     "amount": "428.1713",
+     "amount": "542.8661",
      "workspace_id": null,
      "description": "claude-opus-5-5 cache_creation tokens",
      "cost_type": "tokens",
@@ -729,7 +729,7 @@
     },
     {
      "currency": "USD",
-     "amount": "242.5918",
+     "amount": "236.1263",
      "workspace_id": null,
      "description": "claude-opus-5-5 cache_read tokens",
      "cost_type": "tokens",
@@ -740,7 +740,7 @@
     },
     {
      "currency": "USD",
-     "amount": "697.4796",
+     "amount": "677.9020",
      "workspace_id": null,
      "description": "claude-sonnet-5-5 input tokens",
      "cost_type": "tokens",
@@ -751,7 +751,7 @@
     },
     {
      "currency": "USD",
-     "amount": "1229.5500",
+     "amount": "1020.6080",
      "workspace_id": null,
      "description": "claude-sonnet-5-5 output tokens",
      "cost_type": "tokens",
@@ -762,7 +762,7 @@
     },
     {
      "currency": "USD",
-     "amount": "673.5136",
+     "amount": "439.6907",
      "workspace_id": null,
      "description": "claude-sonnet-5-5 cache_creation tokens",
      "cost_type": "tokens",
@@ -773,7 +773,7 @@
     },
     {
      "currency": "USD",
-     "amount": "264.9035",
+     "amount": "200.9649",
      "workspace_id": null,
      "description": "claude-sonnet-5-5 cache_read tokens",
      "cost_type": "tokens",
@@ -784,7 +784,7 @@
     },
     {
      "currency": "USD",
-     "amount": "60.1527",
+     "amount": "89.0232",
      "workspace_id": null,
      "description": "claude-haiku-5-5 input tokens",
      "cost_type": "tokens",
@@ -795,7 +795,7 @@
     },
     {
      "currency": "USD",
-     "amount": "111.5876",
+     "amount": "145.6535",
      "workspace_id": null,
      "description": "claude-haiku-5-5 output tokens",
      "cost_type": "tokens",
@@ -806,7 +806,7 @@
     },
     {
      "currency": "USD",
-     "amount": "54.1438",
+     "amount": "85.5339",
      "workspace_id": null,
      "description": "claude-haiku-5-5 cache_creation tokens",
      "cost_type": "tokens",
@@ -817,7 +817,7 @@
     },
     {
      "currency": "USD",
-     "amount": "57.5676",
+     "amount": "59.4592",
      "workspace_id": null,
      "description": "claude-haiku-5-5 cache_read tokens",
      "cost_type": "tokens",
@@ -834,7 +834,7 @@
    "results": [
     {
      "currency": "USD",
-     "amount": "1601.6116",
+     "amount": "1616.2524",
      "workspace_id": null,
      "description": "claude-opus-5-5 input tokens",
      "cost_type": "tokens",
@@ -845,7 +845,7 @@
     },
     {
      "currency": "USD",
-     "amount": "2788.3140",
+     "amount": "2411.0260",
      "workspace_id": null,
      "description": "claude-opus-5-5 output tokens",
      "cost_type": "tokens",
@@ -856,7 +856,7 @@
     },
     {
      "currency": "USD",
-     "amount": "1547.5794",
+     "amount": "1063.4237",
      "workspace_id": null,
      "description": "claude-opus-5-5 cache_creation tokens",
      "cost_type": "tokens",
@@ -867,7 +867,7 @@
     },
     {
      "currency": "USD",
-     "amount": "638.1953",
+     "amount": "442.6401",
      "workspace_id": null,
      "description": "claude-opus-5-5 cache_read tokens",
      "cost_type": "tokens",
@@ -878,7 +878,7 @@
     },
     {
      "currency": "USD",
-     "amount": "1947.3534",
+     "amount": "1351.5278",
      "workspace_id": null,
      "description": "claude-sonnet-5-5 input tokens",
      "cost_type": "tokens",
@@ -889,7 +889,7 @@
     },
     {
      "currency": "USD",
-     "amount": "2819.6060",
+     "amount": "2474.4280",
      "workspace_id": null,
      "description": "claude-sonnet-5-5 output tokens",
      "cost_type": "tokens",
@@ -900,7 +900,7 @@
     },
     {
      "currency": "USD",
-     "amount": "1151.8479",
+     "amount": "1010.9048",
      "workspace_id": null,
      "description": "claude-sonnet-5-5 cache_creation tokens",
      "cost_type": "tokens",
@@ -911,7 +911,7 @@
     },
     {
      "currency": "USD",
-     "amount": "530.8542",
+     "amount": "527.4509",
      "workspace_id": null,
      "description": "claude-sonnet-5-5 cache_read tokens",
      "cost_type": "tokens",
@@ -922,7 +922,7 @@
     },
     {
      "currency": "USD",
-     "amount": "177.9750",
+     "amount": "171.6808",
      "workspace_id": null,
      "description": "claude-haiku-5-5 input tokens",
      "cost_type": "tokens",
@@ -933,7 +933,7 @@
     },
     {
      "currency": "USD",
-     "amount": "304.6658",
+     "amount": "338.5983",
      "workspace_id": null,
      "description": "claude-haiku-5-5 output tokens",
      "cost_type": "tokens",
@@ -944,7 +944,7 @@
     },
     {
      "currency": "USD",
-     "amount": "110.3803",
+     "amount": "182.5223",
      "workspace_id": null,
      "description": "claude-haiku-5-5 cache_creation tokens",
      "cost_type": "tokens",
@@ -955,7 +955,7 @@
     },
     {
      "currency": "USD",
-     "amount": "131.9725",
+     "amount": "122.3611",
      "workspace_id": null,
      "description": "claude-haiku-5-5 cache_read tokens",
      "cost_type": "tokens",
@@ -972,7 +972,7 @@
    "results": [
     {
      "currency": "USD",
-     "amount": "1681.3648",
+     "amount": "1322.0556",
      "workspace_id": null,
      "description": "claude-opus-5-5 input tokens",
      "cost_type": "tokens",
@@ -983,7 +983,7 @@
     },
     {
      "currency": "USD",
-     "amount": "2584.1200",
+     "amount": "2048.8360",
      "workspace_id": null,
      "description": "claude-opus-5-5 output tokens",
      "cost_type": "tokens",
@@ -994,7 +994,7 @@
     },
     {
      "currency": "USD",
-     "amount": "1357.7493",
+     "amount": "1113.1666",
      "workspace_id": null,
      "description": "claude-opus-5-5 cache_creation tokens",
      "cost_type": "tokens",
@@ -1005,7 +1005,7 @@
     },
     {
      "currency": "USD",
-     "amount": "516.5834",
+     "amount": "449.6300",
      "workspace_id": null,
      "description": "claude-opus-5-5 cache_read tokens",
      "cost_type": "tokens",
@@ -1016,7 +1016,7 @@
     },
     {
      "currency": "USD",
-     "amount": "1818.6568",
+     "amount": "1695.9784",
      "workspace_id": null,
      "description": "claude-sonnet-5-5 input tokens",
      "cost_type": "tokens",
@@ -1027,7 +1027,7 @@
     },
     {
      "currency": "USD",
-     "amount": "3382.8460",
+     "amount": "3286.7770",
      "workspace_id": null,
      "description": "claude-sonnet-5-5 output tokens",
      "cost_type": "tokens",
@@ -1038,7 +1038,7 @@
     },
     {
      "currency": "USD",
-     "amount": "1261.3973",
+     "amount": "1836.6260",
      "workspace_id": null,
      "description": "claude-sonnet-5-5 cache_creation tokens",
      "cost_type": "tokens",
@@ -1049,7 +1049,7 @@
     },
     {
      "currency": "USD",
-     "amount": "806.0076",
+     "amount": "616.3400",
      "workspace_id": null,
      "description": "claude-sonnet-5-5 cache_read tokens",
      "cost_type": "tokens",
@@ -1060,7 +1060,7 @@
     },
     {
      "currency": "USD",
-     "amount": "247.9879",
+     "amount": "203.3177",
      "workspace_id": null,
      "description": "claude-haiku-5-5 input tokens",
      "cost_type": "tokens",
@@ -1071,7 +1071,7 @@
     },
     {
      "currency": "USD",
-     "amount": "400.1646",
+     "amount": "376.8530",
      "workspace_id": null,
      "description": "claude-haiku-5-5 output tokens",
      "cost_type": "tokens",
@@ -1082,7 +1082,7 @@
     },
     {
      "currency": "USD",
-     "amount": "160.3169",
+     "amount": "143.7021",
      "workspace_id": null,
      "description": "claude-haiku-5-5 cache_creation tokens",
      "cost_type": "tokens",
@@ -1093,7 +1093,7 @@
     },
     {
      "currency": "USD",
-     "amount": "189.6687",
+     "amount": "195.7675",
      "workspace_id": null,
      "description": "claude-haiku-5-5 cache_read tokens",
      "cost_type": "tokens",
@@ -1110,7 +1110,7 @@
    "results": [
     {
      "currency": "USD",
-     "amount": "1113.5088",
+     "amount": "1333.7908",
      "workspace_id": null,
      "description": "claude-opus-5-5 input tokens",
      "cost_type": "tokens",
@@ -1121,7 +1121,7 @@
     },
     {
      "currency": "USD",
-     "amount": "1915.7680",
+     "amount": "1968.8820",
      "workspace_id": null,
      "description": "claude-opus-5-5 output tokens",
      "cost_type": "tokens",
@@ -1132,7 +1132,7 @@
     },
     {
      "currency": "USD",
-     "amount": "1079.2941",
+     "amount": "794.1453",
      "workspace_id": null,
      "description": "claude-opus-5-5 cache_creation tokens",
      "cost_type": "tokens",
@@ -1143,7 +1143,7 @@
     },
     {
      "currency": "USD",
-     "amount": "370.7212",
+     "amount": "387.6647",
      "workspace_id": null,
      "description": "claude-opus-5-5 cache_read tokens",
      "cost_type": "tokens",
@@ -1154,7 +1154,7 @@
     },
     {
      "currency": "USD",
-     "amount": "1450.5782",
+     "amount": "1787.3916",
      "workspace_id": null,
      "description": "claude-sonnet-5-5 input tokens",
      "cost_type": "tokens",
@@ -1165,7 +1165,7 @@
     },
     {
      "currency": "USD",
-     "amount": "2611.8340",
+     "amount": "2575.2660",
      "workspace_id": null,
      "description": "claude-sonnet-5-5 output tokens",
      "cost_type": "tokens",
@@ -1176,7 +1176,7 @@
     },
     {
      "currency": "USD",
-     "amount": "1522.6782",
+     "amount": "1477.4703",
      "workspace_id": null,
      "description": "claude-sonnet-5-5 cache_creation tokens",
      "cost_type": "tokens",
@@ -1187,7 +1187,7 @@
     },
     {
      "currency": "USD",
-     "amount": "507.9440",
+     "amount": "581.1867",
      "workspace_id": null,
      "description": "claude-sonnet-5-5 cache_read tokens",
      "cost_type": "tokens",
@@ -1198,7 +1198,7 @@
     },
     {
      "currency": "USD",
-     "amount": "278.0128",
+     "amount": "200.8744",
      "workspace_id": null,
      "description": "claude-haiku-5-5 input tokens",
      "cost_type": "tokens",
@@ -1209,7 +1209,7 @@
     },
     {
      "currency": "USD",
-     "amount": "409.6497",
+     "amount": "358.1139",
      "workspace_id": null,
      "description": "claude-haiku-5-5 output tokens",
      "cost_type": "tokens",
@@ -1220,7 +1220,7 @@
     },
     {
      "currency": "USD",
-     "amount": "174.4654",
+     "amount": "199.7690",
      "workspace_id": null,
      "description": "claude-haiku-5-5 cache_creation tokens",
      "cost_type": "tokens",
@@ -1231,7 +1231,7 @@
     },
     {
      "currency": "USD",
-     "amount": "185.9761",
+     "amount": "157.1522",
      "workspace_id": null,
      "description": "claude-haiku-5-5 cache_read tokens",
      "cost_type": "tokens",
@@ -1248,7 +1248,7 @@
    "results": [
     {
      "currency": "USD",
-     "amount": "1828.6316",
+     "amount": "1567.7600",
      "workspace_id": null,
      "description": "claude-opus-5-5 input tokens",
      "cost_type": "tokens",
@@ -1259,7 +1259,7 @@
     },
     {
      "currency": "USD",
-     "amount": "2663.7140",
+     "amount": "2279.3040",
      "workspace_id": null,
      "description": "claude-opus-5-5 output tokens",
      "cost_type": "tokens",
@@ -1270,7 +1270,7 @@
     },
     {
      "currency": "USD",
-     "amount": "1533.3197",
+     "amount": "812.2984",
      "workspace_id": null,
      "description": "claude-opus-5-5 cache_creation tokens",
      "cost_type": "tokens",
@@ -1281,7 +1281,7 @@
     },
     {
      "currency": "USD",
-     "amount": "581.6068",
+     "amount": "520.9022",
      "workspace_id": null,
      "description": "claude-opus-5-5 cache_read tokens",
      "cost_type": "tokens",
@@ -1292,7 +1292,7 @@
     },
     {
      "currency": "USD",
-     "amount": "1506.9030",
+     "amount": "1702.9266",
      "workspace_id": null,
      "description": "claude-sonnet-5-5 input tokens",
      "cost_type": "tokens",
@@ -1303,7 +1303,7 @@
     },
     {
      "currency": "USD",
-     "amount": "2353.1100",
+     "amount": "3171.3100",
      "workspace_id": null,
      "description": "claude-sonnet-5-5 output tokens",
      "cost_type": "tokens",
@@ -1314,7 +1314,7 @@
     },
     {
      "currency": "USD",
-     "amount": "935.6792",
+     "amount": "1719.9305",
      "workspace_id": null,
      "description": "claude-sonnet-5-5 cache_creation tokens",
      "cost_type": "tokens",
@@ -1325,7 +1325,7 @@
     },
     {
      "currency": "USD",
-     "amount": "543.9392",
+     "amount": "683.2314",
      "workspace_id": null,
      "description": "claude-sonnet-5-5 cache_read tokens",
      "cost_type": "tokens",
@@ -1336,7 +1336,7 @@
     },
     {
      "currency": "USD",
-     "amount": "249.9909",
+     "amount": "173.3292",
      "workspace_id": null,
      "description": "claude-haiku-5-5 input tokens",
      "cost_type": "tokens",
@@ -1347,7 +1347,7 @@
     },
     {
      "currency": "USD",
-     "amount": "389.7081",
+     "amount": "299.6751",
      "workspace_id": null,
      "description": "claude-haiku-5-5 output tokens",
      "cost_type": "tokens",
@@ -1358,7 +1358,7 @@
     },
     {
      "currency": "USD",
-     "amount": "174.0049",
+     "amount": "106.6744",
      "workspace_id": null,
      "description": "claude-haiku-5-5 cache_creation tokens",
      "cost_type": "tokens",
@@ -1369,7 +1369,7 @@
     },
     {
      "currency": "USD",
-     "amount": "152.6305",
+     "amount": "116.6670",
      "workspace_id": null,
      "description": "claude-haiku-5-5 cache_read tokens",
      "cost_type": "tokens",
@@ -1386,7 +1386,7 @@
    "results": [
     {
      "currency": "USD",
-     "amount": "1238.9476",
+     "amount": "1385.1508",
      "workspace_id": null,
      "description": "claude-opus-5-5 input tokens",
      "cost_type": "tokens",
@@ -1397,7 +1397,7 @@
     },
     {
      "currency": "USD",
-     "amount": "1808.3340",
+     "amount": "2090.0540",
      "workspace_id": null,
      "description": "claude-opus-5-5 output tokens",
      "cost_type": "tokens",
@@ -1408,7 +1408,7 @@
     },
     {
      "currency": "USD",
-     "amount": "987.3986",
+     "amount": "935.0385",
      "workspace_id": null,
      "description": "claude-opus-5-5 cache_creation tokens",
      "cost_type": "tokens",
@@ -1419,7 +1419,7 @@
     },
     {
      "currency": "USD",
-     "amount": "367.4613",
+     "amount": "528.1907",
      "workspace_id": null,
      "description": "claude-opus-5-5 cache_read tokens",
      "cost_type": "tokens",
@@ -1430,7 +1430,7 @@
     },
     {
      "currency": "USD",
-     "amount": "1887.1980",
+     "amount": "1746.3622",
      "workspace_id": null,
      "description": "claude-sonnet-5-5 input tokens",
      "cost_type": "tokens",
@@ -1441,7 +1441,7 @@
     },
     {
      "currency": "USD",
-     "amount": "2854.3560",
+     "amount": "3191.5780",
      "workspace_id": null,
      "description": "claude-sonnet-5-5 output tokens",
      "cost_type": "tokens",
@@ -1452,7 +1452,7 @@
     },
     {
      "currency": "USD",
-     "amount": "1169.3452",
+     "amount": "1308.6817",
      "workspace_id": null,
      "description": "claude-sonnet-5-5 cache_creation tokens",
      "cost_type": "tokens",
@@ -1463,7 +1463,7 @@
     },
     {
      "currency": "USD",
-     "amount": "663.3661",
+     "amount": "748.7788",
      "workspace_id": null,
      "description": "claude-sonnet-5-5 cache_read tokens",
      "cost_type": "tokens",
@@ -1474,7 +1474,7 @@
     },
     {
      "currency": "USD",
-     "amount": "182.3082",
+     "amount": "166.7507",
      "workspace_id": null,
      "description": "claude-haiku-5-5 input tokens",
      "cost_type": "tokens",
@@ -1485,7 +1485,7 @@
     },
     {
      "currency": "USD",
-     "amount": "305.6200",
+     "amount": "304.8678",
      "workspace_id": null,
      "description": "claude-haiku-5-5 output tokens",
      "cost_type": "tokens",
@@ -1496,7 +1496,7 @@
     },
     {
      "currency": "USD",
-     "amount": "125.1250",
+     "amount": "110.7633",
      "workspace_id": null,
      "description": "claude-haiku-5-5 cache_creation tokens",
      "cost_type": "tokens",
@@ -1507,7 +1507,7 @@
     },
     {
      "currency": "USD",
-     "amount": "121.3899",
+     "amount": "132.3099",
      "workspace_id": null,
      "description": "claude-haiku-5-5 cache_read tokens",
      "cost_type": "tokens",
@@ -1524,7 +1524,7 @@
    "results": [
     {
      "currency": "USD",
-     "amount": "323.8980",
+     "amount": "435.2236",
      "workspace_id": null,
      "description": "claude-opus-5-5 input tokens",
      "cost_type": "tokens",
@@ -1535,7 +1535,7 @@
     },
     {
      "currency": "USD",
-     "amount": "643.8160",
+     "amount": "651.5020",
      "workspace_id": null,
      "description": "claude-opus-5-5 output tokens",
      "cost_type": "tokens",
@@ -1546,7 +1546,7 @@
     },
     {
      "currency": "USD",
-     "amount": "355.5647",
+     "amount": "281.2023",
      "workspace_id": null,
      "description": "claude-opus-5-5 cache_creation tokens",
      "cost_type": "tokens",
@@ -1557,7 +1557,7 @@
     },
     {
      "currency": "USD",
-     "amount": "119.0510",
+     "amount": "151.5458",
      "workspace_id": null,
      "description": "claude-opus-5-5 cache_read tokens",
      "cost_type": "tokens",
@@ -1568,7 +1568,7 @@
     },
     {
      "currency": "USD",
-     "amount": "619.5106",
+     "amount": "668.0552",
      "workspace_id": null,
      "description": "claude-sonnet-5-5 input tokens",
      "cost_type": "tokens",
@@ -1579,7 +1579,7 @@
     },
     {
      "currency": "USD",
-     "amount": "968.6520",
+     "amount": "1189.8320",
      "workspace_id": null,
      "description": "claude-sonnet-5-5 output tokens",
      "cost_type": "tokens",
@@ -1590,7 +1590,7 @@
     },
     {
      "currency": "USD",
-     "amount": "413.1637",
+     "amount": "672.5968",
      "workspace_id": null,
      "description": "claude-sonnet-5-5 cache_creation tokens",
      "cost_type": "tokens",
@@ -1601,7 +1601,7 @@
     },
     {
      "currency": "USD",
-     "amount": "237.5147",
+     "amount": "277.0468",
      "workspace_id": null,
      "description": "claude-sonnet-5-5 cache_read tokens",
      "cost_type": "tokens",
@@ -1612,7 +1612,7 @@
     },
     {
      "currency": "USD",
-     "amount": "72.1486",
+     "amount": "63.1029",
      "workspace_id": null,
      "description": "claude-haiku-5-5 input tokens",
      "cost_type": "tokens",
@@ -1623,7 +1623,7 @@
     },
     {
      "currency": "USD",
-     "amount": "141.5024",
+     "amount": "123.0687",
      "workspace_id": null,
      "description": "claude-haiku-5-5 output tokens",
      "cost_type": "tokens",
@@ -1634,7 +1634,7 @@
     },
     {
      "currency": "USD",
-     "amount": "52.2200",
+     "amount": "60.7403",
      "workspace_id": null,
      "description": "claude-haiku-5-5 cache_creation tokens",
      "cost_type": "tokens",
@@ -1645,7 +1645,7 @@
     },
     {
      "currency": "USD",
-     "amount": "63.2610",
+     "amount": "48.1519",
      "workspace_id": null,
      "description": "claude-haiku-5-5 cache_read tokens",
      "cost_type": "tokens",
@@ -1662,7 +1662,7 @@
    "results": [
     {
      "currency": "USD",
-     "amount": "571.3568",
+     "amount": "426.1604",
      "workspace_id": null,
      "description": "claude-opus-5-5 input tokens",
      "cost_type": "tokens",
@@ -1673,7 +1673,7 @@
     },
     {
      "currency": "USD",
-     "amount": "836.9580",
+     "amount": "665.2620",
      "workspace_id": null,
      "description": "claude-opus-5-5 output tokens",
      "cost_type": "tokens",
@@ -1684,7 +1684,7 @@
     },
     {
      "currency": "USD",
-     "amount": "435.1315",
+     "amount": "368.6037",
      "workspace_id": null,
      "description": "claude-opus-5-5 cache_creation tokens",
      "cost_type": "tokens",
@@ -1695,7 +1695,7 @@
     },
     {
      "currency": "USD",
-     "amount": "157.3982",
+     "amount": "151.8473",
      "workspace_id": null,
      "description": "claude-opus-5-5 cache_read tokens",
      "cost_type": "tokens",
@@ -1706,7 +1706,7 @@
     },
     {
      "currency": "USD",
-     "amount": "644.8082",
+     "amount": "748.2410",
      "workspace_id": null,
      "description": "claude-sonnet-5-5 input tokens",
      "cost_type": "tokens",
@@ -1717,7 +1717,7 @@
     },
     {
      "currency": "USD",
-     "amount": "1204.7330",
+     "amount": "1111.7380",
      "workspace_id": null,
      "description": "claude-sonnet-5-5 output tokens",
      "cost_type": "tokens",
@@ -1728,7 +1728,7 @@
     },
     {
      "currency": "USD",
-     "amount": "672.4625",
+     "amount": "574.9966",
      "workspace_id": null,
      "description": "claude-sonnet-5-5 cache_creation tokens",
      "cost_type": "tokens",
@@ -1739,7 +1739,7 @@
     },
     {
      "currency": "USD",
-     "amount": "278.8600",
+     "amount": "233.1150",
      "workspace_id": null,
      "description": "claude-sonnet-5-5 cache_read tokens",
      "cost_type": "tokens",
@@ -1750,7 +1750,7 @@
     },
     {
      "currency": "USD",
-     "amount": "70.9199",
+     "amount": "79.9991",
      "workspace_id": null,
      "description": "claude-haiku-5-5 input tokens",
      "cost_type": "tokens",
@@ -1761,7 +1761,7 @@
     },
     {
      "currency": "USD",
-     "amount": "130.8062",
+     "amount": "146.6687",
      "workspace_id": null,
      "description": "claude-haiku-5-5 output tokens",
      "cost_type": "tokens",
@@ -1772,7 +1772,7 @@
     },
     {
      "currency": "USD",
-     "amount": "53.3193",
+     "amount": "66.3396",
      "workspace_id": null,
      "description": "claude-haiku-5-5 cache_creation tokens",
      "cost_type": "tokens",
@@ -1783,7 +1783,7 @@
     },
     {
      "currency": "USD",
-     "amount": "67.8872",
+     "amount": "64.5375",
      "workspace_id": null,
      "description": "claude-haiku-5-5 cache_read tokens",
      "cost_type": "tokens",
@@ -1800,7 +1800,7 @@
    "results": [
     {
      "currency": "USD",
-     "amount": "1128.7680",
+     "amount": "983.7184",
      "workspace_id": null,
      "description": "claude-opus-5-5 input tokens",
      "cost_type": "tokens",
@@ -1811,7 +1811,7 @@
     },
     {
      "currency": "USD",
-     "amount": "2216.5640",
+     "amount": "1919.3140",
      "workspace_id": null,
      "description": "claude-opus-5-5 output tokens",
      "cost_type": "tokens",
@@ -1822,7 +1822,7 @@
     },
     {
      "currency": "USD",
-     "amount": "817.4533",
+     "amount": "761.5130",
      "workspace_id": null,
      "description": "claude-opus-5-5 cache_creation tokens",
      "cost_type": "tokens",
@@ -1833,7 +1833,7 @@
     },
     {
      "currency": "USD",
-     "amount": "420.1388",
+     "amount": "429.2009",
      "workspace_id": null,
      "description": "claude-opus-5-5 cache_read tokens",
      "cost_type": "tokens",
@@ -1844,7 +1844,7 @@
     },
     {
      "currency": "USD",
-     "amount": "1572.8914",
+     "amount": "2170.2806",
      "workspace_id": null,
      "description": "claude-sonnet-5-5 input tokens",
      "cost_type": "tokens",
@@ -1855,7 +1855,7 @@
     },
     {
      "currency": "USD",
-     "amount": "2575.5600",
+     "amount": "3333.8730",
      "workspace_id": null,
      "description": "claude-sonnet-5-5 output tokens",
      "cost_type": "tokens",
@@ -1866,7 +1866,7 @@
     },
     {
      "currency": "USD",
-     "amount": "1370.5971",
+     "amount": "1522.3097",
      "workspace_id": null,
      "description": "claude-sonnet-5-5 cache_creation tokens",
      "cost_type": "tokens",
@@ -1877,7 +1877,7 @@
     },
     {
      "currency": "USD",
-     "amount": "621.1257",
+     "amount": "776.1559",
      "workspace_id": null,
      "description": "claude-sonnet-5-5 cache_read tokens",
      "cost_type": "tokens",
@@ -1888,7 +1888,7 @@
     },
     {
      "currency": "USD",
-     "amount": "171.7201",
+     "amount": "174.0435",
      "workspace_id": null,
      "description": "claude-haiku-5-5 input tokens",
      "cost_type": "tokens",
@@ -1899,7 +1899,7 @@
     },
     {
      "currency": "USD",
-     "amount": "335.2240",
+     "amount": "281.5369",
      "workspace_id": null,
      "description": "claude-haiku-5-5 output tokens",
      "cost_type": "tokens",
@@ -1910,7 +1910,7 @@
     },
     {
      "currency": "USD",
-     "amount": "165.4213",
+     "amount": "103.0284",
      "workspace_id": null,
      "description": "claude-haiku-5-5 cache_creation tokens",
      "cost_type": "tokens",
@@ -1921,7 +1921,7 @@
     },
     {
      "currency": "USD",
-     "amount": "124.8059",
+     "amount": "106.2823",
      "workspace_id": null,
      "description": "claude-haiku-5-5 cache_read tokens",
      "cost_type": "tokens",
@@ -1938,7 +1938,7 @@
    "results": [
     {
      "currency": "USD",
-     "amount": "1239.2948",
+     "amount": "1282.8532",
      "workspace_id": null,
      "description": "claude-opus-5-5 input tokens",
      "cost_type": "tokens",
@@ -1949,7 +1949,7 @@
     },
     {
      "currency": "USD",
-     "amount": "1850.6340",
+     "amount": "1876.7660",
      "workspace_id": null,
      "description": "claude-opus-5-5 output tokens",
      "cost_type": "tokens",
@@ -1960,7 +1960,7 @@
     },
     {
      "currency": "USD",
-     "amount": "1055.9395",
+     "amount": "1042.7100",
      "workspace_id": null,
      "description": "claude-opus-5-5 cache_creation tokens",
      "cost_type": "tokens",
@@ -1971,7 +1971,7 @@
     },
     {
      "currency": "USD",
-     "amount": "344.4795",
+     "amount": "454.2170",
      "workspace_id": null,
      "description": "claude-opus-5-5 cache_read tokens",
      "cost_type": "tokens",
@@ -1982,7 +1982,7 @@
     },
     {
      "currency": "USD",
-     "amount": "2199.4040",
+     "amount": "1364.1098",
      "workspace_id": null,
      "description": "claude-sonnet-5-5 input tokens",
      "cost_type": "tokens",
@@ -1993,7 +1993,7 @@
     },
     {
      "currency": "USD",
-     "amount": "3450.4470",
+     "amount": "2553.1840",
      "workspace_id": null,
      "description": "claude-sonnet-5-5 output tokens",
      "cost_type": "tokens",
@@ -2004,7 +2004,7 @@
     },
     {
      "currency": "USD",
-     "amount": "1361.0217",
+     "amount": "964.7196",
      "workspace_id": null,
      "description": "claude-sonnet-5-5 cache_creation tokens",
      "cost_type": "tokens",
@@ -2015,7 +2015,7 @@
     },
     {
      "currency": "USD",
-     "amount": "666.3470",
+     "amount": "624.6215",
      "workspace_id": null,
      "description": "claude-sonnet-5-5 cache_read tokens",
      "cost_type": "tokens",
@@ -2026,7 +2026,7 @@
     },
     {
      "currency": "USD",
-     "amount": "187.6277",
+     "amount": "228.7206",
      "workspace_id": null,
      "description": "claude-haiku-5-5 input tokens",
      "cost_type": "tokens",
@@ -2037,7 +2037,7 @@
     },
     {
      "currency": "USD",
-     "amount": "285.1586",
+     "amount": "401.2090",
      "workspace_id": null,
      "description": "claude-haiku-5-5 output tokens",
      "cost_type": "tokens",
@@ -2048,7 +2048,7 @@
     },
     {
      "currency": "USD",
-     "amount": "124.5267",
+     "amount": "234.3136",
      "workspace_id": null,
      "description": "claude-haiku-5-5 cache_creation tokens",
      "cost_type": "tokens",
@@ -2059,7 +2059,7 @@
     },
     {
      "currency": "USD",
-     "amount": "142.5668",
+     "amount": "208.5269",
      "workspace_id": null,
      "description": "claude-haiku-5-5 cache_read tokens",
      "cost_type": "tokens",
@@ -2076,7 +2076,7 @@
    "results": [
     {
      "currency": "USD",
-     "amount": "1507.7556",
+     "amount": "1489.5980",
      "workspace_id": null,
      "description": "claude-opus-5-5 input tokens",
      "cost_type": "tokens",
@@ -2087,7 +2087,7 @@
     },
     {
      "currency": "USD",
-     "amount": "2774.6560",
+     "amount": "2608.0040",
      "workspace_id": null,
      "description": "claude-opus-5-5 output tokens",
      "cost_type": "tokens",
@@ -2098,7 +2098,7 @@
     },
     {
      "currency": "USD",
-     "amount": "1215.2260",
+     "amount": "1252.2833",
      "workspace_id": null,
      "description": "claude-opus-5-5 cache_creation tokens",
      "cost_type": "tokens",
@@ -2109,7 +2109,7 @@
     },
     {
      "currency": "USD",
-     "amount": "678.7929",
+     "amount": "617.6997",
      "workspace_id": null,
      "description": "claude-opus-5-5 cache_read tokens",
      "cost_type": "tokens",
@@ -2120,7 +2120,7 @@
     },
     {
      "currency": "USD",
-     "amount": "2107.4822",
+     "amount": "1454.2246",
      "workspace_id": null,
      "description": "claude-sonnet-5-5 input tokens",
      "cost_type": "tokens",
@@ -2131,7 +2131,7 @@
     },
     {
      "currency": "USD",
-     "amount": "3035.0000",
+     "amount": "2748.0040",
      "workspace_id": null,
      "description": "claude-sonnet-5-5 output tokens",
      "cost_type": "tokens",
@@ -2142,7 +2142,7 @@
     },
     {
      "currency": "USD",
-     "amount": "1178.9392",
+     "amount": "1430.9350",
      "workspace_id": null,
      "description": "claude-sonnet-5-5 cache_creation tokens",
      "cost_type": "tokens",
@@ -2153,7 +2153,7 @@
     },
     {
      "currency": "USD",
-     "amount": "622.5027",
+     "amount": "661.7254",
      "workspace_id": null,
      "description": "claude-sonnet-5-5 cache_read tokens",
      "cost_type": "tokens",
@@ -2164,7 +2164,7 @@
     },
     {
      "currency": "USD",
-     "amount": "208.3330",
+     "amount": "227.3849",
      "workspace_id": null,
      "description": "claude-haiku-5-5 input tokens",
      "cost_type": "tokens",
@@ -2175,7 +2175,7 @@
     },
     {
      "currency": "USD",
-     "amount": "375.9648",
+     "amount": "392.9646",
      "workspace_id": null,
      "description": "claude-haiku-5-5 output tokens",
      "cost_type": "tokens",
@@ -2186,7 +2186,7 @@
     },
     {
      "currency": "USD",
-     "amount": "167.9792",
+     "amount": "151.9398",
      "workspace_id": null,
      "description": "claude-haiku-5-5 cache_creation tokens",
      "cost_type": "tokens",
@@ -2197,7 +2197,7 @@
     },
     {
      "currency": "USD",
-     "amount": "184.6597",
+     "amount": "147.2095",
      "workspace_id": null,
      "description": "claude-haiku-5-5 cache_read tokens",
      "cost_type": "tokens",
@@ -2214,7 +2214,7 @@
    "results": [
     {
      "currency": "USD",
-     "amount": "1065.4848",
+     "amount": "1113.5624",
      "workspace_id": null,
      "description": "claude-opus-5-5 input tokens",
      "cost_type": "tokens",
@@ -2225,7 +2225,7 @@
     },
     {
      "currency": "USD",
-     "amount": "1938.3480",
+     "amount": "1811.2700",
      "workspace_id": null,
      "description": "claude-opus-5-5 output tokens",
      "cost_type": "tokens",
@@ -2236,7 +2236,7 @@
     },
     {
      "currency": "USD",
-     "amount": "948.7436",
+     "amount": "1031.4050",
      "workspace_id": null,
      "description": "claude-opus-5-5 cache_creation tokens",
      "cost_type": "tokens",
@@ -2247,7 +2247,7 @@
     },
     {
      "currency": "USD",
-     "amount": "350.6504",
+     "amount": "439.0435",
      "workspace_id": null,
      "description": "claude-opus-5-5 cache_read tokens",
      "cost_type": "tokens",
@@ -2258,7 +2258,7 @@
     },
     {
      "currency": "USD",
-     "amount": "2218.2312",
+     "amount": "1707.1042",
      "workspace_id": null,
      "description": "claude-sonnet-5-5 input tokens",
      "cost_type": "tokens",
@@ -2269,7 +2269,7 @@
     },
     {
      "currency": "USD",
-     "amount": "3526.7310",
+     "amount": "2629.6730",
      "workspace_id": null,
      "description": "claude-sonnet-5-5 output tokens",
      "cost_type": "tokens",
@@ -2280,7 +2280,7 @@
     },
     {
      "currency": "USD",
-     "amount": "1869.2389",
+     "amount": "1473.1946",
      "workspace_id": null,
      "description": "claude-sonnet-5-5 cache_creation tokens",
      "cost_type": "tokens",
@@ -2291,7 +2291,7 @@
     },
     {
      "currency": "USD",
-     "amount": "697.6791",
+     "amount": "597.6551",
      "workspace_id": null,
      "description": "claude-sonnet-5-5 cache_read tokens",
      "cost_type": "tokens",
@@ -2302,7 +2302,7 @@
     },
     {
      "currency": "USD",
-     "amount": "261.3152",
+     "amount": "166.7690",
      "workspace_id": null,
      "description": "claude-haiku-5-5 input tokens",
      "cost_type": "tokens",
@@ -2313,7 +2313,7 @@
     },
     {
      "currency": "USD",
-     "amount": "401.0719",
+     "amount": "305.9042",
      "workspace_id": null,
      "description": "claude-haiku-5-5 output tokens",
      "cost_type": "tokens",
@@ -2324,7 +2324,7 @@
     },
     {
      "currency": "USD",
-     "amount": "163.3555",
+     "amount": "125.7169",
      "workspace_id": null,
      "description": "claude-haiku-5-5 cache_creation tokens",
      "cost_type": "tokens",
@@ -2335,7 +2335,7 @@
     },
     {
      "currency": "USD",
-     "amount": "159.7460",
+     "amount": "125.2026",
      "workspace_id": null,
      "description": "claude-haiku-5-5 cache_read tokens",
      "cost_type": "tokens",
@@ -2352,7 +2352,7 @@
    "results": [
     {
      "currency": "USD",
-     "amount": "1342.5064",
+     "amount": "1330.4488",
      "workspace_id": null,
      "description": "claude-opus-5-5 input tokens",
      "cost_type": "tokens",
@@ -2363,7 +2363,7 @@
     },
     {
      "currency": "USD",
-     "amount": "2041.3920",
+     "amount": "2407.9500",
      "workspace_id": null,
      "description": "claude-opus-5-5 output tokens",
      "cost_type": "tokens",
@@ -2374,7 +2374,7 @@
     },
     {
      "currency": "USD",
-     "amount": "849.1734",
+     "amount": "1217.9872",
      "workspace_id": null,
      "description": "claude-opus-5-5 cache_creation tokens",
      "cost_type": "tokens",
@@ -2385,7 +2385,7 @@
     },
     {
      "currency": "USD",
-     "amount": "466.7357",
+     "amount": "564.2504",
      "workspace_id": null,
      "description": "claude-opus-5-5 cache_read tokens",
      "cost_type": "tokens",
@@ -2396,7 +2396,7 @@
     },
     {
      "currency": "USD",
-     "amount": "1839.4152",
+     "amount": "1866.6406",
      "workspace_id": null,
      "description": "claude-sonnet-5-5 input tokens",
      "cost_type": "tokens",
@@ -2407,7 +2407,7 @@
     },
     {
      "currency": "USD",
-     "amount": "3176.2920",
+     "amount": "2707.0430",
      "workspace_id": null,
      "description": "claude-sonnet-5-5 output tokens",
      "cost_type": "tokens",
@@ -2418,7 +2418,7 @@
     },
     {
      "currency": "USD",
-     "amount": "1834.8440",
+     "amount": "1487.1077",
      "workspace_id": null,
      "description": "claude-sonnet-5-5 cache_creation tokens",
      "cost_type": "tokens",
@@ -2429,7 +2429,7 @@
     },
     {
      "currency": "USD",
-     "amount": "643.4763",
+     "amount": "689.4043",
      "workspace_id": null,
      "description": "claude-sonnet-5-5 cache_read tokens",
      "cost_type": "tokens",
@@ -2440,7 +2440,7 @@
     },
     {
      "currency": "USD",
-     "amount": "237.6754",
+     "amount": "202.7934",
      "workspace_id": null,
      "description": "claude-haiku-5-5 input tokens",
      "cost_type": "tokens",
@@ -2451,7 +2451,7 @@
     },
     {
      "currency": "USD",
-     "amount": "394.1617",
+     "amount": "375.5265",
      "workspace_id": null,
      "description": "claude-haiku-5-5 output tokens",
      "cost_type": "tokens",
@@ -2462,7 +2462,7 @@
     },
     {
      "currency": "USD",
-     "amount": "158.1489",
+     "amount": "195.1206",
      "workspace_id": null,
      "description": "claude-haiku-5-5 cache_creation tokens",
      "cost_type": "tokens",
@@ -2473,7 +2473,7 @@
     },
     {
      "currency": "USD",
-     "amount": "186.2657",
+     "amount": "173.1630",
      "workspace_id": null,
      "description": "claude-haiku-5-5 cache_read tokens",
      "cost_type": "tokens",
@@ -2490,7 +2490,7 @@
    "results": [
     {
      "currency": "USD",
-     "amount": "555.4080",
+     "amount": "346.3988",
      "workspace_id": null,
      "description": "claude-opus-5-5 input tokens",
      "cost_type": "tokens",
@@ -2501,7 +2501,7 @@
     },
     {
      "currency": "USD",
-     "amount": "875.5820",
+     "amount": "633.6820",
      "workspace_id": null,
      "description": "claude-opus-5-5 output tokens",
      "cost_type": "tokens",
@@ -2512,7 +2512,7 @@
     },
     {
      "currency": "USD",
-     "amount": "358.1489",
+     "amount": "274.4656",
      "workspace_id": null,
      "description": "claude-opus-5-5 cache_creation tokens",
      "cost_type": "tokens",
@@ -2523,7 +2523,7 @@
     },
     {
      "currency": "USD",
-     "amount": "158.3415",
+     "amount": "161.2276",
      "workspace_id": null,
      "description": "claude-opus-5-5 cache_read tokens",
      "cost_type": "tokens",
@@ -2534,7 +2534,7 @@
     },
     {
      "currency": "USD",
-     "amount": "490.3136",
+     "amount": "615.3140",
      "workspace_id": null,
      "description": "claude-sonnet-5-5 input tokens",
      "cost_type": "tokens",
@@ -2545,7 +2545,7 @@
     },
     {
      "currency": "USD",
-     "amount": "971.5570",
+     "amount": "1170.0670",
      "workspace_id": null,
      "description": "claude-sonnet-5-5 output tokens",
      "cost_type": "tokens",
@@ -2556,7 +2556,7 @@
     },
     {
      "currency": "USD",
-     "amount": "373.6001",
+     "amount": "432.6128",
      "workspace_id": null,
      "description": "claude-sonnet-5-5 cache_creation tokens",
      "cost_type": "tokens",
@@ -2567,7 +2567,7 @@
     },
     {
      "currency": "USD",
-     "amount": "234.8506",
+     "amount": "274.5680",
      "workspace_id": null,
      "description": "claude-sonnet-5-5 cache_read tokens",
      "cost_type": "tokens",
@@ -2578,7 +2578,7 @@
     },
     {
      "currency": "USD",
-     "amount": "60.5735",
+     "amount": "87.5553",
      "workspace_id": null,
      "description": "claude-haiku-5-5 input tokens",
      "cost_type": "tokens",
@@ -2589,7 +2589,7 @@
     },
     {
      "currency": "USD",
-     "amount": "98.0000",
+     "amount": "128.1463",
      "workspace_id": null,
      "description": "claude-haiku-5-5 output tokens",
      "cost_type": "tokens",
@@ -2600,7 +2600,7 @@
     },
     {
      "currency": "USD",
-     "amount": "55.8824",
+     "amount": "69.6696",
      "workspace_id": null,
      "description": "claude-haiku-5-5 cache_creation tokens",
      "cost_type": "tokens",
@@ -2611,7 +2611,7 @@
     },
     {
      "currency": "USD",
-     "amount": "45.3290",
+     "amount": "51.0170",
      "workspace_id": null,
      "description": "claude-haiku-5-5 cache_read tokens",
      "cost_type": "tokens",
@@ -2628,7 +2628,7 @@
    "results": [
     {
      "currency": "USD",
-     "amount": "594.7172",
+     "amount": "538.7224",
      "workspace_id": null,
      "description": "claude-opus-5-5 input tokens",
      "cost_type": "tokens",
@@ -2639,7 +2639,7 @@
     },
     {
      "currency": "USD",
-     "amount": "911.2940",
+     "amount": "875.2640",
      "workspace_id": null,
      "description": "claude-opus-5-5 output tokens",
      "cost_type": "tokens",
@@ -2650,7 +2650,7 @@
     },
     {
      "currency": "USD",
-     "amount": "446.7952",
+     "amount": "370.9436",
      "workspace_id": null,
      "description": "claude-opus-5-5 cache_creation tokens",
      "cost_type": "tokens",
@@ -2661,7 +2661,7 @@
     },
     {
      "currency": "USD",
-     "amount": "215.1206",
+     "amount": "193.7543",
      "workspace_id": null,
      "description": "claude-opus-5-5 cache_read tokens",
      "cost_type": "tokens",
@@ -2672,7 +2672,7 @@
     },
     {
      "currency": "USD",
-     "amount": "579.1990",
+     "amount": "572.1712",
      "workspace_id": null,
      "description": "claude-sonnet-5-5 input tokens",
      "cost_type": "tokens",
@@ -2683,7 +2683,7 @@
     },
     {
      "currency": "USD",
-     "amount": "953.5870",
+     "amount": "966.7130",
      "workspace_id": null,
      "description": "claude-sonnet-5-5 output tokens",
      "cost_type": "tokens",
@@ -2694,7 +2694,7 @@
     },
     {
      "currency": "USD",
-     "amount": "440.9480",
+     "amount": "544.7013",
      "workspace_id": null,
      "description": "claude-sonnet-5-5 cache_creation tokens",
      "cost_type": "tokens",
@@ -2705,7 +2705,7 @@
     },
     {
      "currency": "USD",
-     "amount": "196.4117",
+     "amount": "207.0211",
      "workspace_id": null,
      "description": "claude-sonnet-5-5 cache_read tokens",
      "cost_type": "tokens",
@@ -2716,7 +2716,7 @@
     },
     {
      "currency": "USD",
-     "amount": "78.0331",
+     "amount": "59.1545",
      "workspace_id": null,
      "description": "claude-haiku-5-5 input tokens",
      "cost_type": "tokens",
@@ -2727,7 +2727,7 @@
     },
     {
      "currency": "USD",
-     "amount": "141.0953",
+     "amount": "95.1313",
      "workspace_id": null,
      "description": "claude-haiku-5-5 output tokens",
      "cost_type": "tokens",
@@ -2738,7 +2738,7 @@
     },
     {
      "currency": "USD",
-     "amount": "70.2299",
+     "amount": "53.3064",
      "workspace_id": null,
      "description": "claude-haiku-5-5 cache_creation tokens",
      "cost_type": "tokens",
@@ -2749,7 +2749,7 @@
     },
     {
      "currency": "USD",
-     "amount": "51.0658",
+     "amount": "41.8905",
      "workspace_id": null,
      "description": "claude-haiku-5-5 cache_read tokens",
      "cost_type": "tokens",
@@ -2766,7 +2766,7 @@
    "results": [
     {
      "currency": "USD",
-     "amount": "1714.9228",
+     "amount": "1499.4380",
      "workspace_id": null,
      "description": "claude-opus-5-5 input tokens",
      "cost_type": "tokens",
@@ -2777,7 +2777,7 @@
     },
     {
      "currency": "USD",
-     "amount": "2674.3460",
+     "amount": "2290.9960",
      "workspace_id": null,
      "description": "claude-opus-5-5 output tokens",
      "cost_type": "tokens",
@@ -2788,7 +2788,7 @@
     },
     {
      "currency": "USD",
-     "amount": "1434.2522",
+     "amount": "848.4820",
      "workspace_id": null,
      "description": "claude-opus-5-5 cache_creation tokens",
      "cost_type": "tokens",
@@ -2799,7 +2799,7 @@
     },
     {
      "currency": "USD",
-     "amount": "586.4297",
+     "amount": "508.0487",
      "workspace_id": null,
      "description": "claude-opus-5-5 cache_read tokens",
      "cost_type": "tokens",
@@ -2810,7 +2810,7 @@
     },
     {
      "currency": "USD",
-     "amount": "1671.9794",
+     "amount": "2419.5204",
      "workspace_id": null,
      "description": "claude-sonnet-5-5 input tokens",
      "cost_type": "tokens",
@@ -2821,7 +2821,7 @@
     },
     {
      "currency": "USD",
-     "amount": "2430.0910",
+     "amount": "3635.4370",
      "workspace_id": null,
      "description": "claude-sonnet-5-5 output tokens",
      "cost_type": "tokens",
@@ -2832,7 +2832,7 @@
     },
     {
      "currency": "USD",
-     "amount": "1334.9328",
+     "amount": "1742.3393",
      "workspace_id": null,
      "description": "claude-sonnet-5-5 cache_creation tokens",
      "cost_type": "tokens",
@@ -2843,7 +2843,7 @@
     },
     {
      "currency": "USD",
-     "amount": "631.1412",
+     "amount": "796.9280",
      "workspace_id": null,
      "description": "claude-sonnet-5-5 cache_read tokens",
      "cost_type": "tokens",
@@ -2854,7 +2854,7 @@
     },
     {
      "currency": "USD",
-     "amount": "199.4750",
+     "amount": "230.5836",
      "workspace_id": null,
      "description": "claude-haiku-5-5 input tokens",
      "cost_type": "tokens",
@@ -2865,7 +2865,7 @@
     },
     {
      "currency": "USD",
-     "amount": "349.6179",
+     "amount": "351.7652",
      "workspace_id": null,
      "description": "claude-haiku-5-5 output tokens",
      "cost_type": "tokens",
@@ -2876,7 +2876,7 @@
     },
     {
      "currency": "USD",
-     "amount": "187.9178",
+     "amount": "147.5555",
      "workspace_id": null,
      "description": "claude-haiku-5-5 cache_creation tokens",
      "cost_type": "tokens",
@@ -2887,7 +2887,7 @@
     },
     {
      "currency": "USD",
-     "amount": "156.3548",
+     "amount": "136.0676",
      "workspace_id": null,
      "description": "claude-haiku-5-5 cache_read tokens",
      "cost_type": "tokens",
@@ -2904,7 +2904,7 @@
    "results": [
     {
      "currency": "USD",
-     "amount": "1406.5968",
+     "amount": "1395.8140",
      "workspace_id": null,
      "description": "claude-opus-5-5 input tokens",
      "cost_type": "tokens",
@@ -2915,7 +2915,7 @@
     },
     {
      "currency": "USD",
-     "amount": "2077.4220",
+     "amount": "2277.2500",
      "workspace_id": null,
      "description": "claude-opus-5-5 output tokens",
      "cost_type": "tokens",
@@ -2926,7 +2926,7 @@
     },
     {
      "currency": "USD",
-     "amount": "1012.2601",
+     "amount": "903.1089",
      "workspace_id": null,
      "description": "claude-opus-5-5 cache_creation tokens",
      "cost_type": "tokens",
@@ -2937,7 +2937,7 @@
     },
     {
      "currency": "USD",
-     "amount": "453.2520",
+     "amount": "542.4996",
      "workspace_id": null,
      "description": "claude-opus-5-5 cache_read tokens",
      "cost_type": "tokens",
@@ -2948,7 +2948,7 @@
     },
     {
      "currency": "USD",
-     "amount": "1541.1812",
+     "amount": "2083.4780",
      "workspace_id": null,
      "description": "claude-sonnet-5-5 input tokens",
      "cost_type": "tokens",
@@ -2959,7 +2959,7 @@
     },
     {
      "currency": "USD",
-     "amount": "2574.5440",
+     "amount": "3332.0150",
      "workspace_id": null,
      "description": "claude-sonnet-5-5 output tokens",
      "cost_type": "tokens",
@@ -2970,7 +2970,7 @@
     },
     {
      "currency": "USD",
-     "amount": "1292.0171",
+     "amount": "1812.9069",
      "workspace_id": null,
      "description": "claude-sonnet-5-5 cache_creation tokens",
      "cost_type": "tokens",
@@ -2981,7 +2981,7 @@
     },
     {
      "currency": "USD",
-     "amount": "620.5864",
+     "amount": "702.3892",
      "workspace_id": null,
      "description": "claude-sonnet-5-5 cache_read tokens",
      "cost_type": "tokens",
@@ -2992,7 +2992,7 @@
     },
     {
      "currency": "USD",
-     "amount": "227.2704",
+     "amount": "215.7201",
      "workspace_id": null,
      "description": "claude-haiku-5-5 input tokens",
      "cost_type": "tokens",
@@ -3003,7 +3003,7 @@
     },
     {
      "currency": "USD",
-     "amount": "390.8182",
+     "amount": "324.2567",
      "workspace_id": null,
      "description": "claude-haiku-5-5 output tokens",
      "cost_type": "tokens",
@@ -3014,7 +3014,7 @@
     },
     {
      "currency": "USD",
-     "amount": "214.5691",
+     "amount": "132.1497",
      "workspace_id": null,
      "description": "claude-haiku-5-5 cache_creation tokens",
      "cost_type": "tokens",
@@ -3025,7 +3025,7 @@
     },
     {
      "currency": "USD",
-     "amount": "163.3127",
+     "amount": "142.5995",
      "workspace_id": null,
      "description": "claude-haiku-5-5 cache_read tokens",
      "cost_type": "tokens",
@@ -3042,7 +3042,7 @@
    "results": [
     {
      "currency": "USD",
-     "amount": "1197.1144",
+     "amount": "1795.8816",
      "workspace_id": null,
      "description": "claude-opus-5-5 input tokens",
      "cost_type": "tokens",
@@ -3053,7 +3053,7 @@
     },
     {
      "currency": "USD",
-     "amount": "2026.8920",
+     "amount": "2655.9120",
      "workspace_id": null,
      "description": "claude-opus-5-5 output tokens",
      "cost_type": "tokens",
@@ -3064,7 +3064,7 @@
     },
     {
      "currency": "USD",
-     "amount": "1138.9018",
+     "amount": "1375.0457",
      "workspace_id": null,
      "description": "claude-opus-5-5 cache_creation tokens",
      "cost_type": "tokens",
@@ -3075,7 +3075,7 @@
     },
     {
      "currency": "USD",
-     "amount": "503.6279",
+     "amount": "688.0480",
      "workspace_id": null,
      "description": "claude-opus-5-5 cache_read tokens",
      "cost_type": "tokens",
@@ -3086,7 +3086,7 @@
     },
     {
      "currency": "USD",
-     "amount": "1748.8406",
+     "amount": "1530.8252",
      "workspace_id": null,
      "description": "claude-sonnet-5-5 input tokens",
      "cost_type": "tokens",
@@ -3097,7 +3097,7 @@
     },
     {
      "currency": "USD",
-     "amount": "3241.9030",
+     "amount": "2749.5210",
      "workspace_id": null,
      "description": "claude-sonnet-5-5 output tokens",
      "cost_type": "tokens",
@@ -3108,7 +3108,7 @@
     },
     {
      "currency": "USD",
-     "amount": "1364.7685",
+     "amount": "1221.2080",
      "workspace_id": null,
      "description": "claude-sonnet-5-5 cache_creation tokens",
      "cost_type": "tokens",
@@ -3119,7 +3119,7 @@
     },
     {
      "currency": "USD",
-     "amount": "665.2426",
+     "amount": "606.7006",
      "workspace_id": null,
      "description": "claude-sonnet-5-5 cache_read tokens",
      "cost_type": "tokens",
@@ -3130,7 +3130,7 @@
     },
     {
      "currency": "USD",
-     "amount": "186.6045",
+     "amount": "183.8588",
      "workspace_id": null,
      "description": "claude-haiku-5-5 input tokens",
      "cost_type": "tokens",
@@ -3141,7 +3141,7 @@
     },
     {
      "currency": "USD",
-     "amount": "327.3006",
+     "amount": "331.9872",
      "workspace_id": null,
      "description": "claude-haiku-5-5 output tokens",
      "cost_type": "tokens",
@@ -3152,7 +3152,7 @@
     },
     {
      "currency": "USD",
-     "amount": "136.6477",
+     "amount": "165.2467",
      "workspace_id": null,
      "description": "claude-haiku-5-5 cache_creation tokens",
      "cost_type": "tokens",
@@ -3163,7 +3163,7 @@
     },
     {
      "currency": "USD",
-     "amount": "139.4692",
+     "amount": "119.6257",
      "workspace_id": null,
      "description": "claude-haiku-5-5 cache_read tokens",
      "cost_type": "tokens",
@@ -3180,7 +3180,7 @@
    "results": [
     {
      "currency": "USD",
-     "amount": "1220.5312",
+     "amount": "1431.3284",
      "workspace_id": null,
      "description": "claude-opus-5-5 input tokens",
      "cost_type": "tokens",
@@ -3191,7 +3191,7 @@
     },
     {
      "currency": "USD",
-     "amount": "2409.1100",
+     "amount": "2205.8420",
      "workspace_id": null,
      "description": "claude-opus-5-5 output tokens",
      "cost_type": "tokens",
@@ -3202,7 +3202,7 @@
     },
     {
      "currency": "USD",
-     "amount": "1276.0555",
+     "amount": "1140.6747",
      "workspace_id": null,
      "description": "claude-opus-5-5 cache_creation tokens",
      "cost_type": "tokens",
@@ -3213,7 +3213,7 @@
     },
     {
      "currency": "USD",
-     "amount": "511.8571",
+     "amount": "556.0287",
      "workspace_id": null,
      "description": "claude-opus-5-5 cache_read tokens",
      "cost_type": "tokens",
@@ -3224,7 +3224,7 @@
     },
     {
      "currency": "USD",
-     "amount": "2241.4120",
+     "amount": "1738.2894",
      "workspace_id": null,
      "description": "claude-sonnet-5-5 input tokens",
      "cost_type": "tokens",
@@ -3235,7 +3235,7 @@
     },
     {
      "currency": "USD",
-     "amount": "3238.5170",
+     "amount": "3252.2680",
      "workspace_id": null,
      "description": "claude-sonnet-5-5 output tokens",
      "cost_type": "tokens",
@@ -3246,7 +3246,7 @@
     },
     {
      "currency": "USD",
-     "amount": "1278.2188",
+     "amount": "1659.9972",
      "workspace_id": null,
      "description": "claude-sonnet-5-5 cache_creation tokens",
      "cost_type": "tokens",
@@ -3257,7 +3257,7 @@
     },
     {
      "currency": "USD",
-     "amount": "764.7420",
+     "amount": "707.1705",
      "workspace_id": null,
      "description": "claude-sonnet-5-5 cache_read tokens",
      "cost_type": "tokens",
@@ -3268,7 +3268,7 @@
     },
     {
      "currency": "USD",
-     "amount": "196.1800",
+     "amount": "181.0566",
      "workspace_id": null,
      "description": "claude-haiku-5-5 input tokens",
      "cost_type": "tokens",
@@ -3279,7 +3279,7 @@
     },
     {
      "currency": "USD",
-     "amount": "369.4145",
+     "amount": "310.8696",
      "workspace_id": null,
      "description": "claude-haiku-5-5 output tokens",
      "cost_type": "tokens",
@@ -3290,7 +3290,7 @@
     },
     {
      "currency": "USD",
-     "amount": "166.7003",
+     "amount": "153.2107",
      "workspace_id": null,
      "description": "claude-haiku-5-5 cache_creation tokens",
      "cost_type": "tokens",
@@ -3301,7 +3301,7 @@
     },
     {
      "currency": "USD",
-     "amount": "149.0936",
+     "amount": "132.5504",
      "workspace_id": null,
      "description": "claude-haiku-5-5 cache_read tokens",
      "cost_type": "tokens",
@@ -3318,7 +3318,7 @@
    "results": [
     {
      "currency": "USD",
-     "amount": "1566.6420",
+     "amount": "1228.4352",
      "workspace_id": null,
      "description": "claude-opus-5-5 input tokens",
      "cost_type": "tokens",
@@ -3329,7 +3329,7 @@
     },
     {
      "currency": "USD",
-     "amount": "2388.3280",
+     "amount": "2131.1540",
      "workspace_id": null,
      "description": "claude-opus-5-5 output tokens",
      "cost_type": "tokens",
@@ -3340,7 +3340,7 @@
     },
     {
      "currency": "USD",
-     "amount": "1060.8306",
+     "amount": "761.5449",
      "workspace_id": null,
      "description": "claude-opus-5-5 cache_creation tokens",
      "cost_type": "tokens",
@@ -3351,7 +3351,7 @@
     },
     {
      "currency": "USD",
-     "amount": "493.1715",
+     "amount": "494.9628",
      "workspace_id": null,
      "description": "claude-opus-5-5 cache_read tokens",
      "cost_type": "tokens",
@@ -3362,7 +3362,7 @@
     },
     {
      "currency": "USD",
-     "amount": "1342.6974",
+     "amount": "1756.4654",
      "workspace_id": null,
      "description": "claude-sonnet-5-5 input tokens",
      "cost_type": "tokens",
@@ -3373,7 +3373,7 @@
     },
     {
      "currency": "USD",
-     "amount": "2358.3940",
+     "amount": "3342.4540",
      "workspace_id": null,
      "description": "claude-sonnet-5-5 output tokens",
      "cost_type": "tokens",
@@ -3384,7 +3384,7 @@
     },
     {
      "currency": "USD",
-     "amount": "905.8403",
+     "amount": "1574.8410",
      "workspace_id": null,
      "description": "claude-sonnet-5-5 cache_creation tokens",
      "cost_type": "tokens",
@@ -3395,7 +3395,7 @@
     },
     {
      "currency": "USD",
-     "amount": "569.9991",
+     "amount": "622.0371",
      "workspace_id": null,
      "description": "claude-sonnet-5-5 cache_read tokens",
      "cost_type": "tokens",
@@ -3406,7 +3406,7 @@
     },
     {
      "currency": "USD",
-     "amount": "236.2496",
+     "amount": "171.0222",
      "workspace_id": null,
      "description": "claude-haiku-5-5 input tokens",
      "cost_type": "tokens",
@@ -3417,7 +3417,7 @@
     },
     {
      "currency": "USD",
-     "amount": "344.4681",
+     "amount": "311.3537",
      "workspace_id": null,
      "description": "claude-haiku-5-5 output tokens",
      "cost_type": "tokens",
@@ -3428,7 +3428,7 @@
     },
     {
      "currency": "USD",
-     "amount": "141.9751",
+     "amount": "154.8787",
      "workspace_id": null,
      "description": "claude-haiku-5-5 cache_creation tokens",
      "cost_type": "tokens",
@@ -3439,7 +3439,7 @@
     },
     {
      "currency": "USD",
-     "amount": "139.2032",
+     "amount": "124.6757",
      "workspace_id": null,
      "description": "claude-haiku-5-5 cache_read tokens",
      "cost_type": "tokens",
@@ -3456,7 +3456,7 @@
    "results": [
     {
      "currency": "USD",
-     "amount": "523.3400",
+     "amount": "610.4220",
      "workspace_id": null,
      "description": "claude-opus-5-5 input tokens",
      "cost_type": "tokens",
@@ -3467,7 +3467,7 @@
     },
     {
      "currency": "USD",
-     "amount": "842.7240",
+     "amount": "953.1080",
      "workspace_id": null,
      "description": "claude-opus-5-5 output tokens",
      "cost_type": "tokens",
@@ -3478,7 +3478,7 @@
     },
     {
      "currency": "USD",
-     "amount": "437.9936",
+     "amount": "450.3883",
      "workspace_id": null,
      "description": "claude-opus-5-5 cache_creation tokens",
      "cost_type": "tokens",
@@ -3489,7 +3489,7 @@
     },
     {
      "currency": "USD",
-     "amount": "213.9284",
+     "amount": "182.3908",
      "workspace_id": null,
      "description": "claude-opus-5-5 cache_read tokens",
      "cost_type": "tokens",
@@ -3500,7 +3500,7 @@
     },
     {
      "currency": "USD",
-     "amount": "693.1054",
+     "amount": "622.9574",
      "workspace_id": null,
      "description": "claude-sonnet-5-5 input tokens",
      "cost_type": "tokens",
@@ -3511,7 +3511,7 @@
     },
     {
      "currency": "USD",
-     "amount": "1047.5550",
+     "amount": "1229.1970",
      "workspace_id": null,
      "description": "claude-sonnet-5-5 output tokens",
      "cost_type": "tokens",
@@ -3522,7 +3522,7 @@
     },
     {
      "currency": "USD",
-     "amount": "379.2405",
+     "amount": "629.0474",
      "workspace_id": null,
      "description": "claude-sonnet-5-5 cache_creation tokens",
      "cost_type": "tokens",
@@ -3533,7 +3533,7 @@
     },
     {
      "currency": "USD",
-     "amount": "264.1122",
+     "amount": "244.5900",
      "workspace_id": null,
      "description": "claude-sonnet-5-5 cache_read tokens",
      "cost_type": "tokens",
@@ -3544,7 +3544,7 @@
     },
     {
      "currency": "USD",
-     "amount": "72.8626",
+     "amount": "86.9317",
      "workspace_id": null,
      "description": "claude-haiku-5-5 input tokens",
      "cost_type": "tokens",
@@ -3555,7 +3555,7 @@
     },
     {
      "currency": "USD",
-     "amount": "129.5938",
+     "amount": "144.5796",
      "workspace_id": null,
      "description": "claude-haiku-5-5 output tokens",
      "cost_type": "tokens",
@@ -3566,7 +3566,7 @@
     },
     {
      "currency": "USD",
-     "amount": "61.3629",
+     "amount": "75.2850",
      "workspace_id": null,
      "description": "claude-haiku-5-5 cache_creation tokens",
      "cost_type": "tokens",
@@ -3577,7 +3577,7 @@
     },
     {
      "currency": "USD",
-     "amount": "66.4328",
+     "amount": "71.3251",
      "workspace_id": null,
      "description": "claude-haiku-5-5 cache_read tokens",
      "cost_type": "tokens",
@@ -3594,7 +3594,7 @@
    "results": [
     {
      "currency": "USD",
-     "amount": "467.4596",
+     "amount": "476.7380",
      "workspace_id": null,
      "description": "claude-opus-5-5 input tokens",
      "cost_type": "tokens",
@@ -3605,7 +3605,7 @@
     },
     {
      "currency": "USD",
-     "amount": "877.2500",
+     "amount": "708.1380",
      "workspace_id": null,
      "description": "claude-opus-5-5 output tokens",
      "cost_type": "tokens",
@@ -3616,7 +3616,7 @@
     },
     {
      "currency": "USD",
-     "amount": "489.8640",
+     "amount": "389.7505",
      "workspace_id": null,
      "description": "claude-opus-5-5 cache_creation tokens",
      "cost_type": "tokens",
@@ -3627,7 +3627,7 @@
     },
     {
      "currency": "USD",
-     "amount": "173.5727",
+     "amount": "150.3188",
      "workspace_id": null,
      "description": "claude-opus-5-5 cache_read tokens",
      "cost_type": "tokens",
@@ -3638,7 +3638,7 @@
     },
     {
      "currency": "USD",
-     "amount": "634.3716",
+     "amount": "635.1364",
      "workspace_id": null,
      "description": "claude-sonnet-5-5 input tokens",
      "cost_type": "tokens",
@@ -3649,7 +3649,7 @@
     },
     {
      "currency": "USD",
-     "amount": "1197.6290",
+     "amount": "1077.2480",
      "workspace_id": null,
      "description": "claude-sonnet-5-5 output tokens",
      "cost_type": "tokens",
@@ -3660,7 +3660,7 @@
     },
     {
      "currency": "USD",
-     "amount": "550.5718",
+     "amount": "435.5460",
      "workspace_id": null,
      "description": "claude-sonnet-5-5 cache_creation tokens",
      "cost_type": "tokens",
@@ -3671,7 +3671,7 @@
     },
     {
      "currency": "USD",
-     "amount": "269.9531",
+     "amount": "246.2579",
      "workspace_id": null,
      "description": "claude-sonnet-5-5 cache_read tokens",
      "cost_type": "tokens",
@@ -3682,7 +3682,7 @@
     },
     {
      "currency": "USD",
-     "amount": "71.6247",
+     "amount": "95.2148",
      "workspace_id": null,
      "description": "claude-haiku-5-5 input tokens",
      "cost_type": "tokens",
@@ -3693,7 +3693,7 @@
     },
     {
      "currency": "USD",
-     "amount": "105.6927",
+     "amount": "144.2371",
      "workspace_id": null,
      "description": "claude-haiku-5-5 output tokens",
      "cost_type": "tokens",
@@ -3704,7 +3704,7 @@
     },
     {
      "currency": "USD",
-     "amount": "57.3858",
+     "amount": "68.0404",
      "workspace_id": null,
      "description": "claude-haiku-5-5 cache_creation tokens",
      "cost_type": "tokens",
@@ -3715,7 +3715,7 @@
     },
     {
      "currency": "USD",
-     "amount": "54.0702",
+     "amount": "64.1086",
      "workspace_id": null,
      "description": "claude-haiku-5-5 cache_read tokens",
      "cost_type": "tokens",
@@ -3732,7 +3732,7 @@
    "results": [
     {
      "currency": "USD",
-     "amount": "1354.6344",
+     "amount": "1050.8232",
      "workspace_id": null,
      "description": "claude-opus-5-5 input tokens",
      "cost_type": "tokens",
@@ -3743,7 +3743,7 @@
     },
     {
      "currency": "USD",
-     "amount": "2298.8400",
+     "amount": "1804.2100",
      "workspace_id": null,
      "description": "claude-opus-5-5 output tokens",
      "cost_type": "tokens",
@@ -3754,7 +3754,7 @@
     },
     {
      "currency": "USD",
-     "amount": "1037.3870",
+     "amount": "836.2265",
      "workspace_id": null,
      "description": "claude-opus-5-5 cache_creation tokens",
      "cost_type": "tokens",
@@ -3765,7 +3765,7 @@
     },
     {
      "currency": "USD",
-     "amount": "414.5653",
+     "amount": "463.2770",
      "workspace_id": null,
      "description": "claude-opus-5-5 cache_read tokens",
      "cost_type": "tokens",
@@ -3776,7 +3776,7 @@
     },
     {
      "currency": "USD",
-     "amount": "1528.1518",
+     "amount": "1896.9788",
      "workspace_id": null,
      "description": "claude-sonnet-5-5 input tokens",
      "cost_type": "tokens",
@@ -3787,7 +3787,7 @@
     },
     {
      "currency": "USD",
-     "amount": "2943.1030",
+     "amount": "2840.0880",
      "workspace_id": null,
      "description": "claude-sonnet-5-5 output tokens",
      "cost_type": "tokens",
@@ -3798,7 +3798,7 @@
     },
     {
      "currency": "USD",
-     "amount": "1625.0547",
+     "amount": "1441.6939",
      "workspace_id": null,
      "description": "claude-sonnet-5-5 cache_creation tokens",
      "cost_type": "tokens",
@@ -3809,7 +3809,7 @@
     },
     {
      "currency": "USD",
-     "amount": "620.3314",
+     "amount": "559.2303",
      "workspace_id": null,
      "description": "claude-sonnet-5-5 cache_read tokens",
      "cost_type": "tokens",
@@ -3820,7 +3820,7 @@
     },
     {
      "currency": "USD",
-     "amount": "199.5394",
+     "amount": "265.4461",
      "workspace_id": null,
      "description": "claude-haiku-5-5 input tokens",
      "cost_type": "tokens",
@@ -3831,7 +3831,7 @@
     },
     {
      "currency": "USD",
-     "amount": "367.6418",
+     "amount": "389.7632",
      "workspace_id": null,
      "description": "claude-haiku-5-5 output tokens",
      "cost_type": "tokens",
@@ -3842,7 +3842,7 @@
     },
     {
      "currency": "USD",
-     "amount": "208.6854",
+     "amount": "205.4257",
      "workspace_id": null,
      "description": "claude-haiku-5-5 cache_creation tokens",
      "cost_type": "tokens",
@@ -3853,7 +3853,7 @@
     },
     {
      "currency": "USD",
-     "amount": "179.3163",
+     "amount": "167.3328",
      "workspace_id": null,
      "description": "claude-haiku-5-5 cache_read tokens",
      "cost_type": "tokens",
@@ -3870,7 +3870,7 @@
    "results": [
     {
      "currency": "USD",
-     "amount": "1573.3632",
+     "amount": "1677.6240",
      "workspace_id": null,
      "description": "claude-opus-5-5 input tokens",
      "cost_type": "tokens",
@@ -3881,7 +3881,7 @@
     },
     {
      "currency": "USD",
-     "amount": "2533.2740",
+     "amount": "2523.2800",
      "workspace_id": null,
      "description": "claude-opus-5-5 output tokens",
      "cost_type": "tokens",
@@ -3892,7 +3892,7 @@
     },
     {
      "currency": "USD",
-     "amount": "1389.5839",
+     "amount": "927.5242",
      "workspace_id": null,
      "description": "claude-opus-5-5 cache_creation tokens",
      "cost_type": "tokens",
@@ -3903,7 +3903,7 @@
     },
     {
      "currency": "USD",
-     "amount": "602.5707",
+     "amount": "494.0380",
      "workspace_id": null,
      "description": "claude-opus-5-5 cache_read tokens",
      "cost_type": "tokens",
@@ -3914,7 +3914,7 @@
     },
     {
      "currency": "USD",
-     "amount": "1500.3480",
+     "amount": "2068.7998",
      "workspace_id": null,
      "description": "claude-sonnet-5-5 input tokens",
      "cost_type": "tokens",
@@ -3925,7 +3925,7 @@
     },
     {
      "currency": "USD",
-     "amount": "2414.8420",
+     "amount": "3490.4260",
      "workspace_id": null,
      "description": "claude-sonnet-5-5 output tokens",
      "cost_type": "tokens",
@@ -3936,7 +3936,7 @@
     },
     {
      "currency": "USD",
-     "amount": "1119.0238",
+     "amount": "1921.4341",
      "workspace_id": null,
      "description": "claude-sonnet-5-5 cache_creation tokens",
      "cost_type": "tokens",
@@ -3947,7 +3947,7 @@
     },
     {
      "currency": "USD",
-     "amount": "605.6314",
+     "amount": "897.6856",
      "workspace_id": null,
      "description": "claude-sonnet-5-5 cache_read tokens",
      "cost_type": "tokens",
@@ -3958,7 +3958,7 @@
     },
     {
      "currency": "USD",
-     "amount": "226.6189",
+     "amount": "206.5994",
      "workspace_id": null,
      "description": "claude-haiku-5-5 input tokens",
      "cost_type": "tokens",
@@ -3969,7 +3969,7 @@
     },
     {
      "currency": "USD",
-     "amount": "394.8858",
+     "amount": "368.0480",
      "workspace_id": null,
      "description": "claude-haiku-5-5 output tokens",
      "cost_type": "tokens",
@@ -3980,7 +3980,7 @@
     },
     {
      "currency": "USD",
-     "amount": "168.3710",
+     "amount": "164.8928",
      "workspace_id": null,
      "description": "claude-haiku-5-5 cache_creation tokens",
      "cost_type": "tokens",
@@ -3991,7 +3991,7 @@
     },
     {
      "currency": "USD",
-     "amount": "183.4579",
+     "amount": "145.7974",
      "workspace_id": null,
      "description": "claude-haiku-5-5 cache_read tokens",
      "cost_type": "tokens",
@@ -4008,7 +4008,7 @@
    "results": [
     {
      "currency": "USD",
-     "amount": "1191.3980",
+     "amount": "1282.0040",
      "workspace_id": null,
      "description": "claude-opus-5-5 input tokens",
      "cost_type": "tokens",
@@ -4019,7 +4019,7 @@
     },
     {
      "currency": "USD",
-     "amount": "2198.3900",
+     "amount": "2563.7500",
      "workspace_id": null,
      "description": "claude-opus-5-5 output tokens",
      "cost_type": "tokens",
@@ -4030,7 +4030,7 @@
     },
     {
      "currency": "USD",
-     "amount": "778.3604",
+     "amount": "1335.1877",
      "workspace_id": null,
      "description": "claude-opus-5-5 cache_creation tokens",
      "cost_type": "tokens",
@@ -4041,7 +4041,7 @@
     },
     {
      "currency": "USD",
-     "amount": "530.0320",
+     "amount": "523.0887",
      "workspace_id": null,
      "description": "claude-opus-5-5 cache_read tokens",
      "cost_type": "tokens",
@@ -4052,7 +4052,7 @@
     },
     {
      "currency": "USD",
-     "amount": "2105.3082",
+     "amount": "1853.1936",
      "workspace_id": null,
      "description": "claude-sonnet-5-5 input tokens",
      "cost_type": "tokens",
@@ -4063,7 +4063,7 @@
     },
     {
      "currency": "USD",
-     "amount": "3258.7860",
+     "amount": "3473.1360",
      "workspace_id": null,
      "description": "claude-sonnet-5-5 output tokens",
      "cost_type": "tokens",
@@ -4074,7 +4074,7 @@
     },
     {
      "currency": "USD",
-     "amount": "1282.7352",
+     "amount": "1609.8531",
      "workspace_id": null,
      "description": "claude-sonnet-5-5 cache_creation tokens",
      "cost_type": "tokens",
@@ -4085,7 +4085,7 @@
     },
     {
      "currency": "USD",
-     "amount": "813.8214",
+     "amount": "674.2001",
      "workspace_id": null,
      "description": "claude-sonnet-5-5 cache_read tokens",
      "cost_type": "tokens",
@@ -4096,7 +4096,7 @@
     },
     {
      "currency": "USD",
-     "amount": "229.4846",
+     "amount": "219.2436",
      "workspace_id": null,
      "description": "claude-haiku-5-5 input tokens",
      "cost_type": "tokens",
@@ -4107,7 +4107,7 @@
     },
     {
      "currency": "USD",
-     "amount": "339.6075",
+     "amount": "418.7020",
      "workspace_id": null,
      "description": "claude-haiku-5-5 output tokens",
      "cost_type": "tokens",
@@ -4118,7 +4118,7 @@
     },
     {
      "currency": "USD",
-     "amount": "129.6892",
+     "amount": "238.6795",
      "workspace_id": null,
      "description": "claude-haiku-5-5 cache_creation tokens",
      "cost_type": "tokens",
@@ -4129,7 +4129,7 @@
     },
     {
      "currency": "USD",
-     "amount": "176.1257",
+     "amount": "174.2738",
      "workspace_id": null,
      "description": "claude-haiku-5-5 cache_read tokens",
      "cost_type": "tokens",
@@ -4146,7 +4146,7 @@
    "results": [
     {
      "currency": "USD",
-     "amount": "871.9892",
+     "amount": "784.2452",
      "workspace_id": null,
      "description": "claude-opus-5-5 input tokens",
      "cost_type": "tokens",
@@ -4157,7 +4157,7 @@
     },
     {
      "currency": "USD",
-     "amount": "1683.5800",
+     "amount": "1208.2380",
      "workspace_id": null,
      "description": "claude-opus-5-5 output tokens",
      "cost_type": "tokens",
@@ -4168,7 +4168,7 @@
     },
     {
      "currency": "USD",
-     "amount": "892.1567",
+     "amount": "554.9074",
      "workspace_id": null,
      "description": "claude-opus-5-5 cache_creation tokens",
      "cost_type": "tokens",
@@ -4179,7 +4179,7 @@
     },
     {
      "currency": "USD",
-     "amount": "323.0818",
+     "amount": "224.7158",
      "workspace_id": null,
      "description": "claude-opus-5-5 cache_read tokens",
      "cost_type": "tokens",
@@ -4190,7 +4190,7 @@
     },
     {
      "currency": "USD",
-     "amount": "1186.6390",
+     "amount": "1074.2344",
      "workspace_id": null,
      "description": "claude-sonnet-5-5 input tokens",
      "cost_type": "tokens",
@@ -4201,7 +4201,7 @@
     },
     {
      "currency": "USD",
-     "amount": "1810.3230",
+     "amount": "1634.4670",
      "workspace_id": null,
      "description": "claude-sonnet-5-5 output tokens",
      "cost_type": "tokens",
@@ -4212,7 +4212,7 @@
     },
     {
      "currency": "USD",
-     "amount": "976.7438",
+     "amount": "616.0523",
      "workspace_id": null,
      "description": "claude-sonnet-5-5 cache_creation tokens",
      "cost_type": "tokens",
@@ -4223,7 +4223,7 @@
     },
     {
      "currency": "USD",
-     "amount": "358.8602",
+     "amount": "315.1419",
      "workspace_id": null,
      "description": "claude-sonnet-5-5 cache_read tokens",
      "cost_type": "tokens",
@@ -4234,7 +4234,7 @@
     },
     {
      "currency": "USD",
-     "amount": "108.6277",
+     "amount": "118.1258",
      "workspace_id": null,
      "description": "claude-haiku-5-5 input tokens",
      "cost_type": "tokens",
@@ -4245,7 +4245,7 @@
     },
     {
      "currency": "USD",
-     "amount": "176.4294",
+     "amount": "221.2003",
      "workspace_id": null,
      "description": "claude-haiku-5-5 output tokens",
      "cost_type": "tokens",
@@ -4256,7 +4256,7 @@
     },
     {
      "currency": "USD",
-     "amount": "69.5389",
+     "amount": "83.3018",
      "workspace_id": null,
      "description": "claude-haiku-5-5 cache_creation tokens",
      "cost_type": "tokens",
@@ -4267,7 +4267,7 @@
     },
     {
      "currency": "USD",
-     "amount": "79.8448",
+     "amount": "99.9016",
      "workspace_id": null,
      "description": "claude-haiku-5-5 cache_read tokens",
      "cost_type": "tokens",

@@ -7,6 +7,7 @@ export const SHORTCUTS: { group: string; items: [string, string][] }[] = [
       [`${MOD}+K`, 'Command palette'],
       ['/', 'Search sessions'],
       [`${MOD}+,`, 'Settings'],
+      [`${MOD}+U`, 'Usage & limits'],
       [`${MOD}+B`, 'Toggle sidebar'],
       ['F5', 'Rescan sources'],
       ['?', 'Keyboard shortcuts']

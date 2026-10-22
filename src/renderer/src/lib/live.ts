@@ -33,9 +33,11 @@ function throttled(fn: () => Promise<void>, ms: number): () => void {
   return schedule
 }
 
-export function useLiveData(): void {
+/** Starts once `enabled` (after the app clock is set from AppInfo). */
+export function useLiveData(enabled = true): void {
   const set = useApp((s) => s.set)
   useEffect(() => {
+    if (!enabled) return
     const loadLimits = async (): Promise<void> => set({ limits: await api.getLimits() })
     const loadCredits = async (): Promise<void> => set({ credits: await api.getCredits() })
     void loadLimits()
@@ -49,7 +51,7 @@ export function useLiveData(): void {
       offs.forEach((off) => off())
       window.clearInterval(tick)
     }
-  }, [set])
+  }, [set, enabled])
 }
 
 /** "API · Personal credits", "Max 5x" or undefined (unknown). */

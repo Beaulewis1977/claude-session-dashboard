@@ -5,15 +5,15 @@
    "ending_at": "2026-09-23T00:00:00Z",
    "results": [
     {
-     "uncached_input_tokens": 4090081,
+     "uncached_input_tokens": 3285926,
      "cache_creation": {
-      "ephemeral_1h_input_tokens": 458495,
-      "ephemeral_5m_input_tokens": 1069821
+      "ephemeral_1h_input_tokens": 568174,
+      "ephemeral_5m_input_tokens": 1325740
      },
-     "cache_read_input_tokens": 28125690,
-     "output_tokens": 1185253,
+     "cache_read_input_tokens": 23178794,
+     "output_tokens": 1258106,
      "server_tool_use": {
-      "web_search_requests": 2
+      "web_search_requests": 20
      },
      "api_key_id": null,
      "workspace_id": null,
@@ -22,15 +22,15 @@
      "context_window": "0-200k"
     },
     {
-     "uncached_input_tokens": 8478631,
+     "uncached_input_tokens": 6868908,
      "cache_creation": {
-      "ephemeral_1h_input_tokens": 1290268,
-      "ephemeral_5m_input_tokens": 3010625
+      "ephemeral_1h_input_tokens": 1208535,
+      "ephemeral_5m_input_tokens": 2819916
      },
-     "cache_read_input_tokens": 51615022,
-     "output_tokens": 2836225,
+     "cache_read_input_tokens": 50416006,
+     "output_tokens": 2372255,
      "server_tool_use": {
-      "web_search_requests": 16
+      "web_search_requests": 13
      },
      "api_key_id": null,
      "workspace_id": null,
@@ -39,15 +39,15 @@
      "context_window": "0-200k"
     },
     {
-     "uncached_input_tokens": 20475532,
+     "uncached_input_tokens": 24182931,
      "cache_creation": {
-      "ephemeral_1h_input_tokens": 3840525,
-      "ephemeral_5m_input_tokens": 8961226
+      "ephemeral_1h_input_tokens": 3223595,
+      "ephemeral_5m_input_tokens": 7521722
      },
-     "cache_read_input_tokens": 172556213,
-     "output_tokens": 7268072,
+     "cache_read_input_tokens": 141806509,
+     "output_tokens": 7553129,
      "server_tool_use": {
-      "web_search_requests": 3
+      "web_search_requests": 11
      },
      "api_key_id": null,
      "workspace_id": null,
@@ -62,15 +62,15 @@
    "ending_at": "2026-09-24T00:00:00Z",
    "results": [
     {
-     "uncached_input_tokens": 2879118,
+     "uncached_input_tokens": 3921407,
      "cache_creation": {
-      "ephemeral_1h_input_tokens": 605006,
-      "ephemeral_5m_input_tokens": 1411680
+      "ephemeral_1h_input_tokens": 435017,
+      "ephemeral_5m_input_tokens": 1015041
      },
-     "cache_read_input_tokens": 22772025,
-     "output_tokens": 1039145,
+     "cache_read_input_tokens": 21841966,
+     "output_tokens": 1144637,
      "server_tool_use": {
-      "web_search_requests": 5
+      "web_search_requests": 1
      },
      "api_key_id": null,
      "workspace_id": null,
@@ -79,15 +79,15 @@
      "context_window": "0-200k"
     },
     {
-     "uncached_input_tokens": 6219292,
+     "uncached_input_tokens": 9027070,
      "cache_creation": {
-      "ephemeral_1h_input_tokens": 1165247,
-      "ephemeral_5m_input_tokens": 2718910
+      "ephemeral_1h_input_tokens": 1599884,
+      "ephemeral_5m_input_tokens": 3733062
      },
-     "cache_read_input_tokens": 54416436,
-     "output_tokens": 2448595,
+     "cache_read_input_tokens": 55640170,
+     "output_tokens": 3026324,
      "server_tool_use": {
-      "web_search_requests": 1
+      "web_search_requests": 0
      },
      "api_key_id": null,
      "workspace_id": null,
@@ -96,15 +96,15 @@
      "context_window": "0-200k"
     },
     {
-     "uncached_input_tokens": 18926903,
+     "uncached_input_tokens": 21519590,
      "cache_creation": {
-      "ephemeral_1h_input_tokens": 3305405,
-      "ephemeral_5m_input_tokens": 7712613
+      "ephemeral_1h_input_tokens": 2948521,
+      "ephemeral_5m_input_tokens": 6879881
      },
-     "cache_read_input_tokens": 179044999,
-     "output_tokens": 7508198,
+     "cache_read_input_tokens": 149438452,
+     "output_tokens": 7592475,
      "server_tool_use": {
-      "web_search_requests": 8
+      "web_search_requests": 32
      },
      "api_key_id": null,
      "workspace_id": null,
@@ -119,15 +119,15 @@
    "ending_at": "2026-09-25T00:00:00Z",
    "results": [
     {
-     "uncached_input_tokens": 3167016,
+     "uncached_input_tokens": 3429224,
      "cache_creation": {
-      "ephemeral_1h_input_tokens": 354245,
-      "ephemeral_5m_input_tokens": 826573
+      "ephemeral_1h_input_tokens": 776879,
+      "ephemeral_5m_input_tokens": 1812717
      },
-     "cache_read_input_tokens": 24177503,
-     "output_tokens": 959058,
+     "cache_read_input_tokens": 29172729,
+     "output_tokens": 1350602,
      "server_tool_use": {
-      "web_search_requests": 18
+      "web_search_requests": 35
      },
      "api_key_id": null,
      "workspace_id": null,
@@ -136,15 +136,15 @@
      "context_window": "0-200k"
     },
     {
-     "uncached_input_tokens": 11763553,
+     "uncached_input_tokens": 9463866,
      "cache_creation": {
-      "ephemeral_1h_input_tokens": 1915667,
-      "ephemeral_5m_input_tokens": 4469891
+      "ephemeral_1h_input_tokens": 1080125,
+      "ephemeral_5m_input_tokens": 2520291
      },
-     "cache_read_input_tokens": 74927641,
-     "output_tokens": 3505717,
+     "cache_read_input_tokens": 61977420,
+     "output_tokens": 2888110,
      "server_tool_use": {
-      "web_search_requests": 17
+      "web_search_requests": 20
      },
      "api_key_id": null,
      "workspace_id": null,
@@ -153,15 +153,15 @@
      "context_window": "0-200k"
     },
     {
-     "uncached_input_tokens": 16774091,
+     "uncached_input_tokens": 26715356,
      "cache_creation": {
-      "ephemeral_1h_input_tokens": 3218094,
-      "ephemeral_5m_input_tokens": 7508886
+      "ephemeral_1h_input_tokens": 4453051,
+      "ephemeral_5m_input_tokens": 10390453
      },
-     "cache_read_input_tokens": 136702610,
-     "output_tokens": 5574877,
+     "cache_read_input_tokens": 155940877,
+     "output_tokens": 7845446,
      "server_tool_use": {
-      "web_search_requests": 9
+      "web_search_requests": 14
      },
      "api_key_id": null,
      "workspace_id": null,
@@ -176,15 +176,15 @@
    "ending_at": "2026-09-26T00:00:00Z",
    "results": [
     {
-     "uncached_input_tokens": 3809146,
+     "uncached_input_tokens": 3147554,
      "cache_creation": {
-      "ephemeral_1h_input_tokens": 562038,
-      "ephemeral_5m_input_tokens": 1311421
+      "ephemeral_1h_input_tokens": 665590,
+      "ephemeral_5m_input_tokens": 1553043
      },
-     "cache_read_input_tokens": 29132863,
-     "output_tokens": 1332494,
+     "cache_read_input_tokens": 25707851,
+     "output_tokens": 1141463,
      "server_tool_use": {
-      "web_search_requests": 23
+      "web_search_requests": 0
      },
      "api_key_id": null,
      "workspace_id": null,
@@ -193,15 +193,15 @@
      "context_window": "0-200k"
     },
     {
-     "uncached_input_tokens": 8936378,
+     "uncached_input_tokens": 7872474,
      "cache_creation": {
-      "ephemeral_1h_input_tokens": 1535632,
-      "ephemeral_5m_input_tokens": 3583140
+      "ephemeral_1h_input_tokens": 1594384,
+      "ephemeral_5m_input_tokens": 3720230
      },
-     "cache_read_input_tokens": 74101389,
-     "output_tokens": 3548471,
+     "cache_read_input_tokens": 66485109,
+     "output_tokens": 2808427,
      "server_tool_use": {
-      "web_search_requests": 29
+      "web_search_requests": 1
      },
      "api_key_id": null,
      "workspace_id": null,
@@ -210,15 +210,15 @@
      "context_window": "0-200k"
     },
     {
-     "uncached_input_tokens": 20380778,
+     "uncached_input_tokens": 14951727,
      "cache_creation": {
-      "ephemeral_1h_input_tokens": 3160718,
-      "ephemeral_5m_input_tokens": 7375007
+      "ephemeral_1h_input_tokens": 2093000,
+      "ephemeral_5m_input_tokens": 4883668
      },
-     "cache_read_input_tokens": 149238501,
-     "output_tokens": 7996429,
+     "cache_read_input_tokens": 106457381,
+     "output_tokens": 5648679,
      "server_tool_use": {
-      "web_search_requests": 4
+      "web_search_requests": 23
      },
      "api_key_id": null,
      "workspace_id": null,
@@ -233,15 +233,15 @@
    "ending_at": "2026-09-27T00:00:00Z",
    "results": [
     {
-     "uncached_input_tokens": 994598,
+     "uncached_input_tokens": 1161373,
      "cache_creation": {
-      "ephemeral_1h_input_tokens": 160091,
-      "ephemeral_5m_input_tokens": 373547
+      "ephemeral_1h_input_tokens": 177216,
+      "ephemeral_5m_input_tokens": 413503
      },
-     "cache_read_input_tokens": 6746956,
-     "output_tokens": 322678,
+     "cache_read_input_tokens": 7238392,
+     "output_tokens": 378640,
      "server_tool_use": {
-      "web_search_requests": 5
+      "web_search_requests": 25
      },
      "api_key_id": null,
      "workspace_id": null,
@@ -250,15 +250,15 @@
      "context_window": "0-200k"
     },
     {
-     "uncached_input_tokens": 3187664,
+     "uncached_input_tokens": 2318527,
      "cache_creation": {
-      "ephemeral_1h_input_tokens": 413332,
-      "ephemeral_5m_input_tokens": 964440
+      "ephemeral_1h_input_tokens": 459814,
+      "ephemeral_5m_input_tokens": 1072900
      },
-     "cache_read_input_tokens": 19246302,
-     "output_tokens": 1023811,
+     "cache_read_input_tokens": 21872133,
+     "output_tokens": 864425,
      "server_tool_use": {
-      "web_search_requests": 37
+      "web_search_requests": 4
      },
      "api_key_id": null,
      "workspace_id": null,
@@ -267,15 +267,15 @@
      "context_window": "0-200k"
     },
     {
-     "uncached_input_tokens": 6882757,
+     "uncached_input_tokens": 7082454,
      "cache_creation": {
-      "ephemeral_1h_input_tokens": 1252498,
-      "ephemeral_5m_input_tokens": 2922495
+      "ephemeral_1h_input_tokens": 1382368,
+      "ephemeral_5m_input_tokens": 3225524
      },
-     "cache_read_input_tokens": 57434517,
-     "output_tokens": 2642197,
+     "cache_read_input_tokens": 53722434,
+     "output_tokens": 2380535,
      "server_tool_use": {
-      "web_search_requests": 23
+      "web_search_requests": 22
      },
      "api_key_id": null,
      "workspace_id": null,
@@ -290,15 +290,15 @@
    "ending_at": "2026-09-28T00:00:00Z",
    "results": [
     {
-     "uncached_input_tokens": 1454281,
+     "uncached_input_tokens": 1391322,
      "cache_creation": {
-      "ephemeral_1h_input_tokens": 217714,
-      "ephemeral_5m_input_tokens": 508000
+      "ephemeral_1h_input_tokens": 276034,
+      "ephemeral_5m_input_tokens": 644078
      },
-     "cache_read_input_tokens": 12129588,
-     "output_tokens": 475924,
+     "cache_read_input_tokens": 11806317,
+     "output_tokens": 478765,
      "server_tool_use": {
-      "web_search_requests": 34
+      "web_search_requests": 13
      },
      "api_key_id": null,
      "workspace_id": null,
@@ -307,13 +307,13 @@
      "context_window": "0-200k"
     },
     {
-     "uncached_input_tokens": 3487398,
+     "uncached_input_tokens": 3389510,
      "cache_creation": {
-      "ephemeral_1h_input_tokens": 684929,
-      "ephemeral_5m_input_tokens": 1598168
+      "ephemeral_1h_input_tokens": 447143,
+      "ephemeral_5m_input_tokens": 1043334
      },
-     "cache_read_input_tokens": 26490347,
-     "output_tokens": 1229550,
+     "cache_read_input_tokens": 20096494,
+     "output_tokens": 1020608,
      "server_tool_use": {
       "web_search_requests": 8
      },
@@ -324,15 +324,15 @@
      "context_window": "0-200k"
     },
     {
-     "uncached_input_tokens": 6015269,
+     "uncached_input_tokens": 8902315,
      "cache_creation": {
-      "ephemeral_1h_input_tokens": 1101230,
-      "ephemeral_5m_input_tokens": 2569536
+      "ephemeral_1h_input_tokens": 1739672,
+      "ephemeral_5m_input_tokens": 4059236
      },
-     "cache_read_input_tokens": 57567630,
-     "output_tokens": 2231751,
+     "cache_read_input_tokens": 59459167,
+     "output_tokens": 2913071,
      "server_tool_use": {
-      "web_search_requests": 12
+      "web_search_requests": 15
      },
      "api_key_id": null,
      "workspace_id": null,
@@ -347,15 +347,15 @@
    "ending_at": "2026-09-29T00:00:00Z",
    "results": [
     {
-     "uncached_input_tokens": 4004029,
+     "uncached_input_tokens": 4040631,
      "cache_creation": {
-      "ephemeral_1h_input_tokens": 786905,
-      "ephemeral_5m_input_tokens": 1836111
+      "ephemeral_1h_input_tokens": 540724,
+      "ephemeral_5m_input_tokens": 1261689
      },
-     "cache_read_input_tokens": 31909764,
-     "output_tokens": 1394157,
+     "cache_read_input_tokens": 22132004,
+     "output_tokens": 1205513,
      "server_tool_use": {
-      "web_search_requests": 1
+      "web_search_requests": 39
      },
      "api_key_id": null,
      "workspace_id": null,
@@ -364,15 +364,15 @@
      "context_window": "0-200k"
     },
     {
-     "uncached_input_tokens": 9736767,
+     "uncached_input_tokens": 6757639,
      "cache_creation": {
-      "ephemeral_1h_input_tokens": 1171371,
-      "ephemeral_5m_input_tokens": 2733198
+      "ephemeral_1h_input_tokens": 1028039,
+      "ephemeral_5m_input_tokens": 2398757
      },
-     "cache_read_input_tokens": 53085421,
-     "output_tokens": 2819606,
+     "cache_read_input_tokens": 52745091,
+     "output_tokens": 2474428,
      "server_tool_use": {
-      "web_search_requests": 16
+      "web_search_requests": 17
      },
      "api_key_id": null,
      "workspace_id": null,
@@ -381,15 +381,15 @@
      "context_window": "0-200k"
     },
     {
-     "uncached_input_tokens": 17797497,
+     "uncached_input_tokens": 17168075,
      "cache_creation": {
-      "ephemeral_1h_input_tokens": 2245023,
-      "ephemeral_5m_input_tokens": 5238388
+      "ephemeral_1h_input_tokens": 3712318,
+      "ephemeral_5m_input_tokens": 8662075
      },
-     "cache_read_input_tokens": 131972542,
-     "output_tokens": 6093315,
+     "cache_read_input_tokens": 122361129,
+     "output_tokens": 6771967,
      "server_tool_use": {
-      "web_search_requests": 0
+      "web_search_requests": 30
      },
      "api_key_id": null,
      "workspace_id": null,
@@ -404,15 +404,15 @@
    "ending_at": "2026-09-30T00:00:00Z",
    "results": [
     {
-     "uncached_input_tokens": 4203412,
+     "uncached_input_tokens": 3305139,
      "cache_creation": {
-      "ephemeral_1h_input_tokens": 690381,
-      "ephemeral_5m_input_tokens": 1610889
+      "ephemeral_1h_input_tokens": 566017,
+      "ephemeral_5m_input_tokens": 1320706
      },
-     "cache_read_input_tokens": 25829170,
-     "output_tokens": 1292060,
+     "cache_read_input_tokens": 22481500,
+     "output_tokens": 1024418,
      "server_tool_use": {
-      "web_search_requests": 20
+      "web_search_requests": 7
      },
      "api_key_id": null,
      "workspace_id": null,
@@ -421,15 +421,15 @@
      "context_window": "0-200k"
     },
     {
-     "uncached_input_tokens": 9093284,
+     "uncached_input_tokens": 8479892,
      "cache_creation": {
-      "ephemeral_1h_input_tokens": 1282777,
-      "ephemeral_5m_input_tokens": 2993146
+      "ephemeral_1h_input_tokens": 1867755,
+      "ephemeral_5m_input_tokens": 4358096
      },
-     "cache_read_input_tokens": 80600764,
-     "output_tokens": 3382846,
+     "cache_read_input_tokens": 61634001,
+     "output_tokens": 3286777,
      "server_tool_use": {
-      "web_search_requests": 3
+      "web_search_requests": 24
      },
      "api_key_id": null,
      "workspace_id": null,
@@ -438,15 +438,15 @@
      "context_window": "0-200k"
     },
     {
-     "uncached_input_tokens": 24798786,
+     "uncached_input_tokens": 20331772,
      "cache_creation": {
-      "ephemeral_1h_input_tokens": 3260682,
-      "ephemeral_5m_input_tokens": 7608257
+      "ephemeral_1h_input_tokens": 2922755,
+      "ephemeral_5m_input_tokens": 6819761
      },
-     "cache_read_input_tokens": 189668669,
-     "output_tokens": 8003293,
+     "cache_read_input_tokens": 195767545,
+     "output_tokens": 7537061,
      "server_tool_use": {
-      "web_search_requests": 40
+      "web_search_requests": 16
      },
      "api_key_id": null,
      "workspace_id": null,
@@ -461,15 +461,15 @@
    "ending_at": "2026-10-01T00:00:00Z",
    "results": [
     {
-     "uncached_input_tokens": 2783772,
+     "uncached_input_tokens": 3334477,
      "cache_creation": {
-      "ephemeral_1h_input_tokens": 548794,
-      "ephemeral_5m_input_tokens": 1280518
+      "ephemeral_1h_input_tokens": 403803,
+      "ephemeral_5m_input_tokens": 942206
      },
-     "cache_read_input_tokens": 18536061,
-     "output_tokens": 957884,
+     "cache_read_input_tokens": 19383234,
+     "output_tokens": 984441,
      "server_tool_use": {
-      "web_search_requests": 8
+      "web_search_requests": 11
      },
      "api_key_id": null,
      "workspace_id": null,
@@ -478,15 +478,15 @@
      "context_window": "0-200k"
     },
     {
-     "uncached_input_tokens": 7252891,
+     "uncached_input_tokens": 8936958,
      "cache_creation": {
-      "ephemeral_1h_input_tokens": 1548486,
-      "ephemeral_5m_input_tokens": 3613135
+      "ephemeral_1h_input_tokens": 1502512,
+      "ephemeral_5m_input_tokens": 3505862
      },
-     "cache_read_input_tokens": 50794397,
-     "output_tokens": 2611834,
+     "cache_read_input_tokens": 58118667,
+     "output_tokens": 2575266,
      "server_tool_use": {
-      "web_search_requests": 23
+      "web_search_requests": 36
      },
      "api_key_id": null,
      "workspace_id": null,
@@ -495,15 +495,15 @@
      "context_window": "0-200k"
     },
     {
-     "uncached_input_tokens": 27801276,
+     "uncached_input_tokens": 20087438,
      "cache_creation": {
-      "ephemeral_1h_input_tokens": 3548449,
-      "ephemeral_5m_input_tokens": 8279715
+      "ephemeral_1h_input_tokens": 4063099,
+      "ephemeral_5m_input_tokens": 9480565
      },
-     "cache_read_input_tokens": 185976149,
-     "output_tokens": 8192995,
+     "cache_read_input_tokens": 157152170,
+     "output_tokens": 7162279,
      "server_tool_use": {
-      "web_search_requests": 20
+      "web_search_requests": 38
      },
      "api_key_id": null,
      "workspace_id": null,
@@ -518,15 +518,15 @@
    "ending_at": "2026-10-02T00:00:00Z",
    "results": [
     {
-     "uncached_input_tokens": 4571579,
+     "uncached_input_tokens": 3919400,
      "cache_creation": {
-      "ephemeral_1h_input_tokens": 779654,
-      "ephemeral_5m_input_tokens": 1819193
+      "ephemeral_1h_input_tokens": 413033,
+      "ephemeral_5m_input_tokens": 963744
      },
-     "cache_read_input_tokens": 29080338,
-     "output_tokens": 1331857,
+     "cache_read_input_tokens": 26045112,
+     "output_tokens": 1139652,
      "server_tool_use": {
-      "web_search_requests": 24
+      "web_search_requests": 28
      },
      "api_key_id": null,
      "workspace_id": null,
@@ -535,15 +535,15 @@
      "context_window": "0-200k"
     },
     {
-     "uncached_input_tokens": 7534515,
+     "uncached_input_tokens": 8514633,
      "cache_creation": {
-      "ephemeral_1h_input_tokens": 951538,
-      "ephemeral_5m_input_tokens": 2220256
+      "ephemeral_1h_input_tokens": 1749082,
+      "ephemeral_5m_input_tokens": 4081191
      },
-     "cache_read_input_tokens": 54393918,
-     "output_tokens": 2353110,
+     "cache_read_input_tokens": 68323139,
+     "output_tokens": 3171310,
      "server_tool_use": {
-      "web_search_requests": 18
+      "web_search_requests": 29
      },
      "api_key_id": null,
      "workspace_id": null,
@@ -552,15 +552,15 @@
      "context_window": "0-200k"
     },
     {
-     "uncached_input_tokens": 24999092,
+     "uncached_input_tokens": 17332919,
      "cache_creation": {
-      "ephemeral_1h_input_tokens": 3539082,
-      "ephemeral_5m_input_tokens": 8257858
+      "ephemeral_1h_input_tokens": 2169649,
+      "ephemeral_5m_input_tokens": 5062514
      },
-     "cache_read_input_tokens": 152630530,
-     "output_tokens": 7794162,
+     "cache_read_input_tokens": 116667008,
+     "output_tokens": 5993503,
      "server_tool_use": {
-      "web_search_requests": 7
+      "web_search_requests": 37
      },
      "api_key_id": null,
      "workspace_id": null,
@@ -575,15 +575,15 @@
    "ending_at": "2026-10-03T00:00:00Z",
    "results": [
     {
-     "uncached_input_tokens": 3097369,
+     "uncached_input_tokens": 3462877,
      "cache_creation": {
-      "ephemeral_1h_input_tokens": 502067,
-      "ephemeral_5m_input_tokens": 1171490
+      "ephemeral_1h_input_tokens": 475443,
+      "ephemeral_5m_input_tokens": 1109368
      },
-     "cache_read_input_tokens": 18373065,
-     "output_tokens": 904167,
+     "cache_read_input_tokens": 26409534,
+     "output_tokens": 1045027,
      "server_tool_use": {
-      "web_search_requests": 37
+      "web_search_requests": 33
      },
      "api_key_id": null,
      "workspace_id": null,
@@ -592,15 +592,15 @@
      "context_window": "0-200k"
     },
     {
-     "uncached_input_tokens": 9435990,
+     "uncached_input_tokens": 8731811,
      "cache_creation": {
-      "ephemeral_1h_input_tokens": 1189165,
-      "ephemeral_5m_input_tokens": 2774717
+      "ephemeral_1h_input_tokens": 1330863,
+      "ephemeral_5m_input_tokens": 3105346
      },
-     "cache_read_input_tokens": 66336612,
-     "output_tokens": 2854356,
+     "cache_read_input_tokens": 74877881,
+     "output_tokens": 3191578,
      "server_tool_use": {
-      "web_search_requests": 27
+      "web_search_requests": 19
      },
      "api_key_id": null,
      "workspace_id": null,
@@ -609,15 +609,15 @@
      "context_window": "0-200k"
     },
     {
-     "uncached_input_tokens": 18230825,
+     "uncached_input_tokens": 16675069,
      "cache_creation": {
-      "ephemeral_1h_input_tokens": 2544915,
-      "ephemeral_5m_input_tokens": 5938136
+      "ephemeral_1h_input_tokens": 2252813,
+      "ephemeral_5m_input_tokens": 5256564
      },
-     "cache_read_input_tokens": 121389930,
-     "output_tokens": 6112401,
+     "cache_read_input_tokens": 132309916,
+     "output_tokens": 6097356,
      "server_tool_use": {
-      "web_search_requests": 18
+      "web_search_requests": 0
      },
      "api_key_id": null,
      "workspace_id": null,
@@ -632,15 +632,15 @@
    "ending_at": "2026-10-04T00:00:00Z",
    "results": [
     {
-     "uncached_input_tokens": 809745,
+     "uncached_input_tokens": 1088059,
      "cache_creation": {
-      "ephemeral_1h_input_tokens": 180796,
-      "ephemeral_5m_input_tokens": 421856
+      "ephemeral_1h_input_tokens": 142984,
+      "ephemeral_5m_input_tokens": 333630
      },
-     "cache_read_input_tokens": 5952551,
-     "output_tokens": 321908,
+     "cache_read_input_tokens": 7577289,
+     "output_tokens": 325751,
      "server_tool_use": {
-      "web_search_requests": 26
+      "web_search_requests": 28
      },
      "api_key_id": null,
      "workspace_id": null,
@@ -649,15 +649,15 @@
      "context_window": "0-200k"
     },
     {
-     "uncached_input_tokens": 3097553,
+     "uncached_input_tokens": 3340276,
      "cache_creation": {
-      "ephemeral_1h_input_tokens": 420167,
-      "ephemeral_5m_input_tokens": 980388
+      "ephemeral_1h_input_tokens": 683997,
+      "ephemeral_5m_input_tokens": 1595992
      },
-     "cache_read_input_tokens": 23751467,
-     "output_tokens": 968652,
+     "cache_read_input_tokens": 27704681,
+     "output_tokens": 1189832,
      "server_tool_use": {
-      "web_search_requests": 27
+      "web_search_requests": 2
      },
      "api_key_id": null,
      "workspace_id": null,
@@ -666,15 +666,15 @@
      "context_window": "0-200k"
     },
     {
-     "uncached_input_tokens": 7214856,
+     "uncached_input_tokens": 6310290,
      "cache_creation": {
-      "ephemeral_1h_input_tokens": 1062102,
-      "ephemeral_5m_input_tokens": 2478238
+      "ephemeral_1h_input_tokens": 1235397,
+      "ephemeral_5m_input_tokens": 2882592
      },
-     "cache_read_input_tokens": 63260994,
-     "output_tokens": 2830049,
+     "cache_read_input_tokens": 48151887,
+     "output_tokens": 2461373,
      "server_tool_use": {
-      "web_search_requests": 8
+      "web_search_requests": 37
      },
      "api_key_id": null,
      "workspace_id": null,
@@ -689,15 +689,15 @@
    "ending_at": "2026-10-05T00:00:00Z",
    "results": [
     {
-     "uncached_input_tokens": 1428392,
+     "uncached_input_tokens": 1065401,
      "cache_creation": {
-      "ephemeral_1h_input_tokens": 221253,
-      "ephemeral_5m_input_tokens": 516258
+      "ephemeral_1h_input_tokens": 187426,
+      "ephemeral_5m_input_tokens": 437326
      },
-     "cache_read_input_tokens": 7869909,
-     "output_tokens": 418479,
+     "cache_read_input_tokens": 7592365,
+     "output_tokens": 332631,
      "server_tool_use": {
-      "web_search_requests": 24
+      "web_search_requests": 7
      },
      "api_key_id": null,
      "workspace_id": null,
@@ -706,15 +706,15 @@
      "context_window": "0-200k"
     },
     {
-     "uncached_input_tokens": 3224041,
+     "uncached_input_tokens": 3741205,
      "cache_creation": {
-      "ephemeral_1h_input_tokens": 683860,
-      "ephemeral_5m_input_tokens": 1595674
+      "ephemeral_1h_input_tokens": 584742,
+      "ephemeral_5m_input_tokens": 1364399
      },
-     "cache_read_input_tokens": 27885997,
-     "output_tokens": 1204733,
+     "cache_read_input_tokens": 23311504,
+     "output_tokens": 1111738,
      "server_tool_use": {
-      "web_search_requests": 15
+      "web_search_requests": 8
      },
      "api_key_id": null,
      "workspace_id": null,
@@ -723,15 +723,15 @@
      "context_window": "0-200k"
     },
     {
-     "uncached_input_tokens": 7091986,
+     "uncached_input_tokens": 7999913,
      "cache_creation": {
-      "ephemeral_1h_input_tokens": 1084460,
-      "ephemeral_5m_input_tokens": 2530406
+      "ephemeral_1h_input_tokens": 1349280,
+      "ephemeral_5m_input_tokens": 3148320
      },
-     "cache_read_input_tokens": 67887182,
-     "output_tokens": 2616124,
+     "cache_read_input_tokens": 64537501,
+     "output_tokens": 2933375,
      "server_tool_use": {
-      "web_search_requests": 20
+      "web_search_requests": 1
      },
      "api_key_id": null,
      "workspace_id": null,
@@ -746,13 +746,13 @@
    "ending_at": "2026-10-06T00:00:00Z",
    "results": [
     {
-     "uncached_input_tokens": 2821920,
+     "uncached_input_tokens": 2459296,
      "cache_creation": {
-      "ephemeral_1h_input_tokens": 415654,
-      "ephemeral_5m_input_tokens": 969860
+      "ephemeral_1h_input_tokens": 387210,
+      "ephemeral_5m_input_tokens": 903490
      },
-     "cache_read_input_tokens": 21006939,
-     "output_tokens": 1108282,
+     "cache_read_input_tokens": 21460043,
+     "output_tokens": 959657,
      "server_tool_use": {
       "web_search_requests": 22
      },
@@ -763,15 +763,15 @@
      "context_window": "0-200k"
     },
     {
-     "uncached_input_tokens": 7864457,
+     "uncached_input_tokens": 10851403,
      "cache_creation": {
-      "ephemeral_1h_input_tokens": 1393828,
-      "ephemeral_5m_input_tokens": 3252264
+      "ephemeral_1h_input_tokens": 1548112,
+      "ephemeral_5m_input_tokens": 3612260
      },
-     "cache_read_input_tokens": 62112572,
-     "output_tokens": 2575560,
+     "cache_read_input_tokens": 77615590,
+     "output_tokens": 3333873,
      "server_tool_use": {
-      "web_search_requests": 27
+      "web_search_requests": 2
      },
      "api_key_id": null,
      "workspace_id": null,
@@ -780,15 +780,15 @@
      "context_window": "0-200k"
     },
     {
-     "uncached_input_tokens": 17172008,
+     "uncached_input_tokens": 17404350,
      "cache_creation": {
-      "ephemeral_1h_input_tokens": 3364501,
-      "ephemeral_5m_input_tokens": 7850503
+      "ephemeral_1h_input_tokens": 2095492,
+      "ephemeral_5m_input_tokens": 4889481
      },
-     "cache_read_input_tokens": 124805898,
-     "output_tokens": 6704479,
+     "cache_read_input_tokens": 106282283,
+     "output_tokens": 5630738,
      "server_tool_use": {
-      "web_search_requests": 4
+      "web_search_requests": 34
      },
      "api_key_id": null,
      "workspace_id": null,
@@ -803,15 +803,15 @@
    "ending_at": "2026-10-07T00:00:00Z",
    "results": [
     {
-     "uncached_input_tokens": 3098237,
+     "uncached_input_tokens": 3207133,
      "cache_creation": {
-      "ephemeral_1h_input_tokens": 536918,
-      "ephemeral_5m_input_tokens": 1252810
+      "ephemeral_1h_input_tokens": 530192,
+      "ephemeral_5m_input_tokens": 1237114
      },
-     "cache_read_input_tokens": 17223974,
-     "output_tokens": 925317,
+     "cache_read_input_tokens": 22710850,
+     "output_tokens": 938383,
      "server_tool_use": {
-      "web_search_requests": 31
+      "web_search_requests": 28
      },
      "api_key_id": null,
      "workspace_id": null,
@@ -820,15 +820,15 @@
      "context_window": "0-200k"
     },
     {
-     "uncached_input_tokens": 10997020,
+     "uncached_input_tokens": 6820549,
      "cache_creation": {
-      "ephemeral_1h_input_tokens": 1384090,
-      "ephemeral_5m_input_tokens": 3229543
+      "ephemeral_1h_input_tokens": 981071,
+      "ephemeral_5m_input_tokens": 2289165
      },
-     "cache_read_input_tokens": 66634699,
-     "output_tokens": 3450447,
+     "cache_read_input_tokens": 62462155,
+     "output_tokens": 2553184,
      "server_tool_use": {
-      "web_search_requests": 33
+      "web_search_requests": 32
      },
      "api_key_id": null,
      "workspace_id": null,
@@ -837,15 +837,15 @@
      "context_window": "0-200k"
     },
     {
-     "uncached_input_tokens": 18762774,
+     "uncached_input_tokens": 22872057,
      "cache_creation": {
-      "ephemeral_1h_input_tokens": 2532746,
-      "ephemeral_5m_input_tokens": 5909740
+      "ephemeral_1h_input_tokens": 4765701,
+      "ephemeral_5m_input_tokens": 11119969
      },
-     "cache_read_input_tokens": 142566841,
-     "output_tokens": 5703173,
+     "cache_read_input_tokens": 208526871,
+     "output_tokens": 8024179,
      "server_tool_use": {
-      "web_search_requests": 40
+      "web_search_requests": 8
      },
      "api_key_id": null,
      "workspace_id": null,
@@ -860,15 +860,15 @@
    "ending_at": "2026-10-08T00:00:00Z",
    "results": [
     {
-     "uncached_input_tokens": 3769389,
+     "uncached_input_tokens": 3723995,
      "cache_creation": {
-      "ephemeral_1h_input_tokens": 617912,
-      "ephemeral_5m_input_tokens": 1441794
+      "ephemeral_1h_input_tokens": 636754,
+      "ephemeral_5m_input_tokens": 1485760
      },
-     "cache_read_input_tokens": 33939643,
-     "output_tokens": 1387328,
+     "cache_read_input_tokens": 30884984,
+     "output_tokens": 1304002,
      "server_tool_use": {
-      "web_search_requests": 29
+      "web_search_requests": 39
      },
      "api_key_id": null,
      "workspace_id": null,
@@ -877,15 +877,15 @@
      "context_window": "0-200k"
     },
     {
-     "uncached_input_tokens": 10537411,
+     "uncached_input_tokens": 7271123,
      "cache_creation": {
-      "ephemeral_1h_input_tokens": 1198921,
-      "ephemeral_5m_input_tokens": 2797483
+      "ephemeral_1h_input_tokens": 1455188,
+      "ephemeral_5m_input_tokens": 3395439
      },
-     "cache_read_input_tokens": 62250267,
-     "output_tokens": 3035000,
+     "cache_read_input_tokens": 66172540,
+     "output_tokens": 2748004,
      "server_tool_use": {
-      "web_search_requests": 31
+      "web_search_requests": 11
      },
      "api_key_id": null,
      "workspace_id": null,
@@ -894,15 +894,15 @@
      "context_window": "0-200k"
     },
     {
-     "uncached_input_tokens": 20833297,
+     "uncached_input_tokens": 22738495,
      "cache_creation": {
-      "ephemeral_1h_input_tokens": 3416526,
-      "ephemeral_5m_input_tokens": 7971893
+      "ephemeral_1h_input_tokens": 3090300,
+      "ephemeral_5m_input_tokens": 7210701
      },
-     "cache_read_input_tokens": 184659708,
-     "output_tokens": 7519296,
+     "cache_read_input_tokens": 147209518,
+     "output_tokens": 7859292,
      "server_tool_use": {
-      "web_search_requests": 3
+      "web_search_requests": 10
      },
      "api_key_id": null,
      "workspace_id": null,
@@ -917,15 +917,15 @@
    "ending_at": "2026-10-09T00:00:00Z",
    "results": [
     {
-     "uncached_input_tokens": 2663712,
+     "uncached_input_tokens": 2783906,
      "cache_creation": {
-      "ephemeral_1h_input_tokens": 482412,
-      "ephemeral_5m_input_tokens": 1125628
+      "ephemeral_1h_input_tokens": 524443,
+      "ephemeral_5m_input_tokens": 1223701
      },
-     "cache_read_input_tokens": 17532520,
-     "output_tokens": 969174,
+     "cache_read_input_tokens": 21952177,
+     "output_tokens": 905635,
      "server_tool_use": {
-      "web_search_requests": 31
+      "web_search_requests": 26
      },
      "api_key_id": null,
      "workspace_id": null,
@@ -934,15 +934,15 @@
      "context_window": "0-200k"
     },
     {
-     "uncached_input_tokens": 11091156,
+     "uncached_input_tokens": 8535521,
      "cache_creation": {
-      "ephemeral_1h_input_tokens": 1900921,
-      "ephemeral_5m_input_tokens": 4435482
+      "ephemeral_1h_input_tokens": 1498164,
+      "ephemeral_5m_input_tokens": 3495716
      },
-     "cache_read_input_tokens": 69767909,
-     "output_tokens": 3526731,
+     "cache_read_input_tokens": 59765512,
+     "output_tokens": 2629673,
      "server_tool_use": {
-      "web_search_requests": 24
+      "web_search_requests": 31
      },
      "api_key_id": null,
      "workspace_id": null,
@@ -951,15 +951,15 @@
      "context_window": "0-200k"
     },
     {
-     "uncached_input_tokens": 26131521,
+     "uncached_input_tokens": 16676896,
      "cache_creation": {
-      "ephemeral_1h_input_tokens": 3322485,
-      "ephemeral_5m_input_tokens": 7752466
+      "ephemeral_1h_input_tokens": 2556955,
+      "ephemeral_5m_input_tokens": 5966228
      },
-     "cache_read_input_tokens": 159746040,
-     "output_tokens": 8021437,
+     "cache_read_input_tokens": 125202645,
+     "output_tokens": 6118084,
      "server_tool_use": {
-      "web_search_requests": 12
+      "web_search_requests": 32
      },
      "api_key_id": null,
      "workspace_id": null,
@@ -974,15 +974,15 @@
    "ending_at": "2026-10-10T00:00:00Z",
    "results": [
     {
-     "uncached_input_tokens": 3356266,
+     "uncached_input_tokens": 3326122,
      "cache_creation": {
-      "ephemeral_1h_input_tokens": 431783,
-      "ephemeral_5m_input_tokens": 1007494
+      "ephemeral_1h_input_tokens": 619316,
+      "ephemeral_5m_input_tokens": 1445070
      },
-     "cache_read_input_tokens": 23336785,
-     "output_tokens": 1020696,
+     "cache_read_input_tokens": 28212518,
+     "output_tokens": 1203975,
      "server_tool_use": {
-      "web_search_requests": 27
+      "web_search_requests": 16
      },
      "api_key_id": null,
      "workspace_id": null,
@@ -991,15 +991,15 @@
      "context_window": "0-200k"
     },
     {
-     "uncached_input_tokens": 9197076,
+     "uncached_input_tokens": 9333203,
      "cache_creation": {
-      "ephemeral_1h_input_tokens": 1865943,
-      "ephemeral_5m_input_tokens": 4353867
+      "ephemeral_1h_input_tokens": 1512313,
+      "ephemeral_5m_input_tokens": 3528730
      },
-     "cache_read_input_tokens": 64347634,
-     "output_tokens": 3176292,
+     "cache_read_input_tokens": 68940431,
+     "output_tokens": 2707043,
      "server_tool_use": {
-      "web_search_requests": 38
+      "web_search_requests": 21
      },
      "api_key_id": null,
      "workspace_id": null,
@@ -1008,15 +1008,15 @@
      "context_window": "0-200k"
     },
     {
-     "uncached_input_tokens": 23767542,
+     "uncached_input_tokens": 20279337,
      "cache_creation": {
-      "ephemeral_1h_input_tokens": 3216587,
-      "ephemeral_5m_input_tokens": 7505371
+      "ephemeral_1h_input_tokens": 3968555,
+      "ephemeral_5m_input_tokens": 9259962
      },
-     "cache_read_input_tokens": 186265657,
-     "output_tokens": 7883233,
+     "cache_read_input_tokens": 173162966,
+     "output_tokens": 7510530,
      "server_tool_use": {
-      "web_search_requests": 25
+      "web_search_requests": 27
      },
      "api_key_id": null,
      "workspace_id": null,
@@ -1031,15 +1031,15 @@
    "ending_at": "2026-10-11T00:00:00Z",
    "results": [
     {
-     "uncached_input_tokens": 1388520,
+     "uncached_input_tokens": 865997,
      "cache_creation": {
-      "ephemeral_1h_input_tokens": 182110,
-      "ephemeral_5m_input_tokens": 424922
+      "ephemeral_1h_input_tokens": 139559,
+      "ephemeral_5m_input_tokens": 325637
      },
-     "cache_read_input_tokens": 7917073,
-     "output_tokens": 437791,
+     "cache_read_input_tokens": 8061379,
+     "output_tokens": 316841,
      "server_tool_use": {
-      "web_search_requests": 38
+      "web_search_requests": 0
      },
      "api_key_id": null,
      "workspace_id": null,
@@ -1048,15 +1048,15 @@
      "context_window": "0-200k"
     },
     {
-     "uncached_input_tokens": 2451568,
+     "uncached_input_tokens": 3076570,
      "cache_creation": {
-      "ephemeral_1h_input_tokens": 379932,
-      "ephemeral_5m_input_tokens": 886509
+      "ephemeral_1h_input_tokens": 439945,
+      "ephemeral_5m_input_tokens": 1026539
      },
-     "cache_read_input_tokens": 23485061,
-     "output_tokens": 971557,
+     "cache_read_input_tokens": 27456797,
+     "output_tokens": 1170067,
      "server_tool_use": {
-      "web_search_requests": 28
+      "web_search_requests": 24
      },
      "api_key_id": null,
      "workspace_id": null,
@@ -1065,15 +1065,15 @@
      "context_window": "0-200k"
     },
     {
-     "uncached_input_tokens": 6057348,
+     "uncached_input_tokens": 8755528,
      "cache_creation": {
-      "ephemeral_1h_input_tokens": 1136591,
-      "ephemeral_5m_input_tokens": 2652047
+      "ephemeral_1h_input_tokens": 1417008,
+      "ephemeral_5m_input_tokens": 3306353
      },
-     "cache_read_input_tokens": 45329022,
-     "output_tokens": 1960000,
+     "cache_read_input_tokens": 51016977,
+     "output_tokens": 2562926,
      "server_tool_use": {
-      "web_search_requests": 9
+      "web_search_requests": 31
      },
      "api_key_id": null,
      "workspace_id": null,
@@ -1088,15 +1088,15 @@
    "ending_at": "2026-10-12T00:00:00Z",
    "results": [
     {
-     "uncached_input_tokens": 1486793,
+     "uncached_input_tokens": 1346806,
      "cache_creation": {
-      "ephemeral_1h_input_tokens": 227184,
-      "ephemeral_5m_input_tokens": 530096
+      "ephemeral_1h_input_tokens": 188615,
+      "ephemeral_5m_input_tokens": 440103
      },
-     "cache_read_input_tokens": 10756028,
-     "output_tokens": 455647,
+     "cache_read_input_tokens": 9687714,
+     "output_tokens": 437632,
      "server_tool_use": {
-      "web_search_requests": 21
+      "web_search_requests": 22
      },
      "api_key_id": null,
      "workspace_id": null,
@@ -1105,15 +1105,15 @@
      "context_window": "0-200k"
     },
     {
-     "uncached_input_tokens": 2895995,
+     "uncached_input_tokens": 2860856,
      "cache_creation": {
-      "ephemeral_1h_input_tokens": 448422,
-      "ephemeral_5m_input_tokens": 1046317
+      "ephemeral_1h_input_tokens": 553934,
+      "ephemeral_5m_input_tokens": 1292512
      },
-     "cache_read_input_tokens": 19641174,
-     "output_tokens": 953587,
+     "cache_read_input_tokens": 20702105,
+     "output_tokens": 966713,
      "server_tool_use": {
-      "web_search_requests": 17
+      "web_search_requests": 10
      },
      "api_key_id": null,
      "workspace_id": null,
@@ -1122,15 +1122,15 @@
      "context_window": "0-200k"
     },
     {
-     "uncached_input_tokens": 7803305,
+     "uncached_input_tokens": 5915455,
      "cache_creation": {
-      "ephemeral_1h_input_tokens": 1428404,
-      "ephemeral_5m_input_tokens": 3332943
+      "ephemeral_1h_input_tokens": 1084199,
+      "ephemeral_5m_input_tokens": 2529797
      },
-     "cache_read_input_tokens": 51065798,
-     "output_tokens": 2821907,
+     "cache_read_input_tokens": 41890465,
+     "output_tokens": 1902626,
      "server_tool_use": {
-      "web_search_requests": 20
+      "web_search_requests": 28
      },
      "api_key_id": null,
      "workspace_id": null,
@@ -1145,15 +1145,15 @@
    "ending_at": "2026-10-13T00:00:00Z",
    "results": [
     {
-     "uncached_input_tokens": 4287307,
+     "uncached_input_tokens": 3748595,
      "cache_creation": {
-      "ephemeral_1h_input_tokens": 729281,
-      "ephemeral_5m_input_tokens": 1701655
+      "ephemeral_1h_input_tokens": 431432,
+      "ephemeral_5m_input_tokens": 1006673
      },
-     "cache_read_input_tokens": 29321486,
-     "output_tokens": 1337173,
+     "cache_read_input_tokens": 25402437,
+     "output_tokens": 1145498,
      "server_tool_use": {
-      "web_search_requests": 21
+      "web_search_requests": 38
      },
      "api_key_id": null,
      "workspace_id": null,
@@ -1162,15 +1162,15 @@
      "context_window": "0-200k"
     },
     {
-     "uncached_input_tokens": 8359897,
+     "uncached_input_tokens": 12097602,
      "cache_creation": {
-      "ephemeral_1h_input_tokens": 1357559,
-      "ephemeral_5m_input_tokens": 3167637
+      "ephemeral_1h_input_tokens": 1771871,
+      "ephemeral_5m_input_tokens": 4134364
      },
-     "cache_read_input_tokens": 63114123,
-     "output_tokens": 2430091,
+     "cache_read_input_tokens": 79692796,
+     "output_tokens": 3635437,
      "server_tool_use": {
-      "web_search_requests": 20
+      "web_search_requests": 14
      },
      "api_key_id": null,
      "workspace_id": null,
@@ -1179,15 +1179,15 @@
      "context_window": "0-200k"
     },
     {
-     "uncached_input_tokens": 19947503,
+     "uncached_input_tokens": 23058361,
      "cache_creation": {
-      "ephemeral_1h_input_tokens": 3822058,
-      "ephemeral_5m_input_tokens": 8918135
+      "ephemeral_1h_input_tokens": 3001128,
+      "ephemeral_5m_input_tokens": 7002633
      },
-     "cache_read_input_tokens": 156354787,
-     "output_tokens": 6992357,
+     "cache_read_input_tokens": 136067648,
+     "output_tokens": 7035305,
      "server_tool_use": {
-      "web_search_requests": 6
+      "web_search_requests": 36
      },
      "api_key_id": null,
      "workspace_id": null,
@@ -1202,15 +1202,15 @@
    "ending_at": "2026-10-14T00:00:00Z",
    "results": [
     {
-     "uncached_input_tokens": 3516492,
+     "uncached_input_tokens": 3489535,
      "cache_creation": {
-      "ephemeral_1h_input_tokens": 514709,
-      "ephemeral_5m_input_tokens": 1200987
+      "ephemeral_1h_input_tokens": 459208,
+      "ephemeral_5m_input_tokens": 1071485
      },
-     "cache_read_input_tokens": 22662598,
-     "output_tokens": 1038711,
+     "cache_read_input_tokens": 27124978,
+     "output_tokens": 1138625,
      "server_tool_use": {
-      "web_search_requests": 29
+      "web_search_requests": 20
      },
      "api_key_id": null,
      "workspace_id": null,
@@ -1219,15 +1219,15 @@
      "context_window": "0-200k"
     },
     {
-     "uncached_input_tokens": 7705906,
+     "uncached_input_tokens": 10417390,
      "cache_creation": {
-      "ephemeral_1h_input_tokens": 1313916,
-      "ephemeral_5m_input_tokens": 3065803
+      "ephemeral_1h_input_tokens": 1843634,
+      "ephemeral_5m_input_tokens": 4301813
      },
-     "cache_read_input_tokens": 62058636,
-     "output_tokens": 2574544,
+     "cache_read_input_tokens": 70238924,
+     "output_tokens": 3332015,
      "server_tool_use": {
-      "web_search_requests": 15
+      "web_search_requests": 16
      },
      "api_key_id": null,
      "workspace_id": null,
@@ -1236,15 +1236,15 @@
      "context_window": "0-200k"
     },
     {
-     "uncached_input_tokens": 22727044,
+     "uncached_input_tokens": 21572010,
      "cache_creation": {
-      "ephemeral_1h_input_tokens": 4364117,
-      "ephemeral_5m_input_tokens": 10182941
+      "ephemeral_1h_input_tokens": 2687790,
+      "ephemeral_5m_input_tokens": 6271509
      },
-     "cache_read_input_tokens": 163312656,
-     "output_tokens": 7816363,
+     "cache_read_input_tokens": 142599460,
+     "output_tokens": 6485133,
      "server_tool_use": {
-      "web_search_requests": 20
+      "web_search_requests": 18
      },
      "api_key_id": null,
      "workspace_id": null,
@@ -1259,15 +1259,15 @@
    "ending_at": "2026-10-15T00:00:00Z",
    "results": [
     {
-     "uncached_input_tokens": 2992786,
+     "uncached_input_tokens": 4489704,
      "cache_creation": {
-      "ephemeral_1h_input_tokens": 579103,
-      "ephemeral_5m_input_tokens": 1351239
+      "ephemeral_1h_input_tokens": 699176,
+      "ephemeral_5m_input_tokens": 1631410
      },
-     "cache_read_input_tokens": 25181395,
-     "output_tokens": 1013446,
+     "cache_read_input_tokens": 34402402,
+     "output_tokens": 1327956,
      "server_tool_use": {
-      "web_search_requests": 40
+      "web_search_requests": 8
      },
      "api_key_id": null,
      "workspace_id": null,
@@ -1276,15 +1276,15 @@
      "context_window": "0-200k"
     },
     {
-     "uncached_input_tokens": 8744203,
+     "uncached_input_tokens": 7654126,
      "cache_creation": {
-      "ephemeral_1h_input_tokens": 1387900,
-      "ephemeral_5m_input_tokens": 3238434
+      "ephemeral_1h_input_tokens": 1241906,
+      "ephemeral_5m_input_tokens": 2897782
      },
-     "cache_read_input_tokens": 66524262,
-     "output_tokens": 3241903,
+     "cache_read_input_tokens": 60670065,
+     "output_tokens": 2749521,
      "server_tool_use": {
-      "web_search_requests": 20
+      "web_search_requests": 14
      },
      "api_key_id": null,
      "workspace_id": null,
@@ -1293,15 +1293,15 @@
      "context_window": "0-200k"
     },
     {
-     "uncached_input_tokens": 18660455,
+     "uncached_input_tokens": 18385875,
      "cache_creation": {
-      "ephemeral_1h_input_tokens": 2779274,
-      "ephemeral_5m_input_tokens": 6484974
+      "ephemeral_1h_input_tokens": 3360950,
+      "ephemeral_5m_input_tokens": 7842216
      },
-     "cache_read_input_tokens": 139469242,
-     "output_tokens": 6546012,
+     "cache_read_input_tokens": 119625700,
+     "output_tokens": 6639745,
      "server_tool_use": {
-      "web_search_requests": 0
+      "web_search_requests": 1
      },
      "api_key_id": null,
      "workspace_id": null,
@@ -1316,15 +1316,15 @@
    "ending_at": "2026-10-16T00:00:00Z",
    "results": [
     {
-     "uncached_input_tokens": 3051328,
+     "uncached_input_tokens": 3578321,
      "cache_creation": {
-      "ephemeral_1h_input_tokens": 648842,
-      "ephemeral_5m_input_tokens": 1513964
+      "ephemeral_1h_input_tokens": 580004,
+      "ephemeral_5m_input_tokens": 1353343
      },
-     "cache_read_input_tokens": 25592853,
-     "output_tokens": 1204555,
+     "cache_read_input_tokens": 27801434,
+     "output_tokens": 1102921,
      "server_tool_use": {
-      "web_search_requests": 36
+      "web_search_requests": 39
      },
      "api_key_id": null,
      "workspace_id": null,
@@ -1333,15 +1333,15 @@
      "context_window": "0-200k"
     },
     {
-     "uncached_input_tokens": 11207060,
+     "uncached_input_tokens": 8691447,
      "cache_creation": {
-      "ephemeral_1h_input_tokens": 1299884,
-      "ephemeral_5m_input_tokens": 3033062
+      "ephemeral_1h_input_tokens": 1688133,
+      "ephemeral_5m_input_tokens": 3938976
      },
-     "cache_read_input_tokens": 76474204,
-     "output_tokens": 3238517,
+     "cache_read_input_tokens": 70717050,
+     "output_tokens": 3252268,
      "server_tool_use": {
-      "web_search_requests": 19
+      "web_search_requests": 6
      },
      "api_key_id": null,
      "workspace_id": null,
@@ -1350,15 +1350,15 @@
      "context_window": "0-200k"
     },
     {
-     "uncached_input_tokens": 19617997,
+     "uncached_input_tokens": 18105660,
      "cache_creation": {
-      "ephemeral_1h_input_tokens": 3390514,
-      "ephemeral_5m_input_tokens": 7911198
+      "ephemeral_1h_input_tokens": 3116150,
+      "ephemeral_5m_input_tokens": 7271016
      },
-     "cache_read_input_tokens": 149093568,
-     "output_tokens": 7388290,
+     "cache_read_input_tokens": 132550368,
+     "output_tokens": 6217392,
      "server_tool_use": {
-      "web_search_requests": 17
+      "web_search_requests": 31
      },
      "api_key_id": null,
      "workspace_id": null,
@@ -1373,15 +1373,15 @@
    "ending_at": "2026-10-17T00:00:00Z",
    "results": [
     {
-     "uncached_input_tokens": 3916605,
+     "uncached_input_tokens": 3071088,
      "cache_creation": {
-      "ephemeral_1h_input_tokens": 539405,
-      "ephemeral_5m_input_tokens": 1258613
+      "ephemeral_1h_input_tokens": 387226,
+      "ephemeral_5m_input_tokens": 903528
      },
-     "cache_read_input_tokens": 24658575,
-     "output_tokens": 1194164,
+     "cache_read_input_tokens": 24748140,
+     "output_tokens": 1065577,
      "server_tool_use": {
-      "web_search_requests": 26
+      "web_search_requests": 14
      },
      "api_key_id": null,
      "workspace_id": null,
@@ -1390,15 +1390,15 @@
      "context_window": "0-200k"
     },
     {
-     "uncached_input_tokens": 6713487,
+     "uncached_input_tokens": 8782327,
      "cache_creation": {
-      "ephemeral_1h_input_tokens": 921194,
-      "ephemeral_5m_input_tokens": 2149452
+      "ephemeral_1h_input_tokens": 1601533,
+      "ephemeral_5m_input_tokens": 3736911
      },
-     "cache_read_input_tokens": 56999908,
-     "output_tokens": 2358394,
+     "cache_read_input_tokens": 62203712,
+     "output_tokens": 3342454,
      "server_tool_use": {
-      "web_search_requests": 3
+      "web_search_requests": 38
      },
      "api_key_id": null,
      "workspace_id": null,
@@ -1407,15 +1407,15 @@
      "context_window": "0-200k"
     },
     {
-     "uncached_input_tokens": 23624963,
+     "uncached_input_tokens": 17102218,
      "cache_creation": {
-      "ephemeral_1h_input_tokens": 2887628,
-      "ephemeral_5m_input_tokens": 6737800
+      "ephemeral_1h_input_tokens": 3150076,
+      "ephemeral_5m_input_tokens": 7350177
      },
-     "cache_read_input_tokens": 139203184,
-     "output_tokens": 6889361,
+     "cache_read_input_tokens": 124675731,
+     "output_tokens": 6227073,
      "server_tool_use": {
-      "web_search_requests": 10
+      "web_search_requests": 24
      },
      "api_key_id": null,
      "workspace_id": null,
@@ -1430,15 +1430,15 @@
    "ending_at": "2026-10-18T00:00:00Z",
    "results": [
     {
-     "uncached_input_tokens": 1308350,
+     "uncached_input_tokens": 1526055,
      "cache_creation": {
-      "ephemeral_1h_input_tokens": 222709,
-      "ephemeral_5m_input_tokens": 519653
+      "ephemeral_1h_input_tokens": 229011,
+      "ephemeral_5m_input_tokens": 534359
      },
-     "cache_read_input_tokens": 10696421,
-     "output_tokens": 421362,
+     "cache_read_input_tokens": 9119541,
+     "output_tokens": 476554,
      "server_tool_use": {
-      "web_search_requests": 5
+      "web_search_requests": 33
      },
      "api_key_id": null,
      "workspace_id": null,
@@ -1447,15 +1447,15 @@
      "context_window": "0-200k"
     },
     {
-     "uncached_input_tokens": 3465527,
+     "uncached_input_tokens": 3114787,
      "cache_creation": {
-      "ephemeral_1h_input_tokens": 385668,
-      "ephemeral_5m_input_tokens": 899893
+      "ephemeral_1h_input_tokens": 639709,
+      "ephemeral_5m_input_tokens": 1492655
      },
-     "cache_read_input_tokens": 26411221,
-     "output_tokens": 1047555,
+     "cache_read_input_tokens": 24459001,
+     "output_tokens": 1229197,
      "server_tool_use": {
-      "web_search_requests": 9
+      "web_search_requests": 12
      },
      "api_key_id": null,
      "workspace_id": null,
@@ -1464,15 +1464,15 @@
      "context_window": "0-200k"
     },
     {
-     "uncached_input_tokens": 7286264,
+     "uncached_input_tokens": 8693174,
      "cache_creation": {
-      "ephemeral_1h_input_tokens": 1248059,
-      "ephemeral_5m_input_tokens": 2912137
+      "ephemeral_1h_input_tokens": 1531221,
+      "ephemeral_5m_input_tokens": 3572848
      },
-     "cache_read_input_tokens": 66432782,
-     "output_tokens": 2591875,
+     "cache_read_input_tokens": 71325128,
+     "output_tokens": 2891591,
      "server_tool_use": {
-      "web_search_requests": 34
+      "web_search_requests": 6
      },
      "api_key_id": null,
      "workspace_id": null,
@@ -1487,15 +1487,15 @@
    "ending_at": "2026-10-19T00:00:00Z",
    "results": [
     {
-     "uncached_input_tokens": 1168649,
+     "uncached_input_tokens": 1191845,
      "cache_creation": {
-      "ephemeral_1h_input_tokens": 249083,
-      "ephemeral_5m_input_tokens": 581195
+      "ephemeral_1h_input_tokens": 198178,
+      "ephemeral_5m_input_tokens": 462416
      },
-     "cache_read_input_tokens": 8678634,
-     "output_tokens": 438625,
+     "cache_read_input_tokens": 7515942,
+     "output_tokens": 354069,
      "server_tool_use": {
-      "web_search_requests": 16
+      "web_search_requests": 6
      },
      "api_key_id": null,
      "workspace_id": null,
@@ -1504,15 +1504,15 @@
      "context_window": "0-200k"
     },
     {
-     "uncached_input_tokens": 3171858,
+     "uncached_input_tokens": 3175682,
      "cache_creation": {
-      "ephemeral_1h_input_tokens": 559904,
-      "ephemeral_5m_input_tokens": 1306442
+      "ephemeral_1h_input_tokens": 442928,
+      "ephemeral_5m_input_tokens": 1033499
      },
-     "cache_read_input_tokens": 26995307,
-     "output_tokens": 1197629,
+     "cache_read_input_tokens": 24625792,
+     "output_tokens": 1077248,
      "server_tool_use": {
-      "web_search_requests": 24
+      "web_search_requests": 36
      },
      "api_key_id": null,
      "workspace_id": null,
@@ -1521,15 +1521,15 @@
      "context_window": "0-200k"
     },
     {
-     "uncached_input_tokens": 7162468,
+     "uncached_input_tokens": 9521482,
      "cache_creation": {
-      "ephemeral_1h_input_tokens": 1167170,
-      "ephemeral_5m_input_tokens": 2723396
+      "ephemeral_1h_input_tokens": 1383872,
+      "ephemeral_5m_input_tokens": 3229035
      },
-     "cache_read_input_tokens": 54070197,
-     "output_tokens": 2113853,
+     "cache_read_input_tokens": 64108623,
+     "output_tokens": 2884741,
      "server_tool_use": {
-      "web_search_requests": 21
+      "web_search_requests": 18
      },
      "api_key_id": null,
      "workspace_id": null,
@@ -1544,15 +1544,15 @@
    "ending_at": "2026-10-20T00:00:00Z",
    "results": [
     {
-     "uncached_input_tokens": 3386586,
+     "uncached_input_tokens": 2627058,
      "cache_creation": {
-      "ephemeral_1h_input_tokens": 527485,
-      "ephemeral_5m_input_tokens": 1230798
+      "ephemeral_1h_input_tokens": 425200,
+      "ephemeral_5m_input_tokens": 992133
      },
-     "cache_read_input_tokens": 20728264,
-     "output_tokens": 1149420,
+     "cache_read_input_tokens": 23163849,
+     "output_tokens": 902105,
      "server_tool_use": {
-      "web_search_requests": 39
+      "web_search_requests": 3
      },
      "api_key_id": null,
      "workspace_id": null,
@@ -1561,13 +1561,13 @@
      "context_window": "0-200k"
     },
     {
-     "uncached_input_tokens": 7640759,
+     "uncached_input_tokens": 9484894,
      "cache_creation": {
-      "ephemeral_1h_input_tokens": 1652598,
-      "ephemeral_5m_input_tokens": 3856062
+      "ephemeral_1h_input_tokens": 1466129,
+      "ephemeral_5m_input_tokens": 3420969
      },
-     "cache_read_input_tokens": 62033143,
-     "output_tokens": 2943103,
+     "cache_read_input_tokens": 55923034,
+     "output_tokens": 2840088,
      "server_tool_use": {
       "web_search_requests": 8
      },
@@ -1578,15 +1578,15 @@
      "context_window": "0-200k"
     },
     {
-     "uncached_input_tokens": 19953945,
+     "uncached_input_tokens": 26544609,
      "cache_creation": {
-      "ephemeral_1h_input_tokens": 4244449,
-      "ephemeral_5m_input_tokens": 9903715
+      "ephemeral_1h_input_tokens": 4178149,
+      "ephemeral_5m_input_tokens": 9749015
      },
-     "cache_read_input_tokens": 179316308,
-     "output_tokens": 7352835,
+     "cache_read_input_tokens": 167332824,
+     "output_tokens": 7795264,
      "server_tool_use": {
-      "web_search_requests": 17
+      "web_search_requests": 24
      },
      "api_key_id": null,
      "workspace_id": null,
@@ -1601,15 +1601,15 @@
    "ending_at": "2026-10-21T00:00:00Z",
    "results": [
     {
-     "uncached_input_tokens": 3933408,
+     "uncached_input_tokens": 4194060,
      "cache_creation": {
-      "ephemeral_1h_input_tokens": 706568,
-      "ephemeral_5m_input_tokens": 1648659
+      "ephemeral_1h_input_tokens": 471623,
+      "ephemeral_5m_input_tokens": 1100453
      },
-     "cache_read_input_tokens": 30128535,
-     "output_tokens": 1266637,
+     "cache_read_input_tokens": 24701901,
+     "output_tokens": 1261640,
      "server_tool_use": {
-      "web_search_requests": 8
+      "web_search_requests": 24
      },
      "api_key_id": null,
      "workspace_id": null,
@@ -1618,15 +1618,15 @@
      "context_window": "0-200k"
     },
     {
-     "uncached_input_tokens": 7501740,
+     "uncached_input_tokens": 10343999,
      "cache_creation": {
-      "ephemeral_1h_input_tokens": 1137990,
-      "ephemeral_5m_input_tokens": 2655311
+      "ephemeral_1h_input_tokens": 1954001,
+      "ephemeral_5m_input_tokens": 4559335
      },
-     "cache_read_input_tokens": 60563140,
-     "output_tokens": 2414842,
+     "cache_read_input_tokens": 89768556,
+     "output_tokens": 3490426,
      "server_tool_use": {
-      "web_search_requests": 39
+      "web_search_requests": 15
      },
      "api_key_id": null,
      "workspace_id": null,
@@ -1635,15 +1635,15 @@
      "context_window": "0-200k"
     },
     {
-     "uncached_input_tokens": 22661892,
+     "uncached_input_tokens": 20659936,
      "cache_creation": {
-      "ephemeral_1h_input_tokens": 3424494,
-      "ephemeral_5m_input_tokens": 7990486
+      "ephemeral_1h_input_tokens": 3353753,
+      "ephemeral_5m_input_tokens": 7825423
      },
-     "cache_read_input_tokens": 183457862,
-     "output_tokens": 7897716,
+     "cache_read_input_tokens": 145797423,
+     "output_tokens": 7360961,
      "server_tool_use": {
-      "web_search_requests": 9
+      "web_search_requests": 8
      },
      "api_key_id": null,
      "workspace_id": null,
@@ -1658,15 +1658,15 @@
    "ending_at": "2026-10-22T00:00:00Z",
    "results": [
     {
-     "uncached_input_tokens": 2978495,
+     "uncached_input_tokens": 3205010,
      "cache_creation": {
-      "ephemeral_1h_input_tokens": 395777,
-      "ephemeral_5m_input_tokens": 923478
+      "ephemeral_1h_input_tokens": 678909,
+      "ephemeral_5m_input_tokens": 1584121
      },
-     "cache_read_input_tokens": 26501598,
-     "output_tokens": 1099195,
+     "cache_read_input_tokens": 26154434,
+     "output_tokens": 1281875,
      "server_tool_use": {
-      "web_search_requests": 12
+      "web_search_requests": 29
      },
      "api_key_id": null,
      "workspace_id": null,
@@ -1675,15 +1675,15 @@
      "context_window": "0-200k"
     },
     {
-     "uncached_input_tokens": 10526541,
+     "uncached_input_tokens": 9265968,
      "cache_creation": {
-      "ephemeral_1h_input_tokens": 1304477,
-      "ephemeral_5m_input_tokens": 3043779
+      "ephemeral_1h_input_tokens": 1637139,
+      "ephemeral_5m_input_tokens": 3819990
      },
-     "cache_read_input_tokens": 81382140,
-     "output_tokens": 3258786,
+     "cache_read_input_tokens": 67420010,
+     "output_tokens": 3473136,
      "server_tool_use": {
-      "web_search_requests": 7
+      "web_search_requests": 36
      },
      "api_key_id": null,
      "workspace_id": null,
@@ -1692,15 +1692,15 @@
      "context_window": "0-200k"
     },
     {
-     "uncached_input_tokens": 22948456,
+     "uncached_input_tokens": 21924360,
      "cache_creation": {
-      "ephemeral_1h_input_tokens": 2637746,
-      "ephemeral_5m_input_tokens": 6154742
+      "ephemeral_1h_input_tokens": 4854498,
+      "ephemeral_5m_input_tokens": 11327163
      },
-     "cache_read_input_tokens": 176125658,
-     "output_tokens": 6792149,
+     "cache_read_input_tokens": 174273806,
+     "output_tokens": 8374039,
      "server_tool_use": {
-      "web_search_requests": 14
+      "web_search_requests": 3
      },
      "api_key_id": null,
      "workspace_id": null,
@@ -1715,15 +1715,15 @@
    "ending_at": "2026-10-23T00:00:00Z",
    "results": [
     {
-     "uncached_input_tokens": 2179973,
+     "uncached_input_tokens": 1960613,
      "cache_creation": {
-      "ephemeral_1h_input_tokens": 453639,
-      "ephemeral_5m_input_tokens": 1058491
+      "ephemeral_1h_input_tokens": 282156,
+      "ephemeral_5m_input_tokens": 658365
      },
-     "cache_read_input_tokens": 16154088,
-     "output_tokens": 841790,
+     "cache_read_input_tokens": 11235788,
+     "output_tokens": 604119,
      "server_tool_use": {
-      "web_search_requests": 3
+      "web_search_requests": 31
      },
      "api_key_id": null,
      "workspace_id": null,
@@ -1732,15 +1732,15 @@
      "context_window": "0-200k"
     },
     {
-     "uncached_input_tokens": 5933195,
+     "uncached_input_tokens": 5371172,
      "cache_creation": {
-      "ephemeral_1h_input_tokens": 993299,
-      "ephemeral_5m_input_tokens": 2317697
+      "ephemeral_1h_input_tokens": 626494,
+      "ephemeral_5m_input_tokens": 1461819
      },
-     "cache_read_input_tokens": 35886021,
-     "output_tokens": 1810323,
+     "cache_read_input_tokens": 31514193,
+     "output_tokens": 1634467,
      "server_tool_use": {
-      "web_search_requests": 6
+      "web_search_requests": 23
      },
      "api_key_id": null,
      "workspace_id": null,
@@ -1749,15 +1749,15 @@
      "context_window": "0-200k"
     },
     {
-     "uncached_input_tokens": 10862773,
+     "uncached_input_tokens": 11812580,
      "cache_creation": {
-      "ephemeral_1h_input_tokens": 1414351,
-      "ephemeral_5m_input_tokens": 3300152
+      "ephemeral_1h_input_tokens": 1694275,
+      "ephemeral_5m_input_tokens": 3953308
      },
-     "cache_read_input_tokens": 79844829,
-     "output_tokens": 3528588,
+     "cache_read_input_tokens": 99901558,
+     "output_tokens": 4424006,
      "server_tool_use": {
-      "web_search_requests": 23
+      "web_search_requests": 20
      },
      "api_key_id": null,
      "workspace_id": null,

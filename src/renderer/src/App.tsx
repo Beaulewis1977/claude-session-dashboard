@@ -20,6 +20,8 @@ import { TitleBar } from './components/TitleBar'
 import { Shortcut } from './components/ui/kbd'
 import { TooltipProvider } from './components/ui/tooltip'
 import { SessionViewer } from './components/viewer/SessionViewer'
+import { TrayPainter } from './components/usage/TrayPainter'
+import { UsageView } from './components/usage/UsageView'
 
 const LIST_WIDTH_KEY = 'csd.listWidth'
 
@@ -48,9 +50,12 @@ function useBootstrap(): void {
         })
       }
     )
-    return api.onSessionsChanged((p) =>
-      set({ sessions: p.sessions, sources: p.sources, scan: p.scan })
-    )
+    const offs = [
+      api.onSessionsChanged((p) => set({ sessions: p.sessions, sources: p.sources, scan: p.scan })),
+      // Tray icon or limit notification clicked.
+      api.onShowUsage(() => set({ view: 'usage' }))
+    ]
+    return () => offs.forEach((off) => off())
   }, [set])
 }
 
@@ -85,7 +90,7 @@ function NoSelection() {
 
 export function App() {
   useBootstrap()
-  useLiveData()
+  useLiveData(useApp((s) => s.info !== null))
   const sessions = useApp((s) => s.sessions)
   const filters = useApp((s) => s.filters)
   const sort = useApp((s) => s.sort)
@@ -184,6 +189,11 @@ export function App() {
       handler: () => set({ view: view === 'settings' ? 'sessions' : 'settings' })
     },
     { combo: 'mod+b', allowInInput: true, handler: () => set({ sidebarOpen: !sidebarOpen }) },
+    {
+      combo: 'mod+u',
+      allowInInput: true,
+      handler: () => set({ view: view === 'usage' ? 'sessions' : 'usage' })
+    },
     { combo: 'f5', allowInInput: true, handler: () => void api.rescan() },
     { combo: '?', handler: () => set({ shortcutsOpen: true }) },
     {
@@ -193,7 +203,11 @@ export function App() {
         requestFocus('search')
       }
     },
-    { combo: 'escape', handler: () => set({ view: 'sessions' }), when: () => view === 'settings' },
+    {
+      combo: 'escape',
+      handler: () => set({ view: 'sessions' }),
+      when: () => view === 'settings' || view === 'usage'
+    },
     { combo: 'j', handler: () => step(1), when: inSessions },
     { combo: 'k', handler: () => step(-1), when: inSessions },
     { combo: 'arrowdown', handler: () => step(1), when: () => inSessions() && listFocused() },
@@ -243,6 +257,10 @@ export function App() {
             <div className="min-w-0 flex-1">
               <SettingsView />
             </div>
+          ) : view === 'usage' ? (
+            <div className="min-w-0 flex-1">
+              <UsageView />
+            </div>
           ) : (
             <>
               <div
@@ -273,6 +291,7 @@ export function App() {
       <CommandPalette />
       <ResumeDialog />
       <ShortcutsDialog />
+      <TrayPainter dark={resolvedTheme === 'dark'} />
       <Toaster
         theme={resolvedTheme}
         position="bottom-right"

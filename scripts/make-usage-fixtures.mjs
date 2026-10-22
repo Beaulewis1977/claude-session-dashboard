@@ -56,6 +56,8 @@ const PROJECTS = [
       'Hydration warnings on /products/[slug] in production. Can you track them down?',
       'Refactor the cart store to use a reducer, keep the public API the same.',
       'Upgrade Next.js to the latest minor and fix whatever breaks.',
+      'Images on the product grid shift the layout while loading. Reserve their space.',
+      'Add a dark mode toggle that respects the system setting.',
       'Our Lighthouse score dropped to 61 on mobile. Profile the home page and suggest fixes.',
       'Write a migration that backfills the new `currency` column on orders.',
       'The search box fires a request on every keystroke. Debounce it and cancel stale requests.'
@@ -70,7 +72,10 @@ const PROJECTS = [
       'WSL paths with spaces break the resume command. Reproduce it in a test and fix it.',
       'Make the session list virtualized, it gets slow past 2,000 sessions.',
       'Write the README section on how live limits work.',
-      'The archive copies a file twice when it grows during the copy. Fix the race.'
+      'The archive copies a file twice when it grows during the copy. Fix the race.',
+      'Add keyboard shortcuts for moving through the session list.',
+      'The command palette lags with 5,000 sessions. Profile it and fix the hot path.',
+      'Export a session to Markdown with tool calls collapsed into details blocks.'
     ]
   },
   {
@@ -80,7 +85,9 @@ const PROJECTS = [
     prompts: [
       'Set up auto-update with electron-updater and a GitHub releases feed.',
       'The tray menu shows twice on Windows 11 after sleep. Figure out why.',
-      'Port the settings window from IPC callbacks to invoke/handle.'
+      'Port the settings window from IPC callbacks to invoke/handle.',
+      'Code-sign the Windows build and document the certificate setup.',
+      'Crash reports from v2.3 point at the file watcher. Reproduce and fix it.'
     ]
   },
   {
@@ -93,7 +100,10 @@ const PROJECTS = [
       'The orders list query takes 2s on prod data. Find the missing index.',
       'Write table-driven tests for the price calculation package.',
       'Add structured logging with request ids across the HTTP handlers.',
-      'Migrate from lib/pq to pgx and keep the transaction helpers working.'
+      'Migrate from lib/pq to pgx and keep the transaction helpers working.',
+      'Rate-limit the public endpoints per API key with a token bucket.',
+      'The refund webhook sometimes arrives before the order is committed. Handle it.',
+      'Write a load test for checkout with k6 and find the first bottleneck.'
     ]
   },
   {
@@ -104,7 +114,9 @@ const PROJECTS = [
       'The nightly training job OOMs at the feature join. Make it stream in chunks.',
       'Add a data validation step with pandera before training.',
       'Write a small CLI to compare two model runs from their metrics files.',
-      'Port the notebook prototype for churn prediction into the pipeline package.'
+      'Port the notebook prototype for churn prediction into the pipeline package.',
+      'Cache the feature store reads between runs, keyed by the data snapshot.',
+      'Training metrics drift between runs with the same seed. Find the nondeterminism.'
     ]
   },
   {
@@ -114,7 +126,8 @@ const PROJECTS = [
     prompts: [
       'Clean up my zshrc, it takes 1.4s to start. Lazy-load nvm and pyenv.',
       'Add a tmux layout script for the orders-api project.',
-      'Make my git aliases work in both bash and zsh.'
+      'Make my git aliases work in both bash and zsh.',
+      'Set up a WSL-friendly ssh-agent that survives terminal restarts.'
     ]
   }
 ]
@@ -261,19 +274,26 @@ function usageFor(model, ctxTokens, ts) {
       : {})
   }
 }
-const WEIGHTS = { input: 1, output: 5, cacheWrite: 1.25, cacheRead: 0.1 }
-const weighted = (u) =>
-  u.input_tokens * WEIGHTS.input +
-  u.output_tokens * WEIGHTS.output +
-  u.cache_creation_input_tokens * WEIGHTS.cacheWrite +
-  u.cache_read_input_tokens * WEIGHTS.cacheRead
-
+const hiddenWeighted = (u, model) =>
+  u.input_tokens +
+  u.output_tokens * (model.includes('opus') ? 5.6 : 4.4) +
+  u.cache_creation_input_tokens * 1.3 +
+  u.cache_read_input_tokens * 0.105
+const windowNoise = (start) =>
+  0.9 + (parseInt(createHash('sha1').update(`w${start}`).digest('hex').slice(0, 6), 16) / 0xffffff) * 0.2
 // ------------------------------------------------------- session plans
 
 rmSync(join(root, 'windows'), { recursive: true, force: true })
 rmSync(join(root, 'wsl'), { recursive: true, force: true })
 
 const sessions = []
+const promptTurn = new Map()
+function nextPrompt(project) {
+  rand() // keeps the random stream the same as picking at random did
+  const i = promptTurn.get(project) ?? 0
+  promptTurn.set(project, i + 1)
+  return project.prompts[i % project.prompts.length]
+}
 const apiProjects = new Set(['/home/beau/projects/ml-pipeline'])
 const API_FROM = Date.parse('2026-10-05T00:00:00Z')
 const API_FROM2 = Date.parse('2026-10-09T00:00:00Z')
@@ -287,7 +307,8 @@ function planSession(project, start, opts = {}) {
     project,
     start,
     branch: pick(project.branches),
-    prompt: opts.prompt ?? pick(project.prompts),
+    // Cycle through the project's prompts.
+    prompt: opts.prompt ?? nextPrompt(project),
     turns: [],
     // From October, some sessions run on API credits instead of the Max limits.
     billing:
@@ -393,7 +414,10 @@ for (const item of all) {
   if (!win5 || r.ts >= win5.end) win5 = { start: r.ts, end: r.ts + 5 * H, used: 0 }
   const ws = weekStartOf(r.ts)
   if (!week || week.start !== ws) week = { start: ws, end: ws + 7 * 24 * H, used: 0 }
-  const w = weighted(r.usage)
+  // Claude's real accounting isn't our weighted sum: use slightly different
+  // hidden weights per model and some per-window noise, so the implied
+  // capacity chart scatters like real data.
+  const w = hiddenWeighted(r.usage, s.model) * windowNoise(win5.start)
   win5.used += w
   week.used += w
   const p5 = (win5.used / cap5h(r.ts)) * 100

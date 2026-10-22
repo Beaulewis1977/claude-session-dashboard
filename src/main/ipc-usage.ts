@@ -14,7 +14,7 @@ import type { LimitsService } from './services/limits'
 import type { SessionService } from './services/sessions'
 import type { UsageService } from './services/usage'
 
-const PERIODS: Period[] = ['day', 'week', 'month']
+const PERIODS: Period[] = ['hour', 'day', 'week', 'month']
 const DIMENSIONS: Dimension[] = ['model', 'session', 'project', 'env', 'version', 'billing']
 
 export function cleanQuery(v: unknown): UsageQuery {

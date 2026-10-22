@@ -57,7 +57,12 @@ const api: CsdApi = {
   removeAccount: (id) => ipcRenderer.invoke('accounts:remove', id),
   addGrant: (grant) => ipcRenderer.invoke('grants:add', grant),
   removeGrant: (id) => ipcRenderer.invoke('grants:remove', id),
-  refreshAdmin: (id) => ipcRenderer.invoke('admin:refresh', id)
+  refreshAdmin: (id) => ipcRenderer.invoke('admin:refresh', id),
+
+  toggleMiniMeter: () => ipcRenderer.invoke('mini:toggle'),
+  closeMiniMeter: () => ipcRenderer.invoke('mini:close'),
+  setTrayImage: (dataUrl, tooltip) => ipcRenderer.invoke('tray:set', dataUrl, tooltip),
+  onShowUsage: (cb) => on('app:showUsage', cb)
 }
 
 contextBridge.exposeInMainWorld('csd', api)

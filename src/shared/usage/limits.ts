@@ -126,11 +126,16 @@ export function projectWindow(
     })
     .sort((a, b) => a.ts - b.ts)
   const start = w.resetsAt - windowLength(kind)
-  // Recent pace matters most: use up to the last 90 minutes (5h) or 2 days (week).
-  const horizon = kind === 'five_hour' ? 90 * 60_000 : 2 * 86_400_000
-  const recent = sameWindow.filter((r) => r.ts >= latest.ts - horizon)
+  // Recent pace matters most for the 5-hour window: use up to the last 90 minutes.
+  const recent = sameWindow.filter((r) => r.ts >= latest.ts - 90 * 60_000)
   let slope: number // pct per ms
-  if (recent.length >= 2 && recent[recent.length - 1].ts - recent[0].ts > 5 * 60_000) {
+  // The week has nights and days off, so its pace is the average since it began;
+  // the 5-hour window uses the recent pace.
+  if (
+    kind === 'five_hour' &&
+    recent.length >= 2 &&
+    recent[recent.length - 1].ts - recent[0].ts > 5 * 60_000
+  ) {
     const xs = recent.map((r) => r.ts)
     const ys = recent.map((r) => pick(r, kind)!.pct)
     const mx = xs.reduce((a, b) => a + b, 0) / xs.length

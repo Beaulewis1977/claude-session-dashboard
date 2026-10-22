@@ -27,6 +27,7 @@ import {
   seedFixtureUsage
 } from './fixtures'
 import { registerIpc } from './ipc'
+import { createMeter } from './meter'
 import { registerUsageIpc } from './ipc-usage'
 import { registerAccountsIpc } from './ipc-accounts'
 import { AccountsService, createAccountsStore, type Encryptor } from './services/accounts'
@@ -262,7 +263,21 @@ async function main(): Promise<void> {
   limits.on('changed', () => accounts.emit('changed'))
 
   nativeTheme.themeSource = settings.value.theme
+  const loadRenderer = (w: BrowserWindow, hash: string): void => {
+    if (process.env.ELECTRON_RENDERER_URL)
+      void w.loadURL(`${process.env.ELECTRON_RENDERER_URL}#${hash}`)
+    else void w.loadFile(join(__dirname, '../renderer/index.html'), { hash })
+  }
+  const meter = createMeter({
+    settings,
+    preload: join(__dirname, '../preload/index.cjs'),
+    icon: join(appRoot, 'resources', 'icon.png'),
+    background: () => CHROME[resolvedTheme()].bg,
+    showUsage: () => showUsage(),
+    loadRenderer
+  })
   createWindow(settings.value.window)
+  meter.restore()
 
   void sessions
     .start()
@@ -350,6 +365,8 @@ async function main(): Promise<void> {
         s.window = { width: b.width, height: b.height, x: b.x, y: b.y, maximized }
       })
     }
+    // Closing the main window quits the app, mini meter included.
+    win.on('closed', () => meter.closeAll())
     win.on('resized', saveBounds)
     win.on('moved', saveBounds)
     win.on('maximize', saveBounds)

@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from 'react'
 import {
   Archive,
+  ChartColumnBig,
   ChevronRight,
   EyeOff,
   Folder,
@@ -113,6 +114,18 @@ export function Sidebar() {
     <nav aria-label="Filters" className="flex h-full w-full flex-col bg-chrome">
       <div className="min-h-0 flex-1 overflow-y-auto px-2 pt-1 pb-3">
         <div className="space-y-px">
+          <Tooltip content="Usage & limits" shortcut={`${MOD}+U`} side="right">
+            <div>
+              <Item
+                active={view === 'usage'}
+                icon={<ChartColumnBig />}
+                label="Usage & limits"
+                onClick={() => set({ view: view === 'usage' ? 'sessions' : 'usage' })}
+              />
+            </div>
+          </Tooltip>
+        </div>
+        <div className="mt-3 space-y-px">
           <Item
             active={view === 'sessions' && filters.visibility === 'visible'}
             icon={<Inbox />}

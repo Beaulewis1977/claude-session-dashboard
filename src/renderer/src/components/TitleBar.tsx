@@ -1,9 +1,10 @@
 import { Loader2, PanelLeft, Search } from 'lucide-react'
 import { useApp } from '@/lib/store'
-import { cn, MOD } from '@/lib/utils'
+import { MOD } from '@/lib/utils'
 import { ClaudeMark } from './brand'
 import { Kbd } from './ui/kbd'
 import { Tooltip } from './ui/tooltip'
+import { MiniGauges } from './usage/MiniGauges'
 
 export function TitleBar() {
   const set = useApp((s) => s.set)
@@ -46,14 +47,14 @@ export function TitleBar() {
         </button>
       </div>
 
-      <div
-        className={cn(
-          'ml-auto flex items-center gap-2 pr-2 text-2xs text-muted-foreground transition-opacity',
-          !scanning && 'opacity-0'
+      <div className="ml-auto flex items-center gap-2 pr-2">
+        {scanning && (
+          <div className="flex items-center gap-2 text-2xs text-muted-foreground">
+            <Loader2 className="size-3.5 animate-spin" />
+            {scan.total ? `Scanning ${scan.done}/${scan.total}` : 'Scanning…'}
+          </div>
         )}
-      >
-        <Loader2 className="size-3.5 animate-spin" />
-        {scan.total ? `Scanning ${scan.done}/${scan.total}` : 'Scanning…'}
+        <MiniGauges />
       </div>
     </header>
   )

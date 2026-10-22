@@ -76,7 +76,7 @@ export interface UsageAnalysis {
 
 // --------------------------------------------------------------- reports
 
-export type Period = 'day' | 'week' | 'month'
+export type Period = 'hour' | 'day' | 'week' | 'month'
 export type Dimension = 'model' | 'session' | 'project' | 'env' | 'version' | 'billing'
 export type WeekStart = 'monday' | 'sunday'
 

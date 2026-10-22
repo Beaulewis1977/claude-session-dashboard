@@ -92,4 +92,11 @@ export interface CsdApi {
   addGrant(grant: Omit<CreditGrant, 'id'>): Promise<CreditGrant | undefined>
   removeGrant(id: string): Promise<void>
   refreshAdmin(id: string): Promise<void>
+
+  // Tray and mini meter
+  toggleMiniMeter(): Promise<boolean>
+  closeMiniMeter(): Promise<void>
+  /** The renderer draws the tray icon (a ring with the 5-hour %) and hands it over as a PNG. */
+  setTrayImage(dataUrl: string, tooltip: string): Promise<void>
+  onShowUsage(cb: () => void): () => void
 }

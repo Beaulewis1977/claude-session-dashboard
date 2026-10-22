@@ -215,3 +215,31 @@ describe('5-hour blocks', () => {
     expect(new Date(b[0].start).toISOString()).toBe('2026-10-22T10:00:00.000Z')
   })
 })
+
+describe('hourly buckets', () => {
+  it('builds and walks hour keys in the local time zone', async () => {
+    const { nextBucket, prevBucket } = await import('@shared/usage/time')
+    const t = Date.parse('2026-10-22T23:30:00Z')
+    expect(bucketKey(t, 'hour', 'UTC', 'monday')).toBe('2026-10-22T23')
+    expect(bucketKey(t, 'hour', 'Asia/Tokyo', 'monday')).toBe('2026-10-23T08')
+    expect(nextBucket('2026-10-22T23', 'hour')).toBe('2026-10-23T00')
+    expect(prevBucket('2026-10-23T00', 'hour')).toBe('2026-10-22T23')
+    const r = bucketRange('2026-10-22T05', 'hour', 'UTC')
+    expect(new Date(r.start).toISOString()).toBe('2026-10-22T05:00:00.000Z')
+    const s = timeSeries(
+      [rec('2026-10-22T05:10:00Z'), rec('2026-10-22T07:59:00Z')],
+      {
+        period: 'hour',
+        from: Date.parse('2026-10-22T05:00:00Z'),
+        to: Date.parse('2026-10-22T08:00:00Z')
+      },
+      ctx('2026-10-22T12:00:00Z'),
+      new Map()
+    )
+    expect(s.map((p) => [p.bucket, p.responses])).toEqual([
+      ['2026-10-22T05', 1],
+      ['2026-10-22T06', 0],
+      ['2026-10-22T07', 1]
+    ])
+  })
+})

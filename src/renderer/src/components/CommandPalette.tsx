@@ -3,6 +3,10 @@ import { Command } from 'cmdk'
 import { Dialog as D } from 'radix-ui'
 import {
   Archive,
+  ChartColumnBig,
+  PictureInPicture2,
+  PlugZap,
+  Plus,
   Copy,
   EyeOff,
   FileDown,
@@ -28,6 +32,7 @@ import { api } from '@/lib/api'
 import {
   copyResumeCommand,
   exportMarkdown,
+  openNewSession,
   openResume,
   showFile,
   toggleHidden
@@ -158,6 +163,13 @@ function PaletteBody() {
               Fork
             </Item>
             <Item
+              value="new session in this folder"
+              icon={<Plus />}
+              onSelect={run(() => openNewSession(selected.key))}
+            >
+              New session in this folder…
+            </Item>
+            <Item
               value="rename session name"
               icon={<Pencil />}
               shortcut="F2"
@@ -253,6 +265,31 @@ function PaletteBody() {
               </span>
             </Command.Item>
           ))}
+        </Command.Group>
+
+        <Command.Group heading="Usage" className={groupClass}>
+          <Item
+            value="usage limits tokens cost"
+            icon={<ChartColumnBig />}
+            shortcut={`${MOD}+U`}
+            onSelect={run(() => set({ view: 'usage' }))}
+          >
+            Usage &amp; limits
+          </Item>
+          <Item
+            value="mini meter always on top"
+            icon={<PictureInPicture2 />}
+            onSelect={run(() => void api.toggleMiniMeter())}
+          >
+            Toggle the mini meter
+          </Item>
+          <Item
+            value="enable live limits status line bridge"
+            icon={<PlugZap />}
+            onSelect={run(() => set({ view: 'settings' }))}
+          >
+            Enable live limits…
+          </Item>
         </Command.Group>
 
         <Command.Group heading="Go to" className={groupClass}>

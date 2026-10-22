@@ -82,6 +82,10 @@ export function bucketKey(
   timeZone: string,
   weekStart: WeekStart
 ): string {
+  if (period === 'hour') {
+    const p = localParts(ts, timeZone)
+    return `${p.y}-${pad(p.m)}-${pad(p.d)}T${pad(p.h)}`
+  }
   if (period === 'day') return dayKey(ts, timeZone)
   if (period === 'week') return weekKey(ts, timeZone, weekStart)
   return monthKey(ts, timeZone)
@@ -110,6 +114,11 @@ export function bucketRange(
   period: Period,
   timeZone: string
 ): { start: number; end: number } {
+  if (period === 'hour') {
+    const [day, h] = key.split('T')
+    const start = startOfDayKey(day, timeZone) + Number(h) * 3_600_000
+    return { start, end: start + 3_600_000 }
+  }
   if (period === 'day') {
     return { start: startOfDayKey(key, timeZone), end: startOfDayKey(addDays(key, 1), timeZone) }
   }
@@ -125,6 +134,11 @@ export function bucketRange(
 }
 
 export function nextBucket(key: string, period: Period): string {
+  if (period === 'hour') {
+    const [day, h] = key.split('T')
+    const n = Number(h) + 1
+    return n >= 24 ? `${addDays(day, 1)}T00` : `${day}T${pad(n)}`
+  }
   if (period === 'day') return addDays(key, 1)
   if (period === 'week') return addDays(key, 7)
   const [y, m] = key.split('-').map(Number)
@@ -132,6 +146,11 @@ export function nextBucket(key: string, period: Period): string {
 }
 
 export function prevBucket(key: string, period: Period): string {
+  if (period === 'hour') {
+    const [day, h] = key.split('T')
+    const n = Number(h) - 1
+    return n < 0 ? `${addDays(day, -1)}T23` : `${day}T${pad(n)}`
+  }
   if (period === 'day') return addDays(key, -1)
   if (period === 'week') return addDays(key, -7)
   const [y, m] = key.split('-').map(Number)

@@ -240,10 +240,10 @@ describe('LimitsService (fixtures)', () => {
 
     const s = await limits.state()
     expect(s.hasBridgeData).toBe(true)
-    expect(s.fiveHour?.pct).toBeCloseTo(49.3)
+    expect(s.fiveHour?.pct).toBeCloseTo(47.1)
     expect(s.fiveHour?.expired).toBe(false)
     expect(s.fiveHour?.tokens).toBeGreaterThan(1_000_000)
-    expect(s.sevenDay?.pct).toBeCloseTo(28.5)
+    expect(s.sevenDay?.pct).toBeCloseTo(29.8)
     expect(s.stale).toBe(false)
     expect(s.change5h?.flagged).toBe(true)
     expect(s.change5h?.changePct).toBeLessThan(-18)

@@ -209,6 +209,7 @@ async function main(): Promise<void> {
     sessions,
     launcher,
     settings,
+    metadata,
     watcher,
     applyTheme,
     onSettingsChanged: () => usage.emit('changed')

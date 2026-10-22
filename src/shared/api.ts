@@ -38,6 +38,16 @@ export interface ExportResult {
   error?: string
 }
 
+export interface ImportResult {
+  ok: boolean
+  error?: string
+  conversations: number
+  added: number
+  updated: number
+  unchanged: number
+  skipped: number
+}
+
 export interface CsdApi {
   getInfo(): Promise<AppInfo>
   getSessions(): Promise<SessionsPayload>
@@ -52,6 +62,8 @@ export interface CsdApi {
   addExtraFolder(): Promise<AppSettings>
   removeExtraFolder(folder: string): Promise<AppSettings>
   getArchiveStats(): Promise<ArchiveStats>
+  /** Pick a claude.ai export zip and import it. Null when the dialog was cancelled. */
+  importClaudeAi(): Promise<ImportResult | null>
   openArchiveFolder(): Promise<void>
   showSessionFile(key: string): Promise<void>
   openClaudeSettings(sourceId: string): Promise<void>

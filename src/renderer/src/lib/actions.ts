@@ -12,12 +12,23 @@ export async function updateMeta(key: string, patch: Partial<SessionMeta>): Prom
   if (updated) get().patchSession(updated)
 }
 
+/** Imported claude.ai conversations can be read but not resumed. */
+function viewOnly(key: string): boolean {
+  if (get().sessions.find((s) => s.key === key)?.availability !== 'imported') return false
+  toast('This conversation was imported from claude.ai', {
+    description: 'It can be read, searched and exported, but not resumed in Claude Code.'
+  })
+  return true
+}
+
 export function openResume(key: string, fork: boolean): void {
+  if (viewOnly(key)) return
   get().set({ resume: { key, fork } })
 }
 
 /** Start a fresh Claude Code session in the same folder as `key`. */
 export function openNewSession(key: string): void {
+  if (viewOnly(key)) return
   get().set({ resume: { key, fork: false, newSession: true } })
 }
 
@@ -25,6 +36,7 @@ export async function copyResumeCommand(
   key: string,
   which: 'launch' | 'claude' = 'launch'
 ): Promise<void> {
+  if (viewOnly(key)) return
   const { settings } = get()
   try {
     const p = await api.previewLaunch({

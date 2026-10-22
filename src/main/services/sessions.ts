@@ -561,6 +561,11 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
       const e = this.entries.get(key)
       const src = this.source(rec.sourceId)
       let availability: Availability
+      if (rec.origin === 'claude-ai') {
+        if (e && e.mtimeMs === rec.size) continue
+        await this.loadArchived(rec, 'imported')
+        continue
+      }
       if (src?.status === 'ok') {
         // The source was scanned and the file wasn't there.
         if (e?.base.availability === 'live') continue
@@ -607,8 +612,19 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
     base.archivePath = rec.archivePath
     base.availability = availability
     base.cwd = base.cwd ?? rec.cwd
-    this.entries.set(base.key, { base, size, mtimeMs: 0 })
+    if (availability === 'imported') {
+      base.projectDir = 'claude.ai'
+      base.projectName = 'claude.ai'
+    }
+    // Imported entries remember their size to notice a re-import.
+    this.entries.set(base.key, { base, size, mtimeMs: availability === 'imported' ? rec.size : 0 })
     this.index(base, searchText)
+  }
+
+  /** Pick up archive records added by an import. */
+  async refreshArchive(): Promise<void> {
+    await this.syncArchiveOnly()
+    this.emitChanged(true)
   }
 
   /** Remove entries whose source is no longer configured and has no archive copy. */

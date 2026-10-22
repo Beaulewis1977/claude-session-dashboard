@@ -72,6 +72,8 @@ export interface ArchiveRecord {
   sourceMtimeMs: number
   firstArchivedAt: string
   archivedAt: string
+  /** Imported view-only conversation (not a Claude Code session file). */
+  origin?: 'claude-ai'
 }
 
 /**

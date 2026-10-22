@@ -114,6 +114,13 @@ export class Launcher {
   async launch(opts: LaunchOptions): Promise<LaunchResult> {
     const s = this.sessions.get(opts.key)
     if (!s) return { ok: false, restored: false, commandLine: '', error: 'Session not found' }
+    if (s.availability === 'imported')
+      return {
+        ok: false,
+        restored: false,
+        commandLine: '',
+        error: 'Conversations imported from claude.ai can be read and searched, but not resumed.'
+      }
     const cwd = opts.cwdOverride ?? s.cwd
     if (!cwd)
       return {

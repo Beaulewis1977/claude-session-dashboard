@@ -7,6 +7,7 @@ import {
   EyeOff,
   Folder,
   Inbox,
+  MessagesSquare,
   Monitor,
   Settings,
   SquareTerminal,
@@ -162,6 +163,8 @@ export function Sidebar() {
                 icon={
                   e.key === 'windows' ? (
                     <Monitor className="text-env-windows" />
+                  ) : e.key === 'claude-ai' ? (
+                    <MessagesSquare />
                   ) : (
                     <SquareTerminal className="text-env-wsl" />
                   )

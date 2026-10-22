@@ -30,6 +30,8 @@ import type { Launcher } from './services/launcher'
 import type { SessionService } from './services/sessions'
 import type { AppPaths, SettingsFile } from './services/store'
 import type { SourceWatcher } from './services/watcher'
+import { importClaudeAiExport } from './services/imports'
+import type { MetadataFile } from './services/store'
 
 export interface IpcDeps {
   platform: Platform
@@ -37,6 +39,7 @@ export interface IpcDeps {
   sessions: SessionService
   launcher: Launcher
   settings: JsonStore<SettingsFile>
+  metadata: JsonStore<MetadataFile>
   watcher: SourceWatcher
   applyTheme: (theme: ThemePref, resolved?: 'light' | 'dark') => void
   onSettingsChanged?: () => void
@@ -235,6 +238,20 @@ export function registerIpc(deps: IpcDeps): void {
     dir: paths.archiveDir,
     ...(await archiveStats(paths.archiveDir))
   }))
+  ipcMain.handle('import:claudeAi', async () => {
+    const w = win()
+    const opts: Electron.OpenDialogOptions = {
+      title: 'Import a claude.ai data export',
+      properties: ['openFile'],
+      filters: [{ name: 'claude.ai export', extensions: ['zip'] }]
+    }
+    const res = w ? await dialog.showOpenDialog(w, opts) : await dialog.showOpenDialog(opts)
+    const file = res.filePaths[0]
+    if (res.canceled || !file) return null
+    const out = await importClaudeAiExport(file, paths, deps.metadata)
+    if (out.ok) await sessions.refreshArchive()
+    return out
+  })
   ipcMain.handle('archive:open', async () => {
     const { mkdir } = await import('node:fs/promises')
     await mkdir(paths.archiveDir, { recursive: true })

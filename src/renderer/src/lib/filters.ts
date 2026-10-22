@@ -33,11 +33,15 @@ export const EMPTY_FILTERS: Filters = {
   source: null
 }
 
-export function envKey(s: Pick<SessionSummary, 'env' | 'distro'>): string {
+export function envKey(
+  s: Pick<SessionSummary, 'env' | 'distro'> & { availability?: string }
+): string {
+  if (s.availability === 'imported') return 'claude-ai'
   return s.env === 'wsl' ? `wsl:${s.distro ?? ''}` : 'windows'
 }
 
 export function envLabel(key: string): string {
+  if (key === 'claude-ai') return 'claude.ai (imported)'
   return key === 'windows' ? 'Windows' : `WSL: ${key.slice(4)}`
 }
 

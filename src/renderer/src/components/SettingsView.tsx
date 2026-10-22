@@ -3,6 +3,8 @@ import { toast } from 'sonner'
 import {
   Archive,
   CircleCheck,
+  FileArchive,
+  MessagesSquare,
   CircleSlash,
   FolderOpen,
   FolderPlus,
@@ -310,6 +312,35 @@ export function SettingsView() {
             </div>
             <Button variant="outline" size="sm" onClick={() => void api.openArchiveFolder()}>
               <FolderOpen /> Open folder
+            </Button>
+          </div>
+          <div className="mt-2 flex items-center gap-3 rounded-lg border border-border px-3 py-3">
+            <div className="flex size-8 shrink-0 items-center justify-center rounded-md bg-secondary">
+              <MessagesSquare className="size-4 text-muted-foreground" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="text-[13px] font-medium">Import claude.ai data export</div>
+              <div className="text-xs text-muted-foreground">
+                Adds your claude.ai conversations to the archive as view-only sessions you can read
+                and search. The zip is only read, never changed.
+              </div>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={async () => {
+                const r = await api.importClaudeAi()
+                if (!r) return
+                if (!r.ok) toast.error("Couldn't import", { description: r.error })
+                else {
+                  toast.success(`Imported ${r.conversations} conversations`, {
+                    description: `${r.added} new · ${r.updated} updated · ${r.unchanged} unchanged${r.skipped ? ` · ${r.skipped} skipped` : ''}`
+                  })
+                  void api.getArchiveStats().then(setArchive)
+                }
+              }}
+            >
+              <FileArchive /> Choose zip…
             </Button>
           </div>
         </Section>

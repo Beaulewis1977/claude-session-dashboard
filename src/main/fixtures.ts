@@ -7,9 +7,10 @@ import { access, copyFile, mkdir, readdir, readFile, utimes, writeFile } from 'n
 import { join } from 'node:path'
 import { FIXTURES_NOW } from '@shared/clock'
 import type { JsonStore } from './core/json-store'
+import type { AccountsFile } from './services/accounts'
 import type { BridgeInstaller } from './services/bridge'
 import type { SessionService } from './services/sessions'
-import type { MetadataFile } from './services/store'
+import type { MetadataFile, SettingsFile } from './services/store'
 
 async function exists(p: string): Promise<boolean> {
   try {
@@ -139,7 +140,7 @@ export async function seedFixtureUsage(appRoot: string, dataDir: string): Promis
   }
 }
 
-/** Enable the bridge for the WSL home once, so Settings shows both states. */
+/** Enable the bridge for the Windows and WSL (beau) homes once; WSL root stays off. */
 export async function seedFixtureBridge(
   dataDir: string,
   sessions: SessionService,
@@ -147,9 +148,42 @@ export async function seedFixtureBridge(
 ): Promise<void> {
   const marker = join(dataDir, '.bridge-seeded')
   if (await exists(marker)) return
-  const src = sessions.source('wsl-Ubuntu-beau')
-  if (!src) return
-  const plan = await installer.plan(src, 'install')
-  if (!plan.error && !plan.noop) await installer.apply(src, 'install', plan.token)
+  for (const id of ['windows', 'wsl-Ubuntu-beau']) {
+    const src = sessions.source(id)
+    if (!src) continue
+    const plan = await installer.plan(src, 'install')
+    if (!plan.error && !plan.noop) await installer.apply(src, 'install', plan.token)
+  }
   await writeFile(marker, `${new Date().toISOString()}\n`).catch(() => undefined)
+}
+
+/** Sample API accounts (no real keys), credit grants and billing tags. */
+export async function seedFixtureAccounts(
+  appRoot: string,
+  accounts: JsonStore<AccountsFile>,
+  metadata: JsonStore<MetadataFile>,
+  settings: JsonStore<SettingsFile>
+): Promise<void> {
+  if (accounts.value.accounts.length || accounts.value.grants.length) return
+  const seed = JSON.parse(
+    await readFile(join(fixturesLayout(appRoot).fixturesDir, 'usage', 'seed.json'), 'utf8')
+  ) as {
+    accounts: AccountsFile['accounts']
+    grants: AccountsFile['grants']
+    billing: Record<string, { mode: 'api'; accountId: string }>
+    projectBilling: Record<string, string>
+  }
+  accounts.update((d) => {
+    d.accounts = seed.accounts.map((a) => ({ ...a, sample: true }))
+    d.grants = seed.grants
+  })
+  metadata.update((d) => {
+    for (const [sid, b] of Object.entries(seed.billing)) {
+      d.sessions[sid] = { ...(d.sessions[sid] ?? {}), billing: { ...b, source: 'launch' } }
+    }
+  })
+  settings.update((s) => {
+    s.projectBilling = { ...seed.projectBilling }
+  })
+  await Promise.all([accounts.flush(), metadata.flush(), settings.flush()])
 }

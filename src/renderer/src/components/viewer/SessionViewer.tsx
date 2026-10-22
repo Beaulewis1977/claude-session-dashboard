@@ -17,6 +17,7 @@ import {
   Info,
   MessageSquare,
   Play,
+  Plus,
   Search,
   SquareTerminal,
   WifiOff
@@ -28,6 +29,7 @@ import {
   copyResumeCommand,
   copySessionId,
   exportMarkdown,
+  openNewSession,
   openResume,
   showFile,
   toggleHidden,
@@ -47,6 +49,8 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Tooltip } from '@/components/ui/tooltip'
 import { EnvBadge } from '../EnvBadge'
+import { BillingBadge } from '../BillingPicker'
+import { SessionUsageStrip } from './SessionUsage'
 import { DescriptionEditor, EditableTitle, TagEditor } from './MetaEditors'
 import { FindBar } from './FindBar'
 import { Transcript } from './Transcript'
@@ -165,6 +169,10 @@ function Header({
                 </DropdownMenuTrigger>
               </Tooltip>
               <DropdownMenuContent className="w-64">
+                <DropdownMenuItem onSelect={() => openNewSession(session.key)}>
+                  <Plus /> New session in this folder…
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
                 <DropdownMenuItem
                   onSelect={() => void copyResumeCommand(session.key)}
                   shortcut={`${MOD}+Shift+C`}
@@ -208,6 +216,7 @@ function Header({
 
         <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5">
           <EnvBadge env={session.env} distro={session.distro} />
+          <BillingBadge billing={session.billing} />
           {session.availability === 'archived-only' && (
             <Badge variant="warning">
               <Archive /> Archived only
@@ -251,6 +260,8 @@ function Header({
             {session.version ? ` · Claude Code ${session.version}` : ''}
           </span>
         </div>
+
+        <SessionUsageStrip sessionKey={session.key} version={session.sizeBytes} />
 
         <div className="mt-3">
           <TagEditor

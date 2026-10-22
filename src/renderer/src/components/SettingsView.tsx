@@ -26,8 +26,11 @@ import { Button } from './ui/button'
 import { Switch } from './ui/checkbox'
 import { Segmented } from './ui/segmented'
 import { SkipPermissionsWarning } from './ResumeDialog'
+import { AccountsSettings } from './settings/AccountsSettings'
+import { LiveLimitsSettings } from './settings/LiveLimitsSettings'
+import { UsageSettings } from './settings/UsageSettings'
 
-function Section({
+export function Section({
   title,
   description,
   children
@@ -47,7 +50,7 @@ function Section({
   )
 }
 
-function Row({
+export function Row({
   label,
   hint,
   children
@@ -228,6 +231,12 @@ export function SettingsView() {
           </div>
         </Section>
 
+        <LiveLimitsSettings update={update} />
+
+        <AccountsSettings update={update} />
+
+        <UsageSettings update={update} />
+
         <Section
           title="Scan sources"
           description="Detected automatically: your Windows profile and every WSL distro (each user in /home, plus /root). Add any other folder that contains Claude Code sessions."
@@ -369,7 +378,8 @@ export function SettingsView() {
           <div className="space-y-2 text-xs text-muted-foreground">
             <div className="flex items-center gap-2">
               <ShieldCheck className="size-4 text-success" />
-              No network access. Names, descriptions and tags are stored only in the app's own data
+              No network access, except read-only usage reports from api.anthropic.com when you add
+              an Admin API key. Names, descriptions and tags are stored only in the app's own data
               folder.
             </div>
             <div className="flex items-center gap-2">

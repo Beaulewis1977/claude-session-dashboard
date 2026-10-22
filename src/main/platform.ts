@@ -95,7 +95,9 @@ export function createRealPlatform(): Platform {
           detached: true,
           stdio: 'ignore',
           windowsHide: false,
-          windowsVerbatimArguments: cmd.verbatim
+          windowsVerbatimArguments: cmd.verbatim,
+          // The API key (if any) lives only in this child's environment.
+          env: cmd.env ? { ...process.env, ...cmd.env } : undefined
         })
         child.once('error', reject)
         child.once('spawn', () => {

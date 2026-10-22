@@ -48,7 +48,16 @@ const api: CsdApi = {
   onLimitsChanged: (cb) => on('limits:changed', cb),
   planBridge: (id, action) => ipcRenderer.invoke('bridge:plan', id, action),
   applyBridge: (id, action, token) => ipcRenderer.invoke('bridge:apply', id, action, token),
-  openBackupFolder: () => ipcRenderer.invoke('bridge:openBackups')
+  openBackupFolder: () => ipcRenderer.invoke('bridge:openBackups'),
+
+  getCredits: () => ipcRenderer.invoke('credits:state'),
+  onCreditsChanged: (cb) => on('credits:changed', cb),
+  addAccount: (nickname, key) => ipcRenderer.invoke('accounts:add', nickname, key),
+  renameAccount: (id, nickname) => ipcRenderer.invoke('accounts:rename', id, nickname),
+  removeAccount: (id) => ipcRenderer.invoke('accounts:remove', id),
+  addGrant: (grant) => ipcRenderer.invoke('grants:add', grant),
+  removeGrant: (id) => ipcRenderer.invoke('grants:remove', id),
+  refreshAdmin: (id) => ipcRenderer.invoke('admin:refresh', id)
 }
 
 contextBridge.exposeInMainWorld('csd', api)

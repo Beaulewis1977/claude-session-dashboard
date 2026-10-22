@@ -8,6 +8,8 @@ import {
   type SessionSummary,
   type SourceInfo
 } from '@shared/types'
+import type { CreditsState } from '@shared/usage/credits'
+import type { LimitsState } from '@shared/usage/limits'
 import { EMPTY_FILTERS, type Filters, type SortKey } from './filters'
 
 export type FocusField = 'name' | 'description' | 'tags' | 'find' | 'search' | null
@@ -15,6 +17,8 @@ export type FocusField = 'name' | 'description' | 'tags' | 'find' | 'search' | n
 interface ResumeRequest {
   key: string
   fork: boolean
+  /** Start a new session in the same folder. */
+  newSession?: boolean
 }
 
 interface State {
@@ -24,8 +28,10 @@ interface State {
   scan: ScanState
   settings: AppSettings
   loaded: boolean
+  limits: LimitsState | null
+  credits: CreditsState | null
 
-  view: 'sessions' | 'settings'
+  view: 'sessions' | 'settings' | 'usage'
   selectedKey: string | null
   filters: Filters
   sort: SortKey
@@ -53,6 +59,8 @@ export const useApp = create<State>((set) => ({
   scan: { phase: 'idle', done: 0, total: 0 },
   settings: DEFAULT_SETTINGS,
   loaded: false,
+  limits: null,
+  credits: null,
 
   view: 'sessions',
   selectedKey: null,

@@ -190,7 +190,7 @@ afterEach(async () => {
 })
 
 describe('LimitsService (fixtures)', () => {
-  it('shows live gauges, detects the October limit cut and enables the WSL bridge', async () => {
+  it('shows live gauges, detects the October limit cut and enables the bridge', async () => {
     await cp(FIXTURES, join(root, 'fixtures'), { recursive: true })
     await prepareFixtures(root, { usageHistory: true })
     const layout = fixturesLayout(root)
@@ -243,7 +243,7 @@ describe('LimitsService (fixtures)', () => {
     expect(s.fiveHour?.pct).toBeCloseTo(49.3)
     expect(s.fiveHour?.expired).toBe(false)
     expect(s.fiveHour?.tokens).toBeGreaterThan(1_000_000)
-    expect(s.sevenDay?.pct).toBeCloseTo(48.6)
+    expect(s.sevenDay?.pct).toBeCloseTo(28.5)
     expect(s.stale).toBe(false)
     expect(s.change5h?.flagged).toBe(true)
     expect(s.change5h?.changePct).toBeLessThan(-18)
@@ -251,7 +251,11 @@ describe('LimitsService (fixtures)', () => {
     expect(s.capacity5h.length).toBeGreaterThan(30)
     expect(s.limitHits.length).toBeGreaterThan(0)
     expect(s.envs.find((e) => e.sourceId === 'wsl-Ubuntu-beau')?.installed).toBe(true)
-    expect(s.envs.find((e) => e.sourceId === 'windows')).toMatchObject({ installed: false })
+    expect(s.envs.find((e) => e.sourceId === 'windows')).toMatchObject({
+      installed: true,
+      chained: '~/.claude/statusline.sh'
+    })
+    expect(s.envs.find((e) => e.sourceId === 'wsl-Ubuntu-root')?.installed).toBe(false)
     // API-billed fixture sessions are recognised from their payloads (cost, no rate_limits).
     const apiSession = limits.readings().find((r) => r.costUsd && !r.fiveHour)
     expect(apiSession && limits.billingOf(apiSession.sessionId!)).toBe('api')

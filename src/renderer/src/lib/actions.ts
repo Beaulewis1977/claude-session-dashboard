@@ -16,6 +16,11 @@ export function openResume(key: string, fork: boolean): void {
   get().set({ resume: { key, fork } })
 }
 
+/** Start a fresh Claude Code session in the same folder as `key`. */
+export function openNewSession(key: string): void {
+  get().set({ resume: { key, fork: false, newSession: true } })
+}
+
 export async function copyResumeCommand(
   key: string,
   which: 'launch' | 'claude' = 'launch'

@@ -20,6 +20,7 @@ import type {
   SourceInfo
 } from '@shared/types'
 import type { SearchHit } from '@shared/api'
+import type { SessionBilling } from '@shared/usage/credits'
 import { archiveSession } from '../core/archive'
 import { writeFileAtomic, type JsonStore } from '../core/json-store'
 import { isInside } from '../core/safe-paths'
@@ -359,9 +360,30 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
 
   // --------------------------------------------------------------- private
 
+  /** Resolves billing for a session (set by the app: tags + bridge inference). */
+  billingResolver?: (sessionId: string, meta: SessionMeta) => SessionBilling | undefined
+
   private withMeta(base: BaseSummary): SessionSummary {
     const meta = this.metadata.value.sessions[base.sessionId] ?? {}
-    return { ...base, meta, ...computeTitle(meta, base.summary, base.firstPrompt) }
+    return {
+      ...base,
+      meta,
+      ...computeTitle(meta, base.summary, base.firstPrompt),
+      billing: this.billingResolver?.(base.sessionId, meta)
+    }
+  }
+
+  /** Tell the renderer that derived fields (e.g. billing) changed. */
+  touch(): void {
+    this.emitChanged()
+  }
+
+  /** Tag a session's billing (from a launch), without touching Claude's files. */
+  tagBilling(sessionId: string, billing: NonNullable<SessionMeta['billing']>): void {
+    this.metadata.update((d) => {
+      d.sessions[sessionId] = { ...(d.sessions[sessionId] ?? {}), billing }
+    })
+    this.emitChanged()
   }
 
   private emitChanged(now = false): void {

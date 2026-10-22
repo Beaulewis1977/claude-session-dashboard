@@ -15,6 +15,15 @@ export interface LaunchInput {
   fork: boolean
   skipPermissions: boolean
   terminal: TerminalPref
+  /** Start a new session instead of resuming `sessionId`. */
+  newSession?: boolean
+  /**
+   * Run on API credits. The key goes only into the child process environment,
+   * never into the arguments or the command line shown or copied.
+   */
+  apiKey?: string
+  /** Current WSLENV of the app, to extend rather than replace. */
+  wslenv?: string
 }
 
 export interface LaunchCommand {
@@ -27,6 +36,22 @@ export interface LaunchCommand {
   commandLine: string
   claudeCommand: string
   claudeArgs: string[]
+  /** Extra environment for the child process only. */
+  env?: Record<string, string>
+  /** The terminal actually used. */
+  terminal: TerminalPref
+  /** Why the terminal differs from the requested one. */
+  terminalReason?: string
+}
+
+export const WT_API_REASON =
+  "API billing opens PowerShell instead of Windows Terminal: a new Windows Terminal window can join one that's already running and get its environment instead of the key."
+
+/** Add `ANTHROPIC_API_KEY/u` to WSLENV so wsl.exe passes the key into Linux. */
+export function wslenvWithKey(current: string | undefined): string {
+  const parts = (current ?? '').split(':').filter(Boolean)
+  if (!parts.some((p) => p.split('/')[0] === 'ANTHROPIC_API_KEY')) parts.push('ANTHROPIC_API_KEY/u')
+  return parts.join(':')
 }
 
 const SESSION_ID_RE = /^[A-Za-z0-9][A-Za-z0-9_-]*$/
@@ -35,7 +60,13 @@ export function isValidSessionId(id: string): boolean {
   return SESSION_ID_RE.test(id) && id.length <= 128
 }
 
-export function claudeArgs(sessionId: string, skipPermissions: boolean, fork: boolean): string[] {
+export function claudeArgs(
+  sessionId: string,
+  skipPermissions: boolean,
+  fork: boolean,
+  newSession = false
+): string[] {
+  if (newSession) return skipPermissions ? ['--dangerously-skip-permissions'] : []
   if (!isValidSessionId(sessionId)) throw new Error(`Invalid session id: ${sessionId}`)
   const args = ['--resume', sessionId]
   if (skipPermissions) args.push('--dangerously-skip-permissions')
@@ -72,9 +103,28 @@ export function psQuote(s: string): string {
 }
 
 export function buildLaunchCommand(input: LaunchInput): LaunchCommand {
-  const cArgs = claudeArgs(input.sessionId, input.skipPermissions, input.fork)
+  const cArgs = claudeArgs(input.sessionId, input.skipPermissions, input.fork, input.newSession)
   const claudeCommand = ['claude', ...cArgs].join(' ')
-  const base = { claudeCommand, claudeArgs: cArgs }
+  let terminalReason: string | undefined
+  let env: Record<string, string> | undefined
+  const apiKey = input.apiKey
+  if (apiKey) {
+    if (input.terminal === 'wt') {
+      input = { ...input, terminal: 'powershell' }
+      terminalReason = WT_API_REASON
+    }
+    env =
+      input.env === 'wsl'
+        ? { ANTHROPIC_API_KEY: apiKey, WSLENV: wslenvWithKey(input.wslenv) }
+        : { ANTHROPIC_API_KEY: apiKey }
+  }
+  const base = {
+    claudeCommand,
+    claudeArgs: cArgs,
+    terminal: input.terminal,
+    ...(env ? { env } : {}),
+    ...(terminalReason ? { terminalReason } : {})
+  }
 
   if (input.env === 'wsl') {
     const distro = input.distro ?? ''

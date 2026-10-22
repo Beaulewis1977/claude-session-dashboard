@@ -57,6 +57,26 @@
   --scrollbar: rgb(24 24 27 / 0.16);
   --scrollbar-hover: rgb(24 24 27 / 0.3);
 
+  /* data viz (validated with the dataviz palette checks) */
+  --tok-cache-read: #2a78d6;
+  --tok-cache-write: #1baf7a;
+  --tok-input: #6250d6;
+  --tok-output: #e87ba4;
+  --model-opus: #eb6834;
+  --model-sonnet: #2a78d6;
+  --model-haiku: #1baf7a;
+  --model-fable: #6250d6;
+  --model-other: #898781;
+  --gauge-track: rgb(24 24 27 / 0.07);
+  --gauge-calm: #4f7fd1;
+  --gauge-warn: #e8a210;
+  --gauge-warn-text: #a16207;
+  --gauge-crit: #d03b3b;
+  --chart-grid: #ecebe6;
+  --chart-axis: #a3a29b;
+  --card-shadow: 0 1px 2px rgb(24 24 27 / 0.04), 0 4px 16px -6px rgb(24 24 27 / 0.08);
+  --good: #15803d;
+
   /* highlight.js */
   --hl-keyword: #a626a4;
   --hl-string: #50a14f;
@@ -123,6 +143,25 @@
   --scrollbar: rgb(255 255 255 / 0.13);
   --scrollbar-hover: rgb(255 255 255 / 0.25);
 
+  --tok-cache-read: #3987e5;
+  --tok-cache-write: #199e70;
+  --tok-input: #9085e9;
+  --tok-output: #d55181;
+  --model-opus: #d95926;
+  --model-sonnet: #3987e5;
+  --model-haiku: #199e70;
+  --model-fable: #9085e9;
+  --model-other: #898781;
+  --gauge-track: rgb(255 255 255 / 0.07);
+  --gauge-calm: #6d9be6;
+  --gauge-warn: #fab219;
+  --gauge-warn-text: #fbbf24;
+  --gauge-crit: #e66767;
+  --chart-grid: #2a2a2e;
+  --chart-axis: #6b6b74;
+  --card-shadow: 0 1px 2px rgb(0 0 0 / 0.3), 0 6px 20px -8px rgb(0 0 0 / 0.5);
+  --good: #4ade80;
+
   --hl-keyword: #c678dd;
   --hl-string: #98c379;
   --hl-number: #d19a66;
@@ -179,6 +218,16 @@
   --color-kbd: var(--kbd);
   --color-env-windows: var(--env-windows);
   --color-env-wsl: var(--env-wsl);
+  --color-tok-cache-read: var(--tok-cache-read);
+  --color-tok-cache-write: var(--tok-cache-write);
+  --color-tok-input: var(--tok-input);
+  --color-tok-output: var(--tok-output);
+  --color-gauge-calm: var(--gauge-calm);
+  --color-gauge-warn: var(--gauge-warn);
+  --color-gauge-warn-text: var(--gauge-warn-text);
+  --color-gauge-crit: var(--gauge-crit);
+  --color-good: var(--good);
+  --shadow-card: var(--card-shadow);
 
   --radius-sm: calc(var(--radius) - 2px);
   --radius-md: var(--radius);

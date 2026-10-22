@@ -71,5 +71,18 @@ export function cleanMetaPatch(patch: Partial<SessionMeta>): Partial<SessionMeta
       .filter((t) => t && !seen.has(t) && seen.add(t))
   }
   if ('hidden' in patch) out.hidden = patch.hidden === true
+  if ('billing' in patch) {
+    const b = patch.billing as Record<string, unknown> | undefined | null
+    out.billing =
+      b && (b.mode === 'subscription' || b.mode === 'api')
+        ? {
+            mode: b.mode,
+            accountId:
+              b.mode === 'api' && typeof b.accountId === 'string' ? b.accountId : undefined,
+            source: b.source === 'launch' ? 'launch' : 'manual',
+            at: typeof b.at === 'string' ? b.at : new Date().toISOString()
+          }
+        : undefined
+  }
   return out
 }

@@ -1,9 +1,18 @@
 import { join } from 'node:path'
-import { app, BrowserWindow, nativeTheme, Notification, session, shell } from 'electron'
+import {
+  app,
+  BrowserWindow,
+  nativeTheme,
+  Notification,
+  safeStorage,
+  session,
+  shell
+} from 'electron'
 import { FIXTURES_NOW, setClockOffset } from '@shared/clock'
 import { DEFAULT_PRICES, sanitizePrices } from '@shared/usage/pricing'
 import {
   DEFAULT_WEIGHTS,
+  PLAN_LABEL,
   sanitizePlan,
   sanitizeThresholds,
   sanitizeWeights
@@ -13,11 +22,15 @@ import {
   fixturesLayout,
   prepareFixtures,
   seedFixtureBridge,
+  seedFixtureAccounts,
   seedFixtureData,
   seedFixtureUsage
 } from './fixtures'
 import { registerIpc } from './ipc'
 import { registerUsageIpc } from './ipc-usage'
+import { registerAccountsIpc } from './ipc-accounts'
+import { AccountsService, createAccountsStore, type Encryptor } from './services/accounts'
+import { BillingService } from './services/billing'
 import { createFixturesPlatform, createRealPlatform, type Platform } from './platform'
 import { BridgeInstaller, createBridgeStore } from './services/bridge'
 import { Launcher } from './services/launcher'
@@ -117,6 +130,9 @@ async function main(): Promise<void> {
     if (typeof s.alertsEnabled !== 'boolean') s.alertsEnabled = true
     s.alertThresholds = sanitizeThresholds(s.alertThresholds) ?? [75, 90]
     s.capacityWeights = sanitizeWeights(s.capacityWeights) ?? { ...DEFAULT_WEIGHTS }
+    if (typeof s.defaultBilling !== 'string') s.defaultBilling = 'subscription'
+    if (!s.projectBilling || typeof s.projectBilling !== 'object') s.projectBilling = {}
+    if (typeof s.adminRefreshMinutes !== 'number') s.adminRefreshMinutes = 60
   })
   if (FIXTURES) {
     await seedFixtureData(appRoot, paths.archiveDir, metadata)
@@ -125,7 +141,53 @@ async function main(): Promise<void> {
 
   const sessions = new SessionService(platform, paths, metadata, settings)
   const watcher = new SourceWatcher(sessions)
-  const launcher = new Launcher(platform, sessions, () => settings.value.terminal)
+
+  // API keys: encrypted with safeStorage (DPAPI on Windows). On Linux the
+  // "basic_text" backend isn't real encryption, so keys are refused there.
+  const encryptor: Encryptor = {
+    available: () =>
+      safeStorage.isEncryptionAvailable() &&
+      (process.platform !== 'linux' || safeStorage.getSelectedStorageBackend() !== 'basic_text'),
+    encrypt: (t) => safeStorage.encryptString(t),
+    decrypt: (b) => safeStorage.decryptString(b)
+  }
+  const accountsStore = createAccountsStore(paths.dataDir)
+  await accountsStore.load()
+  if (FIXTURES) await seedFixtureAccounts(appRoot, accountsStore, metadata, settings)
+  const accounts = new AccountsService(accountsStore, encryptor, {
+    // Node's fetch in the main process: not routed through the window's session,
+    // whose network stays blocked. Only reportUrl() URLs ever reach this.
+    fetcher: (url, init) => fetch(url, { headers: init.headers, signal: init.signal }),
+    userAgent: `ClaudeSessionDashboard/${app.getVersion()}`,
+    sampleAdminDir: FIXTURES
+      ? join(fixturesLayout(appRoot).fixturesDir, 'usage', 'admin')
+      : undefined,
+    refreshMinutes: () => settings.value.adminRefreshMinutes
+  })
+  let bridgeGuess: (sessionId: string) => 'subscription' | 'api' | 'unknown' = () => 'unknown'
+  const billing = new BillingService(
+    sessions,
+    (sid) => bridgeGuess(sid),
+    (id) => !!accounts.get(id)
+  )
+  const launcher = new Launcher(platform, sessions, () => settings.value.terminal, {
+    keyFor: (id) => accounts.keyFor(id),
+    label: (id) => {
+      const a = accounts.get(id)
+      return a ? `API · ${a.nickname}` : undefined
+    },
+    subscriptionLabel: () => `Subscription (${PLAN_LABEL[settings.value.plan]})`,
+    launched: (s, opts, cwd) => {
+      const tag = {
+        mode: opts.billingAccountId ? ('api' as const) : ('subscription' as const),
+        accountId: opts.billingAccountId,
+        source: 'launch' as const,
+        at: new Date().toISOString()
+      }
+      if (opts.fork || opts.newSession) billing.expect(s.sourceId, cwd, tag)
+      else sessions.tagBilling(s.sessionId, tag)
+    }
+  })
   const usage = new UsageService(sessions, usagePaths(paths.dataDir, paths.archiveDir), () => ({
     weekStart: settings.value.weekStart,
     prices: settings.value.prices
@@ -168,8 +230,36 @@ async function main(): Promise<void> {
       n.show()
     }
   )
+  bridgeGuess = (sid) => limits.billingOf(sid)
   usage.on('changed', () => limits.emit('changed'))
-  registerUsageIpc({ usage, limits, installer, sessions, platform })
+  limits.on('changed', () => billing.refreshInferred())
+  registerUsageIpc({
+    usage,
+    limits,
+    installer,
+    sessions,
+    platform,
+    billingOf: (key) => {
+      const b = sessions.get(key)?.billing
+      if (!b || b.mode === 'unknown') return 'Unknown'
+      if (b.mode === 'subscription') return PLAN_LABEL[settings.value.plan]
+      const a = b.accountId ? accounts.get(b.accountId) : undefined
+      return a ? `API · ${a.nickname}` : 'API'
+    }
+  })
+  const creditsDeps = {
+    accounts,
+    sessions,
+    usage,
+    readings: () => limits.readings(),
+    settings: () => ({
+      prices: settings.value.prices,
+      weekStart: settings.value.weekStart,
+      defaultBilling: settings.value.defaultBilling
+    })
+  }
+  registerAccountsIpc(creditsDeps)
+  limits.on('changed', () => accounts.emit('changed'))
 
   nativeTheme.themeSource = settings.value.theme
   createWindow(settings.value.window)
@@ -178,6 +268,7 @@ async function main(): Promise<void> {
     .start()
     .then(() => watcher.restart())
     .then(() => Promise.all([usage.start(), limits.start()]))
+    .then(() => accounts.startAutoRefresh())
     .then(async () => {
       if (FIXTURES) await seedFixtureBridge(paths.dataDir, sessions, installer)
     })
@@ -192,6 +283,8 @@ async function main(): Promise<void> {
       await sessions.idle().catch(() => undefined)
       await usage.idle().catch(() => undefined)
       limits.stop()
+      accounts.stop()
+      await accountsStore.flush().catch(() => undefined)
       await bridgeStore.flush().catch(() => undefined)
       await Promise.all([metadata.flush(), settings.flush()]).catch(() => undefined)
       app.quit()

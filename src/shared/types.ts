@@ -2,6 +2,7 @@
 
 import { DEFAULT_PRICES, type ModelPrice } from './usage/pricing'
 import type { WeekStart } from './usage/types'
+import type { SessionBilling } from './usage/credits'
 import { DEFAULT_WEIGHTS, type CapacityWeights, type Plan } from './usage/limits'
 
 export type EnvKind = 'windows' | 'wsl'
@@ -35,6 +36,13 @@ export interface SessionMeta {
   description?: string
   tags?: string[]
   hidden?: boolean
+  /** How the session is billed: tagged when launched from the app, or set by hand. */
+  billing?: {
+    mode: 'subscription' | 'api'
+    accountId?: string
+    source: 'launch' | 'manual'
+    at?: string
+  }
   updatedAt?: string
 }
 
@@ -101,6 +109,8 @@ export interface SessionSummary {
   meta: SessionMeta
   title: string
   titleSource: TitleSource
+  /** Subscription or API billing (tag, bridge inference, or unknown). */
+  billing?: SessionBilling
 }
 
 export interface ToolResult {
@@ -163,6 +173,12 @@ export interface AppSettings {
   alertThresholds: number[]
   /** Token weights for the implied-capacity estimate. */
   capacityWeights: CapacityWeights
+  /** Default billing for launches: 'subscription' or an API account id. */
+  defaultBilling: string
+  /** Per-project billing defaults, keyed by lower-cased cwd. */
+  projectBilling: Record<string, string>
+  /** How often to refresh Admin API reports (minutes, 0 = only on demand). */
+  adminRefreshMinutes: number
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -176,7 +192,10 @@ export const DEFAULT_SETTINGS: AppSettings = {
   plan: 'max5',
   alertsEnabled: true,
   alertThresholds: [75, 90],
-  capacityWeights: DEFAULT_WEIGHTS
+  capacityWeights: DEFAULT_WEIGHTS,
+  defaultBilling: 'subscription',
+  projectBilling: {},
+  adminRefreshMinutes: 60
 }
 
 export interface ScanState {
@@ -208,6 +227,10 @@ export interface LaunchOptions {
   /** Override for the working directory (when the original no longer exists). */
   cwdOverride?: string
   terminal?: TerminalPref
+  /** Run on API credits with this account's key (undefined = the Claude subscription). */
+  billingAccountId?: string
+  /** Start a new session in the folder instead of resuming. */
+  newSession?: boolean
 }
 
 export interface LaunchPreview {
@@ -225,6 +248,9 @@ export interface LaunchPreview {
   /** Restoring is needed but impossible (no archive copy). */
   restoreImpossible: boolean
   originalPath: string
+  /** API billing: Windows Terminal can't take the key safely, so PowerShell is used. */
+  terminalReason?: string
+  billingLabel: string
 }
 
 export interface LaunchResult {

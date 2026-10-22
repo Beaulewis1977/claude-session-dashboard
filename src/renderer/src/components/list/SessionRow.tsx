@@ -6,6 +6,7 @@ import { formatDateTime, formatRelative } from '@shared/format'
 import { tagColor } from '@/lib/filters'
 import { cn } from '@/lib/utils'
 import { EnvDot } from '../EnvBadge'
+import { BillingBadge } from '../BillingPicker'
 
 export const ROW_HEIGHT = 104
 
@@ -113,6 +114,7 @@ export const SessionRow = memo(function SessionRow({
       <div className="flex min-w-0 items-center gap-2 pl-3.5 text-2xs text-subtle-foreground">
         <span className="truncate tabular-nums">{dateSpan(s)}</span>
         <span className="ml-auto flex shrink-0 items-center gap-1.5">
+          <BillingBadge billing={s.billing} compact />
           {hit &&
             hit.fields.includes('text') &&
             !hit.fields.some((f) => f !== 'text' && f !== 'project') && (

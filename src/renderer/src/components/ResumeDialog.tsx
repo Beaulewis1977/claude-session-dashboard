@@ -9,6 +9,7 @@ import {
   Info,
   Loader2,
   Play,
+  Plus,
   TriangleAlert
 } from 'lucide-react'
 import type { LaunchPreview, TerminalPref } from '@shared/types'
@@ -20,6 +21,9 @@ import { Checkbox } from './ui/checkbox'
 import { Dialog, DialogContent, DialogFooter, DialogHeader } from './ui/dialog'
 import { Kbd } from './ui/kbd'
 import { Segmented } from './ui/segmented'
+import { Tooltip } from './ui/tooltip'
+import { validBilling } from '@/lib/billing'
+import { BillingPicker } from './BillingPicker'
 
 export const SKIP_WARNING = 'Claude will not ask before running commands or deleting files.'
 
@@ -41,10 +45,16 @@ export function SkipPermissionsWarning({ className }: { className?: string }) {
 export function ResumeDialog() {
   const resume = useApp((s) => s.resume)
   if (!resume) return null
-  return <ResumeDialogBody key={`${resume.key}:${resume.fork}`} resume={resume} />
+  return (
+    <ResumeDialogBody key={`${resume.key}:${resume.fork}:${!!resume.newSession}`} resume={resume} />
+  )
 }
 
-function ResumeDialogBody({ resume }: { resume: { key: string; fork: boolean } }) {
+function ResumeDialogBody({
+  resume
+}: {
+  resume: { key: string; fork: boolean; newSession?: boolean }
+}) {
   const sessions = useApp((s) => s.sessions)
   const settings = useApp((s) => s.settings)
   const info = useApp((s) => s.info)
@@ -57,6 +67,16 @@ function ResumeDialogBody({ resume }: { resume: { key: string; fork: boolean } }
   const [preview, setPreview] = useState<LaunchPreview | null>(null)
   const [launching, setLaunching] = useState(false)
   const [copied, setCopied] = useState(false)
+  const accounts = useApp((s) => s.credits?.accounts) ?? []
+  const projectKey = (session?.cwd ?? '').toLowerCase()
+  const [billing, setBilling] = useState(() =>
+    validBilling(settings.projectBilling[projectKey] ?? settings.defaultBilling, accounts)
+  )
+  const [rememberProject, setRememberProject] = useState(
+    () => settings.projectBilling[projectKey] !== undefined
+  )
+  const billingAccountId = billing === 'subscription' ? undefined : billing
+  const newSession = resume.newSession === true
 
   useEffect(() => {
     let cancelled = false
@@ -66,7 +86,9 @@ function ResumeDialogBody({ resume }: { resume: { key: string; fork: boolean } }
         fork: resume.fork,
         skipPermissions: skip,
         cwdOverride,
-        terminal
+        terminal,
+        billingAccountId,
+        newSession
       })
       .then((p) => !cancelled && setPreview(p))
       .catch((err: Error) =>
@@ -75,12 +97,13 @@ function ResumeDialogBody({ resume }: { resume: { key: string; fork: boolean } }
     return () => {
       cancelled = true
     }
-  }, [resume, skip, cwdOverride, terminal, session?.availability])
+  }, [resume, skip, cwdOverride, terminal, session?.availability, billingAccountId, newSession])
 
   const close = (): void => set({ resume: null })
   if (!session) return null
   const fork = resume.fork
-  const blocked = !preview || !preview.cwd || !preview.cwdExists || preview.restoreImpossible
+  const blocked =
+    !preview || !preview.cwd || !preview.cwdExists || (!newSession && preview.restoreImpossible)
 
   const launch = async (): Promise<void> => {
     if (blocked || launching) return
@@ -90,13 +113,32 @@ function ResumeDialogBody({ resume }: { resume: { key: string; fork: boolean } }
       fork,
       skipPermissions: skip,
       cwdOverride,
-      terminal
+      terminal,
+      billingAccountId,
+      newSession
     })
+    // Per-project default ("always use API credits for this project").
+    const current = settings.projectBilling[projectKey]
+    if (projectKey && rememberProject && current !== billing) {
+      const projectBilling = { ...settings.projectBilling, [projectKey]: billing }
+      void api.updateSettings({ projectBilling }).then((st) => set({ settings: st }))
+    } else if (projectKey && !rememberProject && current !== undefined) {
+      const projectBilling = { ...settings.projectBilling }
+      delete projectBilling[projectKey]
+      void api.updateSettings({ projectBilling }).then((st) => set({ settings: st }))
+    }
     setLaunching(false)
     if (!res.ok) {
-      toast.error(fork ? 'Could not fork the session' : 'Could not resume the session', {
-        description: res.error
-      })
+      toast.error(
+        newSession
+          ? 'Could not start the session'
+          : fork
+            ? 'Could not fork the session'
+            : 'Could not resume the session',
+        {
+          description: res.error
+        }
+      )
       return
     }
     close()
@@ -107,9 +149,16 @@ function ResumeDialogBody({ resume }: { resume: { key: string; fork: boolean } }
         action: { label: 'Copy', onClick: () => void api.copyText(res.commandLine) }
       })
     } else {
-      toast.success(fork ? 'Forked in a new terminal' : 'Resumed in a new terminal', {
-        description: TERMINAL_LABEL[preview?.terminal ?? terminal]
-      })
+      toast.success(
+        newSession
+          ? 'Started in a new terminal'
+          : fork
+            ? 'Forked in a new terminal'
+            : 'Resumed in a new terminal',
+        {
+          description: `${TERMINAL_LABEL[preview?.terminal ?? terminal]} · ${preview?.billingLabel ?? ''}`
+        }
+      )
     }
   }
 
@@ -135,10 +184,16 @@ function ResumeDialogBody({ resume }: { resume: { key: string; fork: boolean } }
         <DialogHeader
           icon={
             <div className="flex size-8 items-center justify-center rounded-lg bg-accent-soft text-primary">
-              {fork ? <GitFork className="size-4" /> : <Play className="size-4 fill-current" />}
+              {newSession ? (
+                <Plus className="size-4" />
+              ) : fork ? (
+                <GitFork className="size-4" />
+              ) : (
+                <Play className="size-4 fill-current" />
+              )}
             </div>
           }
-          title={fork ? 'Fork session' : 'Resume session'}
+          title={newSession ? 'New session' : fork ? 'Fork session' : 'Resume session'}
           description={
             <span className="line-clamp-1 text-foreground/80" title={session.title}>
               {session.title}
@@ -147,6 +202,11 @@ function ResumeDialogBody({ resume }: { resume: { key: string; fork: boolean } }
         />
 
         <div className="space-y-4 px-5 pt-3 pb-5">
+          {newSession && (
+            <p className="text-xs leading-relaxed text-muted-foreground">
+              Starts a fresh Claude Code session in this session&apos;s folder.
+            </p>
+          )}
           {fork && (
             <p className="text-xs leading-relaxed text-muted-foreground">
               Starts a new session that continues from this conversation. The original session stays
@@ -244,6 +304,36 @@ function ResumeDialogBody({ resume }: { resume: { key: string; fork: boolean } }
             )}
           </div>
 
+          <div>
+            <div className="mb-1.5 flex items-center gap-1.5 text-xs font-medium">
+              Billing
+              <Tooltip
+                content="With an API key, Claude Code may ask once to confirm that it should use the key. The key is only given to this one terminal."
+                side="right"
+              >
+                <Info className="size-3.5 text-subtle-foreground" aria-label="About billing" />
+              </Tooltip>
+            </div>
+            <div className="flex flex-wrap items-center gap-3">
+              <BillingPicker value={billing} onChange={setBilling} />
+              {projectKey && (
+                <label className="flex cursor-pointer items-center gap-2 text-xs text-muted-foreground">
+                  <Checkbox
+                    checked={rememberProject}
+                    onCheckedChange={(v) => setRememberProject(v === true)}
+                  />
+                  Always use this for {session.projectName}
+                </label>
+              )}
+            </div>
+            {preview?.terminalReason && (
+              <div className="mt-1.5 flex items-start gap-1.5 text-xs text-muted-foreground">
+                <Info className="mt-px size-3.5 shrink-0" />
+                {preview.terminalReason}
+              </div>
+            )}
+          </div>
+
           <div className="rounded-lg border border-border p-3">
             <label className="flex cursor-pointer items-start gap-2.5">
               <Checkbox
@@ -301,12 +391,14 @@ function ResumeDialogBody({ resume }: { resume: { key: string; fork: boolean } }
           >
             {launching ? (
               <Loader2 className="animate-spin" />
+            ) : newSession ? (
+              <Plus />
             ) : fork ? (
               <GitFork />
             ) : (
               <Play className="fill-current" />
             )}
-            {fork ? 'Fork' : 'Resume'}
+            {newSession ? 'Start' : fork ? 'Fork' : 'Resume'}
             <Kbd className="ml-1 border-white/25 bg-white/15 text-primary-foreground">↵</Kbd>
           </Button>
         </DialogFooter>

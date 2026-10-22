@@ -21,6 +21,7 @@ import type {
   UsageStatus
 } from './usage/types'
 import type { BridgeApplyResult, BridgePlan, LimitsState } from './usage/limits'
+import type { Account, CreditGrant, CreditsState } from './usage/credits'
 
 export interface SearchHit {
   key: string
@@ -81,4 +82,14 @@ export interface CsdApi {
     token: string
   ): Promise<BridgeApplyResult>
   openBackupFolder(): Promise<void>
+
+  // API keys and credits
+  getCredits(): Promise<CreditsState>
+  onCreditsChanged(cb: () => void): () => void
+  addAccount(nickname: string, key: string): Promise<{ account?: Account; error?: string }>
+  renameAccount(id: string, nickname: string): Promise<void>
+  removeAccount(id: string): Promise<void>
+  addGrant(grant: Omit<CreditGrant, 'id'>): Promise<CreditGrant | undefined>
+  removeGrant(id: string): Promise<void>
+  refreshAdmin(id: string): Promise<void>
 }

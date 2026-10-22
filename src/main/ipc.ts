@@ -54,9 +54,17 @@ function publicSettings(s: SettingsFile): AppSettings {
     plan: s.plan,
     alertsEnabled: s.alertsEnabled,
     alertThresholds: [...s.alertThresholds],
-    capacityWeights: { ...s.capacityWeights }
+    capacityWeights: { ...s.capacityWeights },
+    defaultBilling: s.defaultBilling,
+    projectBilling: { ...s.projectBilling },
+    adminRefreshMinutes: s.adminRefreshMinutes
   }
 }
+
+const billingValue = (v: unknown): string | undefined =>
+  typeof v === 'string' && (v === 'subscription' || /^acct-[A-Za-z0-9-]{1,40}$/.test(v))
+    ? v
+    : undefined
 
 function launchOpts(v: unknown): LaunchOptions {
   const o = (v ?? {}) as Record<string, unknown>
@@ -65,6 +73,9 @@ function launchOpts(v: unknown): LaunchOptions {
     fork: o.fork === true,
     skipPermissions: o.skipPermissions === true,
     cwdOverride: typeof o.cwdOverride === 'string' && o.cwdOverride ? o.cwdOverride : undefined,
+    billingAccountId:
+      typeof o.billingAccountId === 'string' && o.billingAccountId ? o.billingAccountId : undefined,
+    newSession: o.newSession === true,
     terminal: TERMINALS.includes(o.terminal as TerminalPref)
       ? (o.terminal as TerminalPref)
       : undefined
@@ -137,6 +148,18 @@ export function registerIpc(deps: IpcDeps): void {
       if (th) s.alertThresholds = th
       const w = sanitizeWeights(p.capacityWeights)
       if (w && 'capacityWeights' in p) s.capacityWeights = w
+      const db = billingValue(p.defaultBilling)
+      if (db) s.defaultBilling = db
+      if (p.projectBilling && typeof p.projectBilling === 'object') {
+        const next: Record<string, string> = {}
+        for (const [k, v] of Object.entries(p.projectBilling).slice(0, 500)) {
+          const b = billingValue(v)
+          if (b && k.length < 1000) next[k.toLowerCase()] = b
+        }
+        s.projectBilling = next
+      }
+      if (typeof p.adminRefreshMinutes === 'number' && p.adminRefreshMinutes >= 0)
+        s.adminRefreshMinutes = Math.min(1440, Math.round(p.adminRefreshMinutes))
     })
     deps.onSettingsChanged?.()
     await settings.flush()

@@ -19,7 +19,7 @@
     {
       "id": "grant-1",
       "accountId": "acct-personal",
-      "amountUsd": 100,
+      "amountUsd": 40,
       "receivedAt": "2026-10-04T00:00:00Z",
       "expiresAt": "2027-01-04T00:00:00Z",
       "note": "Anthropic credit grant"
@@ -34,11 +34,35 @@
     }
   ],
   "billing": {
+    "0bd0774e-1f6c-406f-ad77-33a5f619f9bf": {
+      "mode": "api",
+      "accountId": "acct-personal"
+    },
+    "5bfb7504-a5bb-4170-a5e3-5f3c9725d2f1": {
+      "mode": "api",
+      "accountId": "acct-personal"
+    },
     "43864d18-8265-48a8-a727-f1a1f6376d2a": {
       "mode": "api",
       "accountId": "acct-personal"
     },
+    "51a4e764-1828-41a0-a0ed-55da322e5dbc": {
+      "mode": "api",
+      "accountId": "acct-personal"
+    },
+    "616714c2-aa31-497c-a84e-3699b413affe": {
+      "mode": "api",
+      "accountId": "acct-personal"
+    },
+    "603b78a9-b303-42c3-a56f-8dcaf8a304bb": {
+      "mode": "api",
+      "accountId": "acct-personal"
+    },
     "c49d393e-fdcd-4221-a375-3e2dea7762c2": {
+      "mode": "api",
+      "accountId": "acct-personal"
+    },
+    "f90ca24f-1b2b-40aa-af5d-6a2ce7cb80ae": {
       "mode": "api",
       "accountId": "acct-personal"
     },
@@ -50,5 +74,5 @@
   "projectBilling": {
     "/home/beau/projects/ml-pipeline": "acct-personal"
   },
-  "apiCostTotal": 6.7
+  "apiCostTotal": 15.23
 }

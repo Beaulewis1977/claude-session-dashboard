@@ -14,11 +14,24 @@ import { restoreIfMissing } from '../core/restore'
 import type { Platform } from '../platform'
 import type { SessionService } from './sessions'
 
+/** API-credit launches (Phase 5). */
+export interface LaunchBilling {
+  /** Decrypted key for an API account (main process only). */
+  keyFor(accountId: string): string | undefined
+  /** "API · Personal credits", or undefined for an unknown account. */
+  label(accountId: string): string | undefined
+  /** "Subscription (Max 5x)". */
+  subscriptionLabel(): string
+  /** Called after a successful launch, to tag the session's billing. */
+  launched(s: SessionSummary, opts: LaunchOptions, cwd: string): void
+}
+
 export class Launcher {
   constructor(
     private readonly platform: Platform,
     private readonly sessions: SessionService,
-    private readonly defaultTerminal: () => TerminalPref
+    private readonly defaultTerminal: () => TerminalPref,
+    private readonly billing?: LaunchBilling
   ) {}
 
   /** Host path for checking a session's cwd (WSL paths go through the distro root). */
@@ -49,7 +62,8 @@ export class Launcher {
     s: SessionSummary,
     opts: LaunchOptions,
     cwd: string,
-    terminal: TerminalPref
+    terminal: TerminalPref,
+    apiKey?: string
   ): LaunchCommand {
     return buildLaunchCommand({
       env: s.env,
@@ -57,9 +71,18 @@ export class Launcher {
       sessionId: s.sessionId,
       cwd,
       fork: opts.fork,
+      newSession: opts.newSession,
       skipPermissions: opts.skipPermissions,
-      terminal
+      terminal,
+      // Only used to decide the terminal and env; never shown.
+      apiKey: apiKey ?? (opts.billingAccountId ? 'sk-ant-api00-preview-placeholder' : undefined),
+      wslenv: process.env.WSLENV
     })
+  }
+
+  private billingLabel(opts: LaunchOptions): string {
+    if (!opts.billingAccountId) return this.billing?.subscriptionLabel() ?? 'Subscription'
+    return this.billing?.label(opts.billingAccountId) ?? 'API key'
   }
 
   async preview(opts: LaunchOptions): Promise<LaunchPreview> {
@@ -75,13 +98,16 @@ export class Launcher {
     return {
       commandLine: cmd.commandLine,
       claudeCommand: cmd.claudeCommand,
-      terminal,
       fellBack,
       cwd,
       cwdExists: await this.cwdExists(s, cwd),
-      willRestore: !originalExists && !!record,
-      restoreImpossible: !originalExists && !record && s.availability !== 'source-offline',
-      originalPath: s.originalPath
+      willRestore: !opts.newSession && !originalExists && !!record,
+      restoreImpossible:
+        !opts.newSession && !originalExists && !record && s.availability !== 'source-offline',
+      originalPath: s.originalPath,
+      terminal: cmd.terminal,
+      terminalReason: cmd.terminalReason,
+      billingLabel: this.billingLabel(opts)
     }
   }
 
@@ -105,9 +131,24 @@ export class Launcher {
       }
     }
 
+    // API billing: the key, decrypted only now and passed only to the child process.
+    let apiKey: string | undefined
+    if (opts.billingAccountId) {
+      apiKey = this.billing?.keyFor(opts.billingAccountId)
+      if (!apiKey && this.platform.canLaunch) {
+        return {
+          ok: false,
+          restored: false,
+          commandLine: '',
+          error:
+            "The API key for this account isn't available. Add it again in Settings → Accounts."
+        }
+      }
+    }
+
     // 1. Restore the original file from the archive if it's missing. Never overwrite.
     let restored = false
-    if (!(await this.platform.pathExists(s.originalPath))) {
+    if (!opts.newSession && !(await this.platform.pathExists(s.originalPath))) {
       const rec = this.sessions.archiveRecord(s.key)
       if (rec) {
         const outcome = await restoreIfMissing(rec.archivePath, rec.originalPath)
@@ -133,8 +174,9 @@ export class Launcher {
 
     // 2. Launch.
     let { terminal } = await this.resolveTerminal(opts.terminal ?? this.defaultTerminal())
-    let cmd = this.command(s, opts, cwd, terminal)
+    let cmd = this.command(s, opts, cwd, terminal, apiKey)
     if (!this.platform.canLaunch) {
+      this.billing?.launched(s, opts, cwd)
       return { ok: true, restored, commandLine: cmd.commandLine, simulated: true }
     }
     try {
@@ -142,7 +184,7 @@ export class Launcher {
     } catch (err) {
       if (terminal === 'wt' && (err as NodeJS.ErrnoException).code === 'ENOENT') {
         terminal = 'powershell'
-        cmd = this.command(s, opts, cwd, terminal)
+        cmd = this.command(s, opts, cwd, terminal, apiKey)
         try {
           await this.platform.spawnDetached(cmd)
         } catch (err2) {
@@ -162,6 +204,7 @@ export class Launcher {
         }
       }
     }
+    this.billing?.launched(s, opts, cwd)
     return { ok: true, restored, commandLine: cmd.commandLine }
   }
 }

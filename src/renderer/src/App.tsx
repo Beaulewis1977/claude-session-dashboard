@@ -5,6 +5,7 @@ import { api } from '@/lib/api'
 import { copyResumeCommand, exportMarkdown, openResume, toggleHidden } from '@/lib/actions'
 import { visibleSessions } from '@/lib/filters'
 import { useHotkeys } from '@/lib/hotkeys'
+import { useLiveData } from '@/lib/live'
 import { useApp } from '@/lib/store'
 import { useThemeEffect } from '@/lib/theme'
 import { cn, MOD } from '@/lib/utils'
@@ -84,6 +85,7 @@ function NoSelection() {
 
 export function App() {
   useBootstrap()
+  useLiveData()
   const sessions = useApp((s) => s.sessions)
   const filters = useApp((s) => s.filters)
   const sort = useApp((s) => s.sort)

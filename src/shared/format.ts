@@ -1,3 +1,5 @@
+import { now as appNow } from './clock'
+
 const dateTimeFmt = new Intl.DateTimeFormat('en-US', {
   month: 'short',
   day: 'numeric',
@@ -60,4 +62,65 @@ export function baseName(p: string | undefined): string {
   if (!p) return ''
   const parts = p.replace(/[\\/]+$/, '').split(/[\\/]/)
   return parts[parts.length - 1] || p
+}
+
+/** Compact token count: 950, 12.4K, 1.2M, 3.4B. */
+export function formatTokens(n: number): string {
+  const a = Math.abs(n)
+  if (a < 1000) return String(Math.round(n))
+  const units: [number, string][] = [
+    [1e9, 'B'],
+    [1e6, 'M'],
+    [1e3, 'K']
+  ]
+  for (const [v, u] of units) {
+    if (a >= v) {
+      const x = n / v
+      return `${Math.abs(x) >= 100 ? Math.round(x) : x.toFixed(1).replace(/\.0$/, '')}${u}`
+    }
+  }
+  return String(n)
+}
+
+/** Full number with separators: 1,234,567. */
+export function formatInt(n: number): string {
+  return Math.round(n).toLocaleString('en-US')
+}
+
+/** "$4.81", "$0.42", "$1,234", "<$0.01". */
+export function formatUsd(n: number, opts: { cents?: boolean } = {}): string {
+  if (n > 0 && n < 0.01) return '<$0.01'
+  if (Math.abs(n) >= 1000 && !opts.cents) return `$${Math.round(n).toLocaleString('en-US')}`
+  return `$${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+}
+
+/** "2h 14m", "45m", "3d 4h", "<1m". */
+export function formatDuration(ms: number): string {
+  if (!Number.isFinite(ms)) return '—'
+  const m = Math.max(0, Math.round(ms / 60_000))
+  if (m < 1) return '<1m'
+  const d = Math.floor(m / 1440)
+  const h = Math.floor((m % 1440) / 60)
+  const min = m % 60
+  if (d) return h ? `${d}d ${h}h` : `${d}d`
+  if (h) return min ? `${h}h ${min}m` : `${h}h`
+  return `${min}m`
+}
+
+/** "+18%", "−7%". */
+export function formatPct(n: number, digits = 0): string {
+  const s = Math.abs(n).toFixed(digits)
+  return `${n >= 0 ? '+' : '−'}${s}%`
+}
+
+/** "just now", "5 min ago", "3h ago", "2 days ago". Uses the app clock. */
+export function ago(ts: number, nowMs = appNow()): string {
+  const d = Math.max(0, nowMs - ts)
+  const m = Math.floor(d / 60_000)
+  if (m < 1) return 'just now'
+  if (m < 60) return `${m} min ago`
+  const h = Math.floor(m / 60)
+  if (h < 24) return `${h}h ago`
+  const days = Math.floor(h / 24)
+  return days === 1 ? 'yesterday' : `${days} days ago`
 }

@@ -276,6 +276,9 @@ rmSync(join(root, 'wsl'), { recursive: true, force: true })
 const sessions = []
 const apiProjects = new Set(['/home/beau/projects/ml-pipeline'])
 const API_FROM = Date.parse('2026-10-05T00:00:00Z')
+const API_FROM2 = Date.parse('2026-10-09T00:00:00Z')
+// A separate deterministic choice that doesn't disturb the main random stream.
+const hashPick = (s) => parseInt(createHash('sha1').update(String(s)).digest('hex').slice(0, 8), 16) / 0xffffffff
 
 function planSession(project, start, opts = {}) {
   const id = opts.id ?? uuid(project.cwd)
@@ -286,7 +289,11 @@ function planSession(project, start, opts = {}) {
     branch: pick(project.branches),
     prompt: opts.prompt ?? pick(project.prompts),
     turns: [],
-    billing: apiProjects.has(project.cwd) && start >= API_FROM ? 'api' : 'subscription',
+    // From October, some sessions run on API credits instead of the Max limits.
+    billing:
+      start >= API_FROM && (apiProjects.has(project.cwd) || (start >= API_FROM2 && hashPick(project.cwd + start) < 0.4))
+        ? 'api'
+        : 'subscription',
     model: pickModel(era(start)),
     truncatedAt: undefined,
     limitHit: undefined
@@ -594,9 +601,13 @@ const ctxPct = (u) =>
     )
   )
 let last = 0
+const running = {}
 for (const { s, r } of all) {
   if (r.ts > NOW || (s.truncatedAt !== undefined && r.ts >= s.truncatedAt)) continue
   if (s.billing === 'api') {
+    const p = priceOf[s.model] ?? [4, 20, 8, 0.2]
+    const u = r.usage
+    running[s.id] = (running[s.id] ?? 0) + (u.input_tokens * p[0] + u.output_tokens * p[1] + u.cache_creation_input_tokens * p[2] + u.cache_read_input_tokens * p[3]) / 1e6
     if (r.ts - last < 6 * MIN) continue
     last = r.ts
     readings.push({
@@ -810,7 +821,7 @@ writeFileSync(
         {
           id: 'grant-1',
           accountId: 'acct-personal',
-          amountUsd: 100,
+          amountUsd: 40,
           receivedAt: '2026-10-04T00:00:00Z',
           expiresAt: '2027-01-04T00:00:00Z',
           note: 'Anthropic credit grant'

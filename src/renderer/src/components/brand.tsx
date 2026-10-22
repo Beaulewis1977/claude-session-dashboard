@@ -16,9 +16,9 @@ export function ClaudeMark({ className }: { className?: string }) {
           <rect
             key={deg}
             x="11"
-            y={i % 2 ? 4.2 : 2.6}
+            y={i % 2 ? 4.4 : 2.4}
             width="2"
-            height={i % 2 ? 6.4 : 8}
+            height={i % 2 ? 8.6 : 10.6}
             rx="1"
             fill="white"
             transform={`rotate(${deg} 12 12)`}

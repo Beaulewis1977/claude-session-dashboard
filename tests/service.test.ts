@@ -172,6 +172,41 @@ describe('SessionService (fixtures)', () => {
     expect(await readFile(s.originalPath, 'utf8')).toContain('"new"')
   })
 
+  it('reuses the startup cache and re-parses only changed files', async () => {
+    const first = await setup()
+    const before = first.sessions.list()
+    const changed = before.find((x) => x.sessionId.startsWith('c41e2d7a'))!
+    await appendFile(
+      changed.filePath,
+      JSON.stringify({
+        type: 'user',
+        message: { content: 'added between runs' },
+        timestamp: '2026-10-22T12:00:00Z'
+      }) + '\n'
+    )
+    // Second start with the same data folder.
+    const layout = fixturesLayout(root)
+    const platform = createFixturesPlatform(layout.fixturesDir, layout.sourcesDir)
+    const paths = appPaths(layout.dataDir)
+    const metadata = createMetadataStore(paths)
+    const settings = createSettingsStore(paths)
+    await metadata.load()
+    await settings.load()
+    const again = new SessionService(platform, paths, metadata, settings)
+    await again.start()
+    await again.idle()
+    expect(
+      again
+        .list()
+        .map((x) => x.key)
+        .sort()
+    ).toEqual(before.map((x) => x.key).sort())
+    expect(again.get(changed.key)!.userMessageCount).toBe(changed.userMessageCount + 1)
+    expect(again.searchKeys('added between runs').map((h) => h.key)).toEqual([changed.key])
+    expect(again.searchKeys('safari cookie')[0].key).toContain('7f3c9a12')
+    await stat(join(paths.dataDir, 'cache', 'sessions-v1.json'))
+  })
+
   it('builds WSL previews and exports Markdown', async () => {
     const { sessions, launcher } = await setup()
     const s = sessions.list().find((x) => x.cwd === '/root/infra scripts')!

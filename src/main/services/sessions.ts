@@ -21,7 +21,7 @@ import type {
 } from '@shared/types'
 import type { SearchHit } from '@shared/api'
 import { archiveSession } from '../core/archive'
-import type { JsonStore } from '../core/json-store'
+import { writeFileAtomic, type JsonStore } from '../core/json-store'
 import { isInside } from '../core/safe-paths'
 import type { Platform } from '../platform'
 import { SearchIndex } from './search'
@@ -29,6 +29,14 @@ import { detectSources, type ResolvedSource } from './sources'
 import { cleanMetaPatch, type AppPaths, type MetadataFile, type SettingsFile } from './store'
 
 type BaseSummary = Omit<SessionSummary, 'meta' | 'title' | 'titleSource'>
+
+const CACHE_VERSION = 1
+
+interface CacheFile {
+  version: number
+  entries: Entry[]
+  search: string
+}
 
 interface Entry {
   base: BaseSummary
@@ -217,7 +225,54 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
   }
 
   async start(): Promise<void> {
+    await this.loadCache()
     await this.rescan()
+    this.cached.clear()
+    await this.saveCache()
+  }
+
+  // ------------------------------------------------------------ startup cache
+  //
+  // Parsing every session on each start is slow for large histories, so the
+  // summaries and the search index are cached in the app's data folder and
+  // reused for files whose size and mtime haven't changed.
+
+  private cached = new Map<string, Entry>()
+  private cacheDirty = false
+  private cacheTimer: NodeJS.Timeout | undefined
+
+  private get cacheFile(): string {
+    return join(this.paths.dataDir, 'cache', `sessions-v${CACHE_VERSION}.json`)
+  }
+
+  private async loadCache(): Promise<void> {
+    try {
+      const raw = JSON.parse(await readFile(this.cacheFile, 'utf8')) as CacheFile
+      if (raw.version !== CACHE_VERSION || !this.search.load(raw.search)) return
+      for (const e of raw.entries) this.cached.set(e.base.key, e)
+    } catch {
+      // No cache yet, or unreadable: do a full scan.
+    }
+  }
+
+  async saveCache(): Promise<void> {
+    if (this.cacheTimer) clearTimeout(this.cacheTimer)
+    this.cacheTimer = undefined
+    this.cacheDirty = false
+    const entries = [...this.entries.values()].filter((e) => e.base.availability === 'live')
+    const data: CacheFile = { version: CACHE_VERSION, entries, search: this.search.toJSON() }
+    try {
+      await writeFileAtomic(this.cacheFile, JSON.stringify(data), this.paths.dataDir)
+    } catch (err) {
+      console.warn('could not write cache', err)
+    }
+  }
+
+  private markCacheDirty(): void {
+    this.cacheDirty = true
+    if (!this.cacheTimer && this.scan.phase === 'ready') {
+      this.cacheTimer = setTimeout(() => void this.saveCache(), 30_000)
+    }
   }
 
   /** Re-detect sources and sync every one of them. */
@@ -251,6 +306,8 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
     }
     await this.syncArchiveOnly()
     this.dropUnknownSources()
+    // Drop index entries (e.g. from the cache) for sessions that no longer exist.
+    for (const key of this.cached.keys()) if (!this.entries.has(key)) this.search.remove(key)
     this.scan = { phase: 'ready', done: total, total }
     this.emitChanged(true)
   }
@@ -294,9 +351,10 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
     this.emitChanged()
   }
 
-  /** Wait for pending archive copies (used on quit and in tests). */
+  /** Wait for pending archive copies and save the cache (used on quit and in tests). */
   async idle(): Promise<void> {
     await this.archiveQueue
+    if (this.cacheDirty) await this.saveCache()
   }
 
   // --------------------------------------------------------------- private
@@ -361,6 +419,26 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
     ) {
       return
     }
+    const record = this.metadata.value.archive[key]
+    const cached = this.cached.get(key)
+    if (
+      !existing &&
+      cached &&
+      cached.size === f.size &&
+      cached.mtimeMs === f.mtimeMs &&
+      cached.base.filePath === f.path &&
+      this.search.has(key)
+    ) {
+      // Unchanged since the last run: reuse the cached summary and index entry.
+      const base = {
+        ...cached.base,
+        sourceLabel: src.label,
+        archivePath: record?.archivePath ?? cached.base.archivePath
+      }
+      this.entries.set(key, { base, size: f.size, mtimeMs: f.mtimeMs })
+      this.queueArchive(src, base)
+      return
+    }
     let text: string
     try {
       text = await readFile(f.path, 'utf8')
@@ -368,7 +446,6 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
       return
     }
     const { base, searchText } = parseSessionText(text, f, src)
-    const record = this.metadata.value.archive[key]
     if (record) base.archivePath = record.archivePath
     this.entries.set(key, { base, size: f.size, mtimeMs: f.mtimeMs })
     this.index(base, searchText)
@@ -412,6 +489,7 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
     if (!rec) {
       this.entries.delete(key)
       this.search.remove(key)
+      this.markCacheDirty()
       this.emitChanged()
       return
     }
@@ -487,6 +565,7 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
   }
 
   private index(base: BaseSummary, searchText: string): void {
+    this.markCacheDirty()
     const s = this.withMeta(base)
     this.search.upsert({
       id: base.key,

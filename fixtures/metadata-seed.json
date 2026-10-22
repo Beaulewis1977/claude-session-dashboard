@@ -1,0 +1,16 @@
+{
+  "sessions": {
+    "7f3c9a12-4b8e-4d21-9c6a-1e2f3a4b5c6d": {
+      "name": "Safari login loop",
+      "description": "Cookie path was /auth so /dashboard never saw it.\nFixed path + SameSite, added a regression test.",
+      "tags": ["bug", "auth"]
+    },
+    "e9a1b2c3-d4e5-4f60-8172-839405a6b7c8": {
+      "tags": ["api", "feature"]
+    },
+    "a0b1c2d3-e4f5-4a6b-9c8d-7e6f5a4b3c2d": {
+      "description": "Nightly postgres backup timer. Still need to test restore.",
+      "tags": ["ops"]
+    }
+  }
+}

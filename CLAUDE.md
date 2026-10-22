@@ -13,6 +13,8 @@ This repo is built in a Claude Code cloud session (Linux). The app runs on **Win
 3. The app has no "delete session" feature. "Hide" is fine (it's a metadata flag only).
 4. No network calls. Everything stays local.
 
+**Phase 5 (usage, limits, API credits, model tracking):** see [`docs/PHASE-5-USAGE-TRACKING.md`](docs/PHASE-5-USAGE-TRACKING.md). It adds two narrow, opt-in exceptions to the rules above, each allowed only after I explicitly approve it in the app: (a) editing the `statusLine` key in Claude's `settings.json` (backup first, change nothing else, with an undo that restores the previous value exactly), and (b) read-only reporting calls to `https://api.anthropic.com` once I've added an API key.
+
 ---
 
 ## Stack

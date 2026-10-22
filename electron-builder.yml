@@ -1,0 +1,28 @@
+appId: com.beaulewis.claude-session-dashboard
+productName: Claude Session Dashboard
+copyright: Copyright © 2026 Beau Lewis
+directories:
+  output: release/${version}
+  buildResources: resources
+files:
+  - out/**
+  - package.json
+  - '!**/*.map'
+npmRebuild: false
+win:
+  icon: resources/icon.png
+  target:
+    - target: nsis
+      arch: [x64]
+    - target: portable
+      arch: [x64]
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: Claude Session Dashboard
+  artifactName: ClaudeSessionDashboard-Setup-${version}.${ext}
+portable:
+  artifactName: ClaudeSessionDashboard-Portable-${version}.${ext}

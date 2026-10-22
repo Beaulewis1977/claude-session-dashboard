@@ -1,0 +1,7 @@
+out
+dist
+release
+node_modules
+fixtures
+.fixtures-data
+CLAUDE.md

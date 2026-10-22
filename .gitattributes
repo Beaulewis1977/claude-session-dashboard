@@ -1,0 +1,6 @@
+* text=auto eol=lf
+*.jsonl text eol=lf
+*.bin binary
+*.png binary
+*.ico binary
+fixtures/**/*.utf16 binary

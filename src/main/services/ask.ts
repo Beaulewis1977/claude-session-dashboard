@@ -17,6 +17,7 @@ import {
   type AskData,
   type AskHistoryItem
 } from '@shared/ask'
+import { now } from '@shared/clock'
 import { JsonStore } from '../core/json-store'
 
 export interface RunResult {
@@ -207,9 +208,9 @@ export class AskService {
   async preview(question: string): Promise<{ id: string; prompt: string; bytes: number }> {
     const prompt = buildAskPrompt(question, await this.deps.data())
     const id = randomBytes(8).toString('hex')
-    const now = Date.now()
-    for (const [k, v] of this.previews) if (now - v.at > PREVIEW_TTL) this.previews.delete(k)
-    this.previews.set(id, { question, prompt, at: now })
+    const t = Date.now()
+    for (const [k, v] of this.previews) if (t - v.at > PREVIEW_TTL) this.previews.delete(k)
+    this.previews.set(id, { question, prompt, at: t })
     return { id, prompt, bytes: Buffer.byteLength(prompt) }
   }
 
@@ -229,7 +230,7 @@ export class AskService {
     const started = Date.now()
     const base = {
       id: previewId,
-      at: started,
+      at: now(),
       question: p.question,
       sentBytes: Buffer.byteLength(p.prompt)
     }
@@ -292,7 +293,7 @@ function sampleAnswer(q: string): string {
     '',
     '- Your 5-hour windows since Oct 1 buy about **0.8×** the work per 1% of your September baseline.',
     "- That's a lasting dip, but it stays above the flag line (0.67×), so the verdict is **Normal**.",
-    '- The weekly window shows the same ~20% dip. Opus 5.5 became your main model on Sep 29, which shifts the token mix.',
+    '- Opus 5.5 became your main model on Sep 29, which shifts the token mix; one price per model family keeps that from reading as a cut.',
     '',
     'Confidence: medium — 40+ windows on each side, little usage from elsewhere.'
   ].join('\n')

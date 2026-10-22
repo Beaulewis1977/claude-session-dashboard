@@ -29,7 +29,9 @@ import { Popover, PopoverAnchor, PopoverContent } from '../ui/popover'
 import { BridgeDialog } from '../settings/BridgeDialog'
 import { CreditsHeroCard, LimitCard } from './Hero'
 import { MainChart, ModelShare, SummaryCards, TopSessions } from './Overview'
-import { CapacityChange, CreditsTab, LimitHistoryTab, RawTableTab } from './Tabs'
+import { CreditsTab, LimitHistoryTab, RawTableTab } from './Tabs'
+import { LimitHealthCard, WhereItWent } from './LimitHealth'
+import { PaceAdviceLine } from './Hero'
 import { TrendsTab } from './Trends'
 import { AskClaudePanel } from './AskClaude'
 
@@ -291,8 +293,14 @@ export function UsageView() {
           )}
         </div>
 
-        <div className="mt-4">
-          <CapacityChange limits={limits} />
+        {limits?.advice && <PaceAdviceLine advice={limits.advice} />}
+
+        <div
+          data-shot="health"
+          className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(300px,1fr)]"
+        >
+          <LimitHealthCard limits={limits} onAsk={() => setAsk(true)} />
+          <WhereItWent limits={limits} />
         </div>
 
         {/* 2. Summary cards */}

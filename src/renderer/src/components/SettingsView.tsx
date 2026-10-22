@@ -31,6 +31,7 @@ import { SkipPermissionsWarning } from './ResumeDialog'
 import { AccountsSettings } from './settings/AccountsSettings'
 import { LiveLimitsSettings } from './settings/LiveLimitsSettings'
 import { UsageSettings } from './settings/UsageSettings'
+import { HealthSettings } from './settings/HealthSettings'
 
 export function Section({
   title,
@@ -238,6 +239,7 @@ export function SettingsView() {
         <AccountsSettings update={update} />
 
         <UsageSettings update={update} />
+        <HealthSettings update={update} />
 
         <Section
           title="Scan sources"

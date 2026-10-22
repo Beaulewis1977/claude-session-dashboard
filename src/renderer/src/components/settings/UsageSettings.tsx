@@ -188,7 +188,7 @@ export function UsageSettings({ update }: { update: (p: Partial<AppSettings>) =>
         <div className="mb-1.5 flex items-center gap-1.5 text-[13px] font-medium">
           Capacity weights
           <Tooltip
-            content="How much each token type counts toward the implied-capacity estimate. Defaults follow API price ratios: output and cache writes cost more than input and cache reads."
+            content="How much each token type counts toward the older implied-capacity estimate (weighted tokens ÷ %). Limit health uses the price table instead."
             side="right"
           >
             <Info className="size-3.5 text-subtle-foreground" aria-label="About capacity weights" />

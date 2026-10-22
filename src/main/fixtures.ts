@@ -184,6 +184,17 @@ export async function seedFixtureAccounts(
   })
   settings.update((s) => {
     s.projectBilling = { ...seed.projectBilling }
+    // Limit health: normal dates before the sample data's Oct 1 cut, and one
+    // time marked as "used Claude elsewhere".
+    s.health = { ...s.health, baselineFrom: '2026-08-03', baselineTo: '2026-09-26' }
+    s.elsewhere = [
+      {
+        id: 'sample-elsewhere',
+        from: Date.parse('2026-10-18T17:30:00Z'),
+        to: Date.parse('2026-10-18T19:00:00Z'),
+        note: 'claude.ai on my phone'
+      }
+    ]
   })
   await Promise.all([accounts.flush(), metadata.flush(), settings.flush()])
 }

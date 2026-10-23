@@ -221,10 +221,17 @@ export function UsageView() {
   const firstEnv = limits?.envs.find((e) => !e.installed && !e.unavailable)
   const noBridge = limits && !limits.hasBridgeData && !limits.envs.some((e) => e.installed)
   const hasCredits = !!credits?.summaries.some((s) => s.granted > 0 || s.spent > 0)
+  // On a phone (the companion), PC-only actions are hidden.
+  const remote = api.remote === true
 
   return (
     <div className="h-full overflow-y-auto bg-surface" data-scroll="usage">
-      <div className="mx-auto max-w-[1180px] px-6 pt-7 pb-16 lg:px-8">
+      <div
+        className={cn(
+          'mx-auto max-w-[1180px] pt-7 pb-16 lg:px-8',
+          remote ? 'px-4 pt-4 pb-6' : 'px-6'
+        )}
+      >
         <div className="flex flex-wrap items-end gap-3">
           <div className="min-w-0 flex-1">
             <h1 className="text-[20px] font-semibold tracking-[-0.015em]">Usage &amp; limits</h1>
@@ -233,22 +240,26 @@ export function UsageView() {
               limits
             </p>
           </div>
-          <Button variant="outline" size="sm" onClick={() => setAsk(true)}>
-            <Sparkles className="text-primary" /> Ask Claude
-          </Button>
-          <Button variant="ghost" size="sm" onClick={() => void api.toggleMiniMeter()}>
-            <PictureInPicture2 /> Mini meter
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={async () => {
-              const res = await api.exportUsageCsv(query, false)
-              if (res.saved) toast.success('Usage exported', { description: res.path })
-            }}
-          >
-            <Download /> Export CSV
-          </Button>
+          {!remote && (
+            <>
+              <Button variant="outline" size="sm" onClick={() => setAsk(true)}>
+                <Sparkles className="text-primary" /> Ask Claude
+              </Button>
+              <Button variant="ghost" size="sm" onClick={() => void api.toggleMiniMeter()}>
+                <PictureInPicture2 /> Mini meter
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={async () => {
+                  const res = await api.exportUsageCsv(query, false)
+                  if (res.saved) toast.success('Usage exported', { description: res.path })
+                }}
+              >
+                <Download /> Export CSV
+              </Button>
+            </>
+          )}
         </div>
 
         {noBridge && firstEnv && (
@@ -262,9 +273,11 @@ export function UsageView() {
                 Until then, the 5-hour gauge is an estimate from your session logs.
               </span>
             </div>
-            <Button variant="primary" size="sm" onClick={() => setBridge(firstEnv)}>
-              Enable live limits
-            </Button>
+            {!remote && (
+              <Button variant="primary" size="sm" onClick={() => setBridge(firstEnv)}>
+                Enable live limits
+              </Button>
+            )}
           </div>
         )}
 
@@ -274,8 +287,8 @@ export function UsageView() {
           className={cn(
             'mt-5 grid gap-4',
             hasCredits
-              ? 'grid-cols-[repeat(auto-fit,minmax(300px,1fr))]'
-              : 'grid-cols-[repeat(auto-fit,minmax(340px,1fr))]'
+              ? 'grid-cols-[repeat(auto-fit,minmax(min(300px,100%),1fr))]'
+              : 'grid-cols-[repeat(auto-fit,minmax(min(340px,100%),1fr))]'
           )}
         >
           <LimitCard
@@ -299,7 +312,10 @@ export function UsageView() {
           data-shot="health"
           className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(300px,1fr)]"
         >
-          <LimitHealthCard limits={limits} onAsk={() => setAsk(true)} />
+          <LimitHealthCard
+            limits={limits}
+            onAsk={() => (remote ? toast('Ask Claude runs in the app on your PC') : setAsk(true))}
+          />
           <WhereItWent limits={limits} />
         </div>
 
@@ -345,7 +361,7 @@ export function UsageView() {
             role="tablist"
             aria-label="Details"
             data-shot="tabs"
-            className="mb-4 flex items-center gap-1 border-b border-border"
+            className="mb-4 flex items-center gap-1 overflow-x-auto border-b border-border"
           >
             {(
               [
@@ -371,7 +387,7 @@ export function UsageView() {
                 {label}
               </button>
             ))}
-            <span className="ml-auto pb-2">
+            <span className={cn('ml-auto pb-2', remote && 'hidden')}>
               <Button
                 variant="ghost"
                 size="xs"
@@ -395,8 +411,10 @@ export function UsageView() {
           )}
         </div>
       </div>
-      {bridge && <BridgeDialog env={bridge} action="install" onClose={() => setBridge(null)} />}
-      <AskClaudePanel open={ask} onClose={() => setAsk(false)} />
+      {bridge && !remote && (
+        <BridgeDialog env={bridge} action="install" onClose={() => setBridge(null)} />
+      )}
+      {!remote && <AskClaudePanel open={ask} onClose={() => setAsk(false)} />}
     </div>
   )
 }

@@ -37,6 +37,11 @@ export default tseslint.config(
     }
   },
   {
+    // The phone companion's service worker.
+    files: ['src/renderer/public/**/*.js'],
+    languageOptions: { globals: { ...globals.serviceworker } }
+  },
+  {
     // shadcn-style primitives export their variant helpers next to the component.
     files: ['src/renderer/src/components/ui/**/*.tsx'],
     rules: { 'react-refresh/only-export-components': 'off' }

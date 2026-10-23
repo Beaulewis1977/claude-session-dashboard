@@ -378,7 +378,8 @@ export const Transcript = memo(function Transcript({
   cwd,
   findQuery,
   onBranch,
-  marks
+  marks,
+  className
 }: {
   messages: ChatMessage[]
   cwd?: string
@@ -386,6 +387,8 @@ export const Transcript = memo(function Transcript({
   onBranch?: OnBranch
   /** Branch markers, keyed by the message they follow. */
   marks?: Map<string, BranchMark[]>
+  /** Overrides for the outer padding (narrower on a phone). */
+  className?: string
 }) {
   const turns = useMemo(() => groupTurns(messages), [messages])
   // Markers go after the turn that holds their message.
@@ -420,7 +423,7 @@ export const Transcript = memo(function Transcript({
     )
   }
   return (
-    <div className="mx-auto max-w-[860px] space-y-5 px-8 pt-6 pb-24">
+    <div className={cn('mx-auto max-w-[860px] space-y-5 px-8 pt-6 pb-24', className)}>
       {turns.map((t) => {
         const ts = turnTime(t)
         const showDay = dayStarts.has(t.id) && ts

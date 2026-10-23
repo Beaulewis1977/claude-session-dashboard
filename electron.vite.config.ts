@@ -30,7 +30,13 @@ export default defineConfig({
     },
     plugins: [react(), tailwindcss()],
     build: {
-      rollupOptions: { input: resolve(import.meta.dirname, 'src/renderer/index.html') }
+      rollupOptions: {
+        input: {
+          index: resolve(import.meta.dirname, 'src/renderer/index.html'),
+          // The phone companion (served by the main process, see src/main/mobile).
+          mobile: resolve(import.meta.dirname, 'src/renderer/mobile.html')
+        }
+      }
     }
   }
 })

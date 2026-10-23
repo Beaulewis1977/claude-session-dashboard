@@ -18,6 +18,8 @@ const SAFARI = '7f3c9a12-4b8e-4d21-9c6a-1e2f3a4b5c6d'
 const FIXED_ID = '3a3a3a3a-3a3a-4a3a-8a3a-3a3a3a3a3a3a'
 
 let root: string
+/** Background archive copies to finish before cleanup (Windows won't remove a busy folder). */
+let busy: SessionService[] = []
 
 async function setup() {
   await cp(FIXTURES, join(root, 'fixtures'), { recursive: true })
@@ -31,6 +33,7 @@ async function setup() {
   await settings.load()
   await seedFixtureData(root, paths.archiveDir, metadata)
   const sessions = new SessionService(platform, paths, metadata, settings)
+  busy.push(sessions)
   const lineage = new LineageService(sessions, 1)
   const launcher = new Launcher(platform, sessions, () => settings.value.terminal)
   await sessions.start()
@@ -47,6 +50,8 @@ beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), 'csd-branch-'))
 })
 afterEach(async () => {
+  await Promise.all(busy.map((b) => b.idle().catch(() => undefined)))
+  busy = []
   await rm(root, { recursive: true, force: true })
 })
 

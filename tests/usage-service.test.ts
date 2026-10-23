@@ -12,6 +12,8 @@ import { DEFAULT_PRICES } from '@shared/usage/pricing'
 import { FIXTURES, line } from './helpers'
 
 let root: string
+/** Services with background work (archive copies, usage files) to finish before cleanup. */
+let busy: { idle(): Promise<void> }[] = []
 
 async function setup(usageHistory = false) {
   await cp(FIXTURES, join(root, 'fixtures'), { recursive: true })
@@ -25,13 +27,17 @@ async function setup(usageHistory = false) {
   await settings.load()
   await seedFixtureData(root, paths.archiveDir, metadata)
   const sessions = new SessionService(platform, paths, metadata, settings)
+  busy.push(sessions)
   await sessions.start()
   await sessions.idle()
-  const make = () =>
-    new UsageService(sessions, usagePaths(paths.dataDir, paths.archiveDir), () => ({
+  const make = () => {
+    const usage = new UsageService(sessions, usagePaths(paths.dataDir, paths.archiveDir), () => ({
       weekStart: 'monday',
       prices: DEFAULT_PRICES
     }))
+    busy.push(usage)
+    return usage
+  }
   return { sessions, layout, paths, make }
 }
 
@@ -39,6 +45,10 @@ beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), 'csd-usage-'))
 })
 afterEach(async () => {
+  // fileChanged() queues an archive copy in the background: let it finish
+  // before the folder goes, or Windows can refuse to remove it (ENOTEMPTY).
+  await Promise.all(busy.map((b) => b.idle().catch(() => undefined)))
+  busy = []
   await rm(root, { recursive: true, force: true })
 })
 

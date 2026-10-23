@@ -6,8 +6,9 @@
 // estimates and pace. Never session titles, project names, prompts or any
 // conversation text. The prompt goes to the CLI on stdin, never as an
 // argument, and the CLI runs with no tools, in safe mode with no settings
-// files (so no CLAUDE.md, memory or hooks are added), and only after
-// `claude auth status` confirms it would use the Claude subscription.
+// files (so no CLAUDE.md, memory or hooks are added), with an allowlisted
+// environment, and only after `claude auth status` confirms it would use the
+// Claude subscription.
 
 import { ASK_MARKER } from './source-label'
 import type { HealthReport, PlanChange } from './usage/health'
@@ -44,19 +45,81 @@ export const ASK_ARGS = [
   ''
 ]
 
-/** Environment variables that would bill an API key or another provider instead of the subscription. */
-const BILLING_VARS = ['ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN', 'ANTHROPIC_BASE_URL']
+/**
+ * The CLI's environment is built from this allowlist, never from the app's own
+ * environment minus a few names: what Windows, WSL and the CLI need to start,
+ * networking (a proxy or a company CA routes traffic but can't change the
+ * account it's billed to), and the subscription login's own settings. API keys,
+ * custom headers, gateway tokens, base URLs, provider switches and anything a
+ * later Claude Code version adds never reach it.
+ */
+export const ASK_ENV_ALLOW = [
+  // Windows
+  'SYSTEMROOT',
+  'SYSTEMDRIVE',
+  'WINDIR',
+  'COMSPEC',
+  'PATHEXT',
+  'TEMP',
+  'TMP',
+  'APPDATA',
+  'LOCALAPPDATA',
+  'USERPROFILE',
+  'HOMEDRIVE',
+  'HOMEPATH',
+  'USERNAME',
+  'USERDOMAIN',
+  'COMPUTERNAME',
+  'PROGRAMDATA',
+  'PROGRAMFILES',
+  'PROGRAMFILES(X86)',
+  'PROGRAMW6432',
+  'COMMONPROGRAMFILES',
+  'COMMONPROGRAMFILES(X86)',
+  'COMMONPROGRAMW6432',
+  'PROCESSOR_ARCHITECTURE',
+  'NUMBER_OF_PROCESSORS',
+  'OS',
+  // Linux (WSL)
+  'HOME',
+  'USER',
+  'LOGNAME',
+  'SHELL',
+  'TMPDIR',
+  'XDG_CONFIG_HOME',
+  'XDG_DATA_HOME',
+  'XDG_CACHE_HOME',
+  'XDG_RUNTIME_DIR',
+  // Both
+  'PATH',
+  'LANG',
+  'LC_ALL',
+  'LC_CTYPE',
+  'TERM',
+  'HTTP_PROXY',
+  'HTTPS_PROXY',
+  'NO_PROXY',
+  'NODE_EXTRA_CA_CERTS',
+  'SSL_CERT_FILE',
+  // The subscription login (`claude setup-token`), where it's stored, and Git Bash on Windows.
+  'CLAUDE_CODE_OAUTH_TOKEN',
+  'CLAUDE_CONFIG_DIR',
+  'CLAUDE_CODE_GIT_BASH_PATH'
+]
 
-export function isBillingOverride(name: string): boolean {
-  const n = name.toUpperCase()
-  return BILLING_VARS.includes(n) || n.startsWith('CLAUDE_CODE_USE_')
+const ALLOW = new Set(ASK_ENV_ALLOW)
+
+/** May this variable reach the CLI? (Windows names are case-insensitive.) */
+export function askEnvAllowed(name: string): boolean {
+  return ALLOW.has(name.toUpperCase())
 }
 
 /**
  * WSL runs a login shell (so `claude` is on PATH), and its profile can export
- * those variables again. This clears them after the profile has loaded.
+ * anything. The CLI is then started with `env -i`: an empty environment plus
+ * the allowed variables that are set, after the profile has loaded.
  */
-export const WSL_CLEAR_BILLING = `for v in $(compgen -e); do case "$v" in ${BILLING_VARS.join('|')}|CLAUDE_CODE_USE_*) unset "$v";; esac; done`
+export const WSL_ENV_ALLOWLIST = `a=(); for v in ${ASK_ENV_ALLOW.filter((v) => /^[A-Z_][A-Z0-9_]*$/.test(v)).join(' ')}; do [ -n "\${!v+x}" ] && a+=("$v=\${!v}"); done; exec env -i "\${a[@]}"`
 
 export interface AskCli {
   /** "native": a claude install on this OS (Windows); "wsl": inside a WSL distro. */
@@ -78,7 +141,7 @@ export interface AskCommand {
 function claudeCommand(cli: AskCli, claudeArgs: string[]): AskCommand {
   if (cli.kind === 'wsl') {
     const inner = [
-      `${WSL_CLEAR_BILLING};`,
+      `${WSL_ENV_ALLOWLIST}`,
       'claude',
       ...claudeArgs.map((a) => (a === '' ? '""' : a))
     ].join(' ')

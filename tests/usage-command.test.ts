@@ -170,7 +170,7 @@ describe('/usage output', () => {
       timestamp: ts,
       message: { role: 'user', content }
     })
-    const readings = (events: object[]) =>
+    const readings = (events: Parameters<typeof analyzeUsage>[0]) =>
       analyzeUsage(events, {
         key: 'windows:s1',
         project: 'x',

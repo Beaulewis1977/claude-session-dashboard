@@ -1,9 +1,11 @@
+import { execFileSync, spawnSync } from 'node:child_process'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
   ASK_ARGS,
+  ASK_ENV_ALLOW,
   ASK_MARKER,
   askCommand,
   askQuestionOf,
@@ -12,7 +14,7 @@ import {
   buildAskPrompt,
   parseAskOutput,
   subscriptionCheck,
-  WSL_CLEAR_BILLING,
+  WSL_ENV_ALLOWLIST,
   type AskCli,
   type AskCommand,
   type SubscriptionCheck
@@ -154,7 +156,7 @@ describe('Ask Claude prompt', () => {
         '--',
         'bash',
         '-lic',
-        `${WSL_CLEAR_BILLING}; claude -p --output-format json --tools "" --strict-mcp-config --safe-mode --setting-sources ""`
+        `${WSL_ENV_ALLOWLIST} claude -p --output-format json --tools "" --strict-mcp-config --safe-mode --setting-sources ""`
       ],
       shell: false
     })
@@ -328,46 +330,88 @@ describe('Ask Claude: subscription only, and nothing extra sent', () => {
   it('checks with `claude auth status` in the same environment as the question', () => {
     const wsl = authStatusCommand({ kind: 'wsl', distro: 'Ubuntu', label: 'WSL' })
     const inner = wsl.args[wsl.args.length - 1]
-    expect(inner).toBe(`${WSL_CLEAR_BILLING}; claude auth status`)
+    expect(inner).toBe(`${WSL_ENV_ALLOWLIST} claude auth status`)
     expect(authStatusCommand({ kind: 'native', path: 'claude.exe', label: 'W' }).args).toEqual([
       'auth',
       'status'
     ])
   })
 
-  it('removes API keys, gateways and provider switches from the environment', () => {
+  it('passes the CLI only allowlisted variables: no keys, headers, gateways or providers', () => {
     const env = childEnv({
-      PATH: '/bin',
+      Path: 'C:\\Windows',
+      SystemRoot: 'C:\\Windows',
       USERPROFILE: 'C:\\Users\\beau',
+      HTTPS_PROXY: 'http://proxy:8080',
+      CLAUDE_CODE_OAUTH_TOKEN: 'subscription-token',
+      CLAUDE_CONFIG_DIR: 'C:\\Users\\beau\\.claude',
       ANTHROPIC_API_KEY: 'sk-ant-api',
       ANTHROPIC_AUTH_TOKEN: 't',
       ANTHROPIC_BASE_URL: 'https://gateway',
+      // The re-review's case: headers that carry another credential.
+      ANTHROPIC_CUSTOM_HEADERS: 'Authorization: Bearer other\nX-Api-Key: sk-ant-api',
+      ANTHROPIC_FOUNDRY_API_KEY: 'f',
+      ANTHROPIC_UNIX_SOCKET: '/tmp/s',
+      CLAUDE_CODE_GATEWAY_TOKEN: 'g',
+      CLAUDE_CODE_API_KEY_FILE_DESCRIPTOR: '3',
       CLAUDE_CODE_USE_BEDROCK: '1',
-      CLAUDE_CODE_USE_VERTEX: '1',
       Claude_Code_Use_Foundry: '1',
-      CLAUDE_CODE_OAUTH_TOKEN: 'subscription-token'
+      SOMETHING_FUTURE: 'x'
     })
     expect(env).toEqual({
-      PATH: '/bin',
+      Path: 'C:\\Windows',
+      SystemRoot: 'C:\\Windows',
       USERPROFILE: 'C:\\Users\\beau',
-      CLAUDE_CODE_OAUTH_TOKEN: 'subscription-token'
+      HTTPS_PROXY: 'http://proxy:8080',
+      CLAUDE_CODE_OAUTH_TOKEN: 'subscription-token',
+      CLAUDE_CONFIG_DIR: 'C:\\Users\\beau\\.claude'
     })
   })
 
-  it('clears the same variables in WSL after the login profile has loaded', () => {
-    // bash -lic runs the profile first, then this command: the clear-out comes first in it.
+  it('in WSL, starts the CLI with only the allowlist, after the login profile has loaded', () => {
+    // bash -lic runs the profile first, then this command: env -i drops everything else.
     const cmd = askCommand({ kind: 'wsl', label: 'WSL' })
     const inner = cmd.args[cmd.args.length - 1]
-    expect(inner.indexOf(WSL_CLEAR_BILLING)).toBe(0)
-    expect(inner.indexOf('claude -p')).toBeGreaterThan(WSL_CLEAR_BILLING.length)
-    for (const v of [
-      'ANTHROPIC_API_KEY',
-      'ANTHROPIC_AUTH_TOKEN',
-      'ANTHROPIC_BASE_URL',
-      'CLAUDE_CODE_USE_*'
-    ])
-      expect(WSL_CLEAR_BILLING).toContain(v)
+    expect(inner.startsWith(WSL_ENV_ALLOWLIST)).toBe(true)
+    expect(WSL_ENV_ALLOWLIST).toContain('exec env -i')
+    expect(WSL_ENV_ALLOWLIST).not.toMatch(/ANTHROPIC_/)
   })
+
+  it.skipIf(spawnSync('bash', ['--version']).status !== 0)(
+    'the WSL snippet really drops a hostile environment (run in bash)',
+    () => {
+      const out = execFileSync('bash', ['-c', `${WSL_ENV_ALLOWLIST} env`], {
+        encoding: 'utf8',
+        env: {
+          PATH: process.env.PATH,
+          HOME: '/home/beau',
+          LANG: 'en_US.UTF-8 with spaces',
+          CLAUDE_CODE_OAUTH_TOKEN: 'subscription-token',
+          ANTHROPIC_CUSTOM_HEADERS: 'Authorization: Bearer other',
+          ANTHROPIC_API_KEY: 'sk-ant-api',
+          CLAUDE_CODE_USE_VERTEX: '1',
+          CLAUDE_CODE_GATEWAY_TOKEN: 'g'
+        }
+      })
+      const names = out
+        .trim()
+        .split('\n')
+        .map((l) => l.split('=')[0])
+      // Only allowlisted names (bash may add SHELL/TERM itself, both allowed).
+      expect(names.filter((n) => !ASK_ENV_ALLOW.includes(n))).toEqual([])
+      expect(names).toEqual(
+        expect.arrayContaining(['CLAUDE_CODE_OAUTH_TOKEN', 'HOME', 'LANG', 'PATH'])
+      )
+      for (const bad of [
+        'ANTHROPIC_CUSTOM_HEADERS',
+        'ANTHROPIC_API_KEY',
+        'CLAUDE_CODE_USE_VERTEX',
+        'CLAUDE_CODE_GATEWAY_TOKEN'
+      ])
+        expect(names).not.toContain(bad)
+      expect(out).toContain('LANG=en_US.UTF-8 with spaces')
+    }
+  )
 })
 
 describe('Ask Claude service: billing check and cancelling', () => {
@@ -499,5 +543,50 @@ describe('Ask Claude service: billing check and cancelling', () => {
     })
     const p = await ask.preview('Have my limits dropped?')
     expect((await ask.run(p.id)).error).toMatch(/too old .*claude update/)
+  })
+
+  it('Cancel during the subscription check stops that process and returns at once', async () => {
+    let authCancelled = 0
+    let questions = 0
+    const ask = new AskService({
+      store: createAskStore(dir),
+      dataDir: dir,
+      data: async () => data(),
+      timeoutSec: () => 60,
+      findCli: async () => cli,
+      runner: (cmd) => {
+        if (!cmd.args.includes('auth')) {
+          questions++
+          return { done: Promise.resolve(ok), cancel: () => undefined }
+        }
+        // A status check that would take its full 30 s.
+        return { done: new Promise<RunResult>(() => undefined), cancel: () => authCancelled++ }
+      }
+    })
+    const p = await ask.preview('Have my limits dropped?')
+    const pending = ask.run(p.id)
+    await new Promise((r) => setTimeout(r, 10))
+    ask.cancel(p.id)
+    const t = Date.now()
+    expect(await pending).toMatchObject({ ok: false, error: 'Cancelled.' })
+    expect(Date.now() - t).toBeLessThan(1000)
+    expect(authCancelled).toBe(1)
+    expect(questions).toBe(0)
+  })
+
+  it('Cancel returns at once even while Claude Code is still being looked for', async () => {
+    const ask = new AskService({
+      store: createAskStore(dir),
+      dataDir: dir,
+      data: async () => data(),
+      timeoutSec: () => 60,
+      findCli: () => new Promise<AskCli | undefined>(() => undefined),
+      runner: () => ({ done: Promise.resolve(ok), cancel: () => undefined })
+    })
+    const p = await ask.preview('Have my limits dropped?')
+    const pending = ask.run(p.id)
+    await new Promise((r) => setTimeout(r, 10))
+    ask.cancel(p.id)
+    expect(await pending).toMatchObject({ ok: false, error: 'Cancelled.' })
   })
 })

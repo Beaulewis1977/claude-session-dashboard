@@ -403,13 +403,15 @@ dropped?", "Why did I hit my limit Tuesday?" or "Compare this month to last mont
   request, and `--setting-sources ""` loads none of your settings files, so nothing beyond the
   previewed text is added. (Settings your organization manages still apply.) The question and the
   data go in on **stdin**, never on the command line.
-- **Only on your Claude subscription.** API keys, gateway URLs and provider switches
-  (`ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_BASE_URL`, `CLAUDE_CODE_USE_*`) are
-  removed from its environment, in WSL after your login profile has loaded. Then
-  `claude auth status`, run in that same environment, must confirm the subscription before the
-  question is sent. If Claude Code would use an API key, Bedrock, Vertex or anything else billed
-  separately, Ask Claude stops and says why. An older Claude Code that doesn't know the safe-mode
-  flags is asked to update instead of running without them.
+- **Only on your Claude subscription.** Claude Code gets a minimal environment built from an
+  allowlist: what Windows, WSL and Node need to start, proxy and certificate settings, and your
+  subscription login (`CLAUDE_CODE_OAUTH_TOKEN`, `CLAUDE_CONFIG_DIR`). API keys, custom headers,
+  gateway tokens, base URLs and provider switches (and anything a later Claude Code adds) never
+  reach it. In WSL the same allowlist is applied with `env -i` after your login profile has
+  loaded. Then `claude auth status`, run in that same environment, must confirm the subscription
+  before the question is sent. If Claude Code would use an API key, Bedrock, Vertex or anything
+  else billed separately, Ask Claude stops and says why. An older Claude Code that doesn't know the
+  safe-mode flags is asked to update instead of running without them.
 - **Only aggregated numbers are sent**, as compact JSON: window scores and ratios, the baseline,
   plan history, pace, daily and monthly token totals, the dates models and Claude Code versions
   first appeared, untracked-usage estimates and when limits were reached. No session titles,
@@ -704,9 +706,13 @@ These are choices I made where the spec left room, or had to deviate:
   or an answer it can't read, is refused rather than guessed. A confirmed check is reused for 5
   minutes. Because `auth status` can't skip settings files, a user-level `apiKeyHelper` is refused
   too, even though the question itself wouldn't load it: the safe side for billing.
-- **Cancel** works from the moment you click Send: while Claude Code is being found (which can
-  take up to 20 seconds in WSL), during the subscription check, and while the answer is being
-  written. Nothing is started after a cancel.
+- **Cancel** works from the moment you click Send and returns at once: while Claude Code is being
+  found (which can take up to 20 seconds in WSL), during the subscription check (whose process is
+  stopped too), and while the answer is being written. Nothing is started after a cancel.
+- **Environment allowlist rather than a blocklist:** a review found that removing named API
+  variables missed `ANTHROPIC_CUSTOM_HEADERS`, which can carry another credential. Claude Code
+  reads many such variables (gateway tokens, key file descriptors, base URLs), so the environment
+  is now built only from what's needed.
 - **Implied capacity chart** in the Limit history tab was replaced by the "Used Claude elsewhere"
   list, since the Limit health card supersedes it.
 - **The claude.ai importer** has its own small zip reader (Node's zlib), so no new dependency.

@@ -13,7 +13,7 @@ import {
   askCommand,
   authStatusCommand,
   buildAskPrompt,
-  isBillingOverride,
+  askEnvAllowed,
   parseAskOutput,
   subscriptionCheck,
   tooOldForAsk,
@@ -61,13 +61,30 @@ const MAX_HISTORY = 200
 const PREVIEW_TTL = 30 * 60_000
 
 /**
- * Environment for the CLI: the subscription, not an API key, a gateway or a
- * cloud provider that happens to be configured in the app's environment.
+ * Environment for the CLI: only the allowlisted variables (see ASK_ENV_ALLOW),
+ * so no API key, custom header, gateway or provider setting from the app's own
+ * environment can change how the request is authenticated or billed.
  */
 export function childEnv(base: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
-  const env = { ...base }
-  for (const k of Object.keys(env)) if (isBillingOverride(k)) delete env[k]
+  const env: NodeJS.ProcessEnv = {}
+  for (const [k, v] of Object.entries(base)) if (v !== undefined && askEnvAllowed(k)) env[k] = v
   return env
+}
+
+/** A question from Send until it's answered; Cancel works at every step. */
+interface AskRequest {
+  cancelled: boolean
+  /** The process running now (the subscription check, then the question). */
+  handle?: RunHandle
+  /** Settles when Cancel is clicked. */
+  stopped: Promise<'cancelled'>
+  stop: () => void
+}
+
+function newRequest(): AskRequest {
+  let stop: () => void = () => undefined
+  const stopped = new Promise<'cancelled'>((resolve) => (stop = () => resolve('cancelled')))
+  return { cancelled: false, stopped, stop }
 }
 
 /** Spawns the CLI, writes the prompt to stdin, and kills it on timeout or cancel. */
@@ -193,7 +210,7 @@ export class AskService {
   private cli: Promise<AskCli | undefined> | undefined
   private previews = new Map<string, { question: string; prompt: string; at: number }>()
   /** Questions being answered, from the moment Send is clicked (so Cancel always works). */
-  private running = new Map<string, { cancelled: boolean; handle?: RunHandle }>()
+  private running = new Map<string, AskRequest>()
   private authOk = new Map<string, number>()
 
   constructor(private readonly deps: AskServiceDeps) {}
@@ -235,23 +252,38 @@ export class AskService {
     if (!r) return
     r.cancelled = true
     r.handle?.cancel()
+    r.stop()
+  }
+
+  /** Wait for `p`, or stop waiting as soon as the request is cancelled. */
+  private until<T>(req: AskRequest, p: Promise<T>): Promise<T | 'cancelled'> {
+    return Promise.race([p, req.stopped])
   }
 
   /** `claude auth status` in the same environment the question runs in (a confirmed answer is kept 5 minutes). */
-  private async checkAuth(cli: AskCli, cwd: string): Promise<SubscriptionCheck> {
+  private async checkAuth(
+    cli: AskCli,
+    cwd: string,
+    req: AskRequest
+  ): Promise<SubscriptionCheck | 'cancelled'> {
     const key = `${cli.kind}|${cli.path ?? ''}|${cli.distro ?? ''}`
     const at = this.authOk.get(key)
     if (at && Date.now() - at < 5 * 60_000) return { ok: true, method: 'cached' }
-    let res: SubscriptionCheck
-    if (this.deps.checkAuth) res = await this.deps.checkAuth(cli, cwd)
+    let res: SubscriptionCheck | 'cancelled'
+    if (this.deps.checkAuth) res = await this.until(req, this.deps.checkAuth(cli, cwd))
     else {
-      const out = await (this.deps.runner ?? spawnRunner)(authStatusCommand(cli), '', {
+      // Registered like the question itself, so Cancel stops this process too.
+      const handle = (this.deps.runner ?? spawnRunner)(authStatusCommand(cli), '', {
         cwd,
         timeoutMs: 30_000
-      }).done
-      res = subscriptionCheck(out.stdout, out.code)
+      })
+      req.handle = handle
+      const out = await this.until(req, handle.done)
+      req.handle = undefined
+      res =
+        out === 'cancelled' || out.cancelled ? 'cancelled' : subscriptionCheck(out.stdout, out.code)
     }
-    if (res.ok) this.authOk.set(key, Date.now())
+    if (res !== 'cancelled' && res.ok) this.authOk.set(key, Date.now())
     return res
   }
 
@@ -260,7 +292,7 @@ export class AskService {
     const p = this.previews.get(previewId)
     if (!p) throw new Error('This preview has expired. Ask again.')
     this.previews.delete(previewId)
-    const req: { cancelled: boolean; handle?: RunHandle } = { cancelled: false }
+    const req = newRequest()
     this.running.set(previewId, req)
     const started = Date.now()
     const base = {
@@ -292,13 +324,13 @@ export class AskService {
   private async answer(
     question: string,
     prompt: string,
-    req: { cancelled: boolean; handle?: RunHandle },
+    req: AskRequest,
     base: Pick<AskHistoryItem, 'id' | 'at' | 'question' | 'sentBytes'>,
     started: number,
     stopped: (where: string, error: string) => AskHistoryItem
   ): Promise<AskHistoryItem> {
     if (this.deps.simulate) {
-      await new Promise((r) => setTimeout(r, 900))
+      await this.until(req, new Promise((r) => setTimeout(r, 900)))
       if (req.cancelled) return stopped('Sample answer (fixtures mode)', 'Cancelled.')
       return {
         ...base,
@@ -308,9 +340,10 @@ export class AskService {
         where: 'Sample answer (fixtures mode)'
       }
     }
-    // Every wait below can be cancelled; nothing is sent once it has been.
-    const cli = await this.findCli()
-    if (req.cancelled) return stopped(cli?.label ?? '—', 'Cancelled.')
+    // Every wait below ends as soon as Cancel is clicked, and nothing is sent after that.
+    const found = await this.until(req, this.findCli())
+    if (found === 'cancelled' || req.cancelled) return stopped('—', 'Cancelled.')
+    const cli = found
     if (!cli)
       return {
         ...stopped(
@@ -322,15 +355,17 @@ export class AskService {
     const cwd = join(this.deps.dataDir, 'ask')
     await mkdir(cwd, { recursive: true })
     if (req.cancelled) return stopped(cli.label, 'Cancelled.')
-    const auth = await this.checkAuth(cli, cwd)
-    if (req.cancelled) return stopped(cli.label, 'Cancelled.')
+    const auth = await this.checkAuth(cli, cwd, req)
+    if (auth === 'cancelled' || req.cancelled) return stopped(cli.label, 'Cancelled.')
     if (!auth.ok) return stopped(cli.label, auth.reason)
     const handle = (this.deps.runner ?? spawnRunner)(askCommand(cli), prompt, {
       cwd,
       timeoutMs: this.deps.timeoutSec() * 1000
     })
     req.handle = handle
-    const res = await handle.done
+    const done = await this.until(req, handle.done)
+    if (done === 'cancelled') return stopped(cli.label, 'Cancelled.')
+    const res = done
     const parsed = parseAskOutput(res.stdout, res.stderr, res.code)
     return {
       ...base,

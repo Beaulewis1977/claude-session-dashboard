@@ -24,13 +24,25 @@ function trusted(e: IpcMainInvokeEvent): boolean {
   )
 }
 
-export function handle(
-  channel: string,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  listener: (e: IpcMainInvokeEvent, ...args: any[]) => unknown
-): void {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type Listener = (e: IpcMainInvokeEvent, ...args: any[]) => unknown
+
+const listeners = new Map<string, Listener>()
+
+export function handle(channel: string, listener: Listener): void {
+  listeners.set(channel, listener)
   ipcMain.handle(channel, (e, ...args) => {
     if (!trusted(e)) throw new Error(`Refused ${channel}: not from the app's own page`)
     return listener(e, ...args)
   })
+}
+
+/**
+ * Call a handler from inside the main process (the phone companion, which
+ * only reaches the channels on its own allow-list; see mobile/rpc.ts).
+ */
+export async function callHandler(channel: string, args: unknown[]): Promise<unknown> {
+  const l = listeners.get(channel)
+  if (!l) throw new Error(`No handler for ${channel}`)
+  return l({} as IpcMainInvokeEvent, ...args)
 }

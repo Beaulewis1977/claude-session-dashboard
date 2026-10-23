@@ -32,6 +32,7 @@ import { AccountsSettings } from './settings/AccountsSettings'
 import { LiveLimitsSettings } from './settings/LiveLimitsSettings'
 import { UsageSettings } from './settings/UsageSettings'
 import { HealthSettings } from './settings/HealthSettings'
+import { MobileSettingsSection } from './settings/MobileSettings'
 
 export function Section({
   title,
@@ -250,6 +251,8 @@ export function SettingsView() {
             />
           </Row>
         </Section>
+
+        <MobileSettingsSection />
 
         <LiveLimitsSettings update={update} />
 

@@ -60,6 +60,9 @@ export function createAskStore(dataDir: string): JsonStore<AskHistoryFile> {
 const MAX_HISTORY = 200
 const PREVIEW_TTL = 30 * 60_000
 
+export const AUTH_TIMED_OUT =
+  "Couldn't confirm that Claude Code would use your Claude subscription: `claude auth status` didn't finish in time. Try again."
+
 /**
  * Environment for the CLI: only the allowlisted variables (see ASK_ENV_ALLOW),
  * so no API key, custom header, gateway or provider setting from the app's own
@@ -261,10 +264,19 @@ export class AskService {
       req.handle = handle
       const out = await this.until(req, handle.done)
       req.handle = undefined
+      // Only a check that ran to the end counts: output printed before a
+      // timeout or a failure proves nothing.
       res =
-        out === 'cancelled' || out.cancelled ? 'cancelled' : subscriptionCheck(out.stdout, out.code)
+        out === 'cancelled' || out.cancelled
+          ? 'cancelled'
+          : out.timedOut
+            ? { ok: false, reason: AUTH_TIMED_OUT }
+            : subscriptionCheck(out.stdout, out.code)
     }
-    if (res !== 'cancelled' && res.ok) this.authOk.set(key, Date.now())
+    if (res !== 'cancelled') {
+      if (res.ok) this.authOk.set(key, Date.now())
+      else this.authOk.delete(key)
+    }
     return res
   }
 

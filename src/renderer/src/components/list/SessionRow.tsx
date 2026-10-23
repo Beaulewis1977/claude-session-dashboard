@@ -7,6 +7,7 @@ import {
   GitBranch,
   GitFork,
   MessageSquare,
+  Pin,
   WifiOff
 } from 'lucide-react'
 import type { SearchHit } from '@shared/api'
@@ -16,6 +17,7 @@ import { tagColor } from '@/lib/filters'
 import { cn } from '@/lib/utils'
 import { EnvDot } from '../EnvBadge'
 import { BillingBadge } from '../BillingPicker'
+import { RemoteBadge } from '../RemoteBadge'
 
 export const ROW_HEIGHT = 104
 
@@ -91,6 +93,9 @@ export const SessionRow = memo(function SessionRow({
         >
           {s.title}
         </span>
+        {s.meta.pinned && (
+          <Pin className="size-3 shrink-0 fill-current text-primary" aria-label="Pinned" />
+        )}
         <span
           className="shrink-0 text-2xs text-subtle-foreground tabular-nums"
           title={formatDateTime(s.lastActivityAt)}
@@ -147,6 +152,7 @@ export const SessionRow = memo(function SessionRow({
               {branches}
             </span>
           )}
+          <RemoteBadge session={s} compact />
           <SourceBadge source={s.source} reason={s.sourceReason} compact />
           <BillingBadge billing={s.billing} compact />
           {hit &&

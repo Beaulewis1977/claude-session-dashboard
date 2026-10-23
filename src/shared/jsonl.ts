@@ -174,6 +174,16 @@ export interface SessionAnalysis {
   forkedFrom?: ForkedFrom
   /** Signals of which product ran the session (see source-label.ts). */
   sourceHints: SourceHints
+  /** Latest Remote Control link Claude Code recorded (`system` / `bridge_status`). */
+  remoteUrl?: string
+  remoteUrlAt?: string
+}
+
+const REMOTE_URL_RE = /^https:\/\/claude\.ai\/code\/session_[A-Za-z0-9]{8,64}$/
+
+/** A Remote Control session link from a `bridge_status` entry, or undefined if it isn't one. */
+export function remoteSessionUrl(v: unknown): string | undefined {
+  return typeof v === 'string' && REMOTE_URL_RE.test(v) ? v : undefined
 }
 
 export interface ForkedFrom {
@@ -242,6 +252,14 @@ export function analyzeEvents(events: RawEvent[]): SessionAnalysis {
     if (type === 'summary') {
       const s = str(e.summary)
       if (s) a.summary = s.trim()
+      continue
+    }
+    if (type === 'system' && e.subtype === 'bridge_status') {
+      const url = remoteSessionUrl(e.url)
+      if (url) {
+        a.remoteUrl = url
+        a.remoteUrlAt = ts
+      }
       continue
     }
     if (isSidechain(e)) continue

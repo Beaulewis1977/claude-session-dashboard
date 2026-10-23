@@ -178,6 +178,7 @@ async function main(): Promise<void> {
     s.elsewhere = sanitizeElsewhere(s.elsewhere)
     if (typeof s.askSkipPreview !== 'boolean') s.askSkipPreview = false
     if (typeof s.askTimeoutSec !== 'number') s.askTimeoutSec = 180
+    if (typeof s.remoteControlDefault !== 'boolean') s.remoteControlDefault = false
   })
   if (FIXTURES) {
     await seedFixtureData(appRoot, paths.archiveDir, metadata)
@@ -224,15 +225,20 @@ async function main(): Promise<void> {
       return a ? `API · ${a.nickname}` : undefined
     },
     subscriptionLabel: () => `Subscription (${PLAN_LABEL[settings.value.plan]})`,
-    launched: (s, opts, cwd) => {
+    launched: (s, opts, cwd, ctx) => {
+      const at = new Date().toISOString()
       const tag = {
         mode: opts.billingAccountId ? ('api' as const) : ('subscription' as const),
         accountId: opts.billingAccountId,
         source: 'launch' as const,
-        at: new Date().toISOString()
+        at
       }
-      if (opts.fork || opts.newSession) billing.expect(s.sourceId, cwd, tag)
-      else sessions.tagBilling(s.sessionId, tag)
+      const remote = opts.remoteControl ? { at, via: ctx.via, device: ctx.device } : undefined
+      if (opts.fork || opts.newSession) billing.expect(s.sourceId, cwd, tag, remote)
+      else {
+        sessions.tagBilling(s.sessionId, tag)
+        if (remote) sessions.tagRemote(s.sessionId, remote)
+      }
       if (opts.fork) lineage.expectFork(s)
     }
   })

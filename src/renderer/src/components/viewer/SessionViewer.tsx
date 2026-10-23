@@ -18,6 +18,8 @@ import {
   Info,
   MessageSquare,
   MessagesSquare,
+  Pin,
+  PinOff,
   Play,
   Plus,
   Search,
@@ -37,6 +39,7 @@ import {
   openResume,
   showFile,
   toggleHidden,
+  togglePinned,
   updateMeta
 } from '@/lib/actions'
 import { useApp } from '@/lib/store'
@@ -54,6 +57,7 @@ import {
 import { Tooltip } from '@/components/ui/tooltip'
 import { EnvBadge } from '../EnvBadge'
 import { BillingBadge } from '../BillingPicker'
+import { RemoteBadge } from '../RemoteBadge'
 import { SessionUsageStrip } from './SessionUsage'
 import { DescriptionEditor, EditableTitle, TagEditor } from './MetaEditors'
 import { FindBar } from './FindBar'
@@ -215,6 +219,10 @@ function Header({
                   <FolderOpen /> Show file in folder
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
+                <DropdownMenuItem onSelect={() => void togglePinned(session.key)}>
+                  {session.meta.pinned ? <PinOff /> : <Pin />}
+                  {session.meta.pinned ? 'Unpin' : 'Pin to top'}
+                </DropdownMenuItem>
                 <DropdownMenuItem onSelect={() => void toggleHidden(session.key)} shortcut="H">
                   {session.meta.hidden ? <Eye /> : <EyeOff />}
                   {session.meta.hidden ? 'Unhide session' : 'Hide session'}
@@ -249,6 +257,12 @@ function Header({
             }
           />
           <BillingBadge billing={session.billing} />
+          <RemoteBadge session={session} />
+          {session.meta.pinned && (
+            <Badge variant="accent">
+              <Pin /> Pinned
+            </Badge>
+          )}
           {session.availability === 'archived-only' && (
             <Badge variant="warning">
               <Archive /> Archived only

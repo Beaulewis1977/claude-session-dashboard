@@ -11,6 +11,7 @@ import {
   Loader2,
   Play,
   Plus,
+  Smartphone,
   TriangleAlert
 } from 'lucide-react'
 import type { LaunchPreview, TerminalPref } from '@shared/types'
@@ -41,6 +42,41 @@ export function SkipPermissionsWarning({ className }: { className?: string }) {
     <div className={cn('flex items-center gap-1.5 text-xs font-medium text-warning', className)}>
       <TriangleAlert className="size-3.5 shrink-0" />
       {SKIP_WARNING}
+    </div>
+  )
+}
+
+/** The Remote Control checkbox of the launch dialog. */
+export function RemoteControlOption({
+  checked,
+  onChange,
+  name
+}: {
+  checked: boolean
+  onChange: (v: boolean) => void
+  name?: string
+}) {
+  return (
+    <div className="rounded-lg border border-border p-3">
+      <label className="flex cursor-pointer items-start gap-2.5">
+        <Checkbox
+          checked={checked}
+          onCheckedChange={(v) => onChange(v === true)}
+          className="mt-0.5"
+        />
+        <span className="min-w-0">
+          <span className="flex items-center gap-1.5 text-[13px] font-medium">
+            <Smartphone className="size-3.5 text-info" /> Remote Control
+          </span>
+          <span className="block text-xs leading-relaxed text-muted-foreground">
+            Continue this session from the Claude app on your phone or at claude.ai/code. Uses your
+            Claude subscription.
+          </span>
+          <span className="block truncate font-mono text-[11px] text-muted-foreground">
+            --remote-control{checked && name ? ` "${name}"` : ''}
+          </span>
+        </span>
+      </label>
     </div>
   )
 }
@@ -81,6 +117,18 @@ function ResumeDialogBody({
   const [rememberProject, setRememberProject] = useState(
     () => settings.projectBilling[projectKey] !== undefined
   )
+  // Remote Control runs only on the subscription: turning one on turns the other off.
+  const [remoteControl, setRemoteControlState] = useState(
+    () => settings.remoteControlDefault && billing === 'subscription'
+  )
+  const setRemoteControl = (on: boolean): void => {
+    setRemoteControlState(on)
+    if (on) setBilling('subscription')
+  }
+  const pickBilling = (v: string): void => {
+    setBilling(v)
+    if (v !== 'subscription') setRemoteControlState(false)
+  }
   const billingAccountId = billing === 'subscription' ? undefined : billing
   const newSession = resume.newSession === true
   const branchAt = resume.branch
@@ -102,7 +150,8 @@ function ResumeDialogBody({
         terminal,
         billingAccountId,
         newSession,
-        branch: branchReq()
+        branch: branchReq(),
+        remoteControl
       })
       .then((p) => {
         if (cancelled) return
@@ -117,7 +166,16 @@ function ResumeDialogBody({
     }
     // branchReq reads a ref; resume.branch is covered by `resume`.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [resume, skip, cwdOverride, terminal, session?.availability, billingAccountId, newSession])
+  }, [
+    resume,
+    skip,
+    cwdOverride,
+    terminal,
+    session?.availability,
+    billingAccountId,
+    newSession,
+    remoteControl
+  ])
 
   const close = (): void => set({ resume: null })
   if (!session) return null
@@ -142,7 +200,8 @@ function ResumeDialogBody({
       terminal,
       billingAccountId,
       newSession,
-      branch: branchReq(createOnly)
+      branch: branchReq(createOnly),
+      remoteControl
     })
     // Per-project default ("always use API credits for this project").
     const current = settings.projectBilling[projectKey]
@@ -200,7 +259,11 @@ function ResumeDialogBody({
               ? 'Forked in a new terminal'
               : 'Resumed in a new terminal',
         {
-          description: `${TERMINAL_LABEL[preview?.terminal ?? terminal]} · ${preview?.billingLabel ?? ''}`
+          description: `${TERMINAL_LABEL[preview?.terminal ?? terminal]} · ${preview?.billingLabel ?? ''}${
+            remoteControl
+              ? ' · Remote Control on: open it in the Claude app or at claude.ai/code'
+              : ''
+          }`
         }
       )
     }
@@ -401,7 +464,7 @@ function ResumeDialogBody({
               </Tooltip>
             </div>
             <div className="flex flex-wrap items-center gap-3">
-              <BillingPicker value={billing} onChange={setBilling} />
+              <BillingPicker value={billing} onChange={pickBilling} />
               {projectKey && (
                 <label className="flex cursor-pointer items-center gap-2 text-xs text-muted-foreground">
                   <Checkbox
@@ -413,6 +476,12 @@ function ResumeDialogBody({
               )}
             </div>
           </div>
+
+          <RemoteControlOption
+            checked={remoteControl}
+            onChange={setRemoteControl}
+            name={preview?.remoteControlName}
+          />
 
           <div className="rounded-lg border border-border p-3">
             <label className="flex cursor-pointer items-start gap-2.5">

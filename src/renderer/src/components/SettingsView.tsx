@@ -232,6 +232,23 @@ export function SettingsView() {
             </Row>
             {settings.skipPermissionsDefault && <SkipPermissionsWarning className="mt-2" />}
           </div>
+          <Row
+            label="Remote Control by default"
+            hint={
+              <>
+                Adds <span className="font-mono">--remote-control "&lt;session name&gt;"</span> to
+                Resume, Fork and Branch, for Windows and WSL sessions, so you can continue them from
+                the Claude app or claude.ai/code. Needs Claude Code 2.1.51 or later and your Claude
+                subscription (not an API key).
+              </>
+            }
+          >
+            <Switch
+              checked={settings.remoteControlDefault}
+              onCheckedChange={(v) => void update({ remoteControlDefault: v })}
+              aria-label="Remote Control by default"
+            />
+          </Row>
         </Section>
 
         <LiveLimitsSettings update={update} />

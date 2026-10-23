@@ -74,6 +74,7 @@ export function cleanMetaPatch(patch: Partial<SessionMeta>): Partial<SessionMeta
       .filter((t) => t && !seen.has(t) && seen.add(t))
   }
   if ('hidden' in patch) out.hidden = patch.hidden === true
+  if ('pinned' in patch) out.pinned = patch.pinned === true
   if ('billing' in patch) {
     const b = patch.billing as Record<string, unknown> | undefined | null
     out.billing =

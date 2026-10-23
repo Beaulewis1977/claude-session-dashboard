@@ -57,7 +57,18 @@ export interface SessionMeta {
   branch?: BranchRecord
   /** Which product ran the session: detected ("auto") or set by hand ("manual"). */
   source?: { label: SourceLabel; by: 'auto' | 'manual'; reason?: string }
+  /** Kept at the top of the session list. */
+  pinned?: boolean
+  /** Last launched from the app with Remote Control on (from the desktop or a paired phone). */
+  remote?: RemoteTag
   updatedAt?: string
+}
+
+export interface RemoteTag {
+  at: string
+  via: 'desktop' | 'phone'
+  /** The paired phone's name, for launches from a phone. */
+  device?: string
 }
 
 export interface BranchRecord {
@@ -151,6 +162,10 @@ export interface SessionSummary {
   lineage?: SessionLineage
   /** Signals read from the file, for the source label. */
   sourceHints?: SourceHints
+  /** claude.ai/code link of the session's latest Remote Control connection (from the file). */
+  remoteUrl?: string
+  /** When Claude Code recorded that link. */
+  remoteUrlAt?: string
   /** Which product ran it (manual override, else detected). */
   source: SourceLabel
   sourceReason: string
@@ -236,6 +251,8 @@ export interface AppSettings {
   askSkipPreview: boolean
   /** Ask Claude: give up after this many seconds. */
   askTimeoutSec: number
+  /** Turn Remote Control on for Resume / Fork / Branch by default. */
+  remoteControlDefault: boolean
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -259,7 +276,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   pace: DEFAULT_PACE,
   elsewhere: [],
   askSkipPreview: false,
-  askTimeoutSec: 180
+  askTimeoutSec: 180,
+  remoteControlDefault: false
 }
 
 export interface ScanState {
@@ -297,6 +315,8 @@ export interface LaunchOptions {
   newSession?: boolean
   /** Branch from a message: create a new session file, then resume it. */
   branch?: BranchRequest
+  /** Start with Remote Control on, named after the session (subscription only). */
+  remoteControl?: boolean
 }
 
 export interface BranchRequest {
@@ -348,6 +368,8 @@ export interface LaunchPreview {
   branchError?: string
   /** Why this can't be launched (e.g. Claude Code not found, a folder that can't be checked). */
   launchError?: string
+  /** The Remote Control session name, when Remote Control is on and a name is left after cleaning. */
+  remoteControlName?: string
 }
 
 export interface LaunchResult {

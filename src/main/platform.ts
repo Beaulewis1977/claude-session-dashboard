@@ -53,6 +53,21 @@ function runWsl(args: string[]): Promise<Buffer | undefined> {
   })
 }
 
+/**
+ * The child's environment: the app's, plus the launch's own variables (the API
+ * key, if any), minus any it must not see (Remote Control refuses API-key auth).
+ * Windows variable names are case-insensitive.
+ */
+export function childEnv(
+  base: NodeJS.ProcessEnv,
+  cmd: Pick<LaunchCommand, 'env' | 'unsetEnv'>
+): NodeJS.ProcessEnv {
+  const out: NodeJS.ProcessEnv = { ...base, ...cmd.env }
+  const drop = new Set((cmd.unsetEnv ?? []).map((k) => k.toUpperCase()))
+  for (const k of Object.keys(out)) if (drop.has(k.toUpperCase())) delete out[k]
+  return out
+}
+
 /** Windows Terminal opens its own window: start it straight from the app. */
 function spawnWindow(cmd: LaunchCommand): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -63,7 +78,7 @@ function spawnWindow(cmd: LaunchCommand): Promise<void> {
       windowsHide: false,
       windowsVerbatimArguments: cmd.verbatim,
       // The API key (if any) lives only in this child's environment.
-      env: cmd.env ? { ...process.env, ...cmd.env } : undefined
+      env: cmd.env || cmd.unsetEnv ? childEnv(process.env, cmd) : undefined
     })
     child.once('error', reject)
     child.once('spawn', () => {
@@ -102,8 +117,7 @@ const OPEN_CONSOLE = [
 function openConsole(cmd: LaunchCommand): Promise<void> {
   const args = nativeArgs(cmd)
   const env: NodeJS.ProcessEnv = {
-    ...process.env,
-    ...cmd.env,
+    ...childEnv(process.env, cmd),
     CSD_LAUNCH_FILE: cmd.command,
     CSD_LAUNCH_ARGS: args
   }

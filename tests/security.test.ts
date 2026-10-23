@@ -2,6 +2,7 @@
 // SEC-09 and the hardening notes). Each proof case from the review is turned
 // around: it now shows the problem can't happen.
 
+import { createHash } from 'node:crypto'
 import { createServer, type Server } from 'node:http'
 import { mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -26,7 +27,7 @@ import {
   pathDirs
 } from '../src/main/core/which'
 import { listZip, readZipEntry } from '../src/main/core/zip'
-import type { Platform } from '../src/main/platform'
+import { createFixturesPlatform, type Platform } from '../src/main/platform'
 import { AccountsService, createAccountsStore } from '../src/main/services/accounts'
 import { fetchReport, httpsFetcher, type Fetcher } from '../src/main/services/anthropic-api'
 import {
@@ -38,8 +39,8 @@ import {
 import { BridgeInstaller, createBridgeStore, SETTINGS_CHANGED } from '../src/main/services/bridge'
 import { importClaudeAiExport } from '../src/main/services/imports'
 import { CLAUDE_NOT_FOUND, Launcher } from '../src/main/services/launcher'
-import type { SessionService } from '../src/main/services/sessions'
-import { appPaths, createMetadataStore } from '../src/main/services/store'
+import { SessionService } from '../src/main/services/sessions'
+import { appPaths, createMetadataStore, createSettingsStore } from '../src/main/services/store'
 import { TOOLS } from './helpers'
 
 let root: string
@@ -382,7 +383,6 @@ describe('archive names (SEC-06)', () => {
     await mkdir(join(paths.archiveDir, 'claude-ai'), { recursive: true })
     await writeFile(shared, 'payload-1')
     const converted = convertClaudeAiExport(input).conversations
-    const { createHash } = await import('node:crypto')
     for (const c of converted)
       store.update((d) => {
         d.archive[`claude-ai:${c.uuid}`] = {
@@ -417,6 +417,119 @@ describe('archive names (SEC-06)', () => {
     expect(() => readZipEntry(buf, entry)).toThrow(/Damaged/)
     const ok = zipOf('conversations.json', '[]')
     expect(readZipEntry(ok, listZip(ok)[0]).toString()).toBe('[]')
+  })
+})
+
+describe('archive files shared under the old naming (PR #2 review)', () => {
+  const sha = (text: string): string => createHash('sha256').update(text).digest('hex')
+  const convo = (uuid: string, text: string) => ({
+    uuid,
+    name: uuid,
+    chat_messages: [{ uuid: `${uuid}-m`, sender: 'human', text }]
+  })
+
+  /**
+   * What the old import left: every id's record points at one file (ids cut
+   * to 100 characters, or differing only in case, which Windows ignores),
+   * holding whichever conversation was written last.
+   */
+  async function legacy(ids: string[], last: number) {
+    const paths = appPaths(join(root, 'data'))
+    const metadata = createMetadataStore(paths)
+    const settings = createSettingsStore(paths)
+    await Promise.all([metadata.load(), settings.load()])
+    const converted = convertClaudeAiExport(ids.map((id, i) => convo(id, `payload-${i}`)))
+    const shared = join(paths.archiveDir, 'claude-ai', `${ids[0].slice(0, 100)}.jsonl`)
+    await mkdir(join(paths.archiveDir, 'claude-ai'), { recursive: true })
+    await writeFile(shared, converted.conversations[last].jsonl)
+    for (const c of converted.conversations)
+      metadata.update((d) => {
+        d.archive[`claude-ai:${c.uuid}`] = {
+          sessionId: c.uuid,
+          sourceId: 'claude-ai',
+          sourceLabel: 'claude.ai',
+          env: 'windows',
+          origin: 'claude-ai',
+          originalPath: 'old-export.zip',
+          archivePath: shared,
+          size: Buffer.byteLength(c.jsonl),
+          sha256: sha(c.jsonl),
+          sourceMtimeMs: 0,
+          firstArchivedAt: '',
+          archivedAt: ''
+        }
+      })
+    await metadata.flush()
+    const exportOf = async (which: number[]): Promise<string> => {
+      const zipPath = join(root, `export-${which.join('-')}.zip`)
+      const list = which.map((i) => convo(ids[i], `payload-${i}`))
+      await writeFile(zipPath, zipOf('conversations.json', JSON.stringify(list)))
+      return zipPath
+    }
+    const textOf = async (i: number): Promise<string | undefined> =>
+      readFile(metadata.value.archive[`claude-ai:${ids[i]}`].archivePath, 'utf8').catch(
+        () => undefined
+      )
+    return { paths, metadata, settings, exportOf, textOf }
+  }
+
+  const CASES = {
+    'ids that differ only in case': ['conversation-1', 'Conversation-1'],
+    'a 100-character id and a longer one': ['a'.repeat(100), 'a'.repeat(100) + 'b']
+  }
+
+  for (const [name, ids] of Object.entries(CASES)) {
+    it(`gives each conversation back its own text on re-import: ${name}`, async () => {
+      // Either id may have been written last.
+      for (const last of [0, 1]) {
+        await rm(join(root, 'data'), { recursive: true, force: true })
+        const l = await legacy(ids, last)
+        const zip = await l.exportOf([0, 1])
+        expect(await importClaudeAiExport(zip, l.paths, l.metadata)).toMatchObject({ ok: true })
+        expect(await l.textOf(0)).toContain('payload-0')
+        expect(await l.textOf(1)).toContain('payload-1')
+        expect(await importClaudeAiExport(zip, l.paths, l.metadata)).toMatchObject({
+          unchanged: 2
+        })
+      }
+    })
+
+    it(`keeps the other conversation when only one is re-imported: ${name}`, async () => {
+      for (const [only, other] of [
+        [0, 1],
+        [1, 0]
+      ]) {
+        await rm(join(root, 'data'), { recursive: true, force: true })
+        // The shared file holds the conversation that isn't in the new export.
+        const l = await legacy(ids, other)
+        await importClaudeAiExport(await l.exportOf([only]), l.paths, l.metadata)
+        expect(await l.textOf(only)).toContain(`payload-${only}`)
+        expect(await l.textOf(other)).toContain(`payload-${other}`)
+      }
+    })
+  }
+
+  it('shows each conversation correctly in the running app after the repair', async () => {
+    const ids = CASES['ids that differ only in case']
+    const l = await legacy(ids, 1)
+    const empty = join(root, 'no-sources')
+    const platform = createFixturesPlatform(empty, empty)
+    platform.listDistros = async () => []
+    platform.listRunningDistros = async () => []
+    const sessions = new SessionService(platform, l.paths, l.metadata, l.settings)
+    await sessions.start()
+    const shown = async (i: number): Promise<string> =>
+      JSON.stringify(await sessions.detail(`claude-ai:${ids[i]}`))
+    // Before: the record whose text was overwritten isn't shown with another one's.
+    expect(await shown(0)).not.toContain('payload-1')
+    expect(await shown(1)).toContain('payload-1')
+    await importClaudeAiExport(await l.exportOf([0, 1]), l.paths, l.metadata)
+    await sessions.refreshArchive()
+    expect(await shown(0)).toContain('payload-0')
+    expect(await shown(0)).not.toContain('payload-1')
+    expect(await shown(1)).toContain('payload-1')
+    expect(sessions.searchKeys('payload-0').map((h) => h.key)).toEqual([`claude-ai:${ids[0]}`])
+    await sessions.idle()
   })
 })
 
@@ -625,6 +738,9 @@ describe('app data writes', () => {
     const path = join(appData, 'cache', 'sentinel.json')
     await expect(assertRealAppDataWrite(path, appData)).rejects.toThrow(/outside the app data/)
     await expect(writeFileAtomic(path, 'x', appData)).rejects.toThrow(/outside the app data/)
+    // Not even an empty folder is created beyond the junction.
+    const deeper = join(appData, 'cache', 'new', 'deeper', 'x.json')
+    await expect(writeFileAtomic(deeper, 'x', appData)).rejects.toThrow(/outside the app data/)
     expect(await readdir(outside)).toEqual([])
   })
 

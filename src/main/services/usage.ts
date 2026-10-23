@@ -5,8 +5,7 @@
 // only parses files that changed.
 
 import { EventEmitter } from 'node:events'
-import { constants } from 'node:fs'
-import { copyFile, mkdir, readdir, readFile, rename, stat, unlink } from 'node:fs/promises'
+import { mkdir, readdir, readFile, rename, stat, unlink } from 'node:fs/promises'
 import { basename, dirname, join } from 'node:path'
 import { parseJsonl } from '@shared/jsonl'
 import { now } from '@shared/clock'
@@ -30,6 +29,7 @@ import type { SessionSummary } from '@shared/types'
 import { writeFileAtomic } from '../core/json-store'
 import { listFiles, readNdjson, writeNdjson } from '../core/ndjson'
 import { assertAppDataWrite, isInside } from '../core/safe-paths'
+import { copyShared } from '../core/shared-copy'
 import type { SessionService } from './sessions'
 
 // 2: dedupe follows ccusage (session-scoped requestless ids, sidechain replays).
@@ -399,7 +399,8 @@ export class UsageService extends EventEmitter<{ changed: [] }> {
         assertAppDataWrite(dest, this.paths.dataDir)
         await mkdir(destDir, { recursive: true })
         const tmp = `${dest}.${process.pid}.tmp`
-        await copyFile(src, tmp, constants.COPYFILE_FICLONE)
+        // Subagent logs are written while a session runs: don't lock them.
+        await copyShared(src, tmp)
         await rename(tmp, dest).catch(async (err) => {
           await unlink(tmp).catch(() => undefined)
           throw err

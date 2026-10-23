@@ -408,7 +408,10 @@ describe('statusline.sh', () => {
     const dir = join(root, 'b')
     const t = Date.now()
     for (let i = 0; i < 5; i++) run(dir, payload)
-    // Generous bound for CI machines; typically ~20 ms per run.
-    expect((Date.now() - t) / 5).toBeLessThan(250)
+    // Generous bound for CI machines; typically ~20 ms per run. This is the WSL
+    // script: on Windows the test's `sh` is Git Bash, where each program the
+    // script starts (cat, mv, …) costs a slow process start of its own, so the
+    // bound there measures Git Bash rather than the script.
+    expect((Date.now() - t) / 5).toBeLessThan(process.platform === 'win32' ? 1500 : 250)
   })
 })

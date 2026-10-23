@@ -37,7 +37,7 @@ import {
   type AskRunner
 } from '../src/main/services/ask'
 import { BridgeInstaller, createBridgeStore, SETTINGS_CHANGED } from '../src/main/services/bridge'
-import { importClaudeAiExport } from '../src/main/services/imports'
+import { ARCHIVE_BUSY, importClaudeAiExport } from '../src/main/services/imports'
 import { CLAUDE_NOT_FOUND, Launcher } from '../src/main/services/launcher'
 import { SessionService } from '../src/main/services/sessions'
 import { appPaths, createMetadataStore, createSettingsStore } from '../src/main/services/store'
@@ -508,6 +508,46 @@ describe('archive files shared under the old naming (PR #2 review)', () => {
       }
     })
   }
+
+  it("doesn't take a file it can't read for a missing one (PR #2 final review)", async () => {
+    const ids = CASES['ids that differ only in case']
+    // The shared file holds the other conversation, and only ids[0] is re-imported.
+    const l = await legacy(ids, 1)
+    const shared = l.metadata.value.archive[`claude-ai:${ids[1]}`].archivePath
+    const text = await readFile(shared, 'utf8')
+    // A folder in its place: reading fails with something other than "not found",
+    // like a file another program has locked.
+    const lock = async (): Promise<void> => {
+      await rm(shared)
+      await mkdir(shared)
+    }
+    const unlock = async (): Promise<void> => {
+      await rm(shared, { recursive: true })
+      await writeFile(shared, text)
+    }
+
+    // Locked for a moment: the import waits, then repairs as usual.
+    await lock()
+    setTimeout(() => void unlock(), 250)
+    const zip = await l.exportOf([0])
+    expect(await importClaudeAiExport(zip, l.paths, l.metadata)).toMatchObject({ ok: true })
+    expect(await l.textOf(0)).toContain('payload-0')
+    expect(await l.textOf(1)).toContain('payload-1')
+
+    // Locked for good: the import stops, and nothing of the other conversation changes.
+    await rm(join(root, 'data'), { recursive: true, force: true })
+    const m = await legacy(ids, 1)
+    await lock()
+    const res = await importClaudeAiExport(zip, m.paths, m.metadata)
+    expect(res).toMatchObject({ ok: false, error: ARCHIVE_BUSY })
+    expect(m.metadata.value.archive[`claude-ai:${ids[1]}`].archivePath).toBe(shared)
+    await unlock()
+    expect(await m.textOf(1)).toContain('payload-1')
+    // Trying again once it can be read repairs both.
+    expect(await importClaudeAiExport(zip, m.paths, m.metadata)).toMatchObject({ ok: true })
+    expect(await m.textOf(0)).toContain('payload-0')
+    expect(await m.textOf(1)).toContain('payload-1')
+  })
 
   it('shows each conversation correctly in the running app after the repair', async () => {
     const ids = CASES['ids that differ only in case']

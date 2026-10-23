@@ -17,6 +17,27 @@ export const CLAUDE_AI_SOURCE = 'claude-ai'
 /** Exports this big are refused (the whole zip is read into memory). */
 const MAX_ZIP_BYTES = 1024 * 1024 * 1024
 
+export const ARCHIVE_BUSY =
+  "An archived conversation couldn't be read right now (another program may have it open), so the import stopped before changing it. Try the import again."
+
+/**
+ * SHA-256 of a file, or null only if there is no such file. A file that
+ * can't be read right now (a virus scanner or the indexer may have it open)
+ * is tried again for a moment, then reported: taking it for missing could
+ * replace another conversation's only copy.
+ */
+async function hashUnlessMissing(path: string): Promise<string | null> {
+  for (let i = 0; ; i++) {
+    try {
+      return await sha256File(path)
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') return null
+      if (i >= 4) throw new Error(ARCHIVE_BUSY, { cause: err })
+      await new Promise((r) => setTimeout(r, 100 * (i + 1)))
+    }
+  }
+}
+
 /**
  * The archive files records point at, for an import to write safely. Before
  * archive names were collision-proof, two records could point at one file
@@ -43,7 +64,7 @@ class ArchiveFiles {
 
   async hash(path: string): Promise<string | null> {
     const p = path.toLowerCase()
-    if (!this.hashes.has(p)) this.hashes.set(p, await sha256File(path).catch(() => null))
+    if (!this.hashes.has(p)) this.hashes.set(p, await hashUnlessMissing(path))
     return this.hashes.get(p)!
   }
 
@@ -133,7 +154,27 @@ export async function importClaudeAiExport(
   }
   const now = new Date().toISOString()
   const files = new ArchiveFiles(metadata, dirs)
-  for (const c of converted.conversations) {
+  try {
+    await importConversations(converted.conversations, zipPath, now, files, dirs, metadata, res)
+  } catch (err) {
+    // Conversations done so far are complete; the rest are left as they were.
+    await metadata.flush()
+    return { ...res, ok: false, error: (err as Error).message }
+  }
+  await metadata.flush()
+  return res
+}
+
+async function importConversations(
+  conversations: ReturnType<typeof convertClaudeAiExport>['conversations'],
+  zipPath: string,
+  now: string,
+  files: ArchiveFiles,
+  dirs: { archiveDir: string; dataDir: string },
+  metadata: JsonStore<MetadataFile>,
+  res: ImportResult
+): Promise<void> {
+  for (const c of conversations) {
     const key = `${CLAUDE_AI_SOURCE}:${c.uuid}`
     const prev = metadata.value.archive[key]
     const sha256 = createHash('sha256').update(c.jsonl).digest('hex')
@@ -175,6 +216,4 @@ export async function importClaudeAiExport(
     if (prev) res.updated++
     else res.added++
   }
-  await metadata.flush()
-  return res
 }

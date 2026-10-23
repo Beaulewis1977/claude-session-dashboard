@@ -37,7 +37,11 @@ import {
   type AskRunner
 } from '../src/main/services/ask'
 import { BridgeInstaller, createBridgeStore, SETTINGS_CHANGED } from '../src/main/services/bridge'
-import { ARCHIVE_BUSY, importClaudeAiExport } from '../src/main/services/imports'
+import {
+  ARCHIVE_BUSY,
+  importClaudeAiExport,
+  importIntoCatalogue
+} from '../src/main/services/imports'
 import { CLAUDE_NOT_FOUND, Launcher } from '../src/main/services/launcher'
 import { SessionService } from '../src/main/services/sessions'
 import { appPaths, createMetadataStore, createSettingsStore } from '../src/main/services/store'
@@ -547,6 +551,45 @@ describe('archive files shared under the old naming (PR #2 review)', () => {
     expect(await importClaudeAiExport(zip, m.paths, m.metadata)).toMatchObject({ ok: true })
     expect(await m.textOf(0)).toContain('payload-0')
     expect(await m.textOf(1)).toContain('payload-1')
+  })
+
+  it('refreshes the running app even when the import stops partway (PR #2 review of 4e3ec39)', async () => {
+    const ids = CASES['ids that differ only in case']
+    const l = await legacy(ids, 1)
+    // A third conversation whose file can't be read stops the import after the repair.
+    const third = convertClaudeAiExport([convo('zz-third', 'payload-3')]).conversations[0]
+    const thirdPath = archivePathFor(l.paths.archiveDir, 'claude-ai', 'zz-third')
+    await mkdir(thirdPath, { recursive: true })
+    l.metadata.update((d) => {
+      d.archive['claude-ai:zz-third'] = {
+        ...d.archive[`claude-ai:${ids[0]}`],
+        sessionId: 'zz-third',
+        archivePath: thirdPath,
+        sha256: sha(third.jsonl)
+      }
+    })
+    const empty = join(root, 'no-sources')
+    const platform = createFixturesPlatform(empty, empty)
+    platform.listDistros = async () => []
+    platform.listRunningDistros = async () => []
+    const sessions = new SessionService(platform, l.paths, l.metadata, l.settings)
+    await sessions.start()
+    const zip = join(root, 'export-3.zip')
+    const list = [
+      convo(ids[0], 'payload-0'),
+      convo(ids[1], 'payload-1'),
+      convo('zz-third', 'payload-3')
+    ]
+    await writeFile(zip, zipOf('conversations.json', JSON.stringify(list)))
+    const res = await importIntoCatalogue(zip, l.paths, l.metadata, sessions)
+    expect(res).toMatchObject({ ok: false, error: ARCHIVE_BUSY })
+    // The repair before the stop moved ids[1] off the shared file: the app follows it.
+    const shown = async (i: number): Promise<string> =>
+      JSON.stringify(await sessions.detail(`claude-ai:${ids[i]}`))
+    expect(await shown(0)).toContain('payload-0')
+    expect(await shown(1)).toContain('payload-1')
+    expect(await shown(1)).not.toContain('payload-0')
+    await sessions.idle()
   })
 
   it('shows each conversation correctly in the running app after the repair', async () => {

@@ -33,7 +33,7 @@ import type { Launcher } from './services/launcher'
 import type { SessionService } from './services/sessions'
 import type { AppPaths, SettingsFile } from './services/store'
 import type { SourceWatcher } from './services/watcher'
-import { importClaudeAiExport } from './services/imports'
+import { importIntoCatalogue } from './services/imports'
 import type { MetadataFile } from './services/store'
 
 export interface IpcDeps {
@@ -266,9 +266,7 @@ export function registerIpc(deps: IpcDeps): void {
     const res = w ? await dialog.showOpenDialog(w, opts) : await dialog.showOpenDialog(opts)
     const file = res.filePaths[0]
     if (res.canceled || !file) return null
-    const out = await importClaudeAiExport(file, paths, deps.metadata)
-    if (out.ok) await sessions.refreshArchive()
-    return out
+    return importIntoCatalogue(file, paths, deps.metadata, sessions)
   })
   handle('archive:open', async () => {
     const { mkdir } = await import('node:fs/promises')

@@ -217,3 +217,19 @@ async function importConversations(
     else res.added++
   }
 }
+
+/**
+ * Import, then let the catalogue pick up every record that changed. Even an
+ * import that stopped partway may have moved or rewritten some records, and
+ * the catalogue would otherwise go on showing their old files.
+ */
+export async function importIntoCatalogue(
+  zipPath: string,
+  dirs: { archiveDir: string; dataDir: string },
+  metadata: JsonStore<MetadataFile>,
+  catalogue: { refreshArchive(): Promise<void> }
+): Promise<ImportResult> {
+  const out = await importClaudeAiExport(zipPath, dirs, metadata)
+  await catalogue.refreshArchive()
+  return out
+}

@@ -74,6 +74,21 @@ export const MIN_BASELINE = 3
 
 const YMD_RE = /^\d{4}-\d{2}-\d{2}$/
 
+/**
+ * A date range from the window, for comparing. An empty or invalid end means the
+ * same day as the start; without a valid start there is no range (never a guess
+ * like 1970). Reversed ranges are put the right way round.
+ */
+export function compareRange(v: unknown): { from: string; to: string } | undefined {
+  const o = (v && typeof v === 'object' ? v : {}) as Record<string, unknown>
+  const ymd = (x: unknown): string | undefined =>
+    typeof x === 'string' && YMD_RE.test(x) && Number.isFinite(Date.parse(x)) ? x : undefined
+  const from = ymd(o.from)
+  if (!from) return undefined
+  const to = ymd(o.to) ?? from
+  return from <= to ? { from, to } : { from: to, to: from }
+}
+
 export function sanitizeHealth(v: unknown): HealthSettings {
   const o = (v && typeof v === 'object' ? v : {}) as Record<string, unknown>
   const num = (x: unknown, d: number, lo: number, hi: number): number =>

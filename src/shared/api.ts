@@ -95,7 +95,7 @@ export interface CsdApi {
     kind: 'five_hour' | 'seven_day',
     a: CompareRange,
     b: CompareRange
-  ): Promise<HealthCompare>
+  ): Promise<HealthCompare | null>
   onLimitsChanged(cb: () => void): () => void
   planBridge(sourceId: string, action: 'install' | 'uninstall'): Promise<BridgePlan>
   applyBridge(

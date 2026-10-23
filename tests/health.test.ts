@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   compareHealth,
+  compareRange,
   computeBaseline,
   familyPricer,
   DEFAULT_HEALTH,
@@ -383,5 +384,25 @@ describe('pace', () => {
     expect(week.status).toBe('ahead')
     const five = paceOf({ pct: 5, resetsAt: t0 + 4 * H }, 'five_hour', t0, DEFAULT_PACE)!
     expect(paceAdvice(five, week)?.text).toMatch(/weekly pace/)
+  })
+})
+
+describe('compareRange', () => {
+  it('treats an empty or invalid end date as the start day, never as 1970', () => {
+    expect(compareRange({ from: '2026-09-01', to: '' })).toEqual({
+      from: '2026-09-01',
+      to: '2026-09-01'
+    })
+    expect(compareRange({ from: '2026-09-01', to: 'nope' })?.to).toBe('2026-09-01')
+    expect(compareRange({ from: '2026-09-01' })?.to).toBe('2026-09-01')
+  })
+  it('refuses a range without a valid start and swaps reversed ones', () => {
+    expect(compareRange({ from: '', to: '2026-09-01' })).toBeUndefined()
+    expect(compareRange({ from: '2026-13-45', to: '2026-09-01' })).toBeUndefined()
+    expect(compareRange(null)).toBeUndefined()
+    expect(compareRange({ from: '2026-09-30', to: '2026-09-01' })).toEqual({
+      from: '2026-09-01',
+      to: '2026-09-30'
+    })
   })
 })

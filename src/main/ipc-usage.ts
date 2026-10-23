@@ -6,6 +6,7 @@ import { writeFile } from 'node:fs/promises'
 import { now } from '@shared/clock'
 import { dayKey, localTimeZone } from '@shared/usage/time'
 import { totalTokens } from '@shared/usage/parse'
+import { compareRange } from '@shared/usage/health'
 import {
   buildTrends,
   compareTrends,
@@ -98,17 +99,13 @@ export function registerUsageIpc(deps: UsageIpcDeps): void {
     return src
   }
   ipcMain.handle('limits:state', () => deps.limits.state())
-  const range = (v: unknown): { from: string; to: string } => {
-    const o = (v ?? {}) as Record<string, unknown>
-    const ymd = (x: unknown): string =>
-      typeof x === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(x) ? x : '1970-01-01'
-    const from = ymd(o.from)
-    const to = ymd(o.to ?? o.from)
-    return from <= to ? { from, to } : { from: to, to: from }
-  }
-  ipcMain.handle('limits:compareHealth', (_e, kind, a, b) =>
-    deps.limits.compare(kind === 'seven_day' ? 'seven_day' : 'five_hour', range(a), range(b))
-  )
+  ipcMain.handle('limits:compareHealth', (_e, kind, a, b) => {
+    // Incomplete dates (e.g. while typing) compare nothing rather than a made-up range.
+    const ra = compareRange(a)
+    const rb = compareRange(b)
+    if (!ra || !rb) return null
+    return deps.limits.compare(kind === 'seven_day' ? 'seven_day' : 'five_hour', ra, rb)
+  })
 
   const side = (v: unknown): CompareSide => {
     const o = (v ?? {}) as Record<string, unknown>

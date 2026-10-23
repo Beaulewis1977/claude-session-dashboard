@@ -439,9 +439,12 @@ function CompareBox({ kind, report }: { kind: Kind; report: HealthReport }) {
   const [b, setB] = useState<CompareRange>(() => ({ from: back(13), to: back(0) }))
   const [res, setRes] = useState<HealthCompare | null>(null)
   useEffect(() => {
-    if (!a.from || !b.from) return
+    // Wait until both ranges are filled in: a half-typed date isn't a range.
+    if (!a.from || !a.to || !b.from || !b.to) return
     let off = false
-    void api.compareHealth(kind, a, b).then((r) => !off && setRes(r))
+    void api.compareHealth(kind, a, b).then((r) => {
+      if (!off && r) setRes(r)
+    })
     return () => {
       off = true
     }

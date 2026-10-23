@@ -1,7 +1,15 @@
 import { useEffect, useRef, useState } from 'react'
 import { ArrowDownWideNarrow, CalendarDays, Check, Search, X } from 'lucide-react'
 import { api } from '@/lib/api'
-import { envLabel, presetRange, projectKey, type DateRange, type SortKey } from '@/lib/filters'
+import {
+  clearedFilters,
+  envLabel,
+  presetRange,
+  projectKey,
+  type DateRange,
+  type SortKey
+} from '@/lib/filters'
+import { SOURCE_LABELS, type SourceLabel } from '@shared/source-label'
 import { saveGroupBranches, useApp } from '@/lib/store'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -201,6 +209,11 @@ export function ListToolbar({ count }: { count: number }) {
       label: projectLabel ?? '',
       clear: () => setFilters({ project: null })
     },
+    filters.source && {
+      k: 'source',
+      label: SOURCE_LABELS[filters.source as SourceLabel] ?? filters.source,
+      clear: () => setFilters({ source: null })
+    },
     filters.tag && { k: 'tag', label: `#${filters.tag}`, clear: () => setFilters({ tag: null }) },
     filters.date && {
       k: 'date',
@@ -294,7 +307,7 @@ export function ListToolbar({ count }: { count: number }) {
           {chips.length > 1 && (
             <button
               type="button"
-              onClick={() => setFilters({ env: null, project: null, tag: null, date: null })}
+              onClick={() => set({ filters: clearedFilters(filters) })}
               className="ml-0.5 rounded px-1 text-2xs font-medium text-muted-foreground hover:text-foreground"
             >
               Clear all

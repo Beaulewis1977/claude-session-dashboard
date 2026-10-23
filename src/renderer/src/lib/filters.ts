@@ -33,6 +33,14 @@ export const EMPTY_FILTERS: Filters = {
   source: null
 }
 
+/**
+ * "Clear all" in the toolbar: every filter back to its default, keeping only
+ * the Visible / Hidden / Archived view chosen in the sidebar.
+ */
+export function clearedFilters(f: Filters): Filters {
+  return { ...EMPTY_FILTERS, visibility: f.visibility }
+}
+
 export function envKey(
   s: Pick<SessionSummary, 'env' | 'distro'> & { availability?: string }
 ): string {

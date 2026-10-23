@@ -1,12 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import type { SessionSummary } from '@shared/types'
 import {
+  clearedFilters,
   EMPTY_FILTERS,
   facets,
   inDateRange,
   presetRange,
   sortSessions,
-  visibleSessions
+  visibleSessions,
+  type Filters
 } from '@/lib/filters'
 import { formatDateTime, formatRelative } from '@shared/format'
 
@@ -187,5 +189,20 @@ describe('formatting', () => {
     expect(formatRelative('2026-10-22T11:55:00Z', now)).toBe('5m')
     expect(formatRelative('2026-10-22T09:00:00Z', now)).toBe('3h')
     expect(formatRelative('2026-10-19T12:00:00Z', now)).toBe('3d')
+  })
+})
+
+describe('clearedFilters', () => {
+  it('clears every filter, including the source, and keeps the view', () => {
+    const f: Filters = {
+      visibility: 'hidden',
+      env: 'windows',
+      project: 'c:\\code\\app',
+      tag: 'bug',
+      date: { preset: '7d', from: '2026-10-16', to: '2026-10-22' },
+      source: 'terminal-windows'
+    }
+    expect(clearedFilters(f)).toEqual({ ...EMPTY_FILTERS, visibility: 'hidden' })
+    expect(clearedFilters(f).source).toBeNull()
   })
 })

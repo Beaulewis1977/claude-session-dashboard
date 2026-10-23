@@ -255,7 +255,9 @@ export function analyzeEvents(events: RawEvent[]): SessionAnalysis {
       continue
     }
     if (type === 'system' && e.subtype === 'bridge_status') {
-      const url = remoteSessionUrl(e.url)
+      // A status copied into a branch (it carries forkedFrom) is the original
+      // session's connection, not this one's.
+      const url = e.forkedFrom ? undefined : remoteSessionUrl(e.url)
       if (url) {
         a.remoteUrl = url
         a.remoteUrlAt = ts

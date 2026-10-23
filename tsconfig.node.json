@@ -27,6 +27,7 @@
     "src/shared/**/*",
     "tests/**/*",
     "src/renderer/src/lib/filters.ts",
-    "src/renderer/src/lib/transcript.ts"
+    "src/renderer/src/lib/transcript.ts",
+    "src/renderer/src/lib/remote.ts"
   ]
 }

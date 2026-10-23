@@ -31,6 +31,8 @@ await app.evaluate(({ BrowserWindow }) => {
 await desk.waitForSelector('[role="option"]')
 
 // Turn phone access on and open pairing, as the Settings screen does.
+// Its own port, so a running copy of the app (real data) can keep 47821.
+await desk.evaluate(() => window.csd.mobileUpdate({ port: 47831, mode: 'tailscale' }))
 let status = await desk.evaluate(() => window.csd.mobileStart())
 if (!status.running) throw new Error(`Companion didn't start: ${status.error}`)
 const base = `http://${status.listening}`

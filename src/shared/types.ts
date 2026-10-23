@@ -317,6 +317,8 @@ export interface LaunchOptions {
   branch?: BranchRequest
   /** Start with Remote Control on, named after the session (subscription only). */
   remoteControl?: boolean
+  /** Force the prompting permission mode (launches from a phone). */
+  askPermissions?: boolean
 }
 
 export interface BranchRequest {

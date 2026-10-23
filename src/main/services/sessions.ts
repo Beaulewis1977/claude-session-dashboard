@@ -43,7 +43,8 @@ type BaseSummary = Omit<
 // source hints (entrypoint, IDE context, cloud link) for the source label.
 // v3: both together, so neither kind of v2 cache is reused.
 // v4: the Remote Control link (remoteUrl) from `bridge_status` entries.
-const CACHE_VERSION = 4
+// v5: statuses copied into a branch no longer count as the branch's own link.
+const CACHE_VERSION = 5
 
 interface CacheFile {
   version: number

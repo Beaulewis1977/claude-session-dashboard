@@ -25,34 +25,56 @@ function useBootstrap(paired: boolean): void {
   useEffect(() => {
     if (!paired) return
     let cancelled = false
-    void Promise.all([api.getInfo(), api.getSettings(), api.getSessions(), phone.me()])
-      .then(([info, settings, payload, me]) => {
-        if (cancelled) return
-        setClockOffset(info.clockOffset)
-        setMe(me)
-        set({
-          info,
-          settings,
-          sessions: payload.sessions,
-          sources: payload.sources,
-          scan: payload.scan,
-          loaded: true
+    let loading = false
+    // Everything the app needs to start. Retried when the PC comes back if it
+    // couldn't be reached at first (e.g. the home-screen app opened offline).
+    const load = (): void => {
+      if (loading || cancelled) return
+      loading = true
+      void Promise.all([api.getInfo(), api.getSettings(), api.getSessions(), phone.me()])
+        .then(([info, settings, payload, me]) => {
+          if (cancelled) return
+          setClockOffset(info.clockOffset)
+          setMe(me)
+          set({
+            info,
+            settings,
+            sessions: payload.sessions,
+            sources: payload.sources,
+            scan: payload.scan,
+            loaded: true
+          })
         })
-      })
-      .catch((err: Error) => toast.error("Couldn't reach your PC", { description: err.message }))
+        .catch((err: Error) => {
+          if (!cancelled && !useApp.getState().loaded)
+            toast.error("Couldn't reach your PC", { description: err.message })
+        })
+        .finally(() => {
+          loading = false
+        })
+    }
+    const notLoaded = (): boolean => !useApp.getState().loaded
+    const reloadMe = (): void =>
+      void phone
+        .me()
+        .then(setMe)
+        .catch(() => undefined)
+    load()
     phone.connect()
     const offs = [
       api.onSessionsChanged((p) => set({ sessions: p.sessions, sources: p.sources, scan: p.scan })),
+      // Polling (when live updates are blocked) also reaches here.
+      phone.on('sessions', () => notLoaded() && load()),
       phone.onToast((t) => toast(t.title, { description: t.body })),
       // Settings changed on the PC (or another phone).
       phone.on('settings', () => void api.getSettings().then((settings) => set({ settings }))),
-      // Read-only / confirm-on-PC may have changed while disconnected.
+      // Read-only / confirm-on-PC changed on the PC.
+      phone.on('policy', reloadMe),
+      // Back online: finish starting, or catch up on the policy.
       phone.onConnection((c) => {
-        if (c === 'live')
-          void phone
-            .me()
-            .then(setMe)
-            .catch(() => undefined)
+        if (c !== 'live') return
+        if (notLoaded()) load()
+        else reloadMe()
       })
     ]
     return () => {

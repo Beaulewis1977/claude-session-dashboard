@@ -108,6 +108,7 @@ export class Launcher {
   ): LaunchCommand {
     return buildLaunchCommand({
       remoteControl: this.remoteControl(s, opts),
+      askPermissions: opts.askPermissions === true,
       env: s.env,
       distro: s.distro,
       sessionId: s.sessionId,
@@ -145,7 +146,8 @@ export class Launcher {
           opts.skipPermissions,
           opts.fork,
           opts.newSession,
-          this.remoteControl(s, opts)
+          this.remoteControl(s, opts),
+          opts.askPermissions === true
         )
       )
     } catch {

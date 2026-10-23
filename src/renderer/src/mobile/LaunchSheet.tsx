@@ -17,6 +17,7 @@ import type { RemoteLaunchPreview, RemoteLaunchRequest, RemoteLaunchResult } fro
 import { CLAUDE_CODE_WEB_URL } from '@shared/mobile'
 import type { SessionSummary, TerminalPref } from '@shared/types'
 import { now } from '@shared/clock'
+import { freshRemoteUrl } from '@/lib/remote'
 import { useApp } from '@/lib/store'
 import { phone } from '@/lib/web-api'
 import { Button } from '@/components/ui/button'
@@ -37,10 +38,9 @@ const VERB = { resume: 'Resume', fork: 'Fork', branch: 'Branch' } as const
  * Wait for Claude Code to record the session's Remote Control link (a few
  * seconds after it starts), so "Open in Claude app" goes straight to it.
  */
-function useFreshRemoteUrl(key: string | undefined, since: number): string | undefined {
-  const s = useApp((st) => (key ? st.sessions.find((x) => x.key === key) : undefined))
-  if (!s?.remoteUrl || !s.remoteUrlAt) return undefined
-  return Date.parse(s.remoteUrlAt) >= since - 5000 ? s.remoteUrl : undefined
+function useFreshRemoteUrl(result: RemoteLaunchResult | null, since: number): string | undefined {
+  const sessions = useApp((st) => st.sessions)
+  return freshRemoteUrl(sessions, result, since)
 }
 
 export function LaunchSheet({
@@ -60,7 +60,7 @@ export function LaunchSheet({
   const [busy, setBusy] = useState(false)
   const [result, setResult] = useState<(RemoteLaunchResult & { at: number }) | null>(null)
   const [error, setError] = useState<string>()
-  const fresh = useFreshRemoteUrl(result?.ok ? result.key : undefined, result?.at ?? 0)
+  const fresh = useFreshRemoteUrl(result?.ok ? result : null, result?.at ?? 0)
   const [waitedLong, setWaitedLong] = useState(false)
 
   useEffect(() => {

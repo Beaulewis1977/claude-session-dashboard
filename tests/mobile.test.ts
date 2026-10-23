@@ -237,6 +237,7 @@ function launcher(over: Partial<ReturnType<RemoteLaunchDeps['settings']>> = {}, 
       ...over
     }),
     confirm: async () => confirm,
+    deviceActive: () => true,
     log: (e) => log.push(`${e.action}:${e.ok}:${e.detail}`),
     now: clock
   }
@@ -262,6 +263,7 @@ describe('launches from a phone', () => {
       key: SESSION.key,
       fork: true,
       skipPermissions: false,
+      askPermissions: true,
       remoteControl: true,
       terminal: 'powershell'
     })
@@ -459,7 +461,9 @@ describe('the companion server', () => {
       registry: reg,
       call: async (channel, args) => {
         calls.push([channel, args])
-        return { channel }
+        return channel === 'sessions:list'
+          ? { sessions: [], sources: [], scan: { phase: 'ready', done: 0, total: 0 } }
+          : { channel }
       },
       launcher: rl,
       web: {

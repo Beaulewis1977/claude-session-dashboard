@@ -3,7 +3,16 @@
 // (dialogs, folders, API keys, the status line bridge, Ask Claude, archive
 // import, the mobile server's own settings…) is unreachable from a phone.
 
-import type { AppInfo, AppSettings, SessionMeta } from '@shared/types'
+import type {
+  AppInfo,
+  AppSettings,
+  SessionDetail,
+  SessionMeta,
+  SessionsPayload,
+  SessionSummary,
+  SourceInfo
+} from '@shared/types'
+import type { LimitsState } from '@shared/usage/limits'
 import type { CreditsState } from '@shared/usage/credits'
 import { MOBILE_SAFE_SETTINGS } from '@shared/mobile'
 
@@ -46,6 +55,33 @@ export function phoneSettingsPatch(v: unknown): Partial<AppSettings> {
 
 const none = (): unknown[] => []
 
+// What a phone gets back: the session's own project folder (cwd), which it
+// shows, but not where the PC keeps files (session files, the archive,
+// Claude's settings, extra scan folders) or how the status line is installed.
+
+export function phoneSession(s: SessionSummary): SessionSummary {
+  return { ...s, filePath: '', originalPath: '', archivePath: undefined }
+}
+
+function phoneSource(s: SourceInfo): SourceInfo {
+  return { ...s, projectsDir: '', claudeSettingsPath: undefined }
+}
+
+export function phoneSessions(p: SessionsPayload): SessionsPayload {
+  return { ...p, sessions: p.sessions.map(phoneSession), sources: p.sources.map(phoneSource) }
+}
+
+export function phoneSettings(s: AppSettings): AppSettings {
+  return { ...s, extraFolders: [], projectBilling: {} }
+}
+
+export function phoneLimits(l: LimitsState): LimitsState {
+  return {
+    ...l,
+    envs: l.envs.map((e) => ({ ...e, settingsPath: '', bridgeDir: '', chained: undefined }))
+  }
+}
+
 export const RPC: Record<string, RpcMethod> = {
   getInfo: {
     channel: 'app:info',
@@ -54,26 +90,51 @@ export const RPC: Record<string, RpcMethod> = {
     // Folder locations on the PC aren't the phone's business.
     result: (r) => ({ ...(r as AppInfo), dataDir: '', archiveDir: '' })
   },
-  getSessions: { channel: 'sessions:list', kind: 'read', args: none },
-  getSession: { channel: 'sessions:get', kind: 'read', args: ([k]) => [str(k, 300)] },
+  getSessions: {
+    channel: 'sessions:list',
+    kind: 'read',
+    args: none,
+    result: (r) => phoneSessions(r as SessionsPayload)
+  },
+  getSession: {
+    channel: 'sessions:get',
+    kind: 'read',
+    args: ([k]) => [str(k, 300)],
+    result: (r) => {
+      const d = r as SessionDetail | null
+      return d ? { ...d, summary: phoneSession(d.summary) } : null
+    }
+  },
   search: { channel: 'sessions:search', kind: 'read', args: ([q]) => [str(q, 500)] },
   updateMeta: {
     channel: 'sessions:updateMeta',
     kind: 'write',
-    args: ([k, p]) => [str(k, 300), phoneMetaPatch(p)]
+    args: ([k, p]) => [str(k, 300), phoneMetaPatch(p)],
+    result: (r) => (r ? phoneSession(r as SessionSummary) : r)
   },
-  getSettings: { channel: 'settings:get', kind: 'read', args: none },
+  getSettings: {
+    channel: 'settings:get',
+    kind: 'read',
+    args: none,
+    result: (r) => phoneSettings(r as AppSettings)
+  },
   updateSettings: {
     channel: 'settings:update',
     kind: 'write',
-    args: ([p]) => [phoneSettingsPatch(p)]
+    args: ([p]) => [phoneSettingsPatch(p)],
+    result: (r) => phoneSettings(r as AppSettings)
   },
   getUsageReport: { channel: 'usage:report', kind: 'read', args: ([q]) => [q] },
   getSessionUsage: { channel: 'usage:session', kind: 'read', args: ([k]) => [str(k, 300)] },
   getUsageStatus: { channel: 'usage:status', kind: 'read', args: none },
   getTrends: { channel: 'usage:trends', kind: 'read', args: ([g]) => [g] },
   compareTrends: { channel: 'usage:compare', kind: 'read', args: ([a, b]) => [a, b] },
-  getLimits: { channel: 'limits:state', kind: 'read', args: none },
+  getLimits: {
+    channel: 'limits:state',
+    kind: 'read',
+    args: none,
+    result: (r) => phoneLimits(r as LimitsState)
+  },
   compareHealth: {
     channel: 'limits:compareHealth',
     kind: 'read',

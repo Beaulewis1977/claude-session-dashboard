@@ -160,7 +160,8 @@ export class DeviceRegistry {
         return { ...tooMany, error: 'Too many wrong codes. Show a new code on your PC.' }
       }
       if (n >= PAIRING_MAX_FAILURES) {
-        this.log({ action: 'pair', detail: `Too many wrong codes from ${from}`, ok: false })
+        // Not the address itself: behind Tailscale it includes the account's e-mail.
+        this.log({ action: 'pair', detail: 'Too many wrong codes from one device', ok: false })
         return tooMany
       }
       return { ok: false, status: 403, error: "That code doesn't match. Check it and try again." }
@@ -193,15 +194,25 @@ export class DeviceRegistry {
     const h = hashToken(token)
     const d = this.store.value.devices.find((x) => sameHash(x.tokenHash, h))
     if (!d) return undefined
-    const t = this.now()
-    if ((this.lastWrite.get(d.id) ?? 0) + SEEN_WRITE_MS < t) {
-      this.lastWrite.set(d.id, t)
-      this.store.update((f) => {
-        const x = f.devices.find((y) => y.id === d.id)
-        if (x) x.lastSeenAt = new Date(t).toISOString()
-      })
-    }
+    this.touch(d.id)
     return d
+  }
+
+  /** Still paired: not revoked, and used within the last 30 days. */
+  isActive(id: string): boolean {
+    this.prune()
+    return this.store.value.devices.some((d) => d.id === id)
+  }
+
+  /** The phone is in use (a request, or a live connection): saved at most once a minute. */
+  touch(id: string): void {
+    const t = this.now()
+    if ((this.lastWrite.get(id) ?? 0) + SEEN_WRITE_MS >= t) return
+    this.lastWrite.set(id, t)
+    this.store.update((f) => {
+      const x = f.devices.find((y) => y.id === id)
+      if (x) x.lastSeenAt = new Date(t).toISOString()
+    })
   }
 
   /** Forget phones not seen for 30 days. */

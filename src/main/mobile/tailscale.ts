@@ -257,6 +257,13 @@ export class TailscaleClient {
     if (!before.installed) return { ok: false, error: 'Tailscale is not installed.' }
     if (!before.loggedIn) return { ok: false, error: 'Sign in to Tailscale first.' }
     if (before.serve === 'on') return { ok: true }
+    // Only add a rule when we know the port is free: an unreadable status
+    // could hide someone else's rule there.
+    if (before.serve === 'unknown')
+      return {
+        ok: false,
+        error: "Couldn't read Tailscale's serve settings, so nothing was changed. Try again."
+      }
     if (before.serve === 'conflict')
       return {
         ok: false,

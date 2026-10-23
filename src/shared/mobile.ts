@@ -149,8 +149,10 @@ export interface RemoteLaunchPreview {
 export interface RemoteLaunchResult {
   ok: boolean
   error?: string
-  /** The session that was launched (for a branch, the new one). */
+  /** The session that was launched (for a branch, the new one; unknown for a fork). */
   key?: string
+  /** For a fork: where the new session will appear. */
+  fork?: { parentKey: string; sourceId: string; cwd?: string }
   /** Fixtures mode / not Windows: nothing was started. */
   simulated?: boolean
   /** Waiting for, or denied by, the confirmation on the PC. */
@@ -180,7 +182,10 @@ export type MobileSafeSetting = (typeof MOBILE_SAFE_SETTINGS)[number]
 /** Server → phone messages on the WebSocket. */
 export type MobileEvent =
   | { type: 'ready' }
-  | { type: 'event'; channel: 'sessions' | 'usage' | 'limits' | 'credits' | 'settings' }
+  | {
+      type: 'event'
+      channel: 'sessions' | 'usage' | 'limits' | 'credits' | 'settings' | 'policy'
+    }
   | { type: 'toast'; title: string; body?: string }
   | { type: 'revoked' }
 

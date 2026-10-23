@@ -86,7 +86,9 @@ describe('Remote Control launch commands', () => {
       terminal: 'wt',
       remoteControl: { name: 'Fix login bug' }
     })
-    expect(cmd.args.at(-1)).toBe(`"${CLAUDE}" --remote-control "Fix login bug" --resume ${ID}`)
+    expect(cmd.args.at(-1)).toBe(
+      `set ANTHROPIC_API_KEY=& set ANTHROPIC_AUTH_TOKEN=& "${CLAUDE}" --remote-control "Fix login bug" --resume ${ID}`
+    )
     expect(cmd.unsetEnv).toEqual(['ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN'])
   })
 
@@ -109,7 +111,9 @@ describe('Remote Control launch commands', () => {
       terminal: 'wt',
       remoteControl: rc
     })
-    expect(wt.args.at(-1)).toBe(`claude --remote-control 'Infra work' --resume ${ID}`)
+    expect(wt.args.at(-1)).toBe(
+      `unset ANTHROPIC_API_KEY ANTHROPIC_AUTH_TOKEN && claude --remote-control 'Infra work' --resume ${ID}`
+    )
     const ps = launch({
       env: 'wsl',
       distro: 'Ubuntu',
@@ -118,7 +122,7 @@ describe('Remote Control launch commands', () => {
       remoteControl: rc
     })
     expect(ps.args[2]).toBe(
-      `& '${TOOLS.wsl}' -d 'Ubuntu' --cd '/home/me' -- bash -lic 'claude --remote-control ''Infra work'' --resume ${ID}'`
+      `& '${TOOLS.wsl}' -d 'Ubuntu' --cd '/home/me' -- bash -lic 'unset ANTHROPIC_API_KEY ANTHROPIC_AUTH_TOKEN && claude --remote-control ''Infra work'' --resume ${ID}'`
     )
     const cmd = launch({
       env: 'wsl',
@@ -128,7 +132,7 @@ describe('Remote Control launch commands', () => {
       remoteControl: rc
     })
     expect(cmd.args[2]).toBe(
-      `""${TOOLS.wsl}" -d Ubuntu --cd "/home/me" -- bash -lic "claude --remote-control 'Infra work' --resume ${ID}""`
+      `""${TOOLS.wsl}" -d Ubuntu --cd "/home/me" -- bash -lic "unset ANTHROPIC_API_KEY ANTHROPIC_AUTH_TOKEN && claude --remote-control 'Infra work' --resume ${ID}""`
     )
   })
 

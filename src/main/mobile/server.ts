@@ -79,6 +79,19 @@ class HttpError extends Error {
   }
 }
 
+/** The token from a phone's first WebSocket message ({"type":"auth","token":…}), if any. */
+export function authToken(data: unknown): string | undefined {
+  let msg: unknown
+  try {
+    msg = JSON.parse(String(data))
+  } catch {
+    return undefined
+  }
+  if (!msg || typeof msg !== 'object' || Array.isArray(msg)) return undefined
+  const m = msg as Record<string, unknown>
+  return m.type === 'auth' && typeof m.token === 'string' ? m.token : undefined
+}
+
 /** The request's path, or undefined if it can't be parsed (e.g. "//"). */
 function pathOf(url: string | undefined): string | undefined {
   try {
@@ -221,32 +234,23 @@ export class MobileServer {
       ;(ws as WebSocket & { alive?: boolean }).alive = true
     })
     ws.on('message', (data) => {
-      if (device) return // Phones only listen after signing in.
-      clearTimeout(timer)
-      let msg: { type?: string; token?: string } = {}
+      // Anything a client sends must be refused, never thrown: this runs
+      // outside any request's error handling, in the app's main process.
       try {
-        msg = JSON.parse(String(data)) as typeof msg
-      } catch {
-        // falls through to the refusal
+        if (device) return // Phones only listen after signing in.
+        clearTimeout(timer)
+        const d = this.deps.registry.authenticate(authToken(data))
+        if (!d) {
+          this.authFailed()
+          ws.close(4401, 'not paired')
+          return
+        }
+        device = d
+        this.addSocket(d, ws)
+      } catch (err) {
+        console.warn('mobile websocket message refused', err)
+        ws.terminate()
       }
-      const d = msg.type === 'auth' ? this.deps.registry.authenticate(msg.token) : undefined
-      if (!d) {
-        this.authFailed()
-        ws.close(4401, 'not paired')
-        return
-      }
-      device = d
-      const set = this.sockets.get(d.id) ?? new Set()
-      // A phone that reconnects a lot keeps only its newest connections.
-      while (set.size >= MAX_SOCKETS_PER_DEVICE) {
-        const oldest = set.values().next().value as WebSocket
-        set.delete(oldest)
-        oldest.terminate()
-      }
-      set.add(ws)
-      this.sockets.set(d.id, set)
-      this.send(ws, { type: 'ready' })
-      this.deps.changed()
     })
     ws.on('close', () => {
       clearTimeout(timer)
@@ -259,7 +263,31 @@ export class MobileServer {
     ws.on('error', () => ws.terminate())
   }
 
+  private addSocket(d: StoredDevice, ws: WebSocket): void {
+    const set = this.sockets.get(d.id) ?? new Set()
+    // A phone that reconnects a lot keeps only its newest connections.
+    while (set.size >= MAX_SOCKETS_PER_DEVICE) {
+      const oldest = set.values().next().value as WebSocket
+      set.delete(oldest)
+      oldest.terminate()
+    }
+    set.add(ws)
+    this.sockets.set(d.id, set)
+    this.send(ws, { type: 'ready' })
+    this.deps.changed()
+  }
+
+  /**
+   * Every 30 seconds: drop dead connections, and those of phones that are no
+   * longer paired (expired); a live connection counts as the phone being used.
+   */
   private ping(): void {
+    for (const id of [...this.sockets.keys()]) {
+      if (!this.deps.registry.isActive(id)) {
+        this.disconnect(id)
+        this.deps.changed()
+      } else this.deps.registry.touch(id)
+    }
     for (const set of this.sockets.values())
       for (const ws of set) {
         const w = ws as WebSocket & { alive?: boolean }
@@ -281,6 +309,10 @@ export class MobileServer {
     let n = 0
     for (const [id, set] of this.sockets) {
       if (deviceId && id !== deviceId) continue
+      if (!this.deps.registry.isActive(id)) {
+        this.disconnect(id)
+        continue
+      }
       for (const ws of set) {
         this.send(ws, ev)
         n++
@@ -460,11 +492,15 @@ export class MobileServer {
       }
       case '/api/rpc': {
         const body = (await readJson(req)) as { method?: unknown; args?: unknown }
+        // The body may arrive slowly: check the phone and the policy again now.
+        if (!this.deps.registry.isActive(d.id))
+          throw new HttpError(401, 'This phone is not paired (or was revoked). Pair it again.')
         const m = rpcMethod(body.method)
         if (!m) throw new HttpError(404, 'Not available from a phone')
         const args = Array.isArray(body.args) ? body.args.slice(0, 4) : []
         if (m.kind === 'write') {
-          if (flags.readOnly) throw new HttpError(403, 'Read-only mode is on. Change it on the PC.')
+          if (this.deps.flags().readOnly)
+            throw new HttpError(403, 'Read-only mode is on. Change it on the PC.')
           if (!this.writeLimiter.take(d.id))
             throw new HttpError(429, 'Too many changes. Wait a minute.')
         }

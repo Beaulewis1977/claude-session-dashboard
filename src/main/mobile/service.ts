@@ -43,7 +43,7 @@ export interface MobileServiceDeps {
   settings(): MobileSettings
   saveSettings(next: MobileSettings): Promise<void>
   call(channel: string, args: unknown[]): Promise<unknown>
-  launch: Omit<RemoteLaunchDeps, 'settings' | 'log'> & {
+  launch: Omit<RemoteLaunchDeps, 'settings' | 'log' | 'deviceActive'> & {
     settings(): { terminal: TerminalPref; branchConfirmed: boolean }
   }
   web: WebAssets
@@ -75,6 +75,7 @@ export class MobileService extends EventEmitter<{ changed: [] }> {
         const m = this.settings
         return { ...deps.launch.settings(), readOnly: m.readOnly, confirmOnPc: m.confirmOnPc }
       },
+      deviceActive: (id) => this.registry.isActive(id),
       log: ({ device, ...e }) => {
         this.registry.log({ deviceId: device.id, device: device.name, ...e })
         this.changed()
@@ -181,7 +182,8 @@ export class MobileService extends EventEmitter<{ changed: [] }> {
       tailscale: this.ts,
       firewallRule:
         s.mode === 'lan'
-          ? !!this.deps.store.value.firewallRule || (await firewallRuleExists())
+          ? !!this.deps.store.value.firewallRule ||
+            (!this.deps.fixtures && (await firewallRuleExists()))
           : undefined,
       certFingerprint:
         s.mode === 'lan' && this.server.running && this.deps.store.value.lanCert
@@ -203,7 +205,32 @@ export class MobileService extends EventEmitter<{ changed: [] }> {
 
   // ------------------------------------------------------------ on / off
 
-  async update(patch: Partial<MobileSettings>): Promise<MobileStatus> {
+  // Start, stop, update and retry run one at a time: overlapping clicks
+  // (or the wizard and Settings together) can't leave a second listener behind.
+  private queue: Promise<unknown> = Promise.resolve()
+  private serial<T>(fn: () => Promise<T>): Promise<T> {
+    const run = this.queue.then(fn, fn)
+    this.queue = run.catch(() => undefined)
+    return run
+  }
+
+  update(patch: Partial<MobileSettings>): Promise<MobileStatus> {
+    return this.serial(() => this.doUpdate(patch))
+  }
+
+  start(): Promise<MobileStatus> {
+    return this.serial(() => this.doStart())
+  }
+
+  stop(prev?: MobileSettings, keepEnabled = false): Promise<MobileStatus> {
+    return this.serial(() => this.doStop(prev ?? this.settings, keepEnabled))
+  }
+
+  retryServe(): Promise<MobileStatus> {
+    return this.serial(() => this.doRetryServe())
+  }
+
+  private async doUpdate(patch: Partial<MobileSettings>): Promise<MobileStatus> {
     const before = this.settings
     const next: MobileSettings = { ...before }
     if (typeof patch.readOnly === 'boolean') next.readOnly = patch.readOnly
@@ -234,14 +261,17 @@ export class MobileService extends EventEmitter<{ changed: [] }> {
       before.httpsPort !== next.httpsPort ||
       before.lanAddress !== next.lanAddress
     if (moved && this.server.running) {
-      await this.stop(before)
-      await this.start()
+      await this.doStop(before, false)
+      await this.doStart()
     }
+    // Phones show (or hide) their launch and edit controls from this.
+    if (before.readOnly !== next.readOnly || before.confirmOnPc !== next.confirmOnPc)
+      this.server.broadcast({ type: 'event', channel: 'policy' })
     this.changed()
     return this.status()
   }
 
-  async start(): Promise<MobileStatus> {
+  private async doStart(): Promise<MobileStatus> {
     const s = this.settings
     this.lastError = undefined
     let host: string
@@ -290,7 +320,7 @@ export class MobileService extends EventEmitter<{ changed: [] }> {
   }
 
   /** Stop the server and remove our serve rule (never anyone else's). */
-  async stop(prev = this.settings, keepEnabled = false): Promise<MobileStatus> {
+  private async doStop(prev: MobileSettings, keepEnabled: boolean): Promise<MobileStatus> {
     await this.server.stop()
     this.pairing = undefined
     this.registry.cancelPairing()
@@ -328,7 +358,7 @@ export class MobileService extends EventEmitter<{ changed: [] }> {
   }
 
   /** Retry `tailscale serve` (after the user approved HTTPS in the browser). */
-  async retryServe(): Promise<MobileStatus> {
+  private async doRetryServe(): Promise<MobileStatus> {
     const s = this.settings
     if (this.server.running && s.mode === 'tailscale') {
       this.lastError = undefined

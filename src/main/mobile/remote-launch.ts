@@ -30,6 +30,8 @@ export interface RemoteLaunchDeps {
   }
   /** Ask on the PC; resolves false if declined or not answered in time. */
   confirm(device: StoredDevice, what: string): Promise<boolean>
+  /** The phone is still paired (not revoked or expired since the request began). */
+  deviceActive(id: string): boolean
   log(entry: { device: StoredDevice; action: string; detail?: string; ok: boolean }): void
   now?: () => number
 }
@@ -60,6 +62,8 @@ export function remoteLaunchOptions(
     key: req.key,
     fork: req.kind === 'fork',
     skipPermissions: false,
+    // Prompts on, whatever the user's settings or Claude Code's default say.
+    askPermissions: true,
     remoteControl: true,
     terminal,
     ...(req.kind === 'branch' && req.branch ? { branch: { ...req.branch } } : {})
@@ -184,7 +188,15 @@ export class RemoteLauncher {
         return { ok: false, denied: true, error: 'Declined on the PC (or not answered in time).' }
       }
     }
-    const res = await this.deps.launch(remoteLaunchOptions(req, st.terminal), {
+    // Things may have changed while waiting (the PC dialog, the request body):
+    // check the phone and read-only mode again right before launching.
+    const now = this.deps.settings()
+    if (!this.deps.deviceActive(device.id) || now.readOnly) {
+      const why = now.readOnly ? 'read-only mode was turned on' : 'the phone was revoked'
+      this.deps.log({ device, action: 'launch', detail: `${what} refused: ${why}`, ok: false })
+      return { ok: false, error: `Not launched: ${why}.` }
+    }
+    const res = await this.deps.launch(remoteLaunchOptions(req, now.terminal), {
       via: 'phone',
       device: device.name
     })
@@ -197,7 +209,11 @@ export class RemoteLauncher {
     return {
       ok: res.ok,
       error: res.error,
-      key: res.branch?.key ?? s.key,
+      // A fork gets a new session id Claude Code picks itself: the phone finds
+      // it by folder and start time instead of watching the parent.
+      key: req.kind === 'fork' ? undefined : (res.branch?.key ?? s.key),
+      fork:
+        req.kind === 'fork' ? { parentKey: s.key, sourceId: s.sourceId, cwd: s.cwd } : undefined,
       simulated: res.simulated
     }
   }

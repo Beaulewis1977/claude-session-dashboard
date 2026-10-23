@@ -236,6 +236,16 @@ export function MobileWizard({
                     Works once · expires in <Countdown until={pairing.expiresAt} />
                   </div>
                 </div>
+                {path === 'lan' && status.certFingerprint && (
+                  <div className="rounded-lg border border-warning/30 bg-warning-soft px-3 py-2 text-xs leading-relaxed">
+                    Before you tap “Proceed”, open the warning’s certificate details on the phone
+                    and check its SHA-256 fingerprint starts with{' '}
+                    <span className="font-mono font-semibold">
+                      {status.certFingerprint.slice(0, 23)}
+                    </span>
+                    . If it doesn’t, someone else is answering: don’t pair.
+                  </div>
+                )}
                 <div
                   className="truncate font-mono text-[11px] text-muted-foreground"
                   title={pairing.url.split('#')[0]}

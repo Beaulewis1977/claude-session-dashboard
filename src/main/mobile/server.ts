@@ -79,6 +79,31 @@ class HttpError extends Error {
   }
 }
 
+/** The request's path, or undefined if it can't be parsed (e.g. "//"). */
+function pathOf(url: string | undefined): string | undefined {
+  try {
+    return decodeURIComponent(new URL(url ?? '/', 'http://x').pathname)
+  } catch {
+    return undefined
+  }
+}
+
+/**
+ * Who is asking, for counting wrong pairing codes. Through `tailscale serve`
+ * every request comes from 127.0.0.1, so Tailscale's own headers (set by the
+ * proxy, which replaces any a client sends) tell the phones apart.
+ */
+function clientKey(req: IncomingMessage): string {
+  const ts = req.headers['tailscale-user-login']
+  const fwd = req.headers['x-forwarded-for']
+  const addr = req.socket.remoteAddress ?? '?'
+  if (addr === '127.0.0.1' || addr === '::1' || addr === '::ffff:127.0.0.1') {
+    const via = (Array.isArray(fwd) ? fwd[0] : fwd)?.split(',')[0]?.trim()
+    return `ts:${typeof ts === 'string' ? ts : ''}:${via ?? 'local'}`
+  }
+  return addr
+}
+
 function bearer(req: IncomingMessage): string | undefined {
   const h = req.headers.authorization
   return h?.startsWith('Bearer ') ? h.slice(7).trim() : undefined
@@ -147,10 +172,11 @@ export class MobileServer {
     server.on('upgrade', (req, socket, head) => {
       const host = (req.headers.host ?? '').toLowerCase()
       const hosts = this.deps.hosts()
+      // Nothing here may throw: this runs outside any request's error handling.
       if (
-        new URL(req.url ?? '/', 'http://x').pathname !== '/api/ws' ||
         !hosts.has(host) ||
-        !originAllowed(req.headers.origin, hosts)
+        !originAllowed(req.headers.origin, hosts) ||
+        pathOf(req.url) !== '/api/ws'
       ) {
         socket.write('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n')
         socket.destroy()
@@ -395,13 +421,15 @@ export class MobileServer {
 
   private async api(req: IncomingMessage, res: ServerResponse, path: string): Promise<void> {
     if (path === '/api/pair') {
-      if (!this.pairLimiter.take('pair'))
+      const from = clientKey(req)
+      if (!this.pairLimiter.take(from))
         throw new HttpError(429, 'Too many attempts. Wait a minute.')
       const body = (await readJson(req)) as { code?: unknown; name?: unknown }
       const r = this.deps.registry.pair(
         body.code,
         body.name,
-        String(req.headers['user-agent'] ?? '')
+        String(req.headers['user-agent'] ?? ''),
+        from
       )
       if (!r.ok) throw new HttpError(r.status, r.error)
       this.deps.changed()

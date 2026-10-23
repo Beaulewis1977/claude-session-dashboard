@@ -240,6 +240,16 @@ export function MobileSettingsSection() {
               ))}
             </select>
           </Row>
+          {status.certFingerprint && (
+            <Row
+              label="Certificate fingerprint"
+              hint="When your phone warns about the certificate, its SHA-256 fingerprint must match this. Launches from a phone are confirmed here in this mode."
+            >
+              <span className="selectable block max-w-[260px] font-mono text-[11px] break-all text-muted-foreground">
+                {status.certFingerprint}
+              </span>
+            </Row>
+          )}
           <Row
             label="Windows Firewall rule"
             hint="Only this app, only its port, only from your local network, only on Private networks."

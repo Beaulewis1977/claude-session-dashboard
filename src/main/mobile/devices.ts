@@ -34,7 +34,10 @@ export interface MobileFile {
 
 export const DEVICE_TTL_MS = 30 * 24 * 60 * 60 * 1000
 export const PAIRING_TTL_MS = 5 * 60 * 1000
+/** Wrong codes allowed from one address before it's refused for this code. */
 export const PAIRING_MAX_FAILURES = 5
+/** Wrong codes from everyone together before the code is withdrawn. */
+export const PAIRING_MAX_TOTAL_FAILURES = 50
 const ACTIVITY_MAX = 1000
 /** lastSeenAt is saved at most this often per device. */
 const SEEN_WRITE_MS = 60_000
@@ -92,7 +95,8 @@ export type PairResult =
   | { ok: false; error: string; status: 400 | 403 | 410 | 429 }
 
 export class DeviceRegistry {
-  private pairing: { code: string; expiresAt: number; failures: number } | undefined
+  private pairing:
+    { code: string; expiresAt: number; failures: Map<string, number>; total: number } | undefined
   private lastWrite = new Map<string, number>()
 
   constructor(
@@ -106,7 +110,7 @@ export class DeviceRegistry {
   startPairing(baseUrl: string): PairingInfo {
     const code = newPairingCode()
     const expiresAt = this.now() + PAIRING_TTL_MS
-    this.pairing = { code: normalizeCode(code), expiresAt, failures: 0 }
+    this.pairing = { code: normalizeCode(code), expiresAt, failures: new Map(), total: 0 }
     return {
       code,
       // The code travels in the fragment, so it never reaches a server log or proxy.
@@ -123,7 +127,11 @@ export class DeviceRegistry {
     return !!this.pairing && this.pairing.expiresAt > this.now()
   }
 
-  pair(code: unknown, name: unknown, agent?: string): PairResult {
+  /**
+   * `from` identifies the asker (its address): wrong guesses are counted per
+   * address, so someone else on the network can't use up the real phone's tries.
+   */
+  pair(code: unknown, name: unknown, agent?: string, from = 'unknown'): PairResult {
     const p = this.pairing
     if (!p || p.expiresAt <= this.now()) {
       this.pairing = undefined
@@ -133,19 +141,27 @@ export class DeviceRegistry {
         error: 'Pairing is not open. On your PC, open Settings → Phone and show a new code.'
       }
     }
+    const tooMany: PairResult = {
+      ok: false,
+      status: 429,
+      error: 'Too many wrong codes from this device. Show a new code on your PC.'
+    }
+    if ((p.failures.get(from) ?? 0) >= PAIRING_MAX_FAILURES) return tooMany
     const given = typeof code === 'string' ? normalizeCode(code) : ''
     const a = Buffer.from(given.padEnd(16, '\0'))
     const b = Buffer.from(p.code.padEnd(16, '\0'))
     if (given.length !== p.code.length || !timingSafeEqual(a, b)) {
-      p.failures++
-      if (p.failures >= PAIRING_MAX_FAILURES) {
+      const n = (p.failures.get(from) ?? 0) + 1
+      p.failures.set(from, n)
+      p.total++
+      if (p.total >= PAIRING_MAX_TOTAL_FAILURES) {
         this.pairing = undefined
         this.log({ action: 'pair', detail: 'Too many wrong codes: pairing was closed', ok: false })
-        return {
-          ok: false,
-          status: 429,
-          error: 'Too many wrong codes. Show a new code on your PC.'
-        }
+        return { ...tooMany, error: 'Too many wrong codes. Show a new code on your PC.' }
+      }
+      if (n >= PAIRING_MAX_FAILURES) {
+        this.log({ action: 'pair', detail: `Too many wrong codes from ${from}`, ok: false })
+        return tooMany
       }
       return { ok: false, status: 403, error: "That code doesn't match. Check it and try again." }
     }

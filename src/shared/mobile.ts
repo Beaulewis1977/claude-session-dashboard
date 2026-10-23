@@ -103,6 +103,8 @@ export interface MobileStatus {
   error?: string
   tailscale?: TailscaleStatus
   firewallRule?: boolean
+  /** Home Wi-Fi mode: SHA-256 fingerprint of the self-signed certificate, to compare on the phone. */
+  certFingerprint?: string
   devices: MobileDevice[]
   pairing?: PairingInfo
   /** The built web app is missing (development without `npm run build`). */

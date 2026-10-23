@@ -24,7 +24,7 @@ import {
 import type { TerminalPref } from '@shared/types'
 import { REMOTE_CONTROL_MIN_VERSION, REMOTE_CONTROL_UNSET_ENV } from '../core/launch'
 import type { JsonStore } from '../core/json-store'
-import { createSelfSignedCert } from './cert'
+import { createSelfSignedCert, fingerprint } from './cert'
 import { DeviceRegistry, type MobileFile } from './devices'
 import { firewallRuleExists } from './firewall'
 import { allowedHosts, bindAddress, lanAddresses, LOOPBACK } from './network'
@@ -183,6 +183,10 @@ export class MobileService extends EventEmitter<{ changed: [] }> {
         s.mode === 'lan'
           ? !!this.deps.store.value.firewallRule || (await firewallRuleExists())
           : undefined,
+      certFingerprint:
+        s.mode === 'lan' && this.server.running && this.deps.store.value.lanCert
+          ? fingerprint(this.deps.store.value.lanCert.cert)
+          : undefined,
       devices: this.registry.list((id) => this.server.isConnected(id)),
       pairing: this.pairing,
       webAppMissing
@@ -206,6 +210,11 @@ export class MobileService extends EventEmitter<{ changed: [] }> {
     if (typeof patch.confirmOnPc === 'boolean') next.confirmOnPc = patch.confirmOnPc
     if (typeof patch.autoStart === 'boolean') next.autoStart = patch.autoStart
     if (patch.mode === 'tailscale' || patch.mode === 'lan') next.mode = patch.mode
+    // On a shared network a stranger could sit between the phone and the PC
+    // behind the self-signed certificate warning: ask on the PC before every
+    // launch (can be turned off again).
+    if (before.mode !== 'lan' && next.mode === 'lan' && typeof patch.confirmOnPc !== 'boolean')
+      next.confirmOnPc = true
     if (typeof patch.lanAddress === 'string') next.lanAddress = patch.lanAddress
     const port = (v: unknown): number | undefined =>
       typeof v === 'number' && Number.isInteger(v) && v >= 1024 && v <= 65535 ? v : undefined

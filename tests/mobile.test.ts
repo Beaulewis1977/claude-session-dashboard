@@ -1,6 +1,7 @@
 import { X509Certificate } from 'node:crypto'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { request as httpRequest } from 'node:http'
+import { connect } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -15,6 +16,7 @@ import {
   newPairingCode,
   normalizeCode,
   PAIRING_MAX_FAILURES,
+  PAIRING_MAX_TOTAL_FAILURES,
   type MobileFile
 } from '../src/main/mobile/devices'
 import {
@@ -113,13 +115,24 @@ describe('pairing and tokens', () => {
 
     const p2 = reg.startPairing('http://127.0.0.1:1')
     for (let i = 0; i < PAIRING_MAX_FAILURES - 1; i++) {
-      const r = reg.pair('AAAA-AAAA', 'x')
+      const r = reg.pair('AAAA-AAAA', 'x', '', '192.168.1.66')
       expect(!r.ok && r.status).toBe(403)
     }
-    const last = reg.pair('AAAA-AAAA', 'x')
+    const last = reg.pair('AAAA-AAAA', 'x', '', '192.168.1.66')
     expect(!last.ok && last.status).toBe(429)
-    // Even the right code no longer works.
-    expect(reg.pair(p2.code, 'x').ok).toBe(false)
+    // That address can't use the right code any more…
+    expect(reg.pair(p2.code, 'x', '', '192.168.1.66').ok).toBe(false)
+    // …but it can't lock the real phone out either.
+    expect(reg.pair(p2.code, 'Phone', '', '192.168.1.20').ok).toBe(true)
+  })
+
+  it('withdraws the code after too many wrong guesses from everyone together', () => {
+    const reg = new DeviceRegistry(store(), clock)
+    const p = reg.startPairing('h')
+    for (let i = 0; i < PAIRING_MAX_TOTAL_FAILURES; i++)
+      reg.pair('AAAA-AAAA', 'x', '', `10.0.0.${i}`)
+    expect(reg.pairingActive()).toBe(false)
+    expect(reg.pair(p.code, 'x', '', '10.0.1.1').ok).toBe(false)
   })
 
   it('revokes devices and forgets ones unused for 30 days', () => {
@@ -580,6 +593,34 @@ describe('the companion server', () => {
     expect(await closed).toBe(4403)
   })
 
+  it('survives a malformed WebSocket upgrade', async () => {
+    // "//" can't be parsed as a URL: this must be refused, not crash the main process.
+    const reply = await new Promise<string>((resolve, reject) => {
+      const sock = connect(port, '127.0.0.1', () =>
+        sock.write(
+          [
+            'GET // HTTP/1.1',
+            `Host: 127.0.0.1:${port}`,
+            `Origin: http://127.0.0.1:${port}`,
+            'Connection: Upgrade',
+            'Upgrade: websocket',
+            'Sec-WebSocket-Version: 13',
+            'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==',
+            '',
+            ''
+          ].join('\r\n')
+        )
+      )
+      let data = ''
+      sock.on('data', (d) => (data += d.toString()))
+      sock.on('close', () => resolve(data))
+      sock.on('error', reject)
+    })
+    expect(reply).toMatch(/^HTTP\/1\.1 403/)
+    expect(server.running).toBe(true)
+    expect((await req(port, '/')).status).toBe(200)
+  })
+
   it('WebSocket: refuses other origins and bad tokens', async () => {
     const bad = new WebSocket(`ws://127.0.0.1:${port}/api/ws`, {
       headers: { origin: 'https://evil.example' }
@@ -878,6 +919,16 @@ describe('turning phone access on and off', () => {
       'off'
     ])
     expect((await svc.tailscale.status(443, 3000)).serve).toBe('on')
+  })
+
+  it('asks on the PC before launches once home Wi-Fi mode is chosen', async () => {
+    const { svc } = await service({}, [])
+    expect(svc.settings.confirmOnPc).toBe(false)
+    await svc.update({ mode: 'lan', lanAddress: '192.168.1.20' })
+    expect(svc.settings.confirmOnPc).toBe(true)
+    // It can still be turned off on purpose.
+    await svc.update({ confirmOnPc: false })
+    expect(svc.settings.confirmOnPc).toBe(false)
   })
 
   it('removes a matching rule it did not record (added by hand), but not a foreign one', async () => {

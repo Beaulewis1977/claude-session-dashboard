@@ -9,6 +9,7 @@ import {
 } from '@shared/types'
 import { JsonStore } from '../core/json-store'
 import { isSourceLabel } from '@shared/source-label'
+import type { MobileSettings } from '@shared/mobile'
 
 export interface MetadataFile {
   version: 1
@@ -22,6 +23,8 @@ export interface SettingsFile extends AppSettings {
   window?: { width: number; height: number; x?: number; y?: number; maximized?: boolean }
   /** The always-on-top mini meter: open or not, and where. */
   miniMeter?: { open?: boolean; x?: number; y?: number }
+  /** Phone companion (desktop only: never readable or changeable from a phone). */
+  mobile?: MobileSettings
 }
 
 export interface AppPaths {
@@ -74,6 +77,7 @@ export function cleanMetaPatch(patch: Partial<SessionMeta>): Partial<SessionMeta
       .filter((t) => t && !seen.has(t) && seen.add(t))
   }
   if ('hidden' in patch) out.hidden = patch.hidden === true
+  if ('pinned' in patch) out.pinned = patch.pinned === true
   if ('billing' in patch) {
     const b = patch.billing as Record<string, unknown> | undefined | null
     out.billing =

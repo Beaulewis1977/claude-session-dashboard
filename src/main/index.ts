@@ -2,12 +2,15 @@ import { join } from 'node:path'
 import {
   app,
   BrowserWindow,
+  dialog,
+  nativeImage,
   nativeTheme,
   Notification,
   safeStorage,
   session,
   shell
 } from 'electron'
+import { DEFAULT_MOBILE } from '@shared/mobile'
 import { FIXTURES_NOW, setClockOffset } from '@shared/clock'
 import { addSnapshotExtras, DEFAULT_PRICES, sanitizePrices } from '@shared/usage/pricing'
 import {
@@ -23,7 +26,13 @@ import type { ThemePref } from '@shared/types'
 import { SOURCE_LABELS } from '@shared/source-label'
 import { isDevServerUrl } from './core/app-url'
 import { NO_CWD_SEARCH } from './core/launch'
-import { setAppPage } from './ipc-guard'
+import { callHandler, setAppPage } from './ipc-guard'
+import { JsonStore } from './core/json-store'
+import { registerMobileIpc } from './ipc-mobile'
+import type { MobileFile } from './mobile/devices'
+import { MobileService, webAppFile } from './mobile/service'
+import { fakeTailscale, TailscaleClient } from './mobile/tailscale'
+import { webAssets } from './mobile/web-assets'
 import {
   fixturesLayout,
   prepareFixtures,
@@ -75,6 +84,41 @@ const CHROME = {
 }
 
 let mainWindow: BrowserWindow | undefined
+let mobile: MobileService
+
+/**
+ * "Confirm on PC": ask before a phone launches anything. No answer within a
+ * minute counts as no.
+ */
+async function confirmOnPc(device: string, what: string): Promise<boolean> {
+  const w = mainWindow
+  if (!w || w.isDestroyed()) return false
+  if (w.isMinimized()) w.restore()
+  w.show()
+  w.flashFrame(true)
+  const ac = new AbortController()
+  const timer = setTimeout(() => ac.abort(), 60_000)
+  try {
+    const r = await dialog.showMessageBox(w, {
+      type: 'question',
+      buttons: ['Allow', 'Deny'],
+      defaultId: 1,
+      cancelId: 1,
+      noLink: true,
+      title: 'Launch from your phone',
+      message: `“${device}” wants to ${what.charAt(0).toLowerCase()}${what.slice(1)}`,
+      detail:
+        'It opens in a terminal on this PC with Remote Control on, on your Claude subscription, with permission prompts on. Nothing happens unless you allow it (no answer in 1 minute = Deny).',
+      signal: ac.signal
+    })
+    return r.response === 0
+  } catch {
+    return false
+  } finally {
+    clearTimeout(timer)
+    w.flashFrame(false)
+  }
+}
 
 function resolvedTheme(): 'light' | 'dark' {
   return nativeTheme.shouldUseDarkColors ? 'dark' : 'light'
@@ -178,6 +222,7 @@ async function main(): Promise<void> {
     s.elsewhere = sanitizeElsewhere(s.elsewhere)
     if (typeof s.askSkipPreview !== 'boolean') s.askSkipPreview = false
     if (typeof s.askTimeoutSec !== 'number') s.askTimeoutSec = 180
+    if (typeof s.remoteControlDefault !== 'boolean') s.remoteControlDefault = false
   })
   if (FIXTURES) {
     await seedFixtureData(appRoot, paths.archiveDir, metadata)
@@ -224,15 +269,20 @@ async function main(): Promise<void> {
       return a ? `API · ${a.nickname}` : undefined
     },
     subscriptionLabel: () => `Subscription (${PLAN_LABEL[settings.value.plan]})`,
-    launched: (s, opts, cwd) => {
+    launched: (s, opts, cwd, ctx) => {
+      const at = new Date().toISOString()
       const tag = {
         mode: opts.billingAccountId ? ('api' as const) : ('subscription' as const),
         accountId: opts.billingAccountId,
         source: 'launch' as const,
-        at: new Date().toISOString()
+        at
       }
-      if (opts.fork || opts.newSession) billing.expect(s.sourceId, cwd, tag)
-      else sessions.tagBilling(s.sessionId, tag)
+      const remote = opts.remoteControl ? { at, via: ctx.via, device: ctx.device } : undefined
+      if (opts.fork || opts.newSession) billing.expect(s.sourceId, cwd, tag, remote)
+      else {
+        sessions.tagBilling(s.sessionId, tag)
+        if (remote) sessions.tagRemote(s.sessionId, remote)
+      }
       if (opts.fork) lineage.expectFork(s)
     }
   })
@@ -249,7 +299,10 @@ async function main(): Promise<void> {
     metadata,
     watcher,
     applyTheme,
-    onSettingsChanged: () => usage.emit('changed')
+    onSettingsChanged: () => {
+      usage.emit('changed')
+      mobile?.push('settings')
+    }
   })
   const bridgeStore = createBridgeStore(paths.dataDir)
   await bridgeStore.load()
@@ -281,6 +334,9 @@ async function main(): Promise<void> {
       elsewhere: settings.value.elsewhere
     }),
     (title, body) => {
+      if (!Notification.isSupported()) return
+      // Paired phones get the same alert as a toast.
+      mobile.toast(title, body)
       if (!Notification.isSupported()) return
       const n = new Notification({ title, body, icon: join(appRoot, 'resources', 'icon.png') })
       n.on('click', () => showUsage())
@@ -329,6 +385,61 @@ async function main(): Promise<void> {
   })
   limits.on('changed', () => accounts.emit('changed'))
 
+  // Phone companion: off by default, 127.0.0.1 only (see mobile/).
+  const mobileStore = new JsonStore<MobileFile>(
+    join(paths.dataDir, 'mobile.json'),
+    paths.dataDir,
+    () => ({
+      version: 1,
+      devices: [],
+      activity: []
+    })
+  )
+  await mobileStore.load()
+  const rendererDir = join(__dirname, '../renderer')
+  const appIcon = nativeImage.createFromPath(join(appRoot, 'resources', 'icon.png'))
+  const iconCache = new Map<number, Buffer>()
+  mobile = new MobileService({
+    store: mobileStore,
+    settings: () => ({ ...DEFAULT_MOBILE, ...settings.value.mobile }),
+    saveSettings: async (next) => {
+      settings.update((s) => {
+        s.mobile = next
+      })
+      await settings.flush()
+    },
+    call: callHandler,
+    launch: {
+      session: (key) => sessions.get(key),
+      preview: (opts) => launcher.preview(opts),
+      launch: (opts, ctx) => launcher.launch(opts, ctx),
+      settings: () => ({
+        terminal: settings.value.terminal,
+        branchConfirmed: settings.value.branchConfirmed === true
+      }),
+      confirm: (device, what) => confirmOnPc(device.name, what)
+    },
+    web: webAssets(rendererDir, (size) => {
+      if (appIcon.isEmpty()) return undefined
+      if (!iconCache.has(size))
+        iconCache.set(size, appIcon.resize({ width: size, height: size, quality: 'best' }).toPNG())
+      return iconCache.get(size)
+    }),
+    webAppFile: webAppFile(rendererDir),
+    tailscale: FIXTURES
+      ? fakeTailscale({ dnsName: 'ryzen-desktop.tail1234.ts.net' })
+      : new TailscaleClient(),
+    keys: encryptor,
+    appVersion: app.getVersion(),
+    fixtures: FIXTURES,
+    claudePath: async () => (await platform.launchTools()).claude
+  })
+  registerMobileIpc({ mobile, store: mobileStore, fixtures: FIXTURES })
+  sessions.on('changed', () => mobile.push('sessions'))
+  usage.on('changed', () => mobile.push('usage'))
+  limits.on('changed', () => mobile.push('limits'))
+  accounts.on('changed', () => mobile.push('credits'))
+
   nativeTheme.themeSource = settings.value.theme
   const loadRenderer = (w: BrowserWindow, hash: string): void => {
     if (process.env.ELECTRON_RENDERER_URL)
@@ -355,6 +466,7 @@ async function main(): Promise<void> {
     .then(async () => {
       if (FIXTURES) await seedFixtureBridge(paths.dataDir, sessions, installer)
     })
+    .then(() => mobile.autoStart())
 
   let quitting = false
   app.on('before-quit', (e) => {
@@ -362,6 +474,8 @@ async function main(): Promise<void> {
     e.preventDefault()
     quitting = true
     void (async () => {
+      await mobile.shutdown().catch(() => undefined)
+      await mobileStore.flush().catch(() => undefined)
       await watcher.close().catch(() => undefined)
       await sessions.idle().catch(() => undefined)
       await usage.idle().catch(() => undefined)

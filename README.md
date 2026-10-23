@@ -77,6 +77,12 @@ add none):
   (usage report and cost report). No other host, no other endpoint, and never any session content.
   Standard API keys cause no network calls at all.
 
+The **phone companion** adds a third, opt-in exception: local or Tailscale-only network access. It
+is off by default; when you turn it on, a small server for the app's own phone web app listens on
+`127.0.0.1` and `tailscale serve` publishes it to your own tailnet only (never Funnel, never public).
+An optional home Wi-Fi mode listens on one private LAN address instead, behind a firewall rule you
+approve. See [Phone companion](#phone-companion).
+
 Two later features stay inside the rules: **Import claude.ai data export** only reads the zip you
 pick (it is never written) and stores the conversations in the app's archive, and **Ask Claude**
 makes no network call itself: it starts your own `claude` CLI, which talks to Anthropic as it always
@@ -142,6 +148,14 @@ The executables aren't code-signed, so Windows SmartScreen may warn you the firs
   or the buttons in the header. The dialog shows the exact command, whether the file will be
   restored from the archive, and whether the working folder still exists. If it doesn't, choose
   another folder. Fork adds `--fork-session` so the original session stays untouched.
+- **Remote Control:** tick **Remote Control** in the Resume / Fork / Branch dialog (or turn it on by
+  default in Settings → Resume) to start Claude Code with `--remote-control "<session name>"`, so you
+  can continue the session in the Claude app or at claude.ai/code. The name is your name for the
+  session (or its title), cleaned to letters, digits, spaces and `_ . -`. Remote Control needs Claude
+  Code 2.1.51+ signed in with your Claude subscription, so it turns API billing off and removes
+  `ANTHROPIC_API_KEY` / `ANTHROPIC_AUTH_TOKEN` from that terminal. Sessions launched this way get a
+  **📱 Remote** badge; it links straight to the session once Claude Code records its URL.
+- **Pin:** ⋯ → **Pin to top** keeps a session at the top of the list (or swipe left on the phone).
 - **Search:** press <kbd>/</kbd> and type. Results are sorted by relevance; a small "in messages" label
   means the match is in the conversation rather than the name or tags.
 - **New session:** "New session in this folder…" in a session's ⋯ menu or the command palette.
@@ -224,6 +238,71 @@ anyway, but if you also want Claude Code to keep them, add this to `%USERPROFILE
 ```json
 { "cleanupPeriodDays": 3650 }
 ```
+
+## Phone companion
+
+Use the dashboard from your phone: search and read sessions in chat bubbles, rename them, edit
+descriptions and tags, pin and hide them, check usage and limits, and resume, fork or branch a
+session **on your PC** with Remote Control, then continue it in the Claude app. It's the same React
+UI as the desktop (same components, themes and icons) in a phone layout: bottom tabs, cards, and a
+full-screen session view you swipe back from. It updates live and can be added to the home screen.
+
+### Connect your phone
+
+Settings → **Phone** → **Connect your phone…** walks through it, checking each step as you go:
+
+1. **Tailscale on this PC.** If it's missing, **Install for me** runs
+   `winget install --id Tailscale.Tailscale -e` in a window you can watch (after you confirm), or use
+   the download page.
+2. **Sign in to Tailscale.** **Sign in** opens Tailscale's sign-in page; the step turns ✓ when the PC
+   is connected.
+3. **Tailscale on your phone.** Scan the App Store or Google Play QR code, install Tailscale, sign in
+   with the same account and leave the VPN switch on. The step turns ✓ when your phone shows up on
+   your tailnet.
+4. **Turn on phone access.** Starts the companion (on `127.0.0.1`) and runs
+   `tailscale serve --bg --https=8443 http://127.0.0.1:47821`. If your tailnet doesn't have HTTPS
+   certificates turned on yet, Tailscale asks for a one-click approval: **Turn on HTTPS**, then
+   **Try again**.
+5. **Pair your phone.** **Show pairing code**, then scan the QR code with the phone's camera and tap
+   **Pair this phone** (or type the code). It shows **Phone connected ✓**.
+6. **Test it.** **Send test** pops up "Hello from your PC 👋" on the phone.
+7. **Remote Control check.** Claude Code 2.1.51 or later, signed in with your Claude subscription.
+
+On the phone, use **Share → Add to Home Screen** (iPhone) or **Install app** (Android) for an icon.
+
+**Home Wi-Fi only (no Tailscale):** pick the PC's network address, add the firewall rule (Windows asks
+for administrator rights), turn it on and pair. The phone must be on the same Wi-Fi, and warns once
+about the self-signed certificate ("Show details → visit this website"). Some phones also block live
+updates over a self-signed certificate; the app then refreshes every 20 seconds instead.
+
+### What a phone can and can't do
+
+- **Can:** read sessions and usage, search, rename, describe, tag, pin and hide sessions, change a
+  safe subset of settings (terminal, Remote Control default, alerts, week start; theme is per phone),
+  and Resume / Fork / Branch sessions on the PC.
+- **Launches** run only the fixed resume / fork / branch commands, for sessions the app knows, always
+  with Remote Control on your Claude subscription and with permission prompts on (never
+  `--dangerously-skip-permissions`), in the session's own folder, at most one every 10 seconds.
+  After launching, **Open in Claude app** links to the session (or to claude.ai/code until Claude
+  Code has recorded the link).
+- **Can't:** run any other command, change security or pairing, see or add API keys, change
+  Tailscale, the firewall or the companion itself, pick folders, or use Ask Claude.
+- **Your controls** (Settings → Phone): read-only mode, **Confirm launches on this PC** (a dialog
+  you must allow within a minute), revoke any phone, and an **activity log** of every action from a
+  phone. Phones not seen for 30 days are forgotten.
+- **Security details:** each phone has its own random token (only its SHA-256 is stored); pairing
+  codes work once, expire in 5 minutes and close after 5 wrong guesses; the server answers only its
+  own host names (no DNS rebinding) and same-origin requests, sends a strict Content-Security-Policy,
+  and listens on exactly one address. Turning phone access off removes only the app's own
+  `tailscale serve` rule (`tailscale serve --https=8443 off`) and never touches other serve rules,
+  and it refuses to take over a port another rule uses.
+
+### Troubleshooting the phone
+
+Settings → Phone → **Troubleshooting** lists common fixes, re-runs every check, and copies
+diagnostics (no tokens, codes, keys or e-mail). The usual causes: the Tailscale switch is off on the
+phone, HTTPS certificates are off for the tailnet, another program uses the port (change it under
+Advanced), or (home Wi-Fi) Windows treats the network as Public.
 
 ## Usage, limits and API credits
 
@@ -518,16 +597,17 @@ records of sessions whose files are gone are kept as they were.
 
 ### Where the data lives
 
-| File (in `%APPDATA%\ClaudeSessionDashboard\`)           | What's in it                                                                                                   |
-| ------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
-| `usage\records-YYYY-MM.ndjson`                          | One line per API response: time, session, project, environment, model, version, stop reason, every token count |
-| `usage\turns-YYYY-MM.ndjson`, `usage\limit-hits.ndjson` | Per-request metrics for Trends, and every "usage limit reached" message                                        |
-| `limits-history.ndjson`                                 | Every status line reading                                                                                      |
-| `usage\usage-readings.ndjson`                           | Limit readings found in `/usage` output in transcripts (backfill)                                              |
-| `ask-history.json`                                      | Ask Claude questions and answers                                                                               |
-| `archive\claude-ai\`                                    | Conversations imported from a claude.ai data export                                                            |
-| `accounts.json`                                         | API keys (encrypted), credit grants, cached Admin reports                                                      |
-| `bridge.json`, `backups\settings\`                      | What the installer changed, and the `settings.json` backups                                                    |
+| File (in `%APPDATA%\ClaudeSessionDashboard\`)           | What's in it                                                                                                     |
+| ------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `usage\records-YYYY-MM.ndjson`                          | One line per API response: time, session, project, environment, model, version, stop reason, every token count   |
+| `usage\turns-YYYY-MM.ndjson`, `usage\limit-hits.ndjson` | Per-request metrics for Trends, and every "usage limit reached" message                                          |
+| `limits-history.ndjson`                                 | Every status line reading                                                                                        |
+| `usage\usage-readings.ndjson`                           | Limit readings found in `/usage` output in transcripts (backfill)                                                |
+| `mobile.json`                                           | Paired phones (token hashes only), the activity log, the app's own serve / firewall rule, home Wi-Fi certificate |
+| `ask-history.json`                                      | Ask Claude questions and answers                                                                                 |
+| `archive\claude-ai\`                                    | Conversations imported from a claude.ai data export                                                              |
+| `accounts.json`                                         | API keys (encrypted), credit grants, cached Admin reports                                                        |
+| `bridge.json`, `backups\settings\`                      | What the installer changed, and the `settings.json` backups                                                      |
 
 **Recalculate usage** (Usage view or Settings → Usage) re-reads every session from scratch.
 
@@ -540,6 +620,15 @@ records of sessions whose files are gone are kept as they were.
 | ![Settings](docs/settings.png)                     | ![Light theme](docs/main-light.png)                  |
 | ![Enable live limits](docs/enable-live-limits.png) | ![Disable live limits](docs/disable-live-limits.png) |
 | ![Branch from a message](docs/branch-intro.png)    | ![Branches](docs/branches.png)                       |
+
+Phone companion (`node scripts/mobile-screenshots.mjs` after `npm run build`):
+
+|                                       |                                     |                                                       |                                                |
+| ------------------------------------- | ----------------------------------- | ----------------------------------------------------- | ---------------------------------------------- |
+| ![Sessions](docs/mobile/sessions.png) | ![Session](docs/mobile/session.png) | ![Resume with Remote Control](docs/mobile/resume.png) | ![Started on your PC](docs/mobile/resumed.png) |
+| ![Usage](docs/mobile/usage-light.png) | ![Filters](docs/mobile/filters.png) | ![Settings](docs/mobile/settings.png)                 | ![Pairing](docs/mobile/pair.png)               |
+
+![Connect your phone](docs/mobile/desktop-wizard-pair.png)
 
 ## How it works
 

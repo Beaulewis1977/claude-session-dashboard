@@ -135,7 +135,9 @@ export function sortSessions(
   } else {
     out.sort(byActivity)
   }
-  return out
+  // Pinned sessions stay on top (search results keep their relevance order).
+  if (sort === 'relevance' && hits) return out
+  return [...out.filter((s) => s.meta.pinned), ...out.filter((s) => !s.meta.pinned)]
 }
 
 export function visibleSessions(

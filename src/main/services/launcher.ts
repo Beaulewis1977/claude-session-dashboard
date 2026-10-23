@@ -13,9 +13,13 @@ import type {
 import {
   buildLaunchCommand,
   claudeArgs,
+  claudeCommandLine,
   cwdProblem,
+  remoteControlName,
+  REMOTE_CONTROL_API_ERROR,
   type LaunchCommand,
-  type LaunchTools
+  type LaunchTools,
+  type RemoteControl
 } from '../core/launch'
 import { restoreIfMissing } from '../core/restore'
 import { isAbsoluteWindowsPath } from '../core/which'
@@ -31,9 +35,23 @@ export interface LaunchBilling {
   label(accountId: string): string | undefined
   /** "Subscription (Max 5x)". */
   subscriptionLabel(): string
-  /** Called after a successful launch, to tag the session's billing. */
-  launched(s: SessionSummary, opts: LaunchOptions, cwd: string): void
+  /** Called after a successful launch, to tag the session's billing (and Remote Control). */
+  launched(s: SessionSummary, opts: LaunchOptions, cwd: string, ctx: LaunchContext): void
 }
+
+/** Who asked for a launch: the desktop app, or a paired phone (see mobile/). */
+export interface LaunchContext {
+  via: 'desktop' | 'phone'
+  /** The phone's name. */
+  device?: string
+  /**
+   * Asked again right before anything is written or started (a launch from a
+   * phone waits on file checks): a reason to stop, or undefined to go on.
+   */
+  stillAllowed?: () => string | undefined
+}
+
+const DESKTOP: LaunchContext = { via: 'desktop' }
 
 export const CLAUDE_NOT_FOUND =
   "Claude Code wasn't found on this computer's PATH. Install it (or open a new terminal once after installing), then try again."
@@ -80,6 +98,11 @@ export class Launcher {
     return { terminal: requested, fellBack: false }
   }
 
+  /** Remote Control named after the session: my name for it, else its title. */
+  private remoteControl(s: SessionSummary, opts: LaunchOptions): RemoteControl | undefined {
+    return opts.remoteControl ? { name: remoteControlName(s.meta.name || s.title) } : undefined
+  }
+
   private command(
     s: SessionSummary,
     opts: LaunchOptions,
@@ -89,6 +112,8 @@ export class Launcher {
     apiKey?: string
   ): LaunchCommand {
     return buildLaunchCommand({
+      remoteControl: this.remoteControl(s, opts),
+      askPermissions: opts.askPermissions === true,
       env: s.env,
       distro: s.distro,
       sessionId: s.sessionId,
@@ -120,10 +145,16 @@ export class Launcher {
   private claudeCommand(s: SessionSummary, opts: LaunchOptions, cmd?: LaunchCommand): string {
     if (cmd) return cmd.claudeCommand
     try {
-      return [
-        'claude',
-        ...claudeArgs(s.sessionId, opts.skipPermissions, opts.fork, opts.newSession)
-      ].join(' ')
+      return claudeCommandLine(
+        claudeArgs(
+          s.sessionId,
+          opts.skipPermissions,
+          opts.fork,
+          opts.newSession,
+          this.remoteControl(s, opts),
+          opts.askPermissions === true
+        )
+      )
     } catch {
       return ''
     }
@@ -184,7 +215,11 @@ export class Launcher {
         billingLabel: this.billingLabel(opts),
         branch,
         branchError,
-        launchError: error ?? folderError
+        launchError: error ?? folderError,
+        remoteControlName: this.remoteControl(
+          branch ? { ...s, meta: { ...s.meta, name: s.meta.name || branch.name } } : s,
+          opts
+        )?.name
       }
     }
     const originalExists = await this.platform.pathExists(s.originalPath)
@@ -203,11 +238,12 @@ export class Launcher {
       terminal: cmd?.terminal ?? terminal,
       terminalReason: cmd?.terminalReason,
       billingLabel: this.billingLabel(opts),
-      launchError: error ?? folderError
+      launchError: error ?? folderError,
+      remoteControlName: this.remoteControl(s, opts)?.name
     }
   }
 
-  async launch(opts: LaunchOptions): Promise<LaunchResult> {
+  async launch(opts: LaunchOptions, ctx: LaunchContext = DESKTOP): Promise<LaunchResult> {
     const s = this.sessions.get(opts.key)
     if (!s) return { ok: false, restored: false, commandLine: '', error: 'Session not found' }
     if (s.availability === 'imported')
@@ -223,12 +259,15 @@ export class Launcher {
       commandLine: '',
       error
     })
+    if (opts.remoteControl && opts.billingAccountId) return fail(REMOTE_CONTROL_API_ERROR)
     const cwd = opts.cwdOverride ?? s.cwd
     const tools = await this.platform.launchTools()
     // Create a branch without opening a terminal: the folder doesn't matter yet.
     if (opts.branch?.createOnly) {
       let created: SessionSummary
       try {
+        const stop = ctx.stillAllowed?.()
+        if (stop) return fail(`Not launched: ${stop}.`)
         created = await this.branches.create(s, opts.branch)
       } catch (err) {
         return fail((err as Error).message)
@@ -266,17 +305,22 @@ export class Launcher {
     if (opts.branch) {
       let created: SessionSummary
       try {
+        const stop = ctx.stillAllowed?.()
+        if (stop) return fail(`Not launched: ${stop}.`)
         created = await this.branches.create(s, opts.branch)
       } catch (err) {
         return fail((err as Error).message)
       }
-      const res = await this.launch({
-        ...opts,
-        key: created.key,
-        fork: false,
-        newSession: false,
-        branch: undefined
-      })
+      const res = await this.launch(
+        {
+          ...opts,
+          key: created.key,
+          fork: false,
+          newSession: false,
+          branch: undefined
+        },
+        ctx
+      )
       return { ...res, branch: this.sessions.get(created.key) ?? created }
     }
 
@@ -293,6 +337,8 @@ export class Launcher {
     if (!opts.newSession && !(await this.platform.pathExists(s.originalPath))) {
       const rec = this.sessions.archiveRecord(s.key)
       if (rec) {
+        const stop = ctx.stillAllowed?.()
+        if (stop) return fail(`Not launched: ${stop}.`)
         const outcome = await restoreIfMissing(rec.archivePath, rec.originalPath)
         restored = outcome === 'restored'
         if (outcome === 'archive-missing')
@@ -305,15 +351,27 @@ export class Launcher {
 
     // 2. Launch.
     if (!this.platform.canLaunch) {
-      this.billing?.launched(s, opts, cwd)
+      this.billing?.launched(s, opts, cwd, ctx)
       return { ok: true, restored, commandLine: cmd.commandLine, simulated: true }
     }
+    const stop = ctx.stillAllowed?.()
+    if (stop)
+      return { ok: false, restored, commandLine: cmd.commandLine, error: `Not launched: ${stop}.` }
     try {
       await this.platform.spawnDetached(cmd)
     } catch (err) {
       if (terminal === 'wt' && (err as NodeJS.ErrnoException).code === 'ENOENT') {
         terminal = 'powershell'
         cmd = this.command(s, opts, cwd, terminal, tools, apiKey)
+        // The first attempt took time: ask again before the second.
+        const again = ctx.stillAllowed?.()
+        if (again)
+          return {
+            ok: false,
+            restored,
+            commandLine: cmd.commandLine,
+            error: `Not launched: ${again}.`
+          }
         try {
           await this.platform.spawnDetached(cmd)
         } catch (err2) {
@@ -333,7 +391,7 @@ export class Launcher {
         }
       }
     }
-    this.billing?.launched(s, opts, cwd)
+    this.billing?.launched(s, opts, cwd, ctx)
     return { ok: true, restored, commandLine: cmd.commandLine }
   }
 }

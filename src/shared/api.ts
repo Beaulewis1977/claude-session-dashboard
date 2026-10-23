@@ -25,6 +25,14 @@ import type { CompareRange, HealthCompare } from './usage/health'
 import type { AskHistoryItem } from './ask'
 import type { Account, CreditGrant, CreditsState } from './usage/credits'
 import type { CompareResult, CompareSide, TrendGroupBy, TrendsReport } from './usage/trends'
+import type {
+  ActivityEntry,
+  ClaudeCheck,
+  LanAddress,
+  MobileSettings,
+  MobileStatus,
+  PairingInfo
+} from './mobile'
 
 export interface SearchHit {
   key: string
@@ -50,6 +58,9 @@ export interface ImportResult {
 }
 
 export interface CsdApi {
+  /** True in the phone web app (the companion), where desktop-only features are hidden. */
+  readonly remote?: boolean
+
   getInfo(): Promise<AppInfo>
   getSessions(): Promise<SessionsPayload>
   onSessionsChanged(cb: (payload: SessionsPayload) => void): () => void
@@ -128,4 +139,27 @@ export interface CsdApi {
   /** The renderer draws the tray icon (a ring with the 5-hour %) and hands it over as a PNG. */
   setTrayImage(dataUrl: string, tooltip: string): Promise<void>
   onShowUsage(cb: () => void): () => void
+
+  // Phone companion (desktop only: a phone can't reach any of these)
+  mobileStatus(): Promise<MobileStatus>
+  mobileUpdate(patch: Partial<MobileSettings>): Promise<MobileStatus>
+  mobileStart(): Promise<MobileStatus>
+  mobileStop(): Promise<MobileStatus>
+  mobileRetryServe(): Promise<MobileStatus>
+  mobilePair(): Promise<PairingInfo | { error: string }>
+  mobileCancelPair(): Promise<void>
+  mobileRevoke(id: string): Promise<void>
+  mobileRenameDevice(id: string, name: string): Promise<void>
+  mobileActivity(): Promise<ActivityEntry[]>
+  mobileSendTest(deviceId?: string): Promise<number>
+  mobileLanAddresses(): Promise<LanAddress[]>
+  mobileClaudeCheck(): Promise<ClaudeCheck>
+  mobileDiagnostics(): Promise<string>
+  mobileFirewallAdd(): Promise<{ ok: boolean; error?: string; cancelled?: boolean }>
+  mobileFirewallRemove(): Promise<{ ok: boolean }>
+  tailscaleInstall(): Promise<{ ok: boolean; error?: string; cancelled?: boolean }>
+  tailscaleLogin(): Promise<{ ok: boolean; error?: string; opened?: boolean; app?: boolean }>
+  /** Opens a Tailscale sign-in / approval link (login.tailscale.com only). */
+  openTailscaleLink(url: string): Promise<void>
+  onMobileChanged(cb: () => void): () => void
 }

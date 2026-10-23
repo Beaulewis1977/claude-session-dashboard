@@ -17,6 +17,13 @@ This repo is built in a Claude Code cloud session (Linux). The app runs on **Win
 
 **Branching ("Branch from here"):** a third narrow exception to rule 1. To branch from a message, the app may **add one new session file** (`<new-uuid>.jsonl`) in the same project folder as the session it branches from, holding the original's lines up to that message with the `sessionId` fields changed. The file is created exclusively (it never overwrites), and nothing existing is ever changed or deleted. The app explains this and asks for confirmation the first time.
 
+**Phone companion (exception #3 to "no network calls"):** local / Tailscale-only network access, opt-in. When I turn on phone access in Settings → Phone, the app runs a small server for its own mobile web app:
+- **Off by default.** When on, it listens on `127.0.0.1` only. In Tailscale mode, `tailscale serve` publishes it over HTTPS to my own tailnet. Never Funnel or any other public exposure. Turning it off removes only the app's own serve rule; it never resets or changes any other Tailscale serve config.
+- **Optional home Wi-Fi mode:** listens on one private LAN address I pick (self-signed TLS), with one Windows Firewall rule limited to the Private profile and the local subnet. The rule is added only after I confirm, and the app offers to remove it when the mode is turned off.
+- **Pairing:** QR code with the URL and a one-time code. Each phone gets its own token (only its hash is stored), can be revoked, and expires after 30 days unused.
+- **What a phone can do:** read sessions and usage, edit names/descriptions/tags/pins/hidden, change a safe subset of settings (never security, pairing, API keys, Tailscale or the server itself), and ask the PC to Resume / Fork / Branch a *known* session. Launches use only the fixed resume/fork/branch commands, always with Remote Control on the Claude subscription, never `--dangerously-skip-permissions`, rate-limited, optionally confirmed on the PC, blocked in read-only mode, and logged in an activity log.
+- The companion server makes no outgoing calls. Its data lives in `%APPDATA%\ClaudeSessionDashboard\` (`mobile.json`).
+
 ---
 
 ## Stack

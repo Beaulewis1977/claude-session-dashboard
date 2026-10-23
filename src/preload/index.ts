@@ -72,7 +72,28 @@ const api: CsdApi = {
   toggleMiniMeter: () => ipcRenderer.invoke('mini:toggle'),
   closeMiniMeter: () => ipcRenderer.invoke('mini:close'),
   setTrayImage: (dataUrl, tooltip) => ipcRenderer.invoke('tray:set', dataUrl, tooltip),
-  onShowUsage: (cb) => on('app:showUsage', cb)
+  onShowUsage: (cb) => on('app:showUsage', cb),
+
+  mobileStatus: () => ipcRenderer.invoke('mobile:status'),
+  mobileUpdate: (patch) => ipcRenderer.invoke('mobile:update', patch),
+  mobileStart: () => ipcRenderer.invoke('mobile:start'),
+  mobileStop: () => ipcRenderer.invoke('mobile:stop'),
+  mobileRetryServe: () => ipcRenderer.invoke('mobile:retryServe'),
+  mobilePair: () => ipcRenderer.invoke('mobile:pair'),
+  mobileCancelPair: () => ipcRenderer.invoke('mobile:cancelPair'),
+  mobileRevoke: (id) => ipcRenderer.invoke('mobile:revoke', id),
+  mobileRenameDevice: (id, name) => ipcRenderer.invoke('mobile:renameDevice', id, name),
+  mobileActivity: () => ipcRenderer.invoke('mobile:activity'),
+  mobileSendTest: (id) => ipcRenderer.invoke('mobile:sendTest', id),
+  mobileLanAddresses: () => ipcRenderer.invoke('mobile:lanAddresses'),
+  mobileClaudeCheck: () => ipcRenderer.invoke('mobile:claudeCheck'),
+  mobileDiagnostics: () => ipcRenderer.invoke('mobile:diagnostics'),
+  mobileFirewallAdd: () => ipcRenderer.invoke('mobile:firewallAdd'),
+  mobileFirewallRemove: () => ipcRenderer.invoke('mobile:firewallRemove'),
+  tailscaleInstall: () => ipcRenderer.invoke('mobile:tailscaleInstall'),
+  tailscaleLogin: () => ipcRenderer.invoke('mobile:tailscaleLogin'),
+  openTailscaleLink: (url) => ipcRenderer.invoke('mobile:openLink', url),
+  onMobileChanged: (cb) => on('mobile:changed', cb)
 }
 
 contextBridge.exposeInMainWorld('csd', api)

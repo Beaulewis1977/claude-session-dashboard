@@ -248,6 +248,10 @@ export function buildBranchFile(
     // Summaries and file snapshots that point past the cut belong to the rest of the original.
     if (type === 'summary' && !uuids.has(str(e.leafUuid) ?? '')) continue
     if (type === 'file-history-snapshot' && !uuids.has(str(e.messageId) ?? '')) continue
+    // The original's Remote Control connection isn't the branch's. Records with
+    // a uuid stay (others may point at them) and get forkedFrom below, which
+    // the parser skips; ones without a uuid are dropped.
+    if (type === 'system' && e.subtype === 'bridge_status' && !str(e.uuid)) continue
     const out: RawEvent = { ...e }
     if (typeof out.sessionId === 'string') out.sessionId = newSessionId
     if (typeof out.session_id === 'string') out.session_id = newSessionId

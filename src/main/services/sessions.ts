@@ -42,7 +42,9 @@ type BaseSummary = Omit<
 // v2: lineage fields (firstUuid, forkedFrom, copiedFrom) and, separately,
 // source hints (entrypoint, IDE context, cloud link) for the source label.
 // v3: both together, so neither kind of v2 cache is reused.
-const CACHE_VERSION = 3
+// v4: the Remote Control link (remoteUrl) from `bridge_status` entries.
+// v5: statuses copied into a branch no longer count as the branch's own link.
+const CACHE_VERSION = 5
 
 interface CacheFile {
   version: number
@@ -162,7 +164,9 @@ export function parseSessionText(
         a.sessionId && a.sessionId !== file.sessionId && isUuid(a.sessionId)
           ? a.sessionId
           : undefined,
-      sourceHints: a.sourceHints
+      sourceHints: a.sourceHints,
+      remoteUrl: a.remoteUrl,
+      remoteUrlAt: a.remoteUrlAt
     }
   }
 }
@@ -467,6 +471,14 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
   tagBilling(sessionId: string, billing: NonNullable<SessionMeta['billing']>): void {
     this.metadata.update((d) => {
       d.sessions[sessionId] = { ...(d.sessions[sessionId] ?? {}), billing }
+    })
+    this.emitChanged()
+  }
+
+  /** Mark a session as launched with Remote Control (the app's metadata only). */
+  tagRemote(sessionId: string, remote: NonNullable<SessionMeta['remote']>): void {
+    this.metadata.update((d) => {
+      d.sessions[sessionId] = { ...(d.sessions[sessionId] ?? {}), remote }
     })
     this.emitChanged()
   }

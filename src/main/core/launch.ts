@@ -46,6 +46,20 @@ export interface LaunchInput {
   apiKey?: string
   /** Current WSLENV of the app, to extend rather than replace. */
   wslenv?: string
+  /** Turn on Remote Control (claude.ai/code and the Claude app), optionally with a session name. */
+  remoteControl?: RemoteControl
+  /**
+   * Start in the prompting permission mode whatever the user's settings say
+   * (`--permission-mode default`). Launches from a phone always set this:
+   * without it, Claude Code's own default for terminal sessions may run
+   * commands without asking.
+   */
+  askPermissions?: boolean
+}
+
+export interface RemoteControl {
+  /** Already cleaned with remoteControlName(). */
+  name?: string
 }
 
 export interface LaunchCommand {
@@ -60,6 +74,8 @@ export interface LaunchCommand {
   claudeArgs: string[]
   /** Extra environment for the child process only. */
   env?: Record<string, string>
+  /** Variables removed from the child's environment (Remote Control refuses API-key auth). */
+  unsetEnv?: string[]
   /** The terminal actually used. */
   terminal: TerminalPref
   /** Why the terminal differs from the requested one. */
@@ -139,18 +155,92 @@ export function cwdProblem(env: EnvKind, cwd: string): string | undefined {
   return undefined
 }
 
+// ---------------------------------------------------------------------------
+// Remote Control
+//
+// `claude --remote-control [name] --resume <id>` resumes a session with Remote
+// Control on (Claude Code v2.1.51+, claude.ai sign-in only). The flag and its
+// arguments are built here and nowhere else, so changing how Remote Control is
+// switched on means changing only this block.
+
+export const REMOTE_CONTROL_FLAG = '--remote-control'
+export const REMOTE_CONTROL_MIN_VERSION = '2.1.51'
+/** Remote Control refuses to start when either is set ("requires claude.ai subscription auth"). */
+export const REMOTE_CONTROL_UNSET_ENV = ['ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN']
+export const REMOTE_CONTROL_API_ERROR =
+  "Remote Control needs your Claude subscription, so it can't run on an API key. Choose the subscription, or turn Remote Control off."
+
+const RC_NAME_MAX = 80
+
+/**
+ * The session name for Remote Control, made safe for every shell it passes
+ * through (cmd, PowerShell, Windows Terminal, wsl.exe and bash): letters,
+ * digits, spaces and `_ . -` only, never starting with "-" (it would read as
+ * a flag). Undefined when nothing is left (Claude Code then picks a name).
+ */
+export function remoteControlName(raw: string | undefined): string | undefined {
+  if (!raw) return undefined
+  const s = raw
+    .normalize('NFKC')
+    .replace(/[^\p{L}\p{N} _.-]+/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/^[-.\s]+/, '')
+    .slice(0, RC_NAME_MAX)
+    .trim()
+  return s || undefined
+}
+
+function remoteControlArgs(rc: RemoteControl | undefined): string[] {
+  if (!rc) return []
+  const name = remoteControlName(rc.name)
+  return name ? [REMOTE_CONTROL_FLAG, name] : [REMOTE_CONTROL_FLAG]
+}
+
+/** The prompting mode ("Manual"): asks before edits and commands. */
+export const ASK_PERMISSION_ARGS = ['--permission-mode', 'default']
+
 export function claudeArgs(
   sessionId: string,
   skipPermissions: boolean,
   fork: boolean,
-  newSession = false
+  newSession = false,
+  remoteControl?: RemoteControl,
+  askPermissions = false
 ): string[] {
-  if (newSession) return skipPermissions ? ['--dangerously-skip-permissions'] : []
+  if (askPermissions && skipPermissions)
+    throw new Error("Can't both skip and ask for permission prompts.")
+  const rc = remoteControlArgs(remoteControl)
+  const ask = askPermissions ? ASK_PERMISSION_ARGS : []
+  if (newSession)
+    return [...rc, ...ask, ...(skipPermissions ? ['--dangerously-skip-permissions'] : [])]
   if (!isValidSessionId(sessionId)) throw new Error(`Invalid session id: ${sessionId}`)
-  const args = ['--resume', sessionId]
+  const args = [...rc, ...ask, '--resume', sessionId]
   if (skipPermissions) args.push('--dangerously-skip-permissions')
   if (fork) args.push('--fork-session')
   return args
+}
+
+/** Flags and ids need no quotes; a Remote Control name with spaces does. */
+const PLAIN_ARG = /^[A-Za-z0-9_\-./:=]+$/
+
+/** One argument for a bash command line (inside `bash -lic "…"`). */
+function bashArg(arg: string): string {
+  return PLAIN_ARG.test(arg) ? arg : `'${arg.replace(/'/g, `'\\''`)}'`
+}
+
+/** One argument for a cmd.exe command line (names are already free of `" % ! ^ & | < >`). */
+function cmdArg(arg: string): string {
+  return PLAIN_ARG.test(arg) ? arg : `"${arg}"`
+}
+
+function psArg(arg: string): string {
+  return PLAIN_ARG.test(arg) ? arg : psQuote(arg)
+}
+
+/** The `claude …` command as bash reads it (also what's shown as "the claude command"). */
+export function claudeCommandLine(args: string[]): string {
+  return ['claude', ...args.map(bashArg)].join(' ')
 }
 
 /** Quote one argument the way the MSVC runtime / CommandLineToArgvW expects. */
@@ -218,9 +308,20 @@ const isBatch = (path: string): boolean => /\.(cmd|bat)$/i.test(path)
  * arguments. npm's claude.cmd starts `node` by name, so for a batch file the
  * line first turns off cmd's look in the current (project) folder.
  */
-function cmdClaudeLine(claude: string, cArgs: string[]): string {
+function cmdClaudeLine(claude: string, cArgs: string[], unset: string[] = []): string {
   const guard = isBatch(claude) ? `set ${NO_CWD_SEARCH}=1& ` : ''
-  return guard + [`"${claude}"`, ...cArgs].join(' ')
+  // `set NAME=` with nothing after it removes NAME (after cmd's AutoRun has run).
+  const clear = unset.map((k) => `set ${k}=& `).join('')
+  return guard + clear + [`"${claude}"`, ...cArgs.map(cmdArg)].join(' ')
+}
+
+/**
+ * What bash runs: the claude command, after removing `unset` variables that
+ * a login profile (~/.bashrc, ~/.profile) may have exported again. `&&`, not
+ * `;`: Windows Terminal reads ";" as its own separator.
+ */
+function bashClaudeLine(claudeCommand: string, unset: string[]): string {
+  return unset.length ? `unset ${unset.join(' ')} && ${claudeCommand}` : claudeCommand
 }
 
 export function buildLaunchCommand(input: LaunchInput): LaunchCommand {
@@ -229,14 +330,27 @@ export function buildLaunchCommand(input: LaunchInput): LaunchCommand {
 }
 
 function build(input: LaunchInput): Omit<LaunchCommand, 'commandLine'> {
-  const cArgs = claudeArgs(input.sessionId, input.skipPermissions, input.fork, input.newSession)
-  const claudeCommand = ['claude', ...cArgs].join(' ')
+  const cArgs = claudeArgs(
+    input.sessionId,
+    input.skipPermissions,
+    input.fork,
+    input.newSession,
+    input.remoteControl,
+    input.askPermissions
+  )
+  const claudeCommand = claudeCommandLine(cArgs)
+  // Remote Control refuses API-key auth: remove the keys in the final shell
+  // too, after its startup profile has run (they're also kept out of its
+  // environment, see unsetEnv).
+  const unset = input.remoteControl ? REMOTE_CONTROL_UNSET_ENV : []
+  const bashLine = bashClaudeLine(claudeCommand, unset)
   const problem = cwdProblem(input.env, input.cwd)
   if (problem) throw new Error(problem)
   const tools = input.tools
   let terminalReason: string | undefined
   let env: Record<string, string> | undefined
   const apiKey = input.apiKey
+  if (apiKey && input.remoteControl) throw new Error(REMOTE_CONTROL_API_ERROR)
   if (apiKey) {
     if (input.terminal === 'wt') {
       input = { ...input, terminal: 'powershell' }
@@ -257,6 +371,7 @@ function build(input: LaunchInput): Omit<LaunchCommand, 'commandLine'> {
     claudeArgs: cArgs,
     terminal: input.terminal,
     ...(env ? { env } : {}),
+    ...(input.remoteControl ? { unsetEnv: [...REMOTE_CONTROL_UNSET_ENV] } : {}),
     ...(terminalReason ? { terminalReason } : {})
   }
 
@@ -264,7 +379,7 @@ function build(input: LaunchInput): Omit<LaunchCommand, 'commandLine'> {
     const distro = input.distro ?? ''
     if (!isValidDistroName(distro)) throw new Error(`Invalid WSL distro name: ${distro}`)
     const wsl = checkedTool(tools.wsl, 'wsl.exe')
-    const wslArgs = ['-d', distro, '--cd', input.cwd, '--', 'bash', '-lic', claudeCommand]
+    const wslArgs = ['-d', distro, '--cd', input.cwd, '--', 'bash', '-lic', bashLine]
     switch (input.terminal) {
       case 'wt': {
         const wt = checkedTool(tools.wt, 'Windows Terminal')
@@ -278,7 +393,7 @@ function build(input: LaunchInput): Omit<LaunchCommand, 'commandLine'> {
       }
       case 'powershell': {
         const ps = checkedTool(tools.powershell, 'PowerShell')
-        const script = `& ${psQuote(wsl)} -d ${psQuote(distro)} --cd ${psQuote(input.cwd)} -- bash -lic ${psQuote(claudeCommand)}`
+        const script = `& ${psQuote(wsl)} -d ${psQuote(distro)} --cd ${psQuote(input.cwd)} -- bash -lic ${psQuote(bashLine)}`
         const args = ['-NoExit', '-Command', script]
         return {
           ...base,
@@ -289,7 +404,7 @@ function build(input: LaunchInput): Omit<LaunchCommand, 'commandLine'> {
       }
       case 'cmd': {
         const cmd = checkedTool(tools.cmd, 'cmd.exe')
-        const line = `"${wsl}" -d ${distro} --cd "${input.cwd}" -- bash -lic "${claudeCommand}"`
+        const line = `"${wsl}" -d ${distro} --cd "${input.cwd}" -- bash -lic "${bashLine}"`
         const args = ['/s', '/k', `"${line}"`]
         return {
           ...base,
@@ -309,7 +424,7 @@ function build(input: LaunchInput): Omit<LaunchCommand, 'commandLine'> {
       // gives cmd `/s /k "<line>"`: it drops just those outer quotes.
       const wt = checkedTool(tools.wt, 'Windows Terminal')
       const cmd = checkedTool(tools.cmd, 'cmd.exe')
-      const args = ['-d', input.cwd, cmd, '/s', '/k', cmdClaudeLine(claude, cArgs)]
+      const args = ['-d', input.cwd, cmd, '/s', '/k', cmdClaudeLine(claude, cArgs, unset)]
       return {
         ...base,
         command: wt,
@@ -323,9 +438,11 @@ function build(input: LaunchInput): Omit<LaunchCommand, 'commandLine'> {
       const script = [
         `Set-Location -LiteralPath ${psQuote(input.cwd)};`,
         ...(isBatch(claude) ? [`$env:${NO_CWD_SEARCH} = '1';`] : []),
+        // After the PowerShell profile has run.
+        ...unset.map((k) => `Remove-Item Env:${k} -ErrorAction SilentlyContinue;`),
         '&',
         psQuote(claude),
-        ...cArgs
+        ...cArgs.map(psArg)
       ].join(' ')
       const args = ['-NoExit', '-Command', script]
       return {
@@ -339,7 +456,7 @@ function build(input: LaunchInput): Omit<LaunchCommand, 'commandLine'> {
     case 'cmd': {
       // cmd starts in the folder, so the folder's name never reaches its parser.
       const cmd = checkedTool(tools.cmd, 'cmd.exe')
-      const args = ['/s', '/k', `"${cmdClaudeLine(claude, cArgs)}"`]
+      const args = ['/s', '/k', `"${cmdClaudeLine(claude, cArgs, unset)}"`]
       return {
         ...base,
         command: cmd,

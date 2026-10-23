@@ -78,7 +78,8 @@ function publicSettings(s: SettingsFile): AppSettings {
     pace: { ...s.pace },
     elsewhere: s.elsewhere.map((e) => ({ ...e })),
     askSkipPreview: s.askSkipPreview,
-    askTimeoutSec: s.askTimeoutSec
+    askTimeoutSec: s.askTimeoutSec,
+    remoteControlDefault: s.remoteControlDefault === true
   }
 }
 
@@ -112,7 +113,8 @@ function launchOpts(v: unknown): LaunchOptions {
     branch: branchRequest(o.branch),
     terminal: TERMINALS.includes(o.terminal as TerminalPref)
       ? (o.terminal as TerminalPref)
-      : undefined
+      : undefined,
+    remoteControl: o.remoteControl === true
   }
 }
 
@@ -211,6 +213,8 @@ export function registerIpc(deps: IpcDeps): void {
         s.projectBilling = next
       }
       if (typeof p.branchConfirmed === 'boolean') s.branchConfirmed = p.branchConfirmed
+      if (typeof p.remoteControlDefault === 'boolean')
+        s.remoteControlDefault = p.remoteControlDefault
       if (typeof p.adminRefreshMinutes === 'number' && p.adminRefreshMinutes >= 0)
         s.adminRefreshMinutes = Math.min(1440, Math.round(p.adminRefreshMinutes))
     })

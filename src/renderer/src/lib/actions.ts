@@ -102,6 +102,12 @@ export async function toggleHidden(key: string): Promise<void> {
   })
 }
 
+export async function togglePinned(key: string): Promise<void> {
+  const s = get().sessions.find((x) => x.key === key)
+  if (!s) return
+  await updateMeta(key, { pinned: !s.meta.pinned })
+}
+
 export function showFile(key: string): void {
   void api.showSessionFile(key)
 }

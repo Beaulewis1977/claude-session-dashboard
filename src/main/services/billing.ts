@@ -14,6 +14,8 @@ interface PendingTag {
   cwd: string
   at: number
   billing: NonNullable<SessionMeta['billing']>
+  /** Launched with Remote Control on. */
+  remote?: NonNullable<SessionMeta['remote']>
   known: Set<string>
 }
 
@@ -55,9 +57,14 @@ export class BillingService {
   }
 
   /** Remember a launch so the new session (Fork / New session) gets tagged when it appears. */
-  expect(sourceId: string, cwd: string, billing: NonNullable<SessionMeta['billing']>): void {
+  expect(
+    sourceId: string,
+    cwd: string,
+    billing: NonNullable<SessionMeta['billing']>,
+    remote?: NonNullable<SessionMeta['remote']>
+  ): void {
     const known = new Set(this.sessions.list().map((s) => s.key))
-    this.pending.push({ sourceId, cwd: norm(cwd), at: now(), billing, known })
+    this.pending.push({ sourceId, cwd: norm(cwd), at: now(), billing, remote, known })
   }
 
   private matchPending(): void {
@@ -77,6 +84,7 @@ export class BillingService {
       if (i < 0) continue
       const [p] = this.pending.splice(i, 1)
       if (!s.meta.billing) this.sessions.tagBilling(s.sessionId, p.billing)
+      if (p.remote) this.sessions.tagRemote(s.sessionId, p.remote)
     }
   }
 

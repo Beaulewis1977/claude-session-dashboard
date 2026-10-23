@@ -53,6 +53,45 @@ function runWsl(args: string[]): Promise<Buffer | undefined> {
   })
 }
 
+/**
+ * The child's environment: the app's, plus the launch's own variables (the API
+ * key, if any), minus any it must not see (Remote Control refuses API-key auth).
+ * Windows variable names are case-insensitive.
+ */
+export function childEnv(
+  base: NodeJS.ProcessEnv,
+  cmd: Pick<LaunchCommand, 'env' | 'unsetEnv'>
+): NodeJS.ProcessEnv {
+  const out: NodeJS.ProcessEnv = { ...base, ...cmd.env }
+  const drop = new Set((cmd.unsetEnv ?? []).map((k) => k.toUpperCase()))
+  for (const k of Object.keys(out))
+    if (drop.has(k.toUpperCase()) || isClaudeSessionVar(k)) delete out[k]
+  return out
+}
+
+/**
+ * Variables a running Claude Code session gives its own child processes. If
+ * the app itself was started from inside Claude Code (e.g. `npm run dev` in a
+ * Claude session), a launched session would inherit them and act as that
+ * session's child (asking to sign in, or attaching to its Remote Control).
+ * Settings such as CLAUDE_CODE_GIT_BASH_PATH or CLAUDE_CONFIG_DIR are kept.
+ */
+const CLAUDE_SESSION_VARS = new Set([
+  'CLAUDECODE',
+  'CLAUDE_PID',
+  'CLAUDE_CODE_ENTRYPOINT',
+  'CLAUDE_CODE_SESSION_ID',
+  'CLAUDE_CODE_CHILD_SESSION',
+  'CLAUDE_CODE_SESSION_ATTENDED',
+  'CLAUDE_CODE_BRIDGE_SESSION_ID',
+  'CLAUDE_CODE_SSE_PORT'
+])
+
+export function isClaudeSessionVar(name: string): boolean {
+  const k = name.toUpperCase()
+  return CLAUDE_SESSION_VARS.has(k) || k.startsWith('CLAUDE_CODE_MESSAGING_')
+}
+
 /** Windows Terminal opens its own window: start it straight from the app. */
 function spawnWindow(cmd: LaunchCommand): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -63,7 +102,7 @@ function spawnWindow(cmd: LaunchCommand): Promise<void> {
       windowsHide: false,
       windowsVerbatimArguments: cmd.verbatim,
       // The API key (if any) lives only in this child's environment.
-      env: cmd.env ? { ...process.env, ...cmd.env } : undefined
+      env: childEnv(process.env, cmd)
     })
     child.once('error', reject)
     child.once('spawn', () => {
@@ -102,8 +141,7 @@ const OPEN_CONSOLE = [
 function openConsole(cmd: LaunchCommand): Promise<void> {
   const args = nativeArgs(cmd)
   const env: NodeJS.ProcessEnv = {
-    ...process.env,
-    ...cmd.env,
+    ...childEnv(process.env, cmd),
     CSD_LAUNCH_FILE: cmd.command,
     CSD_LAUNCH_ARGS: args
   }

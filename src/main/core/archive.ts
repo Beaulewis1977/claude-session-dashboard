@@ -6,7 +6,7 @@ import { createReadStream } from 'node:fs'
 import { mkdir, readdir, rename, stat, unlink } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import type { ArchiveRecord } from '@shared/types'
-import { assertAppDataWrite } from './safe-paths'
+import { assertAppDataWrite, assertRealAppDataWrite } from './safe-paths'
 import { copyShared } from './shared-copy'
 
 export function safeSegment(s: string): string {
@@ -88,6 +88,7 @@ export async function archiveSession(
   }
   assertAppDataWrite(dest, appDataDir)
   await mkdir(dirname(dest), { recursive: true })
+  await assertRealAppDataWrite(dest, appDataDir)
   const tmp = `${dest}.${process.pid}.tmp`
   // Claude Code may be appending to the session right now: don't lock it.
   await copyShared(input.originalPath, tmp)

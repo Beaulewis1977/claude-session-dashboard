@@ -1,7 +1,8 @@
 // Write guard. The app never writes into a `.claude` directory, except for
 // restoring a missing session file (see restore.ts, which never overwrites).
 
-import { resolve, sep } from 'node:path'
+import { lstat, realpath } from 'node:fs/promises'
+import { dirname, resolve, sep } from 'node:path'
 
 export function isInsideClaudeDir(p: string): boolean {
   return resolve(p)
@@ -20,6 +21,23 @@ export class UnsafeWriteError extends Error {}
 /** Throws unless `target` is inside the app's own data directory. */
 export function assertAppDataWrite(target: string, appDataDir: string): void {
   if (isInsideClaudeDir(target) || !isInside(target, appDataDir)) {
+    throw new UnsafeWriteError(`Refusing to write outside the app data folder: ${target}`)
+  }
+}
+
+/**
+ * `assertAppDataWrite`, then the same check on the real folder, with links
+ * followed: a junction or symbolic link inside the app's folder can't lead a
+ * write outside it. Call it once the target's folder exists.
+ */
+export async function assertRealAppDataWrite(target: string, appDataDir: string): Promise<void> {
+  assertAppDataWrite(target, appDataDir)
+  const [dir, base, st] = await Promise.all([
+    realpath(dirname(target)),
+    realpath(appDataDir),
+    lstat(target).catch(() => undefined)
+  ])
+  if (!isInside(dir, base) || st?.isSymbolicLink()) {
     throw new UnsafeWriteError(`Refusing to write outside the app data folder: ${target}`)
   }
 }

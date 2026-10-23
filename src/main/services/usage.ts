@@ -28,7 +28,7 @@ import type {
 import type { SessionSummary } from '@shared/types'
 import { writeFileAtomic } from '../core/json-store'
 import { listFiles, readNdjson, writeNdjson } from '../core/ndjson'
-import { assertAppDataWrite, isInside } from '../core/safe-paths'
+import { assertAppDataWrite, assertRealAppDataWrite, isInside } from '../core/safe-paths'
 import { copyShared } from '../core/shared-copy'
 import type { SessionService } from './sessions'
 
@@ -398,6 +398,7 @@ export class UsageService extends EventEmitter<{ changed: [] }> {
         if (b && b.size >= a.size) continue
         assertAppDataWrite(dest, this.paths.dataDir)
         await mkdir(destDir, { recursive: true })
+        await assertRealAppDataWrite(dest, this.paths.dataDir)
         const tmp = `${dest}.${process.pid}.tmp`
         // Subagent logs are written while a session runs: don't lock them.
         await copyShared(src, tmp)

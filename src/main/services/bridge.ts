@@ -17,6 +17,7 @@ import { copyShared } from '../core/shared-copy'
 import {
   assertAppDataWrite,
   assertBridgeWrite,
+  assertRealAppDataWrite,
   assertClaudeSettingsWrite
 } from '../core/safe-paths'
 import { diffLines, rawMember, removeMember, scanTopLevel, setMember } from '../core/settings-edit'
@@ -358,6 +359,7 @@ export class BridgeInstaller {
       )
       assertAppDataWrite(backupPath, this.host.dataDir)
       await mkdir(this.backupDir, { recursive: true })
+      await assertRealAppDataWrite(backupPath, this.host.dataDir)
       await copyShared(p.settingsPath, backupPath)
     }
 

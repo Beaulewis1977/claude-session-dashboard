@@ -3,7 +3,7 @@
 import { randomBytes } from 'node:crypto'
 import { mkdir, readFile, rename, unlink, writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
-import { assertAppDataWrite } from './safe-paths'
+import { assertAppDataWrite, assertRealAppDataWrite } from './safe-paths'
 
 export async function writeFileAtomic(
   path: string,
@@ -12,6 +12,7 @@ export async function writeFileAtomic(
 ): Promise<void> {
   assertAppDataWrite(path, appDataDir)
   await mkdir(dirname(path), { recursive: true })
+  await assertRealAppDataWrite(path, appDataDir)
   const tmp = `${path}.${process.pid}.${randomBytes(4).toString('hex')}.tmp`
   await writeFile(tmp, data, 'utf8')
   let lastErr: unknown
@@ -33,6 +34,8 @@ export class JsonStore<T extends object> {
   private data: T
   private saveTimer: NodeJS.Timeout | undefined
   private saving: Promise<void> = Promise.resolve()
+  /** Failed saves in a row (for the retry delay). */
+  private failures = 0
 
   constructor(
     private readonly path: string,
@@ -70,18 +73,38 @@ export class JsonStore<T extends object> {
     this.scheduleSave()
   }
 
-  private scheduleSave(): void {
+  private scheduleSave(delay = 150): void {
     if (this.saveTimer) clearTimeout(this.saveTimer)
-    this.saveTimer = setTimeout(() => void this.flush(), 150)
+    this.saveTimer = setTimeout(() => {
+      this.flush().catch((err: unknown) => {
+        // The changes stay in memory: try again a little later (the file may
+        // be locked by a virus scanner, or the disk full), unless a newer save
+        // is already scheduled.
+        console.warn(`Couldn't save ${this.path}:`, err)
+        if (!this.saveTimer) this.scheduleSave(Math.min(60_000, 2_000 * 2 ** this.failures))
+      })
+    }, delay)
   }
 
+  /**
+   * Write the current data. Writes run one after another; a failed write is
+   * reported to its caller but never blocks the ones after it.
+   */
   async flush(): Promise<void> {
     if (this.saveTimer) {
       clearTimeout(this.saveTimer)
       this.saveTimer = undefined
     }
     const snapshot = JSON.stringify(this.data, null, 2)
-    this.saving = this.saving.then(() => writeFileAtomic(this.path, snapshot, this.appDataDir))
-    return this.saving
+    const write = this.saving.then(() => writeFileAtomic(this.path, snapshot, this.appDataDir))
+    this.saving = write.then(
+      () => {
+        this.failures = 0
+      },
+      () => {
+        this.failures++
+      }
+    )
+    return write
   }
 }

@@ -1,7 +1,17 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
+import type { LaunchTools } from '../src/main/core/launch'
 
 export const FIXTURES = join(__dirname, '..', 'fixtures')
+
+/** Where a launch's programs would be found (spaces included, to test quoting). */
+export const TOOLS: LaunchTools = {
+  wt: 'C:\\Users\\Beau Lewis\\AppData\\Local\\Microsoft\\WindowsApps\\wt.exe',
+  powershell: 'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe',
+  cmd: 'C:\\Windows\\System32\\cmd.exe',
+  wsl: 'C:\\Windows\\System32\\wsl.exe',
+  claude: 'C:\\Users\\Beau Lewis\\.local\\bin\\claude.exe'
+}
 export const WIN_PROJECTS = join(FIXTURES, 'windows', 'Users', 'beau', '.claude', 'projects')
 export const UBUNTU_PROJECTS = join(
   FIXTURES,

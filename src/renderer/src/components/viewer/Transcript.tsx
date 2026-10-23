@@ -15,6 +15,7 @@ import { formatTime } from '@shared/format'
 import { cn } from '@/lib/utils'
 import { api } from '@/lib/api'
 import { Markdown } from './Markdown'
+import { ErrorBoundary, RenderFailed } from '../ErrorBoundary'
 import { Collapsible, OrphanResult, ToolCall } from './ToolCall'
 import { BranchMarks, type BranchMark } from './Branches'
 import { ClaudeMark } from '../brand'
@@ -424,29 +425,31 @@ export const Transcript = memo(function Transcript({
         const ts = turnTime(t)
         const showDay = dayStarts.has(t.id) && ts
         return (
-          <div key={t.id} className="turn">
-            {showDay && (
-              <div className="mb-5 flex items-center gap-3 text-2xs font-medium text-subtle-foreground">
-                <div className="h-px flex-1 bg-border" />
-                {dayLabel(ts!)}
-                <div className="h-px flex-1 bg-border" />
-              </div>
-            )}
-            {t.kind === 'user' && (
-              <UserBubble msg={t.msg} onBranch={t.msg.kind === 'prompt' ? onBranch : undefined} />
-            )}
-            {t.kind === 'assistant' && (
-              <AssistantTurn
-                msgs={t.msgs}
-                cwd={cwd}
-                open={open}
-                findQuery={findQuery}
-                onBranch={onBranch}
-              />
-            )}
-            {t.kind === 'event' && <EventRow msg={t.msg} forceOpen={open.has(t.msg.id)} />}
-            {marksByTurn.has(t.id) && <BranchMarks marks={marksByTurn.get(t.id)!} />}
-          </div>
+          <ErrorBoundary key={t.id} fallback={<RenderFailed what="This part of the session" />}>
+            <div className="turn">
+              {showDay && (
+                <div className="mb-5 flex items-center gap-3 text-2xs font-medium text-subtle-foreground">
+                  <div className="h-px flex-1 bg-border" />
+                  {dayLabel(ts!)}
+                  <div className="h-px flex-1 bg-border" />
+                </div>
+              )}
+              {t.kind === 'user' && (
+                <UserBubble msg={t.msg} onBranch={t.msg.kind === 'prompt' ? onBranch : undefined} />
+              )}
+              {t.kind === 'assistant' && (
+                <AssistantTurn
+                  msgs={t.msgs}
+                  cwd={cwd}
+                  open={open}
+                  findQuery={findQuery}
+                  onBranch={onBranch}
+                />
+              )}
+              {t.kind === 'event' && <EventRow msg={t.msg} forceOpen={open.has(t.msg.id)} />}
+              {marksByTurn.has(t.id) && <BranchMarks marks={marksByTurn.get(t.id)!} />}
+            </div>
+          </ErrorBoundary>
         )
       })}
     </div>

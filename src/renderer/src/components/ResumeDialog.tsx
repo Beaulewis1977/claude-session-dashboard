@@ -127,6 +127,7 @@ function ResumeDialogBody({
     !preview ||
     !preview.cwd ||
     !preview.cwdExists ||
+    !!preview.launchError ||
     (!newSession && preview.restoreImpossible) ||
     branchBlocked
 
@@ -309,6 +310,12 @@ function ResumeDialogBody({
               The session file is missing and there is no archive copy, so it can't be resumed.
             </div>
           )}
+          {preview?.launchError && (
+            <div className="flex items-start gap-2.5 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2.5 text-xs">
+              <TriangleAlert className="mt-px size-4 shrink-0 text-destructive" />
+              {preview.launchError}
+            </div>
+          )}
 
           <div>
             <div className="mb-1.5 text-xs font-medium">Working folder</div>
@@ -334,7 +341,7 @@ function ResumeDialogBody({
                 {cwdOverride ? 'Change…' : 'Choose…'}
               </Button>
             </div>
-            {preview && !preview.cwdExists && (
+            {preview && !preview.cwdExists && !preview.launchError && (
               <div className="mt-1.5 flex items-center gap-1.5 text-xs text-warning">
                 <TriangleAlert className="size-3.5" />
                 {preview.cwd
@@ -375,6 +382,12 @@ function ResumeDialogBody({
                 Windows Terminal wasn't found, so PowerShell will be used.
               </div>
             )}
+            {preview?.terminalReason && (
+              <div className="mt-1.5 flex items-start gap-1.5 text-xs text-muted-foreground">
+                <Info className="mt-px size-3.5 shrink-0" />
+                {preview.terminalReason}
+              </div>
+            )}
           </div>
 
           <div>
@@ -399,12 +412,6 @@ function ResumeDialogBody({
                 </label>
               )}
             </div>
-            {preview?.terminalReason && (
-              <div className="mt-1.5 flex items-start gap-1.5 text-xs text-muted-foreground">
-                <Info className="mt-px size-3.5 shrink-0" />
-                {preview.terminalReason}
-              </div>
-            )}
           </div>
 
           <div className="rounded-lg border border-border p-3">
@@ -426,11 +433,11 @@ function ResumeDialogBody({
 
           <div>
             <div className="mb-1.5 flex items-center justify-between">
-              <span className="text-xs font-medium">Command</span>
+              <span className="text-xs font-medium">PowerShell command</span>
               <button
                 type="button"
                 onClick={() => {
-                  if (!preview) return
+                  if (!preview?.commandLine) return
                   void api.copyText(preview.commandLine)
                   setCopied(true)
                   setTimeout(() => setCopied(false), 1200)
@@ -442,7 +449,7 @@ function ResumeDialogBody({
               </button>
             </div>
             <pre className="selectable max-h-28 overflow-auto rounded-lg border border-code-border bg-code-bg px-3 py-2 font-mono text-[11.5px] leading-relaxed break-all whitespace-pre-wrap text-foreground/90">
-              {preview?.commandLine ?? '…'}
+              {preview ? preview.commandLine || '—' : '…'}
             </pre>
           </div>
         </div>

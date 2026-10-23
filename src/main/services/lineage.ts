@@ -162,9 +162,18 @@ export class LineageService {
     return Number.isFinite(t) ? t : undefined
   }
 
+  /**
+   * Sessions that can have a lineage. Conversations imported from claude.ai
+   * are view-only and never forks of a code session, and their message ids
+   * come from the export, so they're left out of the comparison.
+   */
+  private codeSessions(): SessionSummary[] {
+    return this.sessions.list().filter((s) => s.availability !== 'imported')
+  }
+
   private async compute(): Promise<void> {
-    let list = this.sessions.list()
-    if (this.pending.length && this.matchPending(list)) list = this.sessions.list()
+    let list = this.codeSessions()
+    if (this.pending.length && this.matchPending(list)) list = this.codeSessions()
 
     // Only families of two or more, and sessions with an explicit parent, need
     // their message lists (read from disk, cached by file size and time).

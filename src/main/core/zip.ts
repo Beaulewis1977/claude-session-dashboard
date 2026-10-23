@@ -18,8 +18,11 @@ const ZIP64_LOCATOR = 0x07064b50
 const ZIP64_EOCD = 0x06064b50
 const CENTRAL = 0x02014b50
 const LOCAL = 0x04034b50
-/** Entries bigger than this are refused (a data export's JSON is far smaller). */
-export const MAX_ENTRY_BYTES = 1024 * 1024 * 1024
+/**
+ * Entries bigger than this are refused: a data export's JSON is far smaller,
+ * and a JavaScript string (which the JSON is read into) can't be much longer.
+ */
+export const MAX_ENTRY_BYTES = 512 * 1024 * 1024
 
 function u64(buf: Buffer, at: number): number {
   const v = buf.readBigUInt64LE(at)
@@ -87,13 +90,24 @@ export function listZip(buf: Buffer): ZipEntry[] {
   return entries
 }
 
+/** An entry's bytes. The sizes the zip declares must match what's really there. */
 export function readZipEntry(buf: Buffer, entry: ZipEntry): Buffer {
-  if (entry.size > MAX_ENTRY_BYTES) throw new Error(`${entry.name} is too large`)
+  if (entry.size > MAX_ENTRY_BYTES || entry.compressedSize > MAX_ENTRY_BYTES)
+    throw new Error(`${entry.name} is too large`)
   const p = entry.offset
-  if (buf.readUInt32LE(p) !== LOCAL) throw new Error('Damaged zip file')
+  if (p + 30 > buf.length || buf.readUInt32LE(p) !== LOCAL) throw new Error('Damaged zip file')
   const start = p + 30 + buf.readUInt16LE(p + 26) + buf.readUInt16LE(p + 28)
+  if (start + entry.compressedSize > buf.length) throw new Error('Damaged zip file')
   const data = buf.subarray(start, start + entry.compressedSize)
-  if (entry.method === 0) return Buffer.from(data)
-  if (entry.method === 8) return inflateRawSync(data, { maxOutputLength: Math.max(entry.size, 1) })
-  throw new Error(`${entry.name} uses an unsupported compression method`)
+  let out: Buffer
+  if (entry.method === 0) out = Buffer.from(data)
+  else if (entry.method === 8) {
+    try {
+      out = inflateRawSync(data, { maxOutputLength: Math.max(entry.size, 1) })
+    } catch {
+      throw new Error('Damaged zip file')
+    }
+  } else throw new Error(`${entry.name} uses an unsupported compression method`)
+  if (out.length !== entry.size) throw new Error('Damaged zip file')
+  return out
 }

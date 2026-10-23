@@ -19,7 +19,7 @@ import {
 } from '@shared/usage/credits'
 import { DEFAULT_PRICES } from '@shared/usage/pricing'
 import type { BridgeReading } from '@shared/usage/bridge'
-import { FIXTURES } from './helpers'
+import { FIXTURES, TOOLS } from './helpers'
 
 const KEY = 'sk-ant-api03-SECRETsecretSECRET1234567890abcdefQ7xA'
 const ADMIN = 'sk-ant-admin01-ADMINadminADMIN0987654321zyxwm2Pd'
@@ -30,6 +30,7 @@ describe('API-billed launches', () => {
     cwd: 'C:\\Users\\Beau Lewis\\code\\acme web',
     fork: false,
     skipPermissions: true,
+    tools: TOOLS,
     apiKey: KEY
   }
   const leaks = (cmd: ReturnType<typeof buildLaunchCommand>): boolean =>
@@ -41,7 +42,7 @@ describe('API-billed launches', () => {
     const cmd = buildLaunchCommand({ ...base, env: 'windows', terminal: 'wt' })
     expect(cmd.env).toEqual({ ANTHROPIC_API_KEY: KEY })
     expect(leaks(cmd)).toBe(false)
-    expect(cmd.command).toBe('powershell.exe')
+    expect(cmd.command).toBe(TOOLS.powershell)
     expect(cmd.terminal).toBe('powershell')
     expect(cmd.terminalReason).toBe(WT_API_REASON)
     for (const terminal of ['powershell', 'cmd'] as const) {
@@ -78,7 +79,7 @@ describe('API-billed launches', () => {
   it('leaves subscription launches without any extra environment', () => {
     const cmd = buildLaunchCommand({ ...base, apiKey: undefined, env: 'windows', terminal: 'wt' })
     expect(cmd.env).toBeUndefined()
-    expect(cmd.command).toBe('wt.exe')
+    expect(cmd.command).toBe(TOOLS.wt)
   })
 
   it('starts a new session without --resume', () => {
@@ -93,7 +94,7 @@ describe('API-billed launches', () => {
     })
     expect(cmd.claudeCommand).toBe('claude --dangerously-skip-permissions')
     expect(cmd.args).toEqual([
-      'wsl.exe',
+      TOOLS.wsl,
       '-d',
       'Ubuntu',
       '--cd',
@@ -120,7 +121,7 @@ beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), 'csd-credits-'))
 })
 afterEach(async () => {
-  await rm(root, { recursive: true, force: true })
+  await rm(root, { recursive: true, force: true, maxRetries: 5 })
 })
 
 async function service(enc = fakeEncryptor(), fetcher?: Fetcher) {

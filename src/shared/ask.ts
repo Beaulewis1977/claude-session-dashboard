@@ -33,6 +33,8 @@ export const SUGGESTED_QUESTIONS = [
  * their hooks nor an apiKeyHelper or provider switch in them apply). Sign-in
  * works as normal. The prompt goes on stdin.
  */
+export const ASK_ISOLATION = ['--safe-mode', '--setting-sources', '']
+
 export const ASK_ARGS = [
   '-p',
   '--output-format',
@@ -40,9 +42,7 @@ export const ASK_ARGS = [
   '--tools',
   '',
   '--strict-mcp-config',
-  '--safe-mode',
-  '--setting-sources',
-  ''
+  ...ASK_ISOLATION
 ]
 
 /**
@@ -166,9 +166,12 @@ export function askCommand(cli: AskCli): AskCommand {
   return claudeCommand(cli, ASK_ARGS)
 }
 
-/** `claude auth status`, in the same environment the question will run in. */
+/**
+ * `claude auth status`, in the same environment the question will run in and
+ * with the same settings files left out (the flags go before the subcommand).
+ */
 export function authStatusCommand(cli: AskCli): AskCommand {
-  return claudeCommand(cli, ['auth', 'status'])
+  return claudeCommand(cli, [...ASK_ISOLATION, 'auth', 'status'])
 }
 
 export type SubscriptionCheck = { ok: true; method: string } | { ok: false; reason: string }
@@ -184,8 +187,9 @@ const PROVIDER_LABEL: Record<string, string> = {
 
 /**
  * Would the CLI run on the Claude subscription? Reads `claude auth status`
- * (JSON). Anything else, or an answer that can't be read, is refused: Ask
- * Claude never runs on separately billed credits.
+ * (JSON). Anything else, an answer that can't be read, or a check that didn't
+ * finish cleanly (exit code 0) is refused: Ask Claude never runs on
+ * separately billed credits.
  */
 export function subscriptionCheck(stdout: string, code: number | null = 0): SubscriptionCheck {
   const i = stdout.indexOf('{')
@@ -222,6 +226,11 @@ export function subscriptionCheck(stdout: string, code: number | null = 0): Subs
     return {
       ok: false,
       reason: `Claude Code is signed in with ${method || 'an unknown method'}, not your Claude subscription. Ask Claude only runs on your subscription.`
+    }
+  if (code !== 0)
+    return {
+      ok: false,
+      reason: `Couldn't confirm that Claude Code would use your Claude subscription (\`claude auth status\` failed${code === null ? '' : ` with exit code ${code}`}). Updating Claude Code (\`claude update\`) usually fixes this.`
     }
   return { ok: true, method }
 }
@@ -323,6 +332,14 @@ function paceData(p?: PaceState) {
     : null
 }
 
+/**
+ * Model ids and Claude Code versions are read from session files, which can
+ * hold any text: only values shaped like real ones are sent (others count as
+ * "other" models and are left out of the version list).
+ */
+const MODEL_ID_RE = /^[A-Za-z0-9][A-Za-z0-9._:@/-]{0,79}$/
+const MINOR_VERSION_RE = /^\d{1,4}\.\d{1,4}$/
+
 /** The aggregated numbers sent with a question. No text from any session. */
 export function buildAskData(i: AskDataInput) {
   const tz = i.timeZone
@@ -353,10 +370,11 @@ export function buildAskData(i: AskDataInput) {
       dd.responses++
       days.set(d, dd)
     }
-    if (!firstModel.has(r.model)) firstModel.set(r.model, r.ts)
+    const model = MODEL_ID_RE.test(r.model) ? r.model : 'other'
+    if (!firstModel.has(model)) firstModel.set(model, r.ts)
     if (r.version) {
       const minor = r.version.split('.').slice(0, 2).join('.')
-      if (!firstVersion.has(minor)) firstVersion.set(minor, r.ts)
+      if (MINOR_VERSION_RE.test(minor) && !firstVersion.has(minor)) firstVersion.set(minor, r.ts)
     }
   }
   return {

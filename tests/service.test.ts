@@ -11,6 +11,8 @@ import { sessionToMarkdown } from '@shared/markdown'
 import { FIXTURES } from './helpers'
 
 let root: string
+/** Services with background work (archive copies) to finish before cleanup. */
+let busy: { idle(): Promise<void> }[] = []
 
 async function setup() {
   await cp(FIXTURES, join(root, 'fixtures'), { recursive: true })
@@ -24,6 +26,7 @@ async function setup() {
   await settings.load()
   await seedFixtureData(root, paths.archiveDir, metadata)
   const sessions = new SessionService(platform, paths, metadata, settings)
+  busy.push(sessions)
   const launcher = new Launcher(platform, sessions, () => settings.value.terminal)
   await sessions.start()
   await sessions.idle()
@@ -34,7 +37,11 @@ beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), 'csd-service-'))
 })
 afterEach(async () => {
-  await rm(root, { recursive: true, force: true })
+  // fileChanged() queues an archive copy in the background: let it finish
+  // before the folder goes, or Windows can refuse to remove it (ENOTEMPTY).
+  await Promise.all(busy.map((b) => b.idle().catch(() => undefined)))
+  busy = []
+  await rm(root, { recursive: true, force: true, maxRetries: 5 })
 })
 
 describe('SessionService (fixtures)', () => {
@@ -181,7 +188,7 @@ describe('SessionService (fixtures)', () => {
     })
     expect(res).toMatchObject({ ok: true, restored: true, simulated: true })
     expect(res.commandLine).toBe(
-      `wt.exe -d C:\\Users\\beau\\code\\new-place cmd /k claude --resume ${s.sessionId} --dangerously-skip-permissions --fork-session`
+      `Start-Process -FilePath 'C:\\Users\\beau\\AppData\\Local\\Microsoft\\WindowsApps\\wt.exe' -ArgumentList '-d C:\\Users\\beau\\code\\new-place C:\\Windows\\System32\\cmd.exe /s /k "\\"C:\\Users\\beau\\.local\\bin\\claude.exe\\" --resume ${s.sessionId} --dangerously-skip-permissions --fork-session"'`
     )
     const restored = await readFile(s.originalPath, 'utf8')
     expect(restored).toBe(await readFile(s.archivePath!, 'utf8'))
@@ -219,6 +226,7 @@ describe('SessionService (fixtures)', () => {
     await metadata.load()
     await settings.load()
     const again = new SessionService(platform, paths, metadata, settings)
+    busy.push(again)
     await again.start()
     await again.idle()
     expect(
@@ -243,7 +251,7 @@ describe('SessionService (fixtures)', () => {
       terminal: 'wt'
     })
     expect(p.commandLine).toBe(
-      `wt.exe wsl.exe -d Ubuntu --cd "/root/infra scripts" -- bash -lic "claude --resume ${s.sessionId}"`
+      `Start-Process -FilePath 'C:\\Users\\beau\\AppData\\Local\\Microsoft\\WindowsApps\\wt.exe' -ArgumentList 'C:\\Windows\\System32\\wsl.exe -d Ubuntu --cd "/root/infra scripts" -- bash -lic "claude --resume ${s.sessionId}"'`
     )
     const detail = (await sessions.detail(s.key))!
     const md = sessionToMarkdown(detail)

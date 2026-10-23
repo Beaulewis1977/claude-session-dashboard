@@ -324,14 +324,20 @@ describe('Ask Claude: subscription only, and nothing extra sent', () => {
     expect(no(status({ authMethod: 'third_party' }))).toMatch(/not your Claude subscription/)
     expect(no(status({ loggedIn: false }))).toMatch(/isn't signed in/)
     expect(no('', 1)).toMatch(/Couldn't confirm/)
+    // A qualifying answer from a check that failed or never finished proves nothing.
+    expect(no(status({}), 1)).toMatch(/Couldn't confirm.*exit code 1/)
+    expect(no(status({}), null as unknown as number)).toMatch(/Couldn't confirm/)
     expect(no('error: unknown command')).toMatch(/Couldn't confirm/)
   })
 
   it('checks with `claude auth status` in the same environment as the question', () => {
     const wsl = authStatusCommand({ kind: 'wsl', distro: 'Ubuntu', label: 'WSL' })
     const inner = wsl.args[wsl.args.length - 1]
-    expect(inner).toBe(`${WSL_ENV_ALLOWLIST} claude auth status`)
+    expect(inner).toBe(`${WSL_ENV_ALLOWLIST} claude --safe-mode --setting-sources "" auth status`)
     expect(authStatusCommand({ kind: 'native', path: 'claude.exe', label: 'W' }).args).toEqual([
+      '--safe-mode',
+      '--setting-sources',
+      '',
       'auth',
       'status'
     ])
@@ -431,6 +437,8 @@ describe('Ask Claude service: billing check and cancelling', () => {
     cancelled: false
   }
   const cli: AskCli = { kind: 'native', path: 'claude.exe', label: 'Windows' }
+  /** 'auth' for the subscription check, else the first argument. */
+  const step = (cmd: AskCommand): string => (cmd.args.includes('auth') ? 'auth' : cmd.args[0])
   function deferred<T>() {
     let resolve: (v: T) => void = () => undefined
     const promise = new Promise<T>((r) => (resolve = r))
@@ -458,7 +466,7 @@ describe('Ask Claude service: billing check and cancelling', () => {
     expect(item).toMatchObject({ ok: false, answer: '' })
     expect(item.error).toMatch(/API key/)
     // Only the status check ran; the prompt never went anywhere.
-    expect(calls.map((c) => c.args.slice(0, 2))).toEqual([['auth', 'status']])
+    expect(calls.map((c) => c.args.slice(-2))).toEqual([['auth', 'status']])
   })
 
   it('runs the status check first, then the question, when it is the subscription', async () => {
@@ -479,13 +487,13 @@ describe('Ask Claude service: billing check and cancelling', () => {
     })
     const p = await ask.preview('Have my limits dropped?')
     expect(await ask.run(p.id)).toMatchObject({ ok: true, answer: 'Fine.' })
-    expect(calls.map((c) => c.cmd.args[0])).toEqual(['auth', '-p'])
+    expect(calls.map((c) => step(c.cmd))).toEqual(['auth', '-p'])
     expect(calls[0].stdin).toBe('')
     expect(calls[1].stdin).toBe(p.prompt)
     // A confirmed check is reused for a while.
     const q = await ask.preview('Compare this month to last month')
     await ask.run(q.id)
-    expect(calls.map((c) => c.cmd.args[0])).toEqual(['auth', '-p', '-p'])
+    expect(calls.map((c) => step(c.cmd))).toEqual(['auth', '-p', '-p'])
   })
 
   for (const stage of ['finding Claude Code', 'checking the subscription'] as const) {

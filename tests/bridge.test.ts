@@ -175,7 +175,7 @@ beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), 'csd-bridge-'))
 })
 afterEach(async () => {
-  await rm(root, { recursive: true, force: true })
+  await rm(root, { recursive: true, force: true, maxRetries: 5 })
 })
 
 function source(env: 'windows' | 'wsl', home: string, user?: string): SourceInfo {

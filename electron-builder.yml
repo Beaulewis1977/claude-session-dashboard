@@ -11,6 +11,15 @@ files:
   - package.json
   - '!**/*.map'
 npmRebuild: false
+# Electron features the app doesn't use are switched off in the packaged app,
+# and it only runs its own, integrity-checked app.asar
+# (https://www.electronjs.org/docs/latest/tutorial/fuses).
+electronFuses:
+  runAsNode: false
+  enableNodeOptionsEnvironmentVariable: false
+  enableNodeCliInspectArguments: false
+  enableEmbeddedAsarIntegrityValidation: true
+  onlyLoadAppFromAsar: true
 extraFiles:
   - from: THIRD_PARTY_NOTICES
     to: THIRD_PARTY_NOTICES.txt

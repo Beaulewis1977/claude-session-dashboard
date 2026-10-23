@@ -64,6 +64,8 @@ const isoDay = (t: number): string => new Date(t).toISOString().slice(0, 10) + '
 export class AccountsService extends EventEmitter<{ changed: [] }> {
   private timer: NodeJS.Timeout | undefined
   private refreshing = new Map<string, Promise<void>>()
+  /** Stops an account's refresh when the account is removed. */
+  private aborts = new Map<string, AbortController>()
 
   constructor(
     private readonly store: JsonStore<AccountsFile>,
@@ -134,8 +136,13 @@ export class AccountsService extends EventEmitter<{ changed: [] }> {
     this.emit('changed')
   }
 
-  /** Forget a key. Its credit grants are kept (they are history). */
+  /**
+   * Forget a key. Its credit grants are kept (they are history). A refresh
+   * still running for it is stopped and saves nothing.
+   */
   async remove(accountId: string): Promise<void> {
+    this.aborts.get(accountId)?.abort()
+    this.aborts.delete(accountId)
     this.store.update((d) => {
       d.accounts = d.accounts.filter((a) => a.id !== accountId)
       delete d.admin[accountId]
@@ -215,9 +222,25 @@ export class AccountsService extends EventEmitter<{ changed: [] }> {
     return p
   }
 
+  /** Is this account (with this key) still stored? */
+  private stillStored(account: StoredAccount): boolean {
+    return this.store.value.accounts.some((a) => a.id === account.id && a.enc === account.enc)
+  }
+
   private async doRefresh(accountId: string): Promise<void> {
     const account = this.store.value.accounts.find((a) => a.id === accountId)
     if (!account || account.kind !== 'admin') return
+    const ctrl = new AbortController()
+    this.aborts.set(accountId, ctrl)
+    try {
+      await this.fetchAdmin(account, ctrl.signal)
+    } finally {
+      if (this.aborts.get(accountId) === ctrl) this.aborts.delete(accountId)
+    }
+  }
+
+  private async fetchAdmin(account: StoredAccount, signal: AbortSignal): Promise<void> {
+    const accountId = account.id
     const to = now()
     const from = to - 31 * 86_400_000
     const range: [string, string][] = [
@@ -242,7 +265,7 @@ export class AccountsService extends EventEmitter<{ changed: [] }> {
           throw new ApiError(
             "The key couldn't be decrypted on this computer. Remove it and add it again."
           )
-        const o = { userAgent: this.opts.userAgent }
+        const o = { userAgent: this.opts.userAgent, signal }
         usagePages = await fetchReport(
           this.opts.fetcher,
           key,
@@ -256,6 +279,8 @@ export class AccountsService extends EventEmitter<{ changed: [] }> {
           ],
           o
         )
+        // Removed meanwhile: no second request with the forgotten key.
+        if (signal.aborted || !this.stillStored(account)) return
         costPages = await fetchReport(
           this.opts.fetcher,
           key,
@@ -274,6 +299,7 @@ export class AccountsService extends EventEmitter<{ changed: [] }> {
         sample: account.sample || undefined
       }
     } catch (err) {
+      if (signal.aborted || !this.stillStored(account)) return
       const prev = this.store.value.admin[accountId]
       report = {
         ...(prev ?? { accountId, from: range[0][1], to: range[1][1], usage: [], costs: [] }),
@@ -281,6 +307,8 @@ export class AccountsService extends EventEmitter<{ changed: [] }> {
         error: err instanceof ApiError ? err.message : 'Could not reach api.anthropic.com.'
       }
     }
+    // Never recreate a report for an account removed while it was fetched.
+    if (signal.aborted || !this.stillStored(account)) return
     this.store.update((d) => {
       d.admin[accountId] = report
     })

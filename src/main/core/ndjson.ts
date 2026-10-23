@@ -4,7 +4,7 @@
 import { appendFile, mkdir, readFile, readdir } from 'node:fs/promises'
 import { dirname } from 'node:path'
 import { writeFileAtomic } from './json-store'
-import { assertAppDataWrite } from './safe-paths'
+import { assertAppDataWrite, assertRealAppDataWrite } from './safe-paths'
 
 export async function readNdjson<T>(path: string): Promise<T[]> {
   let text: string
@@ -42,6 +42,7 @@ export async function appendNdjson(
 ): Promise<void> {
   if (!rows.length) return
   assertAppDataWrite(path, appDataDir)
+  await assertRealAppDataWrite(path, appDataDir)
   await mkdir(dirname(path), { recursive: true })
   await appendFile(path, rows.map((r) => JSON.stringify(r)).join('\n') + '\n', 'utf8')
 }

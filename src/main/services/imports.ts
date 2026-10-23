@@ -7,7 +7,7 @@ import { readFile, stat } from 'node:fs/promises'
 import { convertClaudeAiExport } from '@shared/claude-ai'
 import type { ImportResult } from '@shared/api'
 import type { ArchiveRecord } from '@shared/types'
-import { archivePathFor } from '../core/archive'
+import { archivePathFor, sha256File } from '../core/archive'
 import { writeFileAtomic, type JsonStore } from '../core/json-store'
 import { assertAppDataWrite } from '../core/safe-paths'
 import { listZip, readZipEntry } from '../core/zip'
@@ -15,7 +15,96 @@ import type { MetadataFile } from './store'
 
 export const CLAUDE_AI_SOURCE = 'claude-ai'
 /** Exports this big are refused (the whole zip is read into memory). */
-const MAX_ZIP_BYTES = 2 * 1024 * 1024 * 1024 - 1
+const MAX_ZIP_BYTES = 1024 * 1024 * 1024
+
+export const ARCHIVE_BUSY =
+  "An archived conversation couldn't be read right now (another program may have it open), so the import stopped before changing it. Try the import again."
+
+/**
+ * SHA-256 of a file, or null only if there is no such file. A file that
+ * can't be read right now (a virus scanner or the indexer may have it open)
+ * is tried again for a moment, then reported: taking it for missing could
+ * replace another conversation's only copy.
+ */
+async function hashUnlessMissing(path: string): Promise<string | null> {
+  for (let i = 0; ; i++) {
+    try {
+      return await sha256File(path)
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') return null
+      if (i >= 4) throw new Error(ARCHIVE_BUSY, { cause: err })
+      await new Promise((r) => setTimeout(r, 100 * (i + 1)))
+    }
+  }
+}
+
+/**
+ * The archive files records point at, for an import to write safely. Before
+ * archive names were collision-proof, two records could point at one file
+ * (ids cut to the same length, or differing only in case, which Windows
+ * ignores), and the file then held whichever conversation was written last.
+ */
+class ArchiveFiles {
+  /** Lower-cased path → keys of the records pointing at it. */
+  private users = new Map<string, Set<string>>()
+  /** Lower-cased path → SHA-256 of the file's content (null: no file). */
+  private hashes = new Map<string, string | null>()
+
+  constructor(
+    private readonly metadata: JsonStore<MetadataFile>,
+    private readonly dirs: { archiveDir: string; dataDir: string }
+  ) {
+    for (const [k, r] of Object.entries(metadata.value.archive)) this.add(r.archivePath, k)
+  }
+
+  private add(path: string, key: string): void {
+    const p = path.toLowerCase()
+    this.users.set(p, (this.users.get(p) ?? new Set()).add(key))
+  }
+
+  async hash(path: string): Promise<string | null> {
+    const p = path.toLowerCase()
+    if (!this.hashes.has(p)) this.hashes.set(p, await hashUnlessMissing(path))
+    return this.hashes.get(p)!
+  }
+
+  /**
+   * Make `path` free for `key`'s conversation. Another record still pointing
+   * at it from the old naming is moved to its own file first: with its text
+   * if the file holds it, else (its text was already overwritten) to its own,
+   * not yet written path, so it never shows another conversation. Returns
+   * false if the file properly belongs to another record.
+   */
+  async clearFor(key: string, path: string): Promise<boolean> {
+    for (const other of [...(this.users.get(path.toLowerCase()) ?? [])]) {
+      if (other === key) continue
+      const rec = this.metadata.value.archive[other]
+      if (!rec) continue
+      const own = archivePathFor(this.dirs.archiveDir, rec.sourceId, rec.sessionId)
+      if (own.toLowerCase() === path.toLowerCase()) return false
+      if (
+        (await this.hash(rec.archivePath)) === rec.sha256 &&
+        (await this.hash(own)) !== rec.sha256
+      ) {
+        assertAppDataWrite(own, this.dirs.dataDir)
+        await writeFileAtomic(own, await readFile(rec.archivePath, 'utf8'), this.dirs.dataDir)
+        this.hashes.set(own.toLowerCase(), rec.sha256)
+      }
+      this.metadata.update((d) => {
+        d.archive[other] = { ...rec, archivePath: own }
+      })
+      this.wrote(other, rec.archivePath, own)
+    }
+    return true
+  }
+
+  /** Record that `key` now points at `path` (holding `sha256`, if just written). */
+  wrote(key: string, from: string | undefined, path: string, sha256?: string): void {
+    if (from) this.users.get(from.toLowerCase())?.delete(key)
+    this.add(path, key)
+    if (sha256) this.hashes.set(path.toLowerCase(), sha256)
+  }
+}
 
 export async function importClaudeAiExport(
   zipPath: string,
@@ -43,7 +132,11 @@ export async function importClaudeAiExport(
         error: 'No conversations.json in this zip. Is it a claude.ai data export?',
         ...empty
       }
-    data = JSON.parse(readZipEntry(buf, entry).toString('utf8').replace(/^\uFEFF/, ''))
+    data = JSON.parse(
+      readZipEntry(buf, entry)
+        .toString('utf8')
+        .replace(/^\uFEFF/, '')
+    )
   } catch (err) {
     return { ok: false, error: (err as Error).message, ...empty }
   }
@@ -60,15 +153,46 @@ export async function importClaudeAiExport(
     skipped: converted.skipped
   }
   const now = new Date().toISOString()
-  for (const c of converted.conversations) {
+  const files = new ArchiveFiles(metadata, dirs)
+  try {
+    await importConversations(converted.conversations, zipPath, now, files, dirs, metadata, res)
+  } catch (err) {
+    // Conversations done so far are complete; the rest are left as they were.
+    await metadata.flush()
+    return { ...res, ok: false, error: (err as Error).message }
+  }
+  await metadata.flush()
+  return res
+}
+
+async function importConversations(
+  conversations: ReturnType<typeof convertClaudeAiExport>['conversations'],
+  zipPath: string,
+  now: string,
+  files: ArchiveFiles,
+  dirs: { archiveDir: string; dataDir: string },
+  metadata: JsonStore<MetadataFile>,
+  res: ImportResult
+): Promise<void> {
+  for (const c of conversations) {
     const key = `${CLAUDE_AI_SOURCE}:${c.uuid}`
     const prev = metadata.value.archive[key]
     const sha256 = createHash('sha256').update(c.jsonl).digest('hex')
-    if (prev?.sha256 === sha256) {
+    const archivePath = archivePathFor(dirs.archiveDir, CLAUDE_AI_SOURCE, c.uuid)
+    // Unchanged only if the file really holds this conversation: before
+    // archive names were collision-proof, two records could share one file.
+    if (
+      prev?.sha256 === sha256 &&
+      prev.archivePath === archivePath &&
+      (await files.hash(archivePath)) === sha256
+    ) {
       res.unchanged++
       continue
     }
-    const archivePath = archivePathFor(dirs.archiveDir, CLAUDE_AI_SOURCE, c.uuid)
+    if (!(await files.clearFor(key, archivePath))) {
+      res.skipped++
+      continue
+    }
     assertAppDataWrite(archivePath, dirs.dataDir)
     await writeFileAtomic(archivePath, c.jsonl, dirs.dataDir)
     const rec: ArchiveRecord = {
@@ -88,9 +212,24 @@ export async function importClaudeAiExport(
     metadata.update((d) => {
       d.archive[key] = rec
     })
+    files.wrote(key, prev?.archivePath, archivePath, sha256)
     if (prev) res.updated++
     else res.added++
   }
-  await metadata.flush()
-  return res
+}
+
+/**
+ * Import, then let the catalogue pick up every record that changed. Even an
+ * import that stopped partway may have moved or rewritten some records, and
+ * the catalogue would otherwise go on showing their old files.
+ */
+export async function importIntoCatalogue(
+  zipPath: string,
+  dirs: { archiveDir: string; dataDir: string },
+  metadata: JsonStore<MetadataFile>,
+  catalogue: { refreshArchive(): Promise<void> }
+): Promise<ImportResult> {
+  const out = await importClaudeAiExport(zipPath, dirs, metadata)
+  await catalogue.refreshArchive()
+  return out
 }

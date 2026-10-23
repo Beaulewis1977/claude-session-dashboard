@@ -8,7 +8,7 @@
 // "Disable" puts the previous `statusLine` back exactly. Nothing is deleted.
 
 import { createHash, randomBytes } from 'node:crypto'
-import { mkdir, readFile, rename, unlink, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, rename, stat, unlink, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import type { BridgeApplyResult, BridgeEnv, BridgePlan } from '@shared/usage/limits'
 import type { SourceInfo } from '@shared/types'
@@ -17,6 +17,7 @@ import { copyShared } from '../core/shared-copy'
 import {
   assertAppDataWrite,
   assertBridgeWrite,
+  assertRealAppDataWrite,
   assertClaudeSettingsWrite
 } from '../core/safe-paths'
 import { diffLines, rawMember, removeMember, scanTopLevel, setMember } from '../core/settings-edit'
@@ -149,21 +150,44 @@ function installedText(before: string | undefined, command: string): string {
     : setMember(before, 'statusLine', value)
 }
 
-/** Write settings.json atomically in place (temp file in the same folder, then rename). */
-async function writeSettings(path: string, text: string): Promise<void> {
+export const SETTINGS_CHANGED =
+  'settings.json changed while the app was preparing the change (another program or editor saved it). Nothing was changed. Review the change again.'
+
+class SettingsChangedError extends Error {}
+
+/**
+ * Write settings.json atomically in place (temp file in the same folder, then
+ * rename), only if it still holds `expected`: the file is read again just
+ * before it's replaced, so an edit made meanwhile (say, a new permission rule)
+ * is never overwritten with the older copy. Claude's own file mode is kept.
+ */
+async function writeSettings(
+  path: string,
+  text: string,
+  expected: string | undefined
+): Promise<void> {
   assertClaudeSettingsWrite(path)
   const tmp = `${path}.csd-${randomBytes(4).toString('hex')}.tmp`
   assertClaudeSettingsWrite(tmp)
-  await writeFile(tmp, text, 'utf8')
+  const mode = await stat(path).then(
+    (st) => st.mode & 0o777,
+    () => undefined
+  )
+  await writeFile(tmp, text, { encoding: 'utf8', ...(mode !== undefined ? { mode } : {}) })
   let lastErr: unknown
-  for (let i = 0; i < 5; i++) {
-    try {
-      await rename(tmp, path)
-      return
-    } catch (err) {
-      lastErr = err
-      await new Promise((r) => setTimeout(r, 60 * (i + 1)))
+  try {
+    for (let i = 0; i < 5; i++) {
+      if ((await readText(path)) !== expected) throw new SettingsChangedError(SETTINGS_CHANGED)
+      try {
+        await rename(tmp, path)
+        return
+      } catch (err) {
+        lastErr = err
+        await new Promise((r) => setTimeout(r, 60 * (i + 1)))
+      }
     }
+  } catch (err) {
+    lastErr = err
   }
   await unlink(tmp).catch(() => undefined)
   throw lastErr
@@ -310,7 +334,21 @@ export class BridgeInstaller {
     }
     if (plan.noop) return { ok: true }
     const before = await readText(p.settingsPath)
+    if (tokenOf(before) !== token) return { ok: false, error: SETTINGS_CHANGED }
+    try {
+      return await this.applyTo(src, p, action, before)
+    } catch (err) {
+      if (err instanceof SettingsChangedError) return { ok: false, error: err.message }
+      throw err
+    }
+  }
 
+  private async applyTo(
+    src: SourceInfo,
+    p: EnvPaths,
+    action: 'install' | 'uninstall',
+    before: string | undefined
+  ): Promise<BridgeApplyResult> {
     // 1. Back up settings.json first.
     let backupPath: string | undefined
     if (before !== undefined) {
@@ -320,6 +358,7 @@ export class BridgeInstaller {
         `${src.id.replace(/[^A-Za-z0-9._-]+/g, '_')}-${stamp}-settings.json`
       )
       assertAppDataWrite(backupPath, this.host.dataDir)
+      await assertRealAppDataWrite(backupPath, this.host.dataDir)
       await mkdir(this.backupDir, { recursive: true })
       await copyShared(p.settingsPath, backupPath)
     }
@@ -345,7 +384,7 @@ export class BridgeInstaller {
 
       // 3. Only the statusLine key.
       const after = installedText(before, p.command)
-      await writeSettings(p.settingsPath, after)
+      await writeSettings(p.settingsPath, after, before)
       this.store.update((d) => {
         d.installs[src.id] = {
           installedAt: new Date().toISOString(),
@@ -362,7 +401,7 @@ export class BridgeInstaller {
     } else {
       const rec = this.record(src.id)
       const after = this.restoredText(before!, rec)
-      await writeSettings(p.settingsPath, after)
+      await writeSettings(p.settingsPath, after, before)
       this.store.update((d) => {
         delete d.installs[src.id]
       })

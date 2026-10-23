@@ -21,6 +21,9 @@ import { sanitizeElsewhere, sanitizeHealth, sanitizePlanHistory } from '@shared/
 import { sanitizePace } from '@shared/usage/pace'
 import type { ThemePref } from '@shared/types'
 import { SOURCE_LABELS } from '@shared/source-label'
+import { isDevServerUrl } from './core/app-url'
+import { NO_CWD_SEARCH } from './core/launch'
+import { setAppPage } from './ipc-guard'
 import {
   fixturesLayout,
   prepareFixtures,
@@ -35,6 +38,7 @@ import { registerUsageIpc } from './ipc-usage'
 import { registerAccountsIpc } from './ipc-accounts'
 import { registerAskIpc } from './ipc-ask'
 import { AccountsService, createAccountsStore, type Encryptor } from './services/accounts'
+import { httpsFetcher } from './services/anthropic-api'
 import { BillingService } from './services/billing'
 import { createFixturesPlatform, createRealPlatform, type Platform } from './platform'
 import { BridgeInstaller, createBridgeStore } from './services/bridge'
@@ -45,6 +49,12 @@ import { SessionService } from './services/sessions'
 import { appPaths, createMetadataStore, createSettingsStore } from './services/store'
 import { UsageService, usagePaths } from './services/usage'
 import { SourceWatcher } from './services/watcher'
+
+// Windows looks for a program in the current folder before PATH. The app
+// starts programs by absolute path anyway; this documented opt-out also covers
+// anything found by name, here (libuv honours it) and in every process the app
+// starts (cmd.exe honours it, e.g. for the `node` that npm's claude.cmd runs).
+if (process.platform === 'win32') process.env[NO_CWD_SEARCH] = '1'
 
 const FIXTURES = process.argv.includes('--fixtures') || process.env.CSD_FIXTURES === '1'
 const appRoot = app.getAppPath()
@@ -85,20 +95,41 @@ function applyTheme(theme: ThemePref, resolved?: 'light' | 'dark'): void {
   }
 }
 
-/** No network: block every request that isn't the local app or dev server. */
+/**
+ * No network: block every request that isn't the local app or dev server.
+ * Spellcheck is off (its dictionaries would be downloaded), and the pages get
+ * no web permissions (camera, notifications, …): the app uses none.
+ */
 function blockNetwork(): void {
   const devUrl = process.env.ELECTRON_RENDERER_URL
-  session.defaultSession.webRequest.onBeforeRequest((details, cb) => {
+  const ses = session.defaultSession
+  ses.webRequest.onBeforeRequest((details, cb) => {
     const url = details.url
     const local =
       url.startsWith('file:') ||
       url.startsWith('devtools:') ||
       url.startsWith('data:') ||
       url.startsWith('blob:') ||
-      (devUrl !== undefined && (url.startsWith(devUrl) || /^wss?:\/\/localhost[:/]/.test(url)))
+      isDevServerUrl(url, devUrl)
     cb({ cancel: !local })
   })
+  ses.setSpellCheckerEnabled(false)
+  ses.setPermissionRequestHandler((_wc, _permission, cb) => cb(false))
+  ses.setPermissionCheckHandler(() => false)
 }
+
+/** The app's windows never navigate away or open other windows (links go to the browser). */
+function lockNavigation(win: BrowserWindow): void {
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    if (/^https?:\/\//i.test(url)) void shell.openExternal(url)
+    return { action: 'deny' }
+  })
+  win.webContents.on('will-navigate', (e, url) => {
+    if (!isDevServerUrl(url, process.env.ELECTRON_RENDERER_URL)) e.preventDefault()
+  })
+}
+
+const RENDERER_INDEX = join(__dirname, '../renderer/index.html')
 
 async function main(): Promise<void> {
   if (!app.requestSingleInstanceLock()) {
@@ -114,6 +145,7 @@ async function main(): Promise<void> {
 
   await app.whenReady()
   blockNetwork()
+  setAppPage(RENDERER_INDEX, process.env.ELECTRON_RENDERER_URL)
 
   let platform: Platform
   if (FIXTURES) {
@@ -170,8 +202,9 @@ async function main(): Promise<void> {
   if (FIXTURES) await seedFixtureAccounts(appRoot, accountsStore, metadata, settings)
   const accounts = new AccountsService(accountsStore, encryptor, {
     // Node's fetch in the main process: not routed through the window's session,
-    // whose network stays blocked. Only reportUrl() URLs ever reach this.
-    fetcher: (url, init) => fetch(url, { headers: init.headers, signal: init.signal }),
+    // whose network stays blocked. Only reportUrl() URLs ever reach this, and
+    // redirects are never followed.
+    fetcher: httpsFetcher,
     userAgent: `ClaudeSessionDashboard/${app.getVersion()}`,
     sampleAdminDir: FIXTURES
       ? join(fixturesLayout(appRoot).fixturesDir, 'usage', 'admin')
@@ -300,7 +333,7 @@ async function main(): Promise<void> {
   const loadRenderer = (w: BrowserWindow, hash: string): void => {
     if (process.env.ELECTRON_RENDERER_URL)
       void w.loadURL(`${process.env.ELECTRON_RENDERER_URL}#${hash}`)
-    else void w.loadFile(join(__dirname, '../renderer/index.html'), { hash })
+    else void w.loadFile(RENDERER_INDEX, { hash })
   }
   const meter = createMeter({
     settings,
@@ -308,7 +341,8 @@ async function main(): Promise<void> {
     icon: join(appRoot, 'resources', 'icon.png'),
     background: () => CHROME[resolvedTheme()].bg,
     showUsage: () => showUsage(),
-    loadRenderer
+    loadRenderer,
+    lockNavigation
   })
   createWindow(settings.value.window)
   meter.restore()
@@ -375,22 +409,13 @@ async function main(): Promise<void> {
         sandbox: true,
         contextIsolation: true,
         nodeIntegration: false,
-        spellcheck: true
+        spellcheck: false
       }
     })
     mainWindow = win
     if (bounds?.maximized) win.maximize()
     win.once('ready-to-show', () => win.show())
-
-    // Links open in the default browser; the app itself never navigates away.
-    win.webContents.setWindowOpenHandler(({ url }) => {
-      if (/^https?:\/\//i.test(url)) void shell.openExternal(url)
-      return { action: 'deny' }
-    })
-    win.webContents.on('will-navigate', (e, url) => {
-      const dev = process.env.ELECTRON_RENDERER_URL
-      if (!(dev && url.startsWith(dev))) e.preventDefault()
-    })
+    lockNavigation(win)
 
     const saveBounds = (): void => {
       if (win.isDestroyed()) return
@@ -408,7 +433,7 @@ async function main(): Promise<void> {
     win.on('unmaximize', saveBounds)
 
     if (process.env.ELECTRON_RENDERER_URL) void win.loadURL(process.env.ELECTRON_RENDERER_URL)
-    else void win.loadFile(join(__dirname, '../renderer/index.html'))
+    else void win.loadFile(RENDERER_INDEX)
   }
 
   function showUsage(): void {

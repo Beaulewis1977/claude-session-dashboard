@@ -3,6 +3,7 @@
 //
 // Reads only. The only writes go to the app's data folder (archive, metadata).
 
+import { createHash } from 'node:crypto'
 import { EventEmitter } from 'node:events'
 import { readdir, readFile, stat } from 'node:fs/promises'
 import { basename, join } from 'node:path'
@@ -66,6 +67,9 @@ interface FileInfo {
 }
 
 const SESSION_FILE_RE = /^[A-Za-z0-9][A-Za-z0-9_-]*\.jsonl$/i
+
+/** What an imported entry was loaded from: reloaded when either changes. */
+const importRev = (rec: ArchiveRecord): string => `${rec.sha256}|${rec.archivePath}`
 
 /** Lists `<projectsDir>/<project>/<session>.jsonl`. Undefined if the folder can't be read. */
 export async function listSessionFiles(projectsDir: string): Promise<FileInfo[] | undefined> {
@@ -607,7 +611,7 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
       const src = this.source(rec.sourceId)
       let availability: Availability
       if (rec.origin === 'claude-ai') {
-        if (e && e.rev === rec.sha256) continue
+        if (e && e.rev === importRev(rec)) continue
         await this.loadArchived(rec, 'imported')
         continue
       }
@@ -631,9 +635,18 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
 
   private async loadArchived(rec: ArchiveRecord, availability: Availability): Promise<void> {
     let text: string
+    const imported = availability === 'imported'
     try {
       text = await readFile(rec.archivePath, 'utf8')
     } catch {
+      if (imported) this.dropEntry(`${rec.sourceId}:${rec.sessionId}`)
+      return
+    }
+    // An imported conversation's file must hold what was imported (archives
+    // from before collision-proof names may hold another conversation).
+    if (imported && createHash('sha256').update(text).digest('hex') !== rec.sha256) {
+      console.warn('archive copy does not match its conversation', rec.archivePath)
+      this.dropEntry(`${rec.sourceId}:${rec.sessionId}`)
       return
     }
     const size = Buffer.byteLength(text)
@@ -661,15 +674,21 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
       base.projectDir = 'claude.ai'
       base.projectName = 'claude.ai'
     }
-    // Imported entries remember their content hash: a re-import can change the
-    // text without changing the size.
+    // Imported entries remember their content hash and file: a re-import can
+    // change the text without changing the size, or move it to another file.
     this.entries.set(base.key, {
       base,
       size,
       mtimeMs: 0,
-      ...(availability === 'imported' ? { rev: rec.sha256 } : {})
+      ...(imported ? { rev: importRev(rec) } : {})
     })
     this.index(base, searchText)
+  }
+
+  private dropEntry(key: string): void {
+    if (!this.entries.delete(key)) return
+    this.search.remove(key)
+    this.markCacheDirty()
   }
 
   /** Pick up archive records added by an import. */

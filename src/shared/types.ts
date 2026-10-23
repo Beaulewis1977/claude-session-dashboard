@@ -346,6 +346,8 @@ export interface LaunchPreview {
   /** For a branch: what will be kept, or why it can't be made. */
   branch?: BranchPreview
   branchError?: string
+  /** Why this can't be launched (e.g. Claude Code not found, a folder that can't be checked). */
+  launchError?: string
 }
 
 export interface LaunchResult {

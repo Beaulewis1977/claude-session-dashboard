@@ -1,4 +1,4 @@
-import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeTheme, shell } from 'electron'
+import { app, BrowserWindow, clipboard, dialog, nativeTheme, shell } from 'electron'
 import { writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
 import { clockOffset } from '@shared/clock'
@@ -25,6 +25,7 @@ import type {
 } from '@shared/types'
 import { archiveStats } from './core/archive'
 import type { JsonStore } from './core/json-store'
+import { handle } from './ipc-guard'
 import { assertUserWrite, isInside } from './core/safe-paths'
 import { windowsPathToWsl } from './core/wsl'
 import type { Platform } from './platform'
@@ -32,7 +33,7 @@ import type { Launcher } from './services/launcher'
 import type { SessionService } from './services/sessions'
 import type { AppPaths, SettingsFile } from './services/store'
 import type { SourceWatcher } from './services/watcher'
-import { importClaudeAiExport } from './services/imports'
+import { importIntoCatalogue } from './services/imports'
 import type { MetadataFile } from './services/store'
 
 export interface IpcDeps {
@@ -140,7 +141,7 @@ export function registerIpc(deps: IpcDeps): void {
     await deps.watcher.restart()
   }
 
-  ipcMain.handle('app:info', (): AppInfo => ({
+  handle('app:info', (): AppInfo => ({
     version: app.getVersion(),
     platform: process.platform,
     fixtures: platform.fixtures,
@@ -149,16 +150,16 @@ export function registerIpc(deps: IpcDeps): void {
     archiveDir: paths.archiveDir
   }))
 
-  ipcMain.handle('sessions:list', () => sessions.payload())
-  ipcMain.handle('sessions:get', (_e, key) => sessions.detail(str(key, 'key')))
-  ipcMain.handle('sessions:search', (_e, q) => sessions.searchKeys(str(q, 'query')))
-  ipcMain.handle('sessions:updateMeta', (_e, key, patch) =>
+  handle('sessions:list', () => sessions.payload())
+  handle('sessions:get', (_e, key) => sessions.detail(str(key, 'key')))
+  handle('sessions:search', (_e, q) => sessions.searchKeys(str(q, 'query')))
+  handle('sessions:updateMeta', (_e, key, patch) =>
     sessions.updateMeta(str(key, 'key'), (patch ?? {}) as Partial<SessionMeta>)
   )
-  ipcMain.handle('sessions:rescan', () => rescan())
+  handle('sessions:rescan', () => rescan())
 
-  ipcMain.handle('settings:get', () => publicSettings(settings.value))
-  ipcMain.handle('settings:update', async (_e, patch: Partial<AppSettings>) => {
+  handle('settings:get', () => publicSettings(settings.value))
+  handle('settings:update', async (_e, patch: Partial<AppSettings>) => {
     const p = patch ?? {}
     const before = settings.value
     const rescanNeeded =
@@ -219,7 +220,7 @@ export function registerIpc(deps: IpcDeps): void {
     if (rescanNeeded) void rescan()
     return publicSettings(settings.value)
   })
-  ipcMain.handle('settings:addFolder', async () => {
+  handle('settings:addFolder', async () => {
     const w = win()
     const res = w
       ? await dialog.showOpenDialog(w, {
@@ -241,7 +242,7 @@ export function registerIpc(deps: IpcDeps): void {
     }
     return publicSettings(settings.value)
   })
-  ipcMain.handle('settings:removeFolder', async (_e, folder) => {
+  handle('settings:removeFolder', async (_e, folder) => {
     const f = str(folder, 'folder')
     settings.update((s) => {
       s.extraFolders = s.extraFolders.filter((x) => x !== f)
@@ -251,11 +252,11 @@ export function registerIpc(deps: IpcDeps): void {
     return publicSettings(settings.value)
   })
 
-  ipcMain.handle('archive:stats', async () => ({
+  handle('archive:stats', async () => ({
     dir: paths.archiveDir,
     ...(await archiveStats(paths.archiveDir))
   }))
-  ipcMain.handle('import:claudeAi', async () => {
+  handle('import:claudeAi', async () => {
     const w = win()
     const opts: Electron.OpenDialogOptions = {
       title: 'Import a claude.ai data export',
@@ -265,28 +266,26 @@ export function registerIpc(deps: IpcDeps): void {
     const res = w ? await dialog.showOpenDialog(w, opts) : await dialog.showOpenDialog(opts)
     const file = res.filePaths[0]
     if (res.canceled || !file) return null
-    const out = await importClaudeAiExport(file, paths, deps.metadata)
-    if (out.ok) await sessions.refreshArchive()
-    return out
+    return importIntoCatalogue(file, paths, deps.metadata, sessions)
   })
-  ipcMain.handle('archive:open', async () => {
+  handle('archive:open', async () => {
     const { mkdir } = await import('node:fs/promises')
     await mkdir(paths.archiveDir, { recursive: true })
     await shell.openPath(paths.archiveDir)
   })
-  ipcMain.handle('sessions:showFile', (_e, key) => {
+  handle('sessions:showFile', (_e, key) => {
     const s = sessions.get(str(key, 'key'))
     if (s) shell.showItemInFolder(s.filePath)
   })
-  ipcMain.handle('sources:openSettings', async (_e, id) => {
+  handle('sources:openSettings', async (_e, id) => {
     // Opens Claude's settings folder in Explorer. The app never edits it.
     const src = sessions.source(str(id, 'id'))
     if (src?.claudeSettingsPath) await shell.openPath(dirname(src.claudeSettingsPath))
   })
 
-  ipcMain.handle('launch:preview', (_e, opts) => deps.launcher.preview(launchOpts(opts)))
-  ipcMain.handle('launch:run', (_e, opts) => deps.launcher.launch(launchOpts(opts)))
-  ipcMain.handle('launch:pickCwd', async (_e, key) => {
+  handle('launch:preview', (_e, opts) => deps.launcher.preview(launchOpts(opts)))
+  handle('launch:run', (_e, opts) => deps.launcher.launch(launchOpts(opts)))
+  handle('launch:pickCwd', async (_e, key) => {
     const s = sessions.get(str(key, 'key'))
     if (!s) return null
     const w = win()
@@ -301,7 +300,7 @@ export function registerIpc(deps: IpcDeps): void {
     return picked
   })
 
-  ipcMain.handle('export:markdown', async (_e, key) => {
+  handle('export:markdown', async (_e, key) => {
     const detail = await sessions.detail(str(key, 'key'))
     if (!detail) return { saved: false, error: 'Session not found' }
     const w = win()
@@ -321,11 +320,11 @@ export function registerIpc(deps: IpcDeps): void {
     }
   })
 
-  ipcMain.handle('clipboard:write', (_e, text) => clipboard.writeText(str(text, 'text')))
-  ipcMain.handle('theme:set', (_e, theme, resolved) => {
+  handle('clipboard:write', (_e, text) => clipboard.writeText(str(text, 'text')))
+  handle('theme:set', (_e, theme, resolved) => {
     if (THEMES.includes(theme)) deps.applyTheme(theme, resolved === 'dark' ? 'dark' : 'light')
   })
-  ipcMain.handle('shell:openExternal', async (_e, url) => {
+  handle('shell:openExternal', async (_e, url) => {
     const u = str(url, 'url')
     if (/^https?:\/\//i.test(u)) await shell.openExternal(u)
   })

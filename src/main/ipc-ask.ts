@@ -1,10 +1,10 @@
 // IPC for "Ask Claude" (usage questions through `claude -p`).
 
-import { ipcMain } from 'electron'
 import { now } from '@shared/clock'
 import { buildAskData } from '@shared/ask'
 import { localTimeZone } from '@shared/usage/time'
 import type { JsonStore } from './core/json-store'
+import { handle } from './ipc-guard'
 import { AskService, createAskStore } from './services/ask'
 import type { LimitsService } from './services/limits'
 import type { SettingsFile } from './services/store'
@@ -47,10 +47,10 @@ export async function registerAskIpc(deps: {
     if (typeof v !== 'string' || !v.trim()) throw new Error('Type a question first.')
     return v.trim().slice(0, max)
   }
-  ipcMain.handle('ask:status', () => ask.status())
-  ipcMain.handle('ask:preview', (_e, q) => ask.preview(text(q, 1000)))
-  ipcMain.handle('ask:run', (_e, id) => ask.run(text(id, 64)))
-  ipcMain.handle('ask:cancel', (_e, id) => ask.cancel(text(id, 64)))
-  ipcMain.handle('ask:history', () => ask.history())
+  handle('ask:status', () => ask.status())
+  handle('ask:preview', (_e, q) => ask.preview(text(q, 1000)))
+  handle('ask:run', (_e, id) => ask.run(text(id, 64)))
+  handle('ask:cancel', (_e, id) => ask.cancel(text(id, 64)))
+  handle('ask:history', () => ask.history())
   return { flush: () => store.flush() }
 }

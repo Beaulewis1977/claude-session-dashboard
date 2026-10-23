@@ -52,7 +52,7 @@ beforeEach(async () => {
 afterEach(async () => {
   await Promise.all(busy.map((b) => b.idle().catch(() => undefined)))
   busy = []
-  await rm(root, { recursive: true, force: true })
+  await rm(root, { recursive: true, force: true, maxRetries: 5 })
 })
 
 describe('Branch from here (fixtures)', () => {

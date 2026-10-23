@@ -44,6 +44,11 @@ export interface LaunchContext {
   via: 'desktop' | 'phone'
   /** The phone's name. */
   device?: string
+  /**
+   * Asked again right before anything is written or started (a launch from a
+   * phone waits on file checks): a reason to stop, or undefined to go on.
+   */
+  stillAllowed?: () => string | undefined
 }
 
 const DESKTOP: LaunchContext = { via: 'desktop' }
@@ -261,6 +266,8 @@ export class Launcher {
     if (opts.branch?.createOnly) {
       let created: SessionSummary
       try {
+        const stop = ctx.stillAllowed?.()
+        if (stop) return fail(`Not launched: ${stop}.`)
         created = await this.branches.create(s, opts.branch)
       } catch (err) {
         return fail((err as Error).message)
@@ -298,6 +305,8 @@ export class Launcher {
     if (opts.branch) {
       let created: SessionSummary
       try {
+        const stop = ctx.stillAllowed?.()
+        if (stop) return fail(`Not launched: ${stop}.`)
         created = await this.branches.create(s, opts.branch)
       } catch (err) {
         return fail((err as Error).message)
@@ -328,6 +337,8 @@ export class Launcher {
     if (!opts.newSession && !(await this.platform.pathExists(s.originalPath))) {
       const rec = this.sessions.archiveRecord(s.key)
       if (rec) {
+        const stop = ctx.stillAllowed?.()
+        if (stop) return fail(`Not launched: ${stop}.`)
         const outcome = await restoreIfMissing(rec.archivePath, rec.originalPath)
         restored = outcome === 'restored'
         if (outcome === 'archive-missing')
@@ -343,6 +354,9 @@ export class Launcher {
       this.billing?.launched(s, opts, cwd, ctx)
       return { ok: true, restored, commandLine: cmd.commandLine, simulated: true }
     }
+    const stop = ctx.stillAllowed?.()
+    if (stop)
+      return { ok: false, restored, commandLine: cmd.commandLine, error: `Not launched: ${stop}.` }
     try {
       await this.platform.spawnDetached(cmd)
     } catch (err) {

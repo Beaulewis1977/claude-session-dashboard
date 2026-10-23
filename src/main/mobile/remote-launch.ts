@@ -198,7 +198,13 @@ export class RemoteLauncher {
     }
     const res = await this.deps.launch(remoteLaunchOptions(req, now.terminal), {
       via: 'phone',
-      device: device.name
+      device: device.name,
+      stillAllowed: () =>
+        !this.deps.deviceActive(device.id)
+          ? 'the phone was revoked'
+          : this.deps.settings().readOnly
+            ? 'read-only mode was turned on'
+            : undefined
     })
     this.deps.log({
       device,

@@ -208,6 +208,7 @@ export class MobileService extends EventEmitter<{ changed: [] }> {
   // Start, stop, update and retry run one at a time: overlapping clicks
   // (or the wizard and Settings together) can't leave a second listener behind.
   private queue: Promise<unknown> = Promise.resolve()
+  private closing = false
   private serial<T>(fn: () => Promise<T>): Promise<T> {
     const run = this.queue.then(fn, fn)
     this.queue = run.catch(() => undefined)
@@ -272,6 +273,7 @@ export class MobileService extends EventEmitter<{ changed: [] }> {
   }
 
   private async doStart(): Promise<MobileStatus> {
+    if (this.closing) return this.status(false)
     const s = this.settings
     this.lastError = undefined
     let host: string
@@ -353,8 +355,12 @@ export class MobileService extends EventEmitter<{ changed: [] }> {
   }
 
   /** On quit: stop serving, but remember it was on (auto-start brings it back). */
-  async shutdown(): Promise<void> {
-    if (this.server.running) await this.stop(this.settings, true)
+  /** Quitting: after anything already queued, stop, and start nothing after. */
+  shutdown(): Promise<void> {
+    this.closing = true
+    return this.serial(async () => {
+      if (this.server.running) await this.doStop(this.settings, true)
+    })
   }
 
   /** Retry `tailscale serve` (after the user approved HTTPS in the browser). */

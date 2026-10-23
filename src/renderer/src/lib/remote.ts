@@ -26,7 +26,7 @@ export function remoteTitle(s: RemoteFields): string {
 
 type LinkFields = Pick<
   SessionSummary,
-  'key' | 'sourceId' | 'cwd' | 'env' | 'remoteUrl' | 'remoteUrlAt'
+  'key' | 'sourceId' | 'cwd' | 'env' | 'remoteUrl' | 'remoteUrlAt' | 'lineage'
 >
 
 /** Recorded at or after the launch (a little slack for the PC's and phone's clocks). */
@@ -35,13 +35,16 @@ const fresh = (s: LinkFields, since: number): boolean =>
 
 /**
  * The Remote Control link of what a phone just launched, once Claude Code has
- * recorded it. A fork has a new session id: look for a new link in the same
- * folder (never the parent's).
+ * recorded it. A fork has a new session id that only Claude Code knows: it
+ * must be a session that didn't exist at launch (`existing`), in the same
+ * folder; one the app has linked to the parent wins. Never the parent or
+ * any other session that was already there.
  */
 export function freshRemoteUrl(
   sessions: LinkFields[],
   result: Pick<RemoteLaunchResult, 'key' | 'fork'> | null,
-  since: number
+  since: number,
+  existing: ReadonlySet<string> = new Set()
 ): string | undefined {
   if (!result) return undefined
   if (result.key) {
@@ -53,7 +56,17 @@ export function freshRemoteUrl(
   const same = (s: LinkFields): boolean =>
     s.env === 'windows' ? s.cwd?.toLowerCase() === f.cwd!.toLowerCase() : s.cwd === f.cwd
   const found = sessions
-    .filter((s) => s.key !== f.parentKey && s.sourceId === f.sourceId && same(s) && fresh(s, since))
+    .filter(
+      (s) =>
+        s.key !== f.parentKey &&
+        !existing.has(s.key) &&
+        s.sourceId === f.sourceId &&
+        same(s) &&
+        fresh(s, since)
+    )
     .sort((a, b) => Date.parse(b.remoteUrlAt!) - Date.parse(a.remoteUrlAt!))
-  return found[0]?.remoteUrl
+  const linked = found.filter((s) => s.lineage?.parentKey === f.parentKey)
+  // Two new sessions in the folder and neither linked to the parent: don't guess.
+  if (!linked.length && found.length > 1) return undefined
+  return (linked[0] ?? found[0])?.remoteUrl
 }

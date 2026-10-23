@@ -38,9 +38,11 @@ const VERB = { resume: 'Resume', fork: 'Fork', branch: 'Branch' } as const
  * Wait for Claude Code to record the session's Remote Control link (a few
  * seconds after it starts), so "Open in Claude app" goes straight to it.
  */
-function useFreshRemoteUrl(result: RemoteLaunchResult | null, since: number): string | undefined {
+type Launched = RemoteLaunchResult & { at: number; existing: ReadonlySet<string> }
+
+function useFreshRemoteUrl(result: Launched | null, since: number): string | undefined {
   const sessions = useApp((st) => st.sessions)
-  return freshRemoteUrl(sessions, result, since)
+  return freshRemoteUrl(sessions, result, since, result?.existing)
 }
 
 export function LaunchSheet({
@@ -58,7 +60,7 @@ export function LaunchSheet({
       : { key: session.key, kind: target.kind }
   const [preview, setPreview] = useState<RemoteLaunchPreview | null>(null)
   const [busy, setBusy] = useState(false)
-  const [result, setResult] = useState<(RemoteLaunchResult & { at: number }) | null>(null)
+  const [result, setResult] = useState<Launched | null>(null)
   const [error, setError] = useState<string>()
   const fresh = useFreshRemoteUrl(result?.ok ? result : null, result?.at ?? 0)
   const [waitedLong, setWaitedLong] = useState(false)
@@ -87,8 +89,10 @@ export function LaunchSheet({
     setBusy(true)
     setError(undefined)
     try {
+      // Sessions that exist now can't be the fork Claude Code is about to create.
+      const existing = new Set(useApp.getState().sessions.map((x) => x.key))
       const r = await phone.launch(req)
-      if (r.ok) setResult({ ...r, at: now() })
+      if (r.ok) setResult({ ...r, at: now(), existing })
       else setError(r.error ?? 'It could not be launched.')
     } catch (err) {
       setError((err as Error).message)

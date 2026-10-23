@@ -571,3 +571,175 @@ describe('PR3-13: no e-mail in the activity log', () => {
     expect(JSON.stringify(reg.activity())).not.toContain('@')
   })
 })
+
+// ------------------------------------------------- second review (R2)
+
+describe('PR3-R2-01: the real launcher checks again before writing or starting', () => {
+  it('stops if read-only is turned on (or the phone revoked) while it prepares', async () => {
+    const { Launcher } = await import('../src/main/services/launcher')
+    for (const change of ['readOnly', 'revoke'] as const) {
+      let readOnly = false
+      let active = true
+      let releaseTools: (t: typeof TOOLS) => void = () => undefined
+      const spawn = vi.fn(async () => undefined)
+      const session = { ...SESSION, originalPath: 'C:\\a.jsonl', title: 'Fix login' }
+      const launcher = new Launcher(
+        {
+          canLaunch: true,
+          fixtures: false,
+          windowsHome: 'C:\\Users\\me',
+          launchTools: () => new Promise((r) => (releaseTools = r)),
+          pathExists: async () => true,
+          spawnDetached: spawn,
+          distroRoots: () => []
+        } as never,
+        { get: () => session, source: () => undefined, archiveRecord: () => undefined } as never,
+        () => 'wt'
+      )
+      const { rl } = remoteLauncher({
+        settings: () => ({ terminal: 'wt', readOnly, confirmOnPc: false, branchConfirmed: true }),
+        deviceActive: () => active,
+        launch: (o, ctx) => launcher.launch(o, ctx)
+      })
+      const pending = rl.launch(DEVICE, { key: SESSION.key, kind: 'resume' })
+      await new Promise((r) => setTimeout(r, 20))
+      if (change === 'readOnly') readOnly = true
+      else active = false
+      releaseTools(TOOLS)
+      const r = await pending
+      expect(r.ok).toBe(false)
+      expect(spawn).not.toHaveBeenCalled()
+    }
+  })
+})
+
+describe('PR3-R2-02: branches built by the real builder', () => {
+  it('drop or mark the original’s Remote Control status', async () => {
+    const { planBranch, buildBranchFile } = await import('../src/shared/branch')
+    const NEW = '11111111-2222-4333-8444-555555555555'
+    const lines = [
+      {
+        type: 'user',
+        uuid: 'u1',
+        sessionId: 'p',
+        timestamp: '2026-10-23T10:00:00Z',
+        message: { role: 'user', content: 'hello' }
+      },
+      {
+        type: 'system',
+        subtype: 'bridge_status',
+        sessionId: 'p',
+        url: 'https://claude.ai/code/session_PARENT0000',
+        timestamp: '2026-10-23T10:00:01Z'
+      },
+      {
+        type: 'system',
+        subtype: 'bridge_status',
+        uuid: 's2',
+        parentUuid: 'u1',
+        sessionId: 'p',
+        url: 'https://claude.ai/code/session_PARENT1111',
+        timestamp: '2026-10-23T10:00:02Z'
+      },
+      {
+        type: 'assistant',
+        uuid: 'a1',
+        parentUuid: 's2',
+        sessionId: 'p',
+        timestamp: '2026-10-23T10:00:03Z',
+        message: { id: 'm1', role: 'assistant', content: [{ type: 'text', text: 'hi' }] }
+      }
+    ]
+    const events = parseJsonl(lines.map((l) => JSON.stringify(l)).join('\n')).events
+    const plan = planBranch(events, 'a1')
+    if (!plan.ok) throw new Error(plan.error)
+    const file = buildBranchFile(events, plan, NEW, 'p')
+    const a = analyzeEvents(parseJsonl(file).events)
+    expect(a.remoteUrl).toBeUndefined()
+    expect(file).not.toContain('PARENT0000')
+  })
+})
+
+describe('PR3-R2-03: a fork never borrows a sibling’s link', () => {
+  it('only takes a session that is new since the launch', () => {
+    const at = Date.parse('2026-10-23T12:00:00Z')
+    const iso = (ms: number) => new Date(at + ms).toISOString()
+    const result = { fork: { parentKey: SESSION.key, sourceId: 'windows', cwd: SESSION.cwd } }
+    const sibling = {
+      ...SESSION,
+      key: 'windows:sib',
+      remoteUrl: 'https://claude.ai/code/session_SIBLING000',
+      remoteUrlAt: iso(2000)
+    }
+    const child = {
+      ...SESSION,
+      key: 'windows:new',
+      remoteUrl: 'https://claude.ai/code/session_CHILD00000',
+      remoteUrlAt: iso(1000)
+    }
+    const existing = new Set([SESSION.key, sibling.key])
+    expect(freshRemoteUrl([sibling], result, at, existing)).toBeUndefined()
+    expect(freshRemoteUrl([sibling, child], result, at, existing)).toBe(child.remoteUrl)
+    // Two new sessions and neither linked to the parent: don't guess…
+    const other = {
+      ...child,
+      key: 'windows:new2',
+      remoteUrl: 'https://claude.ai/code/session_NEW2000000'
+    }
+    expect(freshRemoteUrl([child, other], result, at, existing)).toBeUndefined()
+    // …unless one is linked to the parent.
+    const linked = { ...child, lineage: { parentKey: SESSION.key } } as unknown as typeof child
+    expect(freshRemoteUrl([linked, other], result, at, existing)).toBe(child.remoteUrl)
+  })
+})
+
+describe('PR3-R2-04: start-up keeps a recovery that arrives mid-request', () => {
+  it('runs again after a failed request if asked meanwhile, and retries on a timer', async () => {
+    const { bootstrap } = await import('../src/renderer/src/mobile/bootstrap')
+    let loaded = false
+    const runs: Array<{ resolve: () => void; reject: (e: Error) => void }> = []
+    const timers: Array<() => void> = []
+    const boot = bootstrap({
+      run: () =>
+        new Promise<void>((resolve, reject) =>
+          runs.push({
+            resolve: () => {
+              loaded = true
+              resolve()
+            },
+            reject
+          })
+        ),
+      loaded: () => loaded,
+      onError: () => undefined,
+      setTimer: (fn) => timers.push(fn),
+      clearTimer: () => undefined
+    })
+    boot.load() // offline: pending
+    boot.load() // the PC came back meanwhile: kept, not dropped
+    runs[0].reject(new Error('offline'))
+    await new Promise((r) => setTimeout(r, 0))
+    expect(runs).toHaveLength(2)
+    runs[1].reject(new Error('still offline'))
+    await new Promise((r) => setTimeout(r, 0))
+    expect(timers).toHaveLength(1) // nothing else asked: a timed retry
+    timers[0]()
+    runs[2].resolve()
+    await new Promise((r) => setTimeout(r, 0))
+    expect(loaded).toBe(true)
+    boot.load()
+    expect(runs).toHaveLength(3) // started: nothing more
+  })
+})
+
+describe('PR3-R2-05: quitting waits for a start already queued', () => {
+  it('leaves nothing listening and starts nothing after', async () => {
+    const svc = service()
+    const starting = svc.start()
+    await svc.shutdown()
+    await starting
+    expect(svc.server.running).toBe(false)
+    await svc.start()
+    expect(svc.server.running).toBe(false)
+  })
+})

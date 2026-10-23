@@ -17,6 +17,7 @@ import { PairScreen } from './PairScreen'
 import { SessionsTab } from './SessionsTab'
 import { SessionScreen } from './SessionScreen'
 import { SettingsTab } from './SettingsTab'
+import { bootstrap } from './bootstrap'
 import { useMobile } from './state'
 
 function useBootstrap(paired: boolean): void {
@@ -25,34 +26,33 @@ function useBootstrap(paired: boolean): void {
   useEffect(() => {
     if (!paired) return
     let cancelled = false
-    let loading = false
-    // Everything the app needs to start. Retried when the PC comes back if it
-    // couldn't be reached at first (e.g. the home-screen app opened offline).
-    const load = (): void => {
-      if (loading || cancelled) return
-      loading = true
-      void Promise.all([api.getInfo(), api.getSettings(), api.getSessions(), phone.me()])
-        .then(([info, settings, payload, me]) => {
-          if (cancelled) return
-          setClockOffset(info.clockOffset)
-          setMe(me)
-          set({
-            info,
-            settings,
-            sessions: payload.sessions,
-            sources: payload.sources,
-            scan: payload.scan,
-            loaded: true
-          })
+    // Everything the app needs to start, retried until the PC answers (e.g.
+    // the home-screen app opened while the PC was off).
+    const boot = bootstrap({
+      run: async () => {
+        const [info, settings, payload, me] = await Promise.all([
+          api.getInfo(),
+          api.getSettings(),
+          api.getSessions(),
+          phone.me()
+        ])
+        if (cancelled) return
+        setClockOffset(info.clockOffset)
+        setMe(me)
+        set({
+          info,
+          settings,
+          sessions: payload.sessions,
+          sources: payload.sources,
+          scan: payload.scan,
+          loaded: true
         })
-        .catch((err: Error) => {
-          if (!cancelled && !useApp.getState().loaded)
-            toast.error("Couldn't reach your PC", { description: err.message })
-        })
-        .finally(() => {
-          loading = false
-        })
-    }
+      },
+      loaded: () => useApp.getState().loaded,
+      onError: (err) =>
+        toast.error("Couldn't reach your PC", { description: err.message, id: 'boot' })
+    })
+    const load = boot.load
     const notLoaded = (): boolean => !useApp.getState().loaded
     const reloadMe = (): void =>
       void phone
@@ -79,6 +79,7 @@ function useBootstrap(paired: boolean): void {
     ]
     return () => {
       cancelled = true
+      boot.cancel()
       offs.forEach((off) => off())
     }
   }, [paired, set, setMe])

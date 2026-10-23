@@ -1,6 +1,6 @@
 // IPC for the Usage view (Phase 5).
 
-import { BrowserWindow, dialog, ipcMain, shell } from 'electron'
+import { BrowserWindow, dialog, shell } from 'electron'
 import { mkdir } from 'node:fs/promises'
 import { writeFile } from 'node:fs/promises'
 import { now } from '@shared/clock'
@@ -15,6 +15,7 @@ import {
 } from '@shared/usage/trends'
 import type { CcusageComparison, Dimension, Period, UsageQuery } from '@shared/usage/types'
 import { assertUserWrite } from './core/safe-paths'
+import { handle } from './ipc-guard'
 import type { Platform } from './platform'
 import type { BridgeInstaller } from './services/bridge'
 import type { LimitsService } from './services/limits'
@@ -98,8 +99,8 @@ export function registerUsageIpc(deps: UsageIpcDeps): void {
     if (!src) throw new Error('Unknown environment')
     return src
   }
-  ipcMain.handle('limits:state', () => deps.limits.state())
-  ipcMain.handle('limits:compareHealth', (_e, kind, a, b) => {
+  handle('limits:state', () => deps.limits.state())
+  handle('limits:compareHealth', (_e, kind, a, b) => {
     // Incomplete dates (e.g. while typing) compare nothing rather than a made-up range.
     const ra = compareRange(a)
     const rb = compareRange(b)
@@ -115,7 +116,7 @@ export function registerUsageIpc(deps: UsageIpcDeps): void {
       typeof x === 'string' && x ? x.slice(0, 100) : undefined
     return { from: n(o.from), to: n(o.to), version: t(o.version), model: t(o.model) }
   }
-  ipcMain.handle('usage:trends', async (_e, groupBy) => {
+  handle('usage:trends', async (_e, groupBy) => {
     const by: TrendGroupBy = groupBy === 'model' || groupBy === 'version' ? groupBy : 'all'
     // Limit-health scores ($ per 1%, per 1x of plan) mark capacity changes.
     const health = deps.limits.health('five_hour')
@@ -139,36 +140,34 @@ export function registerUsageIpc(deps: UsageIpcDeps): void {
       groupBy: by
     })
   })
-  ipcMain.handle('usage:compare', (_e, a, b) =>
+  handle('usage:compare', (_e, a, b) =>
     compareTrends(
       { records: usage.allRecords(), turns: usage.allTurns(), readings: deps.limits.readings() },
       side(a),
       side(b)
     )
   )
-  ipcMain.handle('bridge:plan', (_e, id, a) => deps.installer.plan(source(id), action(a)))
-  ipcMain.handle('bridge:apply', async (_e, id, a, token) => {
+  handle('bridge:plan', (_e, id, a) => deps.installer.plan(source(id), action(a)))
+  handle('bridge:apply', async (_e, id, a, token) => {
     const res = await deps.installer.apply(source(id), action(a), String(token))
     deps.onBridgeChanged?.()
     void deps.limits.scan()
     deps.limits.emit('changed')
     return res
   })
-  ipcMain.handle('bridge:openBackups', async () => {
+  handle('bridge:openBackups', async () => {
     await mkdir(deps.installer.backupDir, { recursive: true })
     await shell.openPath(deps.installer.backupDir)
   })
 
-  ipcMain.handle('usage:report', (_e, q) =>
-    usage.report(cleanQuery(q), deps.billingOf, deps.sourceOf)
-  )
-  ipcMain.handle('usage:session', (_e, key) => usage.sessionUsage(String(key)))
-  ipcMain.handle('usage:status', () => usage.status())
-  ipcMain.handle('usage:recalculate', async () => {
+  handle('usage:report', (_e, q) => usage.report(cleanQuery(q), deps.billingOf, deps.sourceOf))
+  handle('usage:session', (_e, key) => usage.sessionUsage(String(key)))
+  handle('usage:status', () => usage.status())
+  handle('usage:recalculate', async () => {
     await usage.recalculate()
     return usage.status()
   })
-  ipcMain.handle('usage:exportCsv', async (_e, q, perRecord) => {
+  handle('usage:exportCsv', async (_e, q, perRecord) => {
     const w = win()
     const opts: Electron.SaveDialogOptions = {
       title: 'Export usage to CSV',
@@ -185,7 +184,7 @@ export function registerUsageIpc(deps: UsageIpcDeps): void {
       return { saved: false, error: (err as Error).message }
     }
   })
-  ipcMain.handle('usage:verifyCcusage', async (): Promise<CcusageComparison> => {
+  handle('usage:verifyCcusage', async (): Promise<CcusageComparison> => {
     const out = await deps.platform.runCcusage()
     if (out === undefined) {
       return {

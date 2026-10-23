@@ -1,8 +1,9 @@
 // The tray icon (5-hour % ring, drawn by the renderer) and the optional
 // always-on-top mini meter window.
 
-import { app, BrowserWindow, ipcMain, Menu, nativeImage, Tray } from 'electron'
+import { app, BrowserWindow, Menu, nativeImage, Tray } from 'electron'
 import type { JsonStore } from './core/json-store'
+import { handle } from './ipc-guard'
 import type { SettingsFile } from './services/store'
 
 export interface MeterDeps {
@@ -13,6 +14,8 @@ export interface MeterDeps {
   background: () => string
   showUsage: () => void
   loadRenderer: (win: BrowserWindow, hash: string) => void
+  /** The same navigation and new-window rules as the main window. */
+  lockNavigation: (win: BrowserWindow) => void
 }
 
 export function createMeter(deps: MeterDeps): { closeAll: () => void; restore: () => void } {
@@ -62,9 +65,11 @@ export function createMeter(deps: MeterDeps): { closeAll: () => void; restore: (
         preload: deps.preload,
         sandbox: true,
         contextIsolation: true,
-        nodeIntegration: false
+        nodeIntegration: false,
+        spellcheck: false
       }
     })
+    deps.lockNavigation(mini)
     mini.setAlwaysOnTop(true, 'floating')
     mini.once('ready-to-show', () => mini?.showInactive())
     mini.on('moved', () => remember(true))
@@ -88,9 +93,9 @@ export function createMeter(deps: MeterDeps): { closeAll: () => void; restore: (
     return isOpen()
   }
 
-  ipcMain.handle('mini:toggle', () => toggle())
-  ipcMain.handle('mini:close', () => close())
-  ipcMain.handle('tray:set', (_e, dataUrl: unknown, tooltip: unknown) => {
+  handle('mini:toggle', () => toggle())
+  handle('mini:close', () => close())
+  handle('tray:set', (_e, dataUrl: unknown, tooltip: unknown) => {
     if (typeof dataUrl !== 'string' || !dataUrl.startsWith('data:image/png;base64,')) return
     try {
       const img = nativeImage.createFromDataURL(dataUrl)

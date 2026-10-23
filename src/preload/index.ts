@@ -25,6 +25,7 @@ const api: CsdApi = {
   addExtraFolder: () => ipcRenderer.invoke('settings:addFolder'),
   removeExtraFolder: (folder) => ipcRenderer.invoke('settings:removeFolder', folder),
   getArchiveStats: () => ipcRenderer.invoke('archive:stats'),
+  importClaudeAi: () => ipcRenderer.invoke('import:claudeAi'),
   openArchiveFolder: () => ipcRenderer.invoke('archive:open'),
   showSessionFile: (key) => ipcRenderer.invoke('sessions:showFile', key),
   openClaudeSettings: (id) => ipcRenderer.invoke('sources:openSettings', id),
@@ -47,6 +48,7 @@ const api: CsdApi = {
   compareTrends: (a, b) => ipcRenderer.invoke('usage:compare', a, b),
 
   getLimits: () => ipcRenderer.invoke('limits:state'),
+  compareHealth: (kind, a, b) => ipcRenderer.invoke('limits:compareHealth', kind, a, b),
   onLimitsChanged: (cb) => on('limits:changed', cb),
   planBridge: (id, action) => ipcRenderer.invoke('bridge:plan', id, action),
   applyBridge: (id, action, token) => ipcRenderer.invoke('bridge:apply', id, action, token),
@@ -60,6 +62,12 @@ const api: CsdApi = {
   addGrant: (grant) => ipcRenderer.invoke('grants:add', grant),
   removeGrant: (id) => ipcRenderer.invoke('grants:remove', id),
   refreshAdmin: (id) => ipcRenderer.invoke('admin:refresh', id),
+
+  askStatus: () => ipcRenderer.invoke('ask:status'),
+  askPreview: (q) => ipcRenderer.invoke('ask:preview', q),
+  askRun: (id) => ipcRenderer.invoke('ask:run', id),
+  askCancel: (id) => ipcRenderer.invoke('ask:cancel', id),
+  askHistory: () => ipcRenderer.invoke('ask:history'),
 
   toggleMiniMeter: () => ipcRenderer.invoke('mini:toggle'),
   closeMiniMeter: () => ipcRenderer.invoke('mini:close'),

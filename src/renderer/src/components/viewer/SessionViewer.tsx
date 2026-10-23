@@ -1,3 +1,4 @@
+import { SourcePicker } from '../SourceBadge'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Archive,
@@ -16,6 +17,7 @@ import {
   Hash,
   Info,
   MessageSquare,
+  MessagesSquare,
   Play,
   Plus,
   Search,
@@ -147,19 +149,31 @@ function Header({
             )}
           </div>
           <div className="flex shrink-0 items-center gap-1.5 pt-0.5">
-            <Tooltip content="Resume in a terminal" shortcut={`${MOD}+Enter`}>
-              <Button variant="primary" size="md" onClick={() => openResume(session.key, false)}>
-                <Play className="fill-current" /> Resume
-              </Button>
-            </Tooltip>
-            <Tooltip
-              content="Fork into a new session (original stays untouched)"
-              shortcut={`${MOD}+Shift+Enter`}
-            >
-              <Button variant="outline" size="md" onClick={() => openResume(session.key, true)}>
-                <GitFork /> Fork
-              </Button>
-            </Tooltip>
+            {session.availability === 'imported' ? (
+              <Badge variant="muted" className="h-8 px-2.5 text-xs">
+                <MessagesSquare /> View only · imported from claude.ai
+              </Badge>
+            ) : (
+              <>
+                <Tooltip content="Resume in a terminal" shortcut={`${MOD}+Enter`}>
+                  <Button
+                    variant="primary"
+                    size="md"
+                    onClick={() => openResume(session.key, false)}
+                  >
+                    <Play className="fill-current" /> Resume
+                  </Button>
+                </Tooltip>
+                <Tooltip
+                  content="Fork into a new session (original stays untouched)"
+                  shortcut={`${MOD}+Shift+Enter`}
+                >
+                  <Button variant="outline" size="md" onClick={() => openResume(session.key, true)}>
+                    <GitFork /> Fork
+                  </Button>
+                </Tooltip>
+              </>
+            )}
             <Tooltip content="Find in session" shortcut={`${MOD}+F`}>
               <Button variant="ghost" size="icon" onClick={onFind} aria-label="Find in session">
                 <Search />
@@ -220,7 +234,20 @@ function Header({
         </div>
 
         <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5">
-          <EnvBadge env={session.env} distro={session.distro} />
+          {session.availability !== 'imported' && (
+            <EnvBadge env={session.env} distro={session.distro} />
+          )}
+          <SourcePicker
+            source={session.source}
+            reason={session.sourceReason}
+            manual={session.meta.source?.by === 'manual'}
+            onPick={(label) =>
+              void updateMeta(session.key, {
+                // null resets to the detected label.
+                source: label ? { label, by: 'manual' } : (null as unknown as undefined)
+              })
+            }
+          />
           <BillingBadge billing={session.billing} />
           {session.availability === 'archived-only' && (
             <Badge variant="warning">
@@ -281,6 +308,12 @@ function Header({
 
         {(session.availability !== 'live' || session.malformedLines > 0) && (
           <div className="mt-3 space-y-2">
+            {session.availability === 'imported' && (
+              <Notice tone="info" icon={MessagesSquare}>
+                Imported from a claude.ai data export into the app&apos;s archive. You can read,
+                search and export it; it has no token stats and can&apos;t be resumed.
+              </Notice>
+            )}
             {session.availability === 'archived-only' && (
               <Notice tone="warning" icon={Archive}>
                 The original file is gone from <span className="font-mono">.claude/projects</span>{' '}
@@ -447,7 +480,8 @@ export function SessionViewer({
               messages={messages}
               cwd={session.cwd}
               findQuery={effectiveQuery}
-              onBranch={onBranch}
+              // Imported claude.ai conversations are view only: no branching.
+              onBranch={session.availability === 'imported' ? undefined : onBranch}
               marks={marks}
             />
           ) : error ? (

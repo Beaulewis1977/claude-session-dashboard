@@ -153,6 +153,7 @@ export function RingGauge({
   size = 148,
   stroke = 11,
   dim,
+  target,
   children
 }: {
   pct: number | undefined
@@ -160,6 +161,8 @@ export function RingGauge({
   stroke?: number
   /** Show a dashed, muted ring (no live data). */
   dim?: boolean
+  /** Pace target (%), drawn as a tick across the ring. */
+  target?: number
   children?: ReactNode
 }) {
   const reduced = useReducedMotion()
@@ -202,6 +205,20 @@ export function RingGauge({
                 : 'stroke-dashoffset 380ms cubic-bezier(0.22, 1, 0.36, 1), stroke 200ms'
             }}
           />
+        )}
+        {!dim && target !== undefined && target > 0 && target < 100 && (
+          <line
+            x1={size / 2 + (r - stroke / 2 - 3) * Math.cos((target / 100) * 2 * Math.PI)}
+            y1={size / 2 + (r - stroke / 2 - 3) * Math.sin((target / 100) * 2 * Math.PI)}
+            x2={size / 2 + (r + stroke / 2 + 3) * Math.cos((target / 100) * 2 * Math.PI)}
+            y2={size / 2 + (r + stroke / 2 + 3) * Math.sin((target / 100) * 2 * Math.PI)}
+            stroke="var(--foreground)"
+            strokeOpacity={0.55}
+            strokeWidth={2}
+            strokeLinecap="round"
+          >
+            <title>{`Pace target ${Math.round(target)}%`}</title>
+          </line>
         )}
       </svg>
       <div className="absolute inset-0 flex flex-col items-center justify-center text-center">

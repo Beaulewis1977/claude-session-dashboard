@@ -10,6 +10,8 @@ import { analyzeEvents, buildMessages, isUuid, parseJsonl } from '@shared/jsonl'
 import { baseName } from '@shared/format'
 import { computeTitle } from '@shared/title'
 import type { SessionLineage } from '@shared/lineage'
+import { detectSource, type DetectedSource } from '@shared/source-label'
+import { askQuestionOf } from '@shared/ask'
 import type {
   ArchiveRecord,
   Availability,
@@ -31,10 +33,15 @@ import { SearchIndex } from './search'
 import { detectSources, type ResolvedSource } from './sources'
 import { cleanMetaPatch, type AppPaths, type MetadataFile, type SettingsFile } from './store'
 
-type BaseSummary = Omit<SessionSummary, 'meta' | 'title' | 'titleSource' | 'billing' | 'lineage'>
+type BaseSummary = Omit<
+  SessionSummary,
+  'meta' | 'title' | 'titleSource' | 'billing' | 'lineage' | 'source' | 'sourceReason'
+>
 
-// v2: lineage fields (firstUuid, forkedFrom, copiedFrom).
-const CACHE_VERSION = 2
+// v2: lineage fields (firstUuid, forkedFrom, copiedFrom) and, separately,
+// source hints (entrypoint, IDE context, cloud link) for the source label.
+// v3: both together, so neither kind of v2 cache is reused.
+const CACHE_VERSION = 3
 
 interface CacheFile {
   version: number
@@ -148,7 +155,8 @@ export function parseSessionText(
       copiedFrom:
         a.sessionId && a.sessionId !== file.sessionId && isUuid(a.sessionId)
           ? a.sessionId
-          : undefined
+          : undefined,
+      sourceHints: a.sourceHints
     }
   }
 }
@@ -374,15 +382,49 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
   /** Resolves where a session was branched from (set by the lineage service). */
   lineageResolver?: (key: string) => SessionLineage | undefined
 
+  private detectSource(base: BaseSummary): DetectedSource {
+    const meta = this.metadata.value.sessions[base.sessionId] ?? {}
+    return detectSource(base.sourceHints, {
+      env: base.env,
+      cwd: base.cwd,
+      sourceUser: this.source(base.sourceId)?.user,
+      firstPrompt: base.firstPrompt,
+      launchedByApp: meta.billing?.source === 'launch',
+      imported: base.availability === 'imported'
+    })
+  }
+
   private withMeta(base: BaseSummary): SessionSummary {
     const meta = this.metadata.value.sessions[base.sessionId] ?? {}
+    const manual = meta.source?.by === 'manual' ? meta.source : undefined
+    const det = manual ? undefined : this.detectSource(base)
+    const title = computeTitle(meta, base.summary, base.firstPrompt)
+    // The dashboard's own Ask Claude runs: title them by the question.
+    const asked = title.titleSource === 'first-prompt' ? askQuestionOf(base.firstPrompt) : undefined
+    if (asked) title.title = `Ask Claude: ${asked}`
     return {
       ...base,
       meta,
-      ...computeTitle(meta, base.summary, base.firstPrompt),
+      ...title,
       billing: this.billingResolver?.(base.sessionId, meta),
+      source: manual?.label ?? det!.label,
+      sourceReason: manual ? 'Set by hand' : det!.reason,
       lineage: this.lineageResolver?.(base.key)
     }
+  }
+
+  /** Keep the detected label in the app's metadata (never in Claude's files). */
+  private rememberSource(base: BaseSummary): void {
+    const meta = this.metadata.value.sessions[base.sessionId]
+    if (meta?.source?.by === 'manual') return
+    const det = this.detectSource(base)
+    if (meta?.source?.label === det.label && meta.source.reason === det.reason) return
+    this.metadata.update((d) => {
+      d.sessions[base.sessionId] = {
+        ...(d.sessions[base.sessionId] ?? {}),
+        source: { label: det.label, by: 'auto', reason: det.reason }
+      }
+    })
   }
 
   /**
@@ -562,6 +604,11 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
       const e = this.entries.get(key)
       const src = this.source(rec.sourceId)
       let availability: Availability
+      if (rec.origin === 'claude-ai') {
+        if (e && e.mtimeMs === rec.size) continue
+        await this.loadArchived(rec, 'imported')
+        continue
+      }
       if (src?.status === 'ok') {
         // The source was scanned and the file wasn't there.
         if (e?.base.availability === 'live') continue
@@ -608,8 +655,19 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
     base.archivePath = rec.archivePath
     base.availability = availability
     base.cwd = base.cwd ?? rec.cwd
-    this.entries.set(base.key, { base, size, mtimeMs: 0 })
+    if (availability === 'imported') {
+      base.projectDir = 'claude.ai'
+      base.projectName = 'claude.ai'
+    }
+    // Imported entries remember their size to notice a re-import.
+    this.entries.set(base.key, { base, size, mtimeMs: availability === 'imported' ? rec.size : 0 })
     this.index(base, searchText)
+  }
+
+  /** Pick up archive records added by an import. */
+  async refreshArchive(): Promise<void> {
+    await this.syncArchiveOnly()
+    this.emitChanged(true)
   }
 
   /** Remove entries whose source is no longer configured and has no archive copy. */
@@ -625,6 +683,7 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
 
   private index(base: BaseSummary, searchText: string): void {
     this.markCacheDirty()
+    this.rememberSource(base)
     const s = this.withMeta(base)
     this.search.upsert({
       id: base.key,

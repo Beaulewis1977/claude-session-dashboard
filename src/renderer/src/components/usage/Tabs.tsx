@@ -1,20 +1,16 @@
-import { useState } from 'react'
 import {
   Bar,
   BarChart,
   CartesianGrid,
-  Line,
-  LineChart,
-  ReferenceLine,
   ResponsiveContainer,
   Tooltip as RTooltip,
   XAxis,
   YAxis
 } from 'recharts'
 import { toast } from 'sonner'
-import { CalendarClock, Download, OctagonAlert, TrendingDown, TrendingUp } from 'lucide-react'
+import { CalendarClock, Download, OctagonAlert } from 'lucide-react'
 import type { Dimension, UsageQuery, UsageReport } from '@shared/usage/types'
-import type { CapacityPoint, LimitsState } from '@shared/usage/limits'
+import type { LimitsState } from '@shared/usage/limits'
 import type { CreditsState } from '@shared/usage/credits'
 import { formatDateTime, formatInt, formatTokens, formatUsd } from '@shared/format'
 import { api } from '@/lib/api'
@@ -25,7 +21,8 @@ import { Badge } from '../ui/badge'
 import { Button } from '../ui/button'
 import { Segmented } from '../ui/segmented'
 import { Tooltip } from '../ui/tooltip'
-import { Card, CardHeader, InfoTip } from './primitives'
+import { Card, CardHeader } from './primitives'
+import { ElsewhereCard } from './LimitHealth'
 
 const dateFmt = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' })
 const timeFmt = new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' })
@@ -34,162 +31,6 @@ const tick = { fill: 'var(--chart-axis)', fontSize: 11 }
 
 // ------------------------------------------------------------ limit history
 
-export function CapacityChange({ limits }: { limits: LimitsState | null }) {
-  const c = limits?.change5h?.flagged
-    ? limits.change5h
-    : limits?.change7d?.flagged
-      ? limits.change7d
-      : undefined
-  if (!c) return null
-  const lower = c.changePct < 0
-  return (
-    <div className="flex items-start gap-3 rounded-xl border border-border bg-card px-4 py-3 shadow-card">
-      <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-secondary">
-        {lower ? (
-          <TrendingDown className="size-4 text-foreground/70" />
-        ) : (
-          <TrendingUp className="size-4 text-foreground/70" />
-        )}
-      </div>
-      <div className="min-w-0 flex-1 text-[13px]">
-        <div className="font-medium">
-          Your effective {c.kind === 'five_hour' ? '5-hour' : 'weekly'} capacity looks ~
-          {Math.round(Math.abs(c.changePct))}% {lower ? 'lower' : 'higher'} than last month
-        </div>
-        <div className="mt-0.5 text-xs text-muted-foreground">
-          Median of {c.samples.recent} recent windows vs. {c.samples.before} before. See Limit
-          history below.
-        </div>
-      </div>
-      <InfoTip side="left">
-        An estimate: tokens used in a window divided by the percentage Claude Code reported.
-        Anthropic&apos;s limits aren&apos;t purely token counts, and the mix of models and work
-        changes the result.
-      </InfoTip>
-    </div>
-  )
-}
-
-/** Points are colored by the window's main model family (the "model mix"). */
-const MIX_VAR: Record<string, string> = {
-  opus: 'var(--model-opus)',
-  sonnet: 'var(--model-sonnet)',
-  haiku: 'var(--model-haiku)',
-  fable: 'var(--model-fable)',
-  mythos: 'var(--model-fable)'
-}
-const mixColor = (mix?: string): string => MIX_VAR[mix ?? ''] ?? 'var(--model-other)'
-
-function CapacityChart({
-  points,
-  median
-}: {
-  points: CapacityPoint[]
-  median?: { before: number; recent: number }
-}) {
-  if (!points.length) {
-    return (
-      <div className="flex h-[240px] items-center justify-center px-6 text-center text-sm text-muted-foreground">
-        Not enough readings yet. Implied capacity needs live limits and a window above 10%.
-      </div>
-    )
-  }
-  const data = points.map((p) => ({ ...p }))
-  return (
-    <div className="h-[240px]">
-      <ResponsiveContainer width="100%" height="100%">
-        <LineChart data={data} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
-          <CartesianGrid vertical={false} stroke="var(--chart-grid)" />
-          <XAxis
-            dataKey="ts"
-            type="number"
-            scale="time"
-            domain={['dataMin', 'dataMax']}
-            tickFormatter={(v: number) => dateFmt.format(v)}
-            tick={tick}
-            tickLine={false}
-            axisLine={false}
-            minTickGap={36}
-            tickMargin={8}
-          />
-          <YAxis
-            tickFormatter={(v: number) => formatTokens(v)}
-            tick={tick}
-            tickLine={false}
-            axisLine={false}
-            width={44}
-          />
-          {median && (
-            <>
-              <ReferenceLine
-                y={median.before}
-                stroke="var(--chart-axis)"
-                strokeWidth={1}
-                label={{
-                  value: 'Before',
-                  position: 'insideTopLeft',
-                  fill: 'var(--chart-axis)',
-                  fontSize: 10
-                }}
-              />
-              <ReferenceLine
-                y={median.recent}
-                stroke="var(--foreground)"
-                strokeOpacity={0.5}
-                strokeWidth={1}
-                label={{
-                  value: 'Recent',
-                  position: 'insideBottomLeft',
-                  fill: 'var(--muted-foreground)',
-                  fontSize: 10
-                }}
-              />
-            </>
-          )}
-          <RTooltip
-            isAnimationActive={false}
-            cursor={{ stroke: 'var(--chart-axis)', strokeWidth: 1 }}
-            content={({ active, payload }) => {
-              const p = payload?.[0]?.payload as CapacityPoint | undefined
-              if (!active || !p) return null
-              return (
-                <div className="rounded-lg border border-border bg-popover px-3 py-2 text-xs shadow-xl">
-                  <div className="font-medium">{formatDateTime(new Date(p.ts).toISOString())}</div>
-                  <div className="mt-1 text-muted-foreground tabular-nums">
-                    {formatTokens(p.weighted)} weighted tokens at {p.pct}% → ~
-                    {formatTokens(p.capacity)} capacity
-                  </div>
-                  <div className="text-muted-foreground">Mostly {p.mix}</div>
-                </div>
-              )
-            }}
-          />
-          <Line
-            type="monotone"
-            dataKey="capacity"
-            stroke="var(--chart-axis)"
-            strokeOpacity={0.6}
-            strokeWidth={1.5}
-            dot={(props: { cx?: number; cy?: number; index?: number; payload?: CapacityPoint }) => (
-              <circle
-                key={props.index}
-                cx={props.cx}
-                cy={props.cy}
-                r={4}
-                fill={mixColor(props.payload?.mix)}
-                stroke="var(--card)"
-                strokeWidth={2}
-              />
-            )}
-            activeDot={{ r: 6, stroke: 'var(--card)', strokeWidth: 2 }}
-            animationDuration={380}
-          />
-        </LineChart>
-      </ResponsiveContainer>
-    </div>
-  )
-}
-
 export function LimitHistoryTab({
   limits,
   report
@@ -197,58 +38,10 @@ export function LimitHistoryTab({
   limits: LimitsState | null
   report: UsageReport | null
 }) {
-  const [kind, setKind] = useState<'five_hour' | 'seven_day'>('five_hour')
-  const points = kind === 'five_hour' ? (limits?.capacity5h ?? []) : (limits?.capacity7d ?? [])
-  const change = kind === 'five_hour' ? limits?.change5h : limits?.change7d
   const blocks = [...(report?.blocks ?? [])].reverse().slice(0, 8)
   return (
     <div className="space-y-4">
-      <Card className="p-5">
-        <CardHeader
-          title="Implied capacity"
-          subtitle="Estimated full size of each window: weighted tokens used ÷ % reported. A lasting drop means smaller limits."
-          info="Weights (Settings → Usage) count output and cache writes more than input and cache reads. Anthropic's limits aren't purely token counts, so read this as a trend, not an exact number."
-          right={
-            <Segmented
-              ariaLabel="Window"
-              value={kind}
-              onChange={setKind}
-              options={[
-                { value: 'five_hour', label: '5-hour' },
-                { value: 'seven_day', label: 'Weekly' }
-              ]}
-            />
-          }
-        />
-        {change && (
-          <div className="mt-3 flex flex-wrap gap-x-6 gap-y-1 text-xs text-muted-foreground">
-            <span>
-              Last month:{' '}
-              <span className="font-medium text-foreground tabular-nums">
-                {formatTokens(change.before)}
-              </span>
-            </span>
-            <span>
-              Recently:{' '}
-              <span className="font-medium text-foreground tabular-nums">
-                {formatTokens(change.recent)}
-              </span>
-            </span>
-            <span className={cn(change.flagged && 'font-medium text-foreground')}>
-              Change: {change.changePct > 0 ? '+' : '−'}
-              {Math.abs(change.changePct).toFixed(0)}%
-              {change.flagged ? '' : ' (within normal variation)'}
-            </span>
-          </div>
-        )}
-        <div className="mt-3">
-          <CapacityChart
-            points={points}
-            median={change ? { before: change.before, recent: change.recent } : undefined}
-          />
-        </div>
-      </Card>
-
+      <ElsewhereCard />
       <div className="grid gap-4 lg:grid-cols-2">
         <Card className="p-5">
           <CardHeader
@@ -591,7 +384,8 @@ const DIMENSIONS: { value: Dimension; label: string }[] = [
   { value: 'project', label: 'Project' },
   { value: 'env', label: 'Environment' },
   { value: 'version', label: 'Version' },
-  { value: 'billing', label: 'Billing' }
+  { value: 'billing', label: 'Billing' },
+  { value: 'source', label: 'Source' }
 ]
 
 export function RawTableTab({

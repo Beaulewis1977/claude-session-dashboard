@@ -6,6 +6,14 @@ import type { SessionBilling } from './usage/credits'
 import { DEFAULT_WEIGHTS, type CapacityWeights, type Plan } from './usage/limits'
 import type { ForkedFrom } from './jsonl'
 import type { SessionLineage } from './lineage'
+import {
+  DEFAULT_HEALTH,
+  type ElsewhereRange,
+  type HealthSettings,
+  type PlanChange
+} from './usage/health'
+import { DEFAULT_PACE, type PaceSettings } from './usage/pace'
+import type { SourceHints, SourceLabel } from './source-label'
 
 export type EnvKind = 'windows' | 'wsl'
 
@@ -47,6 +55,8 @@ export interface SessionMeta {
   }
   /** Set by the app when this session was made with "Branch from here" or Fork. */
   branch?: BranchRecord
+  /** Which product ran the session: detected ("auto") or set by hand ("manual"). */
+  source?: { label: SourceLabel; by: 'auto' | 'manual'; reason?: string }
   updatedAt?: string
 }
 
@@ -79,6 +89,8 @@ export interface ArchiveRecord {
   sourceMtimeMs: number
   firstArchivedAt: string
   archivedAt: string
+  /** Imported view-only conversation (not a Claude Code session file). */
+  origin?: 'claude-ai'
 }
 
 /**
@@ -86,8 +98,9 @@ export interface ArchiveRecord {
  * archived-only  – the original file is gone, only the app's archive copy remains.
  * source-offline – the source (e.g. a stopped WSL distro) can't be read right now;
  *                  showing the archive copy.
+ * imported       – a view-only conversation imported from a claude.ai data export.
  */
-export type Availability = 'live' | 'archived-only' | 'source-offline'
+export type Availability = 'live' | 'archived-only' | 'source-offline' | 'imported'
 
 export type TitleSource = 'name' | 'summary' | 'first-prompt' | 'fallback'
 
@@ -136,6 +149,11 @@ export interface SessionSummary {
   copiedFrom?: string
   /** Where this session was branched or forked from, if known. */
   lineage?: SessionLineage
+  /** Signals read from the file, for the source label. */
+  sourceHints?: SourceHints
+  /** Which product ran it (manual override, else detected). */
+  source: SourceLabel
+  sourceReason: string
 }
 
 export interface ToolResult {
@@ -206,6 +224,18 @@ export interface AppSettings {
   adminRefreshMinutes: number
   /** The user has seen and accepted the "Branch from here" explanation. */
   branchConfirmed: boolean
+  /** Plan changes over time, for the limit-health score. Empty = `plan` all along. */
+  planHistory: PlanChange[]
+  /** Limit-health detector: baseline dates, threshold, streak. */
+  health: HealthSettings
+  /** Pace targets for the gauges. */
+  pace: PaceSettings
+  /** Time ranges marked by hand as "used Claude elsewhere". */
+  elsewhere: ElsewhereRange[]
+  /** Ask Claude: skip the "what will be sent" preview. */
+  askSkipPreview: boolean
+  /** Ask Claude: give up after this many seconds. */
+  askTimeoutSec: number
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -223,7 +253,13 @@ export const DEFAULT_SETTINGS: AppSettings = {
   defaultBilling: 'subscription',
   projectBilling: {},
   adminRefreshMinutes: 60,
-  branchConfirmed: false
+  branchConfirmed: false,
+  planHistory: [],
+  health: DEFAULT_HEALTH,
+  pace: DEFAULT_PACE,
+  elsewhere: [],
+  askSkipPreview: false,
+  askTimeoutSec: 180
 }
 
 export interface ScanState {

@@ -3,6 +3,7 @@
 
 import type { BridgeReading } from './bridge'
 import type { CapacityPoint } from './limits'
+import { planLabel, type PlanSpan } from './health'
 import { modelLabel } from './pricing'
 import { bucketRange, weekKey } from './time'
 import type { TurnSample, UsageRecord, WeekStart } from './types'
@@ -87,7 +88,8 @@ export const METRICS: MetricDef[] = [
   {
     id: 'correctionRate',
     title: 'Interruptions and corrections',
-    subtitle: 'Share of your messages that interrupt or correct Claude (“no”, “wrong”, “that’s not…”)',
+    subtitle:
+      'Share of your messages that interrupt or correct Claude (“no”, “wrong”, “that’s not…”)',
     unit: 'percent',
     better: 'lower',
     info: 'Counts messages right after an interruption and messages that start with “no”, “wrong” or “that’s not”.'
@@ -253,7 +255,7 @@ export interface TrendSeries {
 export interface TrendMarker {
   week: string
   start: number
-  kind: 'model' | 'version' | 'capacity'
+  kind: 'model' | 'version' | 'capacity' | 'plan'
   label: string
 }
 
@@ -272,6 +274,8 @@ export interface TrendsInput {
   turns: TurnSample[]
   readings: BridgeReading[]
   capacity?: CapacityPoint[]
+  /** Plan changes, marked on the charts. */
+  plans?: PlanSpan[]
   timeZone: string
   weekStart: WeekStart
   groupBy: TrendGroupBy
@@ -340,10 +344,14 @@ export function buildTrends(input: TrendsInput): TrendsReport {
     if (!prev || r.ts > prev.ts) lastCtx.set(k, r)
   }
   for (const r of lastCtx.values()) {
-    acc(groupOf(groupBy, r.model, r.version), weekKey(r.ts, tz, weekStart)).contexts.push(r.contextPct!)
+    acc(groupOf(groupBy, r.model, r.version), weekKey(r.ts, tz, weekStart)).contexts.push(
+      r.contextPct!
+    )
   }
 
-  const weeks = [...weekSet].sort().map((week) => ({ week, start: bucketRange(week, 'week', tz).start }))
+  const weeks = [...weekSet]
+    .sort()
+    .map((week) => ({ week, start: bucketRange(week, 'week', tz).start }))
   const groups = [...volume.entries()]
     .filter(([k]) => accs.has(k))
     .sort((a, b) => b[1] - a[1])
@@ -353,7 +361,8 @@ export function buildTrends(input: TrendsInput): TrendsReport {
       label: groupBy === 'model' ? modelLabel(key) : groupBy === 'version' ? `v${key}` : 'All',
       volume: v
     }))
-  if (groupBy === 'all' && !groups.length && accs.has('all')) groups.push({ key: 'all', label: 'All', volume: 0 })
+  if (groupBy === 'all' && !groups.length && accs.has('all'))
+    groups.push({ key: 'all', label: 'All', volume: 0 })
 
   const series: TrendSeries[] = []
   for (const m of METRICS) {
@@ -375,7 +384,12 @@ export function buildTrends(input: TrendsInput): TrendsReport {
   const firstWeek = weeks[0]?.week
   for (const [model, w] of firstModel) {
     if (w === firstWeek) continue
-    markers.push({ week: w, start: bucketRange(w, 'week', tz).start, kind: 'model', label: modelLabel(model) })
+    markers.push({
+      week: w,
+      start: bucketRange(w, 'week', tz).start,
+      kind: 'model',
+      label: modelLabel(model)
+    })
   }
   let prevDominant: string | undefined
   for (const w of weeks) {
@@ -386,7 +400,8 @@ export function buildTrends(input: TrendsInput): TrendsReport {
       // Only mark minor-or-larger jumps, or every change when grouped by version.
       const [a1, b1] = [prevDominant.split('.'), dominant.split('.')]
       const big = a1[0] !== b1[0] || a1[1] !== b1[1] || Number(b1[2]) - Number(a1[2]) >= 20
-      if (groupBy === 'version' || big) markers.push({ ...w, kind: 'version', label: `v${dominant}` })
+      if (groupBy === 'version' || big)
+        markers.push({ ...w, kind: 'version', label: `v${dominant}` })
     }
     prevDominant = dominant
   }
@@ -405,11 +420,22 @@ export function buildTrends(input: TrendsInput): TrendsReport {
           week: w,
           start: bucketRange(w, 'week', tz).start,
           kind: 'capacity',
-          label: `Capacity ${m < prev ? '−' : '+'}${Math.round((Math.abs(m - prev) / prev) * 100)}%`
+          label: `$/1% ${m < prev ? '−' : '+'}${Math.round((Math.abs(m - prev) / prev) * 100)}%`
         })
       }
       prev = m
     }
+  }
+  const first = weeks[0]?.start ?? 0
+  for (const p of input.plans ?? []) {
+    if (p.start <= first) continue
+    const w = weekKey(p.start, tz, weekStart)
+    markers.push({
+      week: w,
+      start: bucketRange(w, 'week', tz).start,
+      kind: 'plan',
+      label: `Plan: ${planLabel(p)}`
+    })
   }
   markers.sort((a, b) => a.start - b.start)
 
@@ -443,7 +469,10 @@ export interface CompareRow {
 
 export interface CompareResult {
   rows: CompareRow[]
-  samples: { a: { responses: number; requests: number }; b: { responses: number; requests: number } }
+  samples: {
+    a: { responses: number; requests: number }
+    b: { responses: number; requests: number }
+  }
 }
 
 const inSide = (s: CompareSide, ts: number, model?: string, version?: string): boolean =>
@@ -463,7 +492,8 @@ export function compareTrends(
     for (const t of input.turns) if (inSide(s, t.ts, t.model, t.version)) addTurnToAcc(acc, t)
     const last = new Map<string, BridgeReading>()
     for (const r of input.readings) {
-      if (r.contextPct === undefined || !r.sessionId || !inSide(s, r.ts, r.model, r.version)) continue
+      if (r.contextPct === undefined || !r.sessionId || !inSide(s, r.ts, r.model, r.version))
+        continue
       const p = last.get(r.sessionId)
       if (!p || r.ts > p.ts) last.set(r.sessionId, r)
     }
@@ -480,7 +510,10 @@ export function compareTrends(
         metric: m.id,
         a: va,
         b: vb,
-        changePct: va !== undefined && vb !== undefined && va !== 0 ? ((vb - va) / Math.abs(va)) * 100 : undefined
+        changePct:
+          va !== undefined && vb !== undefined && va !== 0
+            ? ((vb - va) / Math.abs(va)) * 100
+            : undefined
       }
     }),
     samples: {

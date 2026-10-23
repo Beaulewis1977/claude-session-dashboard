@@ -8,6 +8,7 @@ import {
   type SessionMeta
 } from '@shared/types'
 import { JsonStore } from '../core/json-store'
+import { isSourceLabel } from '@shared/source-label'
 
 export interface MetadataFile {
   version: 1
@@ -84,6 +85,14 @@ export function cleanMetaPatch(patch: Partial<SessionMeta>): Partial<SessionMeta
             source: b.source === 'launch' ? 'launch' : 'manual',
             at: typeof b.at === 'string' ? b.at : new Date().toISOString()
           }
+        : undefined
+  }
+  if ('source' in patch) {
+    // A label picked by hand; null/undefined goes back to the detected one.
+    const v = patch.source as { label?: unknown } | undefined | null
+    out.source =
+      v && isSourceLabel(v.label)
+        ? { label: v.label, by: 'manual', reason: 'Set by hand' }
         : undefined
   }
   return out

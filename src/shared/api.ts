@@ -21,6 +21,8 @@ import type {
   UsageStatus
 } from './usage/types'
 import type { BridgeApplyResult, BridgePlan, LimitsState } from './usage/limits'
+import type { CompareRange, HealthCompare } from './usage/health'
+import type { AskHistoryItem } from './ask'
 import type { Account, CreditGrant, CreditsState } from './usage/credits'
 import type { CompareResult, CompareSide, TrendGroupBy, TrendsReport } from './usage/trends'
 
@@ -37,6 +39,16 @@ export interface ExportResult {
   error?: string
 }
 
+export interface ImportResult {
+  ok: boolean
+  error?: string
+  conversations: number
+  added: number
+  updated: number
+  unchanged: number
+  skipped: number
+}
+
 export interface CsdApi {
   getInfo(): Promise<AppInfo>
   getSessions(): Promise<SessionsPayload>
@@ -51,6 +63,8 @@ export interface CsdApi {
   addExtraFolder(): Promise<AppSettings>
   removeExtraFolder(folder: string): Promise<AppSettings>
   getArchiveStats(): Promise<ArchiveStats>
+  /** Pick a claude.ai export zip and import it. Null when the dialog was cancelled. */
+  importClaudeAi(): Promise<ImportResult | null>
   openArchiveFolder(): Promise<void>
   showSessionFile(key: string): Promise<void>
   openClaudeSettings(sourceId: string): Promise<void>
@@ -77,6 +91,11 @@ export interface CsdApi {
 
   // Live limits and the status line bridge
   getLimits(): Promise<LimitsState>
+  compareHealth(
+    kind: 'five_hour' | 'seven_day',
+    a: CompareRange,
+    b: CompareRange
+  ): Promise<HealthCompare>
   onLimitsChanged(cb: () => void): () => void
   planBridge(sourceId: string, action: 'install' | 'uninstall'): Promise<BridgePlan>
   applyBridge(
@@ -95,6 +114,13 @@ export interface CsdApi {
   addGrant(grant: Omit<CreditGrant, 'id'>): Promise<CreditGrant | undefined>
   removeGrant(id: string): Promise<void>
   refreshAdmin(id: string): Promise<void>
+
+  // Ask Claude (claude -p with aggregated numbers only)
+  askStatus(): Promise<{ available: boolean; where?: string; simulated: boolean }>
+  askPreview(question: string): Promise<{ id: string; prompt: string; bytes: number }>
+  askRun(previewId: string): Promise<AskHistoryItem>
+  askCancel(previewId: string): Promise<void>
+  askHistory(): Promise<AskHistoryItem[]>
 
   // Tray and mini meter
   toggleMiniMeter(): Promise<boolean>

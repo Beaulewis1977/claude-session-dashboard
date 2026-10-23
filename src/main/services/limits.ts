@@ -25,6 +25,22 @@ import {
   type Plan
 } from '@shared/usage/limits'
 import type { ModelPrice } from '@shared/usage/pricing'
+import {
+  bridgeWindowReadings,
+  compareHealth,
+  healthReport,
+  splitWindow,
+  scoreWindows,
+  type CompareRange,
+  type ElsewhereRange,
+  type HealthCompare,
+  type HealthReport,
+  type HealthSettings,
+  type PlanChange,
+  type WindowReading
+} from '@shared/usage/health'
+import { paceAdvice, paceOf, type PaceSettings } from '@shared/usage/pace'
+import type { WindowKind } from '@shared/usage/limits'
 import type { JsonStore } from '../core/json-store'
 import { appendNdjson, readNdjson } from '../core/ndjson'
 import { envPaths, type BridgeFile, type BridgeInstaller } from './bridge'
@@ -37,6 +53,10 @@ export interface LimitsSettings {
   alertThresholds: number[]
   weights: CapacityWeights
   prices: ModelPrice[]
+  health: HealthSettings
+  planHistory: PlanChange[]
+  pace: PaceSettings
+  elsewhere: ElsewhereRange[]
 }
 
 const STALE_MS = 60 * 60_000
@@ -61,7 +81,9 @@ export class LimitsService extends EventEmitter<{ changed: [] }> {
     private readonly notify: (title: string, body: string) => void,
     /** Sessions the app knows are billed to an API key. */
     private readonly billingOverride: (key: string) => 'subscription' | 'api' | undefined = () =>
-      undefined
+      undefined,
+    /** Source label of a session (Terminal, VS Code, …), for the window split. */
+    private readonly sourceOf: (key: string) => string = () => 'This computer'
   ) {
     super()
   }
@@ -229,6 +251,33 @@ export class LimitsService extends EventEmitter<{ changed: [] }> {
     return this.billingOf(sid) !== 'api'
   }
 
+  /** Bridge readings plus /usage readings from old transcripts, for one window kind. */
+  windowReadings(kind: WindowKind): WindowReading[] {
+    const out = bridgeWindowReadings(this.history, kind)
+    for (const r of this.usage.usageCommandReadings())
+      if (r.kind === kind && r.resetsAt)
+        out.push({ ts: r.ts, pct: r.pct, resetsAt: r.resetsAt, from: 'usage-command' })
+    return out
+  }
+
+  health(kind: WindowKind): HealthReport {
+    const s = this.settings()
+    return healthReport(this.windowReadings(kind), this.usage.allRecords(), {
+      kind,
+      prices: s.prices,
+      now: now(),
+      settings: s.health,
+      planHistory: s.planHistory,
+      currentPlan: s.plan,
+      elsewhere: s.elsewhere,
+      isSubscription: this.isSubscription
+    })
+  }
+
+  compare(kind: WindowKind, a: CompareRange, b: CompareRange): HealthCompare {
+    return compareHealth(this.health(kind).windows, kind, a, b)
+  }
+
   async state(): Promise<LimitsState> {
     const s = this.settings()
     const t = now()
@@ -264,9 +313,56 @@ export class LimitsService extends EventEmitter<{ changed: [] }> {
       return { ...h, windowTokens: b?.total ?? 0 }
     })
 
+    const health5h = this.health('five_hour')
+    const health7d = this.health('seven_day')
+    const pace5h =
+      five && !five.expired
+        ? paceOf({ pct: five.pct, resetsAt: five.resetsAt }, 'five_hour', t, s.pace)
+        : undefined
+    const pace7d =
+      week && !week.expired
+        ? paceOf({ pct: week.pct, resetsAt: week.resetsAt }, 'seven_day', t, s.pace)
+        : undefined
+    const split = (kind: WindowKind, g: typeof five, h: HealthReport) => {
+      if (!g?.resetsAt || g.expired) return undefined
+      const reads = this.windowReadings(kind).filter(
+        (r) => Math.abs(r.resetsAt - g.resetsAt!) < 3_600_000
+      )
+      const scored = scoreWindows(reads, records, {
+        kind,
+        prices: s.prices,
+        now: t,
+        settings: { ...s.health, minPct: 0 },
+        planHistory: s.planHistory,
+        currentPlan: s.plan,
+        elsewhere: s.elsewhere,
+        isSubscription: this.isSubscription,
+        // The long-run baseline, not one from this window alone.
+        baseline: h.baseline ?? null
+      })
+      const w = scored.windows[scored.windows.length - 1]
+      if (!w) return undefined
+      return splitWindow(
+        w,
+        records,
+        s.prices,
+        this.sourceOf,
+        this.isSubscription,
+        s.health.familyPricing
+      )
+    }
+
     return {
       plan: s.plan,
       now: t,
+      health5h,
+      health7d,
+      pace5h,
+      pace7d,
+      advice: paceAdvice(pace5h, pace7d),
+      split5h: split('five_hour', five, health5h),
+      split7d: split('seven_day', week, health7d),
+      backfilled: this.usage.usageCommandReadings().length,
       hasBridgeData: !!lastLimitReading,
       fiveHour: five,
       sevenDay: week,

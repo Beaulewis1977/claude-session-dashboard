@@ -190,6 +190,8 @@ describe('Branch from here (fixtures)', () => {
     const get = (id: string) => sessions.list().find((s) => s.sessionId === id)!
     const fork = get('f07c1a2b-3c4d-4e5f-8a6b-7c8d9e0f1a2b')
     expect(fork.lineage).toMatchObject({ parentKey: `windows:${SAFARI}`, via: 'shared-history' })
+    // A fork is labelled with the same product as its original.
+    expect(fork.source).toBe(get(SAFARI).source)
     const branch = get('b7a1c2d3-e4f5-4a6b-8c7d-9e0f1a2b3c4d')
     expect(branch.lineage).toMatchObject({
       parentKey: 'windows:2b6d8e4f-1a3c-4e5f-8a7b-9c0d1e2f3a4b',

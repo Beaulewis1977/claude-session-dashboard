@@ -2,7 +2,9 @@ import { CalendarClock, Gauge, KeyRound, PlugZap, TrendingDown } from 'lucide-re
 import { ago, formatDuration, formatInt, formatTokens, formatUsd } from '@shared/format'
 import { PLAN_LABEL, type GaugeState, type LimitsState } from '@shared/usage/limits'
 import type { CreditsState } from '@shared/usage/credits'
+import { PACE_LABEL, type PaceAdvice, type PaceState } from '@shared/usage/pace'
 import { cn } from '@/lib/utils'
+import { useApp } from '@/lib/store'
 import { Button } from '../ui/button'
 import { Tooltip } from '../ui/tooltip'
 import { levelOf, LEVEL_COLOR, useNow } from '@/lib/meter-hooks'
@@ -21,25 +23,83 @@ function when(ts: number, t: number): string {
     : dayTimeFmt.format(ts)
 }
 
-/** A thin bar: how much of the window has passed (marker) vs. how much is used (fill). */
-function PaceLine({ g, t }: { g: GaugeState; t: number }) {
+/**
+ * A thin bar: how much is used (fill) against the pace target, cap × elapsed
+ * ÷ window length (marker), as in claude-usage-pacer.
+ */
+function PaceLine({ g, pace, t }: { g: GaugeState; pace?: PaceState; t: number }) {
   const span = (g.resetsAt ?? t) - (g.windowStart ?? t)
   const elapsed =
     span > 0 ? Math.min(100, Math.max(0, ((t - (g.windowStart ?? t)) / span) * 100)) : 0
+  const target = pace?.target ?? elapsed
   const color = LEVEL_COLOR[levelOf(g.pct)]
   return (
-    <Tooltip content={`${Math.round(g.pct)}% used with ${Math.round(elapsed)}% of the window gone`}>
+    <Tooltip
+      content={
+        pace
+          ? `${Math.round(g.pct)}% used; the pace target now is ${Math.round(target)}% (${pace.cap}% cap × ${Math.round(elapsed)}% of the window gone)`
+          : `${Math.round(g.pct)}% used with ${Math.round(elapsed)}% of the window gone`
+      }
+    >
       <div className="relative mt-3 h-1 w-full rounded-full bg-[var(--gauge-track)]">
         <div
           className="absolute inset-y-0 left-0 rounded-full transition-[width] duration-300"
           style={{ width: `${Math.min(100, g.pct)}%`, background: color }}
         />
         <div
-          className="absolute -top-1 h-3 w-[2px] rounded-full bg-foreground/45"
-          style={{ left: `calc(${elapsed}% - 1px)` }}
+          className="absolute -top-1 h-3 w-[2px] rounded-full bg-foreground/55"
+          style={{ left: `calc(${Math.min(100, target)}% - 1px)` }}
         />
+        {pace && (
+          <div
+            className="absolute -top-0.5 h-2 w-px bg-foreground/25"
+            style={{ left: `${pace.cap}%` }}
+            title={`Cap ${pace.cap}%`}
+          />
+        )}
       </div>
     </Tooltip>
+  )
+}
+
+function PaceChip({ pace }: { pace: PaceState }) {
+  const tolerance = useApp((s) => s.settings.pace.tolerance)
+  const warn = pace.status === 'ahead' || pace.status === 'at-cap'
+  return (
+    <Tooltip
+      content={`Target ${Math.round(pace.target)}% now (±${tolerance} points counts as on pace). Room left: ${pace.roomPerHour.toFixed(1)} points per hour until the reset to stay under ${pace.cap}%.`}
+    >
+      <span
+        className={cn(
+          'inline-flex items-center gap-1 rounded-full px-1.5 py-px text-[10.5px] font-medium',
+          warn ? 'bg-warning-soft text-[var(--gauge-warn-text)]' : 'bg-secondary text-foreground/70'
+        )}
+      >
+        {PACE_LABEL[pace.status]} ·{' '}
+        {pace.roomPerHour >= 10 ? Math.round(pace.roomPerHour) : pace.roomPerHour.toFixed(1)}%/h
+        room
+      </span>
+    </Tooltip>
+  )
+}
+
+/** One line of pacing advice; the weekly window is the main limit. */
+export function PaceAdviceLine({ advice }: { advice: PaceAdvice }) {
+  return (
+    <div
+      className={cn(
+        'mt-3 flex items-center gap-2 rounded-lg px-3 py-2 text-xs',
+        advice.tone === 'warn'
+          ? 'bg-warning-soft text-[var(--gauge-warn-text)]'
+          : 'bg-secondary/60 text-muted-foreground'
+      )}
+    >
+      <Gauge className="size-3.5 shrink-0" />
+      <span className="font-medium">{advice.text}</span>
+      <span className="ml-auto hidden text-[11px] opacity-80 sm:inline">
+        Weekly is the main limit
+      </span>
+    </div>
   )
 }
 
@@ -127,6 +187,7 @@ export function LimitCard({
   }
 
   const pace = paceText(g, t)
+  const paceState = kind === 'five_hour' ? limits.pace5h : limits.pace7d
   const level = levelOf(g.pct)
   const stale = t - g.updatedAt > 60 * 60_000
   return (
@@ -144,7 +205,7 @@ export function LimitCard({
         }
       />
       <div className="mt-4 flex items-center gap-5">
-        <RingGauge pct={g.pct}>
+        <RingGauge pct={g.pct} target={g.expired ? undefined : paceState?.target}>
           <div className="text-[34px] leading-none font-semibold tracking-[-0.03em] tabular-nums">
             <CountUp value={g.pct} format={(n) => `${Math.round(n)}%`} />
           </div>
@@ -189,7 +250,7 @@ export function LimitCard({
           )}
         </div>
       </div>
-      {!g.expired && <PaceLine g={g} t={t} />}
+      {!g.expired && <PaceLine g={g} pace={paceState} t={t} />}
       <div
         className={cn(
           'mt-2 text-xs',
@@ -205,6 +266,11 @@ export function LimitCard({
       >
         {g.expired ? 'This window has reset. Open Claude Code to refresh.' : pace.text}
       </div>
+      {!g.expired && paceState && (
+        <div className="mt-1.5">
+          <PaceChip pace={paceState} />
+        </div>
+      )}
       {stale && !g.expired && (
         <div className="mt-1 text-[11px] text-subtle-foreground">
           Last updated {ago(g.updatedAt, t)} — open Claude Code to refresh

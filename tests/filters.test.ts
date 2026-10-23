@@ -31,6 +31,8 @@ function s(partial: Partial<SessionSummary> & { key: string }): SessionSummary {
     meta: {},
     title: partial.key,
     titleSource: 'fallback',
+    source: 'terminal-windows',
+    sourceReason: 'entrypoint "cli"',
     ...partial
   }
 }
@@ -139,6 +141,39 @@ describe('filtering', () => {
       ['wsl:Ubuntu', 1]
     ])
     expect(f.views).toEqual({ visible: 3, hidden: 1, archived: 1 })
+  })
+})
+
+describe('source filter', () => {
+  const withAsk = [
+    s({ key: 'v', source: 'vscode' }),
+    s({ key: 't', source: 'terminal-windows' }),
+    s({ key: 'ask', source: 'ask-claude' })
+  ]
+  it('hides Ask Claude runs unless that source is picked, and filters by source', () => {
+    expect(visibleSessions(withAsk, EMPTY_FILTERS, 'activity', null).map((x) => x.key)).toEqual([
+      'v',
+      't'
+    ])
+    expect(
+      visibleSessions(withAsk, { ...EMPTY_FILTERS, source: 'ask-claude' }, 'activity', null).map(
+        (x) => x.key
+      )
+    ).toEqual(['ask'])
+    expect(
+      visibleSessions(withAsk, { ...EMPTY_FILTERS, source: 'vscode' }, 'activity', null).map(
+        (x) => x.key
+      )
+    ).toEqual(['v'])
+  })
+  it('counts sources, with the dashboard’s own runs last and out of the view counts', () => {
+    const f = facets(withAsk, EMPTY_FILTERS)
+    expect(f.source.map((x) => [x.label, x.count])).toEqual([
+      ['Terminal (Windows)', 1],
+      ['VS Code', 1],
+      ['Ask Claude (dashboard)', 1]
+    ])
+    expect(f.views.visible).toBe(2)
   })
 })
 

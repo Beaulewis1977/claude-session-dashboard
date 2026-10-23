@@ -280,7 +280,8 @@ const hiddenWeighted = (u, model) =>
   u.cache_creation_input_tokens * 1.3 +
   u.cache_read_input_tokens * 0.105
 const windowNoise = (start) =>
-  0.9 + (parseInt(createHash('sha1').update(`w${start}`).digest('hex').slice(0, 6), 16) / 0xffffff) * 0.2
+  0.9 +
+  (parseInt(createHash('sha1').update(`w${start}`).digest('hex').slice(0, 6), 16) / 0xffffff) * 0.2
 // ------------------------------------------------------- session plans
 
 rmSync(join(root, 'windows'), { recursive: true, force: true })
@@ -298,7 +299,8 @@ const apiProjects = new Set(['/home/beau/projects/ml-pipeline'])
 const API_FROM = Date.parse('2026-10-05T00:00:00Z')
 const API_FROM2 = Date.parse('2026-10-09T00:00:00Z')
 // A separate deterministic choice that doesn't disturb the main random stream.
-const hashPick = (s) => parseInt(createHash('sha1').update(String(s)).digest('hex').slice(0, 8), 16) / 0xffffffff
+const hashPick = (s) =>
+  parseInt(createHash('sha1').update(String(s)).digest('hex').slice(0, 8), 16) / 0xffffffff
 
 function planSession(project, start, opts = {}) {
   const id = opts.id ?? uuid(project.cwd)
@@ -312,7 +314,8 @@ function planSession(project, start, opts = {}) {
     turns: [],
     // From October, some sessions run on API credits instead of the Max limits.
     billing:
-      start >= API_FROM && (apiProjects.has(project.cwd) || (start >= API_FROM2 && hashPick(project.cwd + start) < 0.4))
+      start >= API_FROM &&
+      (apiProjects.has(project.cwd) || (start >= API_FROM2 && hashPick(project.cwd + start) < 0.4))
         ? 'api'
         : 'subscription',
     model: pickModel(era(start)),
@@ -469,16 +472,28 @@ const priceOf = {
   'claude-sonnet-5-5': [2, 10, 4, 0.1]
 }
 
+/** Which product ran a sample session (fixed per session id, not from the random stream). */
+function entrypointOf(s) {
+  const h = parseInt(createHash('sha1').update(`ep${s.id}`).digest('hex').slice(0, 4), 16) % 20
+  if (s.project.env.kind === 'windows' && s.project.cwd.includes('acme-web'))
+    return h < 14 ? 'claude-vscode' : 'cli'
+  if (h === 0) return 'sdk-cli'
+  if (h === 1 && s.project.env.kind === 'windows') return 'claude-desktop'
+  return 'cli'
+}
+
 for (const s of sessions) {
   const lines = []
   let parent = null
   const version = versionAt(s.start)
+  const entrypoint = entrypointOf(s)
   const base = (type, ts) => {
     const u = uuid(s.id)
     const e = {
       parentUuid: parent,
       isSidechain: false,
       userType: 'external',
+      entrypoint,
       cwd: s.project.cwd,
       sessionId: s.id,
       version,
@@ -631,7 +646,13 @@ for (const { s, r } of all) {
   if (s.billing === 'api') {
     const p = priceOf[s.model] ?? [4, 20, 8, 0.2]
     const u = r.usage
-    running[s.id] = (running[s.id] ?? 0) + (u.input_tokens * p[0] + u.output_tokens * p[1] + u.cache_creation_input_tokens * p[2] + u.cache_read_input_tokens * p[3]) / 1e6
+    running[s.id] =
+      (running[s.id] ?? 0) +
+      (u.input_tokens * p[0] +
+        u.output_tokens * p[1] +
+        u.cache_creation_input_tokens * p[2] +
+        u.cache_read_input_tokens * p[3]) /
+        1e6
     if (r.ts - last < 6 * MIN) continue
     last = r.ts
     readings.push({

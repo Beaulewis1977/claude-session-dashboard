@@ -88,6 +88,29 @@ pick (it is never written) and stores the conversations in the app's archive, an
 makes no network call itself: it starts your own `claude` CLI, which talks to Anthropic as it always
 does, with no tools, and only after you've seen what will be sent.
 
+## Install
+
+Windows 10 or 11 (64-bit). Claude Code must already be installed for Resume, Fork and Remote Control.
+
+1. Open the repository's **Releases** page and download the latest
+   `ClaudeSessionDashboard-Setup-<version>.exe` (or the `-Portable-` one, which runs without
+   installing).
+2. Run it. The installer isn't code-signed yet, so Windows SmartScreen may say "Windows protected your
+   PC": click **More info**, then **Run anyway**.
+3. It installs for your user only (no administrator rights needed), and you can pick the folder.
+
+**Updating:** download the newer installer and run it over the old one. Your names, tags, archive,
+settings, paired phones and API keys are kept: they live in `%APPDATA%\ClaudeSessionDashboard\`, not
+in the program folder. The app never updates itself (it makes no network calls), so check
+**Releases** for new versions; the version you have is in Settings → About.
+
+**Uninstalling:** Windows Settings → Apps → Claude Session Dashboard → Uninstall. That removes the
+program only. To remove its data and archive too, delete `%APPDATA%\ClaudeSessionDashboard\`. Turn off
+Settings → Phone first if you use it, so the app removes its Tailscale rule (and, in home Wi-Fi mode,
+its firewall rule). Nothing in your `.claude` folders is ever touched either way.
+
+The repository is private for now: you need to be added as a collaborator to see it.
+
 ## Run it on Windows
 
 You need **Node.js 22.12 or newer** (the LTS from <https://nodejs.org> is fine) and **Git**.
@@ -115,14 +138,44 @@ npm run dev -- --fixtures
 npm run dist
 ```
 
-This creates two files in `release\1.0.0\`:
+This creates two files in `release\<version>\` (the version comes from `package.json`):
 
-- `ClaudeSessionDashboard-Setup-1.0.0.exe` is the installer (per-user, no admin rights needed; you can
+- `ClaudeSessionDashboard-Setup-<version>.exe` is the installer (per-user, no admin rights needed; you can
   pick the install folder).
-- `ClaudeSessionDashboard-Portable-1.0.0.exe` runs without installing.
+- `ClaudeSessionDashboard-Portable-<version>.exe` runs without installing.
 
 The executables aren't code-signed, so Windows SmartScreen may warn you the first time. Click
 **More info**, then **Run anyway**.
+
+### Fork it
+
+The code is MIT-licensed (see `LICENSE`). To make your own version:
+
+1. Fork the repository on GitHub, then clone your fork and run `npm install` and `npm run dev` as above.
+2. Change `appId` and `productName` in `electron-builder.yml` (and `name` / `productName` in
+   `package.json`) so your build installs side by side with this one instead of replacing it.
+3. Run `npm run check` before building: typecheck, lint, tests and build.
+   - Run the tests from **Git Bash**: a few of them run `sh` / `bash`, which PowerShell doesn't find.
+4. `npm run dist` builds your installer.
+
+Read `CLAUDE.md` first: it lists the safety rules the app is built around (it never modifies
+`.claude` except for the documented, opt-in exceptions) and the reasons for each.
+
+### Make a release
+
+Releases are built on a Windows PC and uploaded with the GitHub CLI (`gh`); there is no CI.
+
+1. Update `CHANGELOG.md`, and set the version: `npm version <x.y.z> --no-git-tag-version`.
+2. Merge that to `main`, then on an up-to-date `main`:
+   ```powershell
+   npm ci
+   npm run check
+   npm run dist
+   gh release create v<x.y.z> --target main --title "v<x.y.z>" --notes-file <notes.md> `
+     "release\<x.y.z>\ClaudeSessionDashboard-Setup-<x.y.z>.exe" `
+     "release\<x.y.z>\ClaudeSessionDashboard-Portable-<x.y.z>.exe"
+   ```
+3. Install the new setup file over the old one to check it.
 
 ### Other scripts
 

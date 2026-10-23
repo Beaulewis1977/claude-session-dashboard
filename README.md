@@ -17,6 +17,10 @@ resumes any session in a terminal with its full context.
 - **Resume and Fork** in Windows Terminal (or PowerShell / cmd). `--dangerously-skip-permissions`
   is on by default, with a per-launch checkbox and a warning label. "Copy resume command" lets you
   paste it yourself.
+- **Branch from any message.** Hover a message and click **Branch** (or right-click it) to continue
+  the conversation from that point in a new session, with the same launch options as Resume. Branches
+  and forks show up in a **Branches** panel with a small family tree, and the list can group them
+  under their parent. Forks made outside the app are detected too. See [Branching](#branching).
 - **A permanent archive.** Every session file is copied to `%APPDATA%\ClaudeSessionDashboard\archive`,
   so sessions survive Claude Code's `cleanupPeriodDays` cleanup. If the original is gone, Resume puts
   the archived copy back first (it never overwrites an existing file).
@@ -38,7 +42,9 @@ The app is built around these rules (see `CLAUDE.md`):
    exception: when you resume a session whose file is _missing_, it copies the archived copy back to
    the original path. That copy uses an exclusive-create flag, so it can never overwrite a file.
    Every other write goes through a guard that refuses any path inside a `.claude` folder or outside
-   the app's data folder.
+   the app's data folder. **Branch from here** adds one more narrow case: it creates one _new_
+   session file next to the session it branches from (see [Branching](#branching)). It never
+   changes or deletes an existing file.
 2. The app's own data lives only in `%APPDATA%\ClaudeSessionDashboard\` (metadata, settings, archive,
    cache, and Chromium's own files).
 3. There is no "delete session" feature. **Hide** is only a flag in the app's metadata.
@@ -134,6 +140,35 @@ WSL session:      wt.exe wsl.exe -d <distro> --cd "<linux-cwd>" -- bash -lic "cl
 
 If `wt.exe` isn't found, the app falls back to a new PowerShell window. You can also pick PowerShell
 or cmd as your preferred terminal.
+
+### Branching
+
+![Branch dialog](docs/branch-dialog.png)
+
+- **Branch from here:** hover a message (yours or Claude's) and click **Branch**, or right-click it.
+  Right-clicking one of your messages also offers **Branch from before this message**, to ask
+  something different from that point. The dialog shows the message the branch ends with, how many
+  messages it keeps, the new file, and the usual launch options (folder, terminal, billing,
+  `--dangerously-skip-permissions`). **Branch** creates the session and resumes it; **Create only**
+  just creates it.
+- **The first time**, the app explains what it writes and asks you to confirm: one new session file
+  (with a new session id) in the same project folder in `.claude/projects`. Nothing existing is
+  changed or deleted, so the original session stays exactly as it was.
+- **Tool calls stay whole.** If the message you pick calls tools whose results come later, the
+  branch includes those results. If that isn't possible (for example, you typed a new message before
+  a result arrived), it ends at the nearest earlier point where every tool call has its result. The
+  dialog tells you when this happens.
+- **Naming:** a new branch is called `<parent name> — branch` (numbered if that's taken) and opens
+  with its name selected, so you can type a better one straight away. Forks started with the **Fork**
+  button get the same name when they appear.
+- **Fork** (the button next to Resume) still branches from the end with `claude --resume <id>
+--fork-session`.
+- **Lineage:** the **Branches** section at the top of a session shows where it was branched from
+  (and after which message), and a tree of the whole family; click any entry to open it. In the
+  transcript, a marker shows where a branch starts, and where other branches split off. In the list,
+  branches sit under their parent (turn this off in the sort menu: **Group branches under parent**).
+
+![Branches panel and branch point](docs/branches.png)
 
 ### Keeping sessions longer in Claude Code itself
 
@@ -355,12 +390,14 @@ records of sessions whose files are gone are kept as they were.
 | ![Find in session](docs/find.png)                  | ![Command palette](docs/command-palette.png)         |
 | ![Settings](docs/settings.png)                     | ![Light theme](docs/main-light.png)                  |
 | ![Enable live limits](docs/enable-live-limits.png) | ![Disable live limits](docs/disable-live-limits.png) |
+| ![Branch from a message](docs/branch-intro.png)    | ![Branches](docs/branches.png)                       |
 
 ## How it works
 
 ```
 src/
-  shared/      Types and pure logic used by both processes: JSONL parsing, titles, Markdown export
+  shared/      Types and pure logic used by both processes: JSONL parsing, titles, Markdown export,
+               branch planning (branch.ts) and lineage detection (lineage.ts)
   main/
     core/      Small, tested building blocks: WSL decoding, launch commands, archive, restore,
                atomic JSON store, write guards
@@ -420,6 +457,46 @@ These are choices I made where the spec left room, or had to deviate:
   app never deletes anything.
 - **Code fonts:** JetBrains Mono ligatures are turned off so code shows the characters that are really
   there (`=>` stays `=>`).
+
+### Branching decisions
+
+- **Claude Code can't resume interactively at a message.** I checked `claude --help` (Claude Code
+  2.1.309) and the CLI reference (`code.claude.com/docs/en/cli-reference`): `--resume`,
+  `--fork-session` and `--session-id` are documented, but nothing resumes at a chosen message. The
+  CLI has a _hidden_ `--resume-session-at <message id>` flag, but its own description says it only
+  works with `--print` (one non-interactive reply), so it can't open a normal session. `/rewind` and
+  double-Esc inside Claude Code work only by hand. So the app uses the fallback: it writes a new
+  session file and runs the normal `claude --resume <new id>`.
+- **The new file looks like Claude Code's own `/branch` output:** the original lines up to the cut,
+  in the same order, with the same message uuids, `sessionId` set to the new id, and a
+  `forkedFrom: { sessionId, messageUuid }` marker on each entry. Lines are re-serialised as JSON
+  (same content). Summaries and file snapshots that point past the cut, and custom titles, aren't
+  copied. Lines that couldn't be parsed are left out. Message and request ids are unchanged, so the
+  usage view treats copied responses the way it treats Claude Code's own forks.
+- **Where the cut goes:** "Branch from here" keeps the whole message (Claude's message can span
+  several lines). On one of Claude's messages that calls tools, the branch keeps going until every
+  call has its result, but never into a new prompt or a new reply; otherwise it moves back. A tool
+  call that never got a result (a crashed session) is left as it was, since there's nothing to split.
+- **The new file goes in the original's project folder** (taken from the original path, even for an
+  archived-only session, whose file isn't restored). It's created with an exclusive flag, through a
+  write guard that only allows `<uuid>.jsonl` directly in that folder. A stopped WSL distro can't be
+  written to, so the dialog says so.
+- **Lineage, strongest signal first:** the app's own record (Branch from here, Fork), then
+  `forkedFrom` markers, then entries that still carry another session's id (older Claude Code
+  copies), then shared history: forks keep the original message uuids, so sessions whose first prompt
+  has the same uuid are one family. In a family, a session's parent is the one it shares the most
+  messages with. Which of two is the original: the one that stopped where they split; if both went on,
+  the one whose file was created first (file birth time, or when the app first archived it). This
+  last case is a best guess for forks made outside the app; anything made from the app is exact.
+- **Only families are read twice.** Finding the split point needs the message list, so the app reads
+  those files (and caches the result); sessions without relatives cost nothing extra.
+- **The startup cache format changed (v2)**, so the first start after updating re-reads every
+  session once.
+- **Grouping in the list** is on by default and remembered per computer. A family sits where its
+  highest-sorted member would be (with the default sort, the most recently active one).
+- **Fixtures:** `fixtures/` now includes a `--fork-session` copy of the Safari session and a `/branch`
+  copy of the moment migration session (`scripts/make-branch-fixtures.mjs`, which only adds those two
+  files). The session counts in the fixtures went from 7 to 9.
 
 ### Phase 5 decisions
 

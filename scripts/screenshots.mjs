@@ -120,6 +120,23 @@ for (const theme of ['dark', 'light']) {
     await win.waitForSelector('[role="dialog"]')
     await shot('shortcuts')
     await win.keyboard.press('Escape')
+
+    // Branch from here: the first-time explanation, the dialog, and a branch's family.
+    await selectByTitle('Safari login loop')
+    const bubble = win.locator('.group\\/msg').nth(3)
+    await bubble.scrollIntoViewIfNeeded()
+    await bubble.hover()
+    await bubble.locator('button[aria-label="Branch from here"]').click()
+    await win.waitForSelector('[role="dialog"]')
+    await shot('branch-intro')
+    await win.getByRole('button', { name: 'Continue' }).click()
+    await win.waitForTimeout(900)
+    await shot('branch-dialog')
+    await win.keyboard.press('Escape')
+    await selectByTitle('moment → dayjs instead')
+    await win.getByRole('button', { name: 'Jump to branch point' }).click()
+    await win.waitForTimeout(700)
+    await shot('branches')
   }
 
   // Settings.

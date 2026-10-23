@@ -60,6 +60,8 @@ export function freshRemoteUrl(
       (s) =>
         s.key !== f.parentKey &&
         !existing.has(s.key) &&
+        // Known to be another session's fork: not this one.
+        (!s.lineage?.parentKey || s.lineage.parentKey === f.parentKey) &&
         s.sourceId === f.sourceId &&
         same(s) &&
         fresh(s, since)

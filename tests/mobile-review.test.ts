@@ -743,3 +743,115 @@ describe('PR3-R2-05: quitting waits for a start already queued', () => {
     expect(svc.server.running).toBe(false)
   })
 })
+
+// ------------------------------------------------- third review (R3)
+
+describe('PR3-R3-01: the fallback terminal is checked too', () => {
+  it('does not start PowerShell if read-only was turned on while Windows Terminal failed', async () => {
+    const { Launcher } = await import('../src/main/services/launcher')
+    let readOnly = false
+    const spawn = vi.fn(async () => {
+      if (spawn.mock.calls.length === 1) {
+        readOnly = true // changed while the first attempt was pending
+        throw Object.assign(new Error('not found'), { code: 'ENOENT' })
+      }
+    })
+    const launcher = new Launcher(
+      {
+        canLaunch: true,
+        fixtures: false,
+        windowsHome: 'C:/Users/me',
+        launchTools: async () => TOOLS,
+        pathExists: async () => true,
+        spawnDetached: spawn,
+        distroRoots: () => []
+      } as never,
+      {
+        get: () => ({ ...SESSION, originalPath: 'C:/a.jsonl' }),
+        source: () => undefined,
+        archiveRecord: () => undefined
+      } as never,
+      () => 'wt'
+    )
+    const { rl } = remoteLauncher({
+      settings: () => ({ terminal: 'wt', readOnly, confirmOnPc: false, branchConfirmed: true }),
+      launch: (o, ctx) => launcher.launch(o, ctx)
+    })
+    const r = await rl.launch(DEVICE, { key: SESSION.key, kind: 'resume' })
+    expect(r.ok).toBe(false)
+    expect(spawn).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('PR3-R3-02: a fork of another session is never the link', () => {
+  it('rejects a new candidate linked to a different parent', () => {
+    const at = Date.parse('2026-10-23T12:00:00Z')
+    const result = { fork: { parentKey: SESSION.key, sourceId: 'windows', cwd: SESSION.cwd } }
+    const otherFork = {
+      ...SESSION,
+      key: 'windows:of',
+      remoteUrl: 'https://claude.ai/code/session_OTHERFORK0',
+      remoteUrlAt: new Date(at + 1000).toISOString(),
+      lineage: { parentKey: 'windows:someone-else' }
+    } as unknown as SessionSummary
+    expect(freshRemoteUrl([otherFork], result, at, new Set([SESSION.key]))).toBeUndefined()
+  })
+})
+
+async function freePort(): Promise<number> {
+  const { createServer } = await import('node:net')
+  return new Promise((resolve) => {
+    const s = createServer().listen(0, '127.0.0.1', () => {
+      const p = (s.address() as { port: number }).port
+      s.close(() => resolve(p))
+    })
+  })
+}
+
+describe('PR3-R3-03: a failed rule removal during a port move', () => {
+  it("doesn't move, keeps the rule removable, and leaves other rules alone", async () => {
+    const svc = service()
+    const [a, b] = [await freePort(), await freePort()]
+    await svc.update({ port: a })
+    await svc.start()
+    const store = (svc as unknown as { deps: { store: JsonStore<MobileFile> } }).deps.store
+    expect(store.value.serveRule?.target).toBe(`http://127.0.0.1:${a}`)
+    vi.spyOn(svc.tailscale, 'serveOff').mockResolvedValueOnce({ ok: false, error: 'busy' })
+    const st = await svc.update({ port: b })
+    expect(st.settings.port).toBe(a) // not moved
+    expect(st.error).toMatch(/wasn't moved/)
+    expect(st.running).toBe(true)
+    // Stop removes the recorded rule.
+    await svc.stop()
+    expect(store.value.serveRule).toBeUndefined()
+    expect((await svc.tailscale.status(8443, a)).serve).toBe('off')
+  })
+
+  it('removes a recorded rule on shutdown even when already stopped', async () => {
+    const svc = service()
+    const a = await freePort()
+    await svc.update({ port: a })
+    await svc.start()
+    vi.spyOn(svc.tailscale, 'serveOff').mockResolvedValueOnce({ ok: false, error: 'busy' })
+    await svc.stop()
+    const store = (svc as unknown as { deps: { store: JsonStore<MobileFile> } }).deps.store
+    expect(store.value.serveRule).toBeDefined() // removal failed
+    await svc.shutdown()
+    expect(store.value.serveRule).toBeUndefined()
+  })
+})
+
+describe('PR3-R3-04: quitting during a restart keeps phone access on for next time', () => {
+  it('leaves enabled set', async () => {
+    const svc = service()
+    const [a, b] = [await freePort(), await freePort()]
+    await svc.update({ port: a })
+    await svc.start()
+    expect(svc.settings.enabled).toBe(true)
+    const moving = svc.update({ port: b })
+    await svc.shutdown()
+    await moving
+    expect(svc.server.running).toBe(false)
+    expect(svc.settings.enabled).toBe(true)
+  })
+})

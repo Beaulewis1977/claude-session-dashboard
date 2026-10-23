@@ -262,7 +262,18 @@ export class MobileService extends EventEmitter<{ changed: [] }> {
       before.httpsPort !== next.httpsPort ||
       before.lanAddress !== next.lanAddress
     if (moved && this.server.running) {
-      await this.doStop(before, false)
+      // A move isn't the user turning phone access off: it stays on.
+      await this.doStop(before, true)
+      if (this.deps.store.value.serveRule) {
+        // The old Tailscale rule couldn't be removed: don't move, or it would
+        // be left behind pointing at the old port.
+        const why = this.lastError
+        await this.deps.saveSettings({ ...before })
+        await this.doStart()
+        this.lastError = `Phone access wasn't moved: the Tailscale rule for the old port couldn't be removed (${why ?? 'unknown error'}). Try again.`
+        this.changed()
+        return this.status()
+      }
       await this.doStart()
     }
     // Phones show (or hide) their launch and edit controls from this.
@@ -333,7 +344,10 @@ export class MobileService extends EventEmitter<{ changed: [] }> {
     this.lastError = undefined
     if (prev.mode === 'tailscale' || rule) {
       const r = await this.deps.tailscale
-        .serveOff(rule?.httpsPort ?? prev.httpsPort, prev.port)
+        .serveOff(
+          rule?.httpsPort ?? prev.httpsPort,
+          (rule && recordedPort(rule.target)) ?? prev.port
+        )
         .catch((err: Error) => ({ ok: false, error: err.message }))
       if (r.ok)
         this.deps.store.update((f) => {
@@ -359,7 +373,9 @@ export class MobileService extends EventEmitter<{ changed: [] }> {
   shutdown(): Promise<void> {
     this.closing = true
     return this.serial(async () => {
-      if (this.server.running) await this.doStop(this.settings, true)
+      // Also when stopped but our rule is still there (an earlier removal failed).
+      if (this.server.running || this.deps.store.value.serveRule)
+        await this.doStop(this.settings, true)
     })
   }
 
@@ -526,6 +542,13 @@ export class MobileService extends EventEmitter<{ changed: [] }> {
     ]
     return lines.filter(Boolean).join('\n')
   }
+}
+
+/** The local port of a rule the app recorded ("http://127.0.0.1:47821" → 47821). */
+export function recordedPort(target: string): number | undefined {
+  const m = /^http:\/\/127\.0\.0\.1:(\d{1,5})$/.exec(target)
+  const n = m ? Number(m[1]) : NaN
+  return n >= 0 && n <= 65535 ? n : undefined
 }
 
 export function webAppFile(rendererDir: string): string {

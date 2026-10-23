@@ -363,6 +363,15 @@ export class Launcher {
       if (terminal === 'wt' && (err as NodeJS.ErrnoException).code === 'ENOENT') {
         terminal = 'powershell'
         cmd = this.command(s, opts, cwd, terminal, tools, apiKey)
+        // The first attempt took time: ask again before the second.
+        const again = ctx.stillAllowed?.()
+        if (again)
+          return {
+            ok: false,
+            restored,
+            commandLine: cmd.commandLine,
+            error: `Not launched: ${again}.`
+          }
         try {
           await this.platform.spawnDetached(cmd)
         } catch (err2) {

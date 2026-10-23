@@ -195,3 +195,57 @@ export function tagColor(tag: string): string {
   for (let i = 0; i < tag.length; i++) h = (h * 31 + tag.charCodeAt(i)) >>> 0
   return TAG_COLORS[h % TAG_COLORS.length]
 }
+
+/**
+ * Put branches right under their parent (when the parent is in the list too).
+ * A family sits where its highest-ranked member would be.
+ */
+export function groupBranches(list: SessionSummary[]): {
+  items: SessionSummary[]
+  depth: Map<string, number>
+} {
+  const index = new Map(list.map((s, i) => [s.key, i]))
+  const children = new Map<string, SessionSummary[]>()
+  const roots: SessionSummary[] = []
+  for (const s of list) {
+    const p = s.lineage?.parentKey
+    if (p && p !== s.key && index.has(p)) {
+      const c = children.get(p) ?? []
+      c.push(s)
+      children.set(p, c)
+    } else roots.push(s)
+  }
+  const rank = new Map<string, number>()
+  const rankOf = (s: SessionSummary, seen: Set<string>): number => {
+    const cached = rank.get(s.key)
+    if (cached !== undefined) return cached
+    seen.add(s.key)
+    let r = index.get(s.key)!
+    for (const c of children.get(s.key) ?? [])
+      if (!seen.has(c.key)) r = Math.min(r, rankOf(c, seen))
+    rank.set(s.key, r)
+    return r
+  }
+  const items: SessionSummary[] = []
+  const depth = new Map<string, number>()
+  const walk = (s: SessionSummary, d: number): void => {
+    if (depth.has(s.key)) return
+    depth.set(s.key, d)
+    items.push(s)
+    for (const c of children.get(s.key) ?? []) walk(c, d + 1)
+  }
+  for (const r of [...roots].sort((a, b) => rankOf(a, new Set()) - rankOf(b, new Set()))) walk(r, 0)
+  // Anything left over (only possible with a broken parent loop) keeps its place at the end.
+  for (const s of list) walk(s, 0)
+  return { items, depth }
+}
+
+/** Number of direct branches of each session. */
+export function branchCounts(sessions: SessionSummary[]): Map<string, number> {
+  const out = new Map<string, number>()
+  for (const s of sessions) {
+    const p = s.lineage?.parentKey
+    if (p) out.set(p, (out.get(p) ?? 0) + 1)
+  }
+  return out
+}

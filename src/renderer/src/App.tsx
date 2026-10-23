@@ -3,13 +3,14 @@ import { Toaster } from 'sonner'
 import { setClockOffset } from '@shared/clock'
 import { api } from '@/lib/api'
 import { copyResumeCommand, exportMarkdown, openResume, toggleHidden } from '@/lib/actions'
-import { visibleSessions } from '@/lib/filters'
+import { branchCounts, groupBranches, visibleSessions } from '@/lib/filters'
 import { useHotkeys } from '@/lib/hotkeys'
 import { useLiveData } from '@/lib/live'
 import { useApp } from '@/lib/store'
 import { useThemeEffect } from '@/lib/theme'
 import { cn, MOD } from '@/lib/utils'
 import { ClaudeMark } from './components/brand'
+import { BranchIntroDialog } from './components/BranchIntroDialog'
 import { CommandPalette } from './components/CommandPalette'
 import { SessionList } from './components/list/SessionList'
 import { ResumeDialog } from './components/ResumeDialog'
@@ -104,11 +105,14 @@ export function App() {
   const select = useApp((s) => s.select)
   const requestFocus = useApp((s) => s.requestFocus)
   const resolvedTheme = useThemeEffect(settings.theme)
+  const grouped = useApp((s) => s.groupBranches)
 
-  const items = useMemo(
-    () => visibleSessions(sessions, filters, sort, hits),
-    [sessions, filters, sort, hits]
-  )
+  // With grouping on, branches follow their parent (keyboard order matches the list).
+  const { items, depth } = useMemo(() => {
+    const list = visibleSessions(sessions, filters, sort, hits)
+    return grouped ? groupBranches(list) : { items: list, depth: undefined }
+  }, [sessions, filters, sort, hits, grouped])
+  const counts = useMemo(() => branchCounts(sessions), [sessions])
   const selected = sessions.find((s) => s.key === selectedKey)
   const allTags = useMemo(
     () => [...new Set(sessions.flatMap((s) => s.meta.tags ?? []))].sort(),
@@ -267,7 +271,12 @@ export function App() {
                 className="relative shrink-0 border-r border-border"
                 style={{ width: listWidth }}
               >
-                <SessionList items={items} total={sessions.length} />
+                <SessionList
+                  items={items}
+                  total={sessions.length}
+                  depth={depth}
+                  branchCounts={counts}
+                />
                 <div
                   role="separator"
                   aria-orientation="vertical"
@@ -290,6 +299,7 @@ export function App() {
       </div>
       <CommandPalette />
       <ResumeDialog />
+      <BranchIntroDialog />
       <ShortcutsDialog />
       <TrayPainter dark={resolvedTheme === 'dark'} />
       <Toaster

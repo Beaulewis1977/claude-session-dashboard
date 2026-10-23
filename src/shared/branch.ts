@@ -60,7 +60,14 @@ export function messagePreview(m: ChatMessage, max = 140): string {
     if (b.type === 'text') parts.push(b.text)
     else if (b.type === 'tool_use') parts.push(`▸ ${b.label}`)
   }
-  const text = parts.join(' ').replace(/\s+/g, ' ').trim()
+  const text = parts
+    .join(' ')
+    .replace(/```[a-z]*\n?/gi, ' ')
+    .replace(/^#+\s+/gm, '')
+    .replace(/\|?\s*:?-{3,}:?\s*(?=\|)/g, '')
+    .replace(/[`*_|]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
   return text.length > max ? `${text.slice(0, max - 1)}…` : text
 }
 

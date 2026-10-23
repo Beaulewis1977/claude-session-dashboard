@@ -24,11 +24,13 @@ import {
 } from 'lucide-react'
 import type { SessionDetail, SessionSummary } from '@shared/types'
 import { formatBytes, formatDateTime } from '@shared/format'
+import { messagePreview } from '@shared/branch'
 import { api } from '@/lib/api'
 import {
   copyResumeCommand,
   copySessionId,
   exportMarkdown,
+  openBranch,
   openNewSession,
   openResume,
   showFile,
@@ -53,7 +55,8 @@ import { BillingBadge } from '../BillingPicker'
 import { SessionUsageStrip } from './SessionUsage'
 import { DescriptionEditor, EditableTitle, TagEditor } from './MetaEditors'
 import { FindBar } from './FindBar'
-import { Transcript } from './Transcript'
+import { BranchesPanel, type BranchMark } from './Branches'
+import { Transcript, type OnBranch } from './Transcript'
 import { useFind } from './useFind'
 
 function Fact({
@@ -105,11 +108,13 @@ function Notice({
 function Header({
   session,
   allTags,
-  onFind
+  onFind,
+  branchPointPreview
 }: {
   session: SessionSummary
   allTags: string[]
   onFind: () => void
+  branchPointPreview?: string
 }) {
   const focus = useApp((s) => s.focus)
   const nonce = (f: string): number => (focus.field === f ? focus.nonce : 0)
@@ -272,6 +277,8 @@ function Header({
           />
         </div>
 
+        <BranchesPanel session={session} atPreview={branchPointPreview} />
+
         {(session.availability !== 'live' || session.malformedLines > 0) && (
           <div className="mt-3 space-y-2">
             {session.availability === 'archived-only' && (
@@ -368,6 +375,44 @@ export function SessionViewer({
 
   const messages = useMemo(() => detail?.messages ?? [], [detail])
 
+  const atId = session.lineage?.atMessageId
+  const branchPointPreview = useMemo(() => {
+    const m = atId ? messages.find((x) => x.id === atId) : undefined
+    return m ? messagePreview(m, 90) : undefined
+  }, [messages, atId])
+
+  const onBranch = useCallback<OnBranch>(
+    (id, mode) => openBranch(session.key, id, mode),
+    [session.key]
+  )
+  // Where this session split from its parent, and where its branches split off.
+  const sessions = useApp((s) => s.sessions)
+  const markSig = useMemo(() => {
+    const out: [string, BranchMark][] = []
+    const l = session.lineage
+    if (l?.atMessageId) {
+      const parent = l.parentKey ? sessions.find((s) => s.key === l.parentKey) : undefined
+      out.push([
+        l.atMessageId,
+        { kind: 'start', key: parent?.key, title: parent?.title ?? 'the original session' }
+      ])
+    }
+    for (const c of sessions) {
+      if (c.lineage?.parentKey !== session.key || !c.lineage.atMessageId) continue
+      out.push([
+        c.lineage.atMessageId,
+        { kind: 'child', key: c.key, title: c.title, time: c.meta.branch?.createdAt }
+      ])
+    }
+    return JSON.stringify(out)
+  }, [sessions, session.key, session.lineage])
+  const marks = useMemo(() => {
+    const m = new Map<string, BranchMark[]>()
+    for (const [id, mark] of JSON.parse(markSig) as [string, BranchMark][])
+      m.set(id, [...(m.get(id) ?? []), mark])
+    return m
+  }, [markSig])
+
   return (
     <div className="relative flex h-full min-w-0 flex-col bg-background">
       <div
@@ -376,7 +421,12 @@ export function SessionViewer({
         className="min-h-0 flex-1 overflow-y-auto"
         tabIndex={-1}
       >
-        <Header session={session} allTags={allTags} onFind={openFind} />
+        <Header
+          session={session}
+          allTags={allTags}
+          onFind={openFind}
+          branchPointPreview={branchPointPreview}
+        />
         {findOpen && (
           <div className="sticky top-0 z-20 h-0">
             <FindBar
@@ -393,7 +443,13 @@ export function SessionViewer({
         )}
         <div ref={contentRef}>
           {detail ? (
-            <Transcript messages={messages} cwd={session.cwd} findQuery={effectiveQuery} />
+            <Transcript
+              messages={messages}
+              cwd={session.cwd}
+              findQuery={effectiveQuery}
+              onBranch={onBranch}
+              marks={marks}
+            />
           ) : error ? (
             <div className="py-16 text-center text-sm text-muted-foreground">
               This session's file can't be read right now.

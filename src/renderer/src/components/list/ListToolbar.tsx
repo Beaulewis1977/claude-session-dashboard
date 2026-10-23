@@ -2,16 +2,18 @@ import { useEffect, useRef, useState } from 'react'
 import { ArrowDownWideNarrow, CalendarDays, Check, Search, X } from 'lucide-react'
 import { api } from '@/lib/api'
 import { envLabel, presetRange, projectKey, type DateRange, type SortKey } from '@/lib/filters'
-import { useApp } from '@/lib/store'
+import { saveGroupBranches, useApp } from '@/lib/store'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Kbd } from '@/components/ui/kbd'
 import {
   DropdownMenu,
+  DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuLabel,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger
 } from '@/components/ui/dropdown-menu'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
@@ -150,6 +152,7 @@ export function ListToolbar({ count }: { count: number }) {
   const set = useApp((s) => s.set)
   const setFilters = useApp((s) => s.setFilters)
   const focus = useApp((s) => s.focus)
+  const grouped = useApp((s) => s.groupBranches)
   const inputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -258,7 +261,7 @@ export function ListToolbar({ count }: { count: number }) {
               </Button>
             </DropdownMenuTrigger>
           </Tooltip>
-          <DropdownMenuContent className="w-48">
+          <DropdownMenuContent className="w-56">
             <DropdownMenuLabel>Sort by</DropdownMenuLabel>
             <DropdownMenuRadioGroup value={sort} onValueChange={(v) => set({ sort: v as SortKey })}>
               {(query.trim()
@@ -270,6 +273,16 @@ export function ListToolbar({ count }: { count: number }) {
                 </DropdownMenuRadioItem>
               ))}
             </DropdownMenuRadioGroup>
+            <DropdownMenuSeparator />
+            <DropdownMenuCheckboxItem
+              checked={grouped}
+              onCheckedChange={(v) => {
+                set({ groupBranches: v === true })
+                saveGroupBranches(v === true)
+              }}
+            >
+              Group branches under parent
+            </DropdownMenuCheckboxItem>
           </DropdownMenuContent>
         </DropdownMenu>
       </div>

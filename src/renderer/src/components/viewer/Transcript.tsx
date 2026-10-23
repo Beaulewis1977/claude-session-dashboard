@@ -1,12 +1,101 @@
-import { memo, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { Brain, ChevronDown, Image as ImageIcon, Layers, SquareTerminal } from 'lucide-react'
+import { memo, useLayoutEffect, useMemo, useRef, useState, type ReactElement } from 'react'
+import {
+  Brain,
+  ChevronDown,
+  Copy,
+  GitBranchPlus,
+  Image as ImageIcon,
+  Layers,
+  SquareTerminal,
+  Undo2
+} from 'lucide-react'
 import type { ChatMessage, ContentBlock } from '@shared/types'
 import { blockId, blocksMatching, dayLabel, groupTurns, turnTime } from '@/lib/transcript'
 import { formatTime } from '@shared/format'
 import { cn } from '@/lib/utils'
+import { api } from '@/lib/api'
 import { Markdown } from './Markdown'
 import { Collapsible, OrphanResult, ToolCall } from './ToolCall'
+import { BranchMarks, type BranchMark } from './Branches'
 import { ClaudeMark } from '../brand'
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger
+} from '../ui/context-menu'
+import { Tooltip } from '../ui/tooltip'
+
+export type OnBranch = (messageId: string, mode: 'include' | 'before') => void
+
+// ---------------------------------------------------------------------------
+// Branch from here: a hover button and a right-click menu on each message.
+
+function messageText(msgs: ChatMessage[]): string {
+  return msgs
+    .flatMap((m) => m.blocks)
+    .map((b) => (b.type === 'text' ? b.text : ''))
+    .filter(Boolean)
+    .join('\n\n')
+}
+
+function BranchButton({ onClick, side }: { onClick: () => void; side: 'left' | 'right' }) {
+  return (
+    <Tooltip content="Branch from here: continue in a new session from this message">
+      <button
+        type="button"
+        aria-label="Branch from here"
+        onClick={onClick}
+        className={cn(
+          'absolute -top-3 z-10 inline-flex h-6 items-center gap-1 rounded-full border border-border bg-popover px-2 text-2xs font-medium text-muted-foreground opacity-0 shadow-sm transition-opacity duration-100 group-hover/msg:opacity-100 hover:text-foreground focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-ring',
+          side === 'left' ? 'left-3' : 'right-3'
+        )}
+      >
+        <GitBranchPlus className="size-3" /> Branch
+      </button>
+    </Tooltip>
+  )
+}
+
+function MessageMenu({
+  id,
+  msgs,
+  onBranch,
+  canBranchBefore,
+  children
+}: {
+  id: string
+  msgs: ChatMessage[]
+  onBranch?: OnBranch
+  canBranchBefore?: boolean
+  children: ReactElement
+}) {
+  if (!onBranch) return children
+  const copy = (): void => {
+    const selected = window.getSelection()?.toString()
+    void api.copyText(selected || messageText(msgs))
+  }
+  return (
+    <ContextMenu>
+      <ContextMenuTrigger asChild>{children}</ContextMenuTrigger>
+      <ContextMenuContent>
+        <ContextMenuItem onSelect={() => onBranch(id, 'include')}>
+          <GitBranchPlus /> Branch from here
+        </ContextMenuItem>
+        {canBranchBefore && (
+          <ContextMenuItem onSelect={() => onBranch(id, 'before')}>
+            <Undo2 /> Branch from before this message
+          </ContextMenuItem>
+        )}
+        <ContextMenuSeparator />
+        <ContextMenuItem onSelect={copy}>
+          <Copy /> Copy
+        </ContextMenuItem>
+      </ContextMenuContent>
+    </ContextMenu>
+  )
+}
 
 // ---------------------------------------------------------------------------
 
@@ -49,7 +138,7 @@ function Thinking({
   )
 }
 
-function UserBubble({ msg }: { msg: ChatMessage }) {
+function UserBubble({ msg, onBranch }: { msg: ChatMessage; onBranch?: OnBranch }) {
   const ref = useRef<HTMLDivElement>(null)
   const [expanded, setExpanded] = useState(false)
   const [overflows, setOverflows] = useState(false)
@@ -63,38 +152,43 @@ function UserBubble({ msg }: { msg: ChatMessage }) {
         <span className="font-medium text-muted-foreground">You</span>
         {msg.timestamp && <span>{formatTime(msg.timestamp)}</span>}
       </div>
-      <div className="relative max-w-[82%] rounded-2xl rounded-tr-md border border-user-bubble-border bg-user-bubble px-4 py-2.5 shadow-xs">
-        <div ref={ref} className={cn(!expanded && 'max-h-[340px] overflow-hidden')}>
-          {msg.blocks.map((b, i) =>
-            b.type === 'text' ? (
-              <Markdown key={i} text={b.text} breaks />
-            ) : b.type === 'image' ? (
-              <div
-                key={i}
-                className="my-1 inline-flex items-center gap-1.5 rounded-md border border-border bg-background/60 px-2 py-1 text-xs text-muted-foreground"
-              >
-                <ImageIcon className="size-3.5" /> Image
-                {b.mediaType ? ` (${b.mediaType.replace('image/', '')})` : ''}
-              </div>
-            ) : b.type === 'tool_result' ? (
-              <OrphanResult key={i} result={b.result} />
-            ) : null
+      <MessageMenu id={msg.id} msgs={[msg]} onBranch={onBranch} canBranchBefore>
+        <div className="group/msg relative max-w-[82%] rounded-2xl rounded-tr-md border border-user-bubble-border bg-user-bubble px-4 py-2.5 shadow-xs">
+          {onBranch && <BranchButton side="left" onClick={() => onBranch(msg.id, 'include')} />}
+          <div ref={ref} className={cn(!expanded && 'max-h-[340px] overflow-hidden')}>
+            {msg.blocks.map((b, i) =>
+              b.type === 'text' ? (
+                <Markdown key={i} text={b.text} breaks />
+              ) : b.type === 'image' ? (
+                <div
+                  key={i}
+                  className="my-1 inline-flex items-center gap-1.5 rounded-md border border-border bg-background/60 px-2 py-1 text-xs text-muted-foreground"
+                >
+                  <ImageIcon className="size-3.5" /> Image
+                  {b.mediaType ? ` (${b.mediaType.replace('image/', '')})` : ''}
+                </div>
+              ) : b.type === 'tool_result' ? (
+                <OrphanResult key={i} result={b.result} />
+              ) : null
+            )}
+          </div>
+          {overflows && !expanded && (
+            <div className="pointer-events-none absolute inset-x-0 bottom-0 h-16 rounded-b-2xl bg-gradient-to-t from-user-bubble to-transparent" />
+          )}
+          {(overflows || expanded) && (
+            <button
+              type="button"
+              onClick={() => setExpanded((v) => !v)}
+              className="relative mt-1 inline-flex items-center gap-1 rounded px-1 text-2xs font-medium text-primary hover:bg-hover"
+            >
+              <ChevronDown
+                className={cn('size-3 transition-transform', expanded && 'rotate-180')}
+              />
+              {expanded ? 'Show less' : 'Show more'}
+            </button>
           )}
         </div>
-        {overflows && !expanded && (
-          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-16 rounded-b-2xl bg-gradient-to-t from-user-bubble to-transparent" />
-        )}
-        {(overflows || expanded) && (
-          <button
-            type="button"
-            onClick={() => setExpanded((v) => !v)}
-            className="relative mt-1 inline-flex items-center gap-1 rounded px-1 text-2xs font-medium text-primary hover:bg-hover"
-          >
-            <ChevronDown className={cn('size-3 transition-transform', expanded && 'rotate-180')} />
-            {expanded ? 'Show less' : 'Show more'}
-          </button>
-        )}
-      </div>
+      </MessageMenu>
     </div>
   )
 }
@@ -103,12 +197,14 @@ function AssistantTurn({
   msgs,
   cwd,
   open,
-  findQuery
+  findQuery,
+  onBranch
 }: {
   msgs: ChatMessage[]
   cwd?: string
   open: Set<string>
   findQuery?: string
+  onBranch?: OnBranch
 }) {
   const first = msgs[0]
   const model = msgs.find((m) => m.model)?.model
@@ -136,63 +232,77 @@ function AssistantTurn({
         <div className="space-y-2">
           {groups.map((g) => {
             const head = g[0]
+            // Branching at a group means: up to the last message in it.
+            const at = g[g.length - 1].m
+            const groupMsgs = [...new Set(g.map((x) => x.m))]
             if (head.b.type === 'text') {
               return (
-                <div
+                <MessageMenu
                   key={`${head.m.id}:${head.i}`}
-                  className="w-fit max-w-full rounded-2xl rounded-tl-md border border-assistant-bubble-border bg-assistant-bubble px-4 py-2.5 shadow-xs"
+                  id={at.id}
+                  msgs={groupMsgs}
+                  onBranch={onBranch}
                 >
-                  <Markdown text={head.b.text} />
-                </div>
+                  <div className="group/msg relative w-fit max-w-full rounded-2xl rounded-tl-md border border-assistant-bubble-border bg-assistant-bubble px-4 py-2.5 shadow-xs">
+                    {onBranch && (
+                      <BranchButton side="right" onClick={() => onBranch(at.id, 'include')} />
+                    )}
+                    <Markdown text={head.b.text} />
+                  </div>
+                </MessageMenu>
               )
             }
             return (
-              <div
+              <MessageMenu
                 key={`${head.m.id}:${head.i}`}
-                className="max-w-full overflow-hidden rounded-xl border border-border bg-background/50 p-1"
+                id={at.id}
+                msgs={groupMsgs}
+                onBranch={onBranch}
               >
-                {g.map(({ m, b, i }) => {
-                  const id = blockId(m, b, i)
-                  if (b.type === 'tool_use')
-                    return (
-                      <ToolCall
-                        key={id}
-                        tool={b}
-                        cwd={cwd}
-                        forceOpen={open.has(id)}
-                        findQuery={findQuery}
-                      />
-                    )
-                  if (b.type === 'thinking')
-                    return (
-                      <Thinking
-                        key={id}
-                        text={b.text}
-                        redacted={b.redacted}
-                        forceOpen={open.has(id)}
-                      />
-                    )
-                  if (b.type === 'tool_result')
-                    return (
-                      <OrphanResult
-                        key={id}
-                        result={b.result}
-                        findQuery={findQuery}
-                        forceOpen={open.has(id)}
-                      />
-                    )
-                  if (b.type === 'image')
-                    return (
-                      <div
-                        key={id}
-                        className="flex items-center gap-2 px-2 py-1.5 text-[12.5px] text-muted-foreground"
-                      >
-                        <ImageIcon className="size-3.5" /> Image
-                      </div>
-                    )
-                  return null
-                })}
-              </div>
+                <div className="max-w-full overflow-hidden rounded-xl border border-border bg-background/50 p-1">
+                  {g.map(({ m, b, i }) => {
+                    const id = blockId(m, b, i)
+                    if (b.type === 'tool_use')
+                      return (
+                        <ToolCall
+                          key={id}
+                          tool={b}
+                          cwd={cwd}
+                          forceOpen={open.has(id)}
+                          findQuery={findQuery}
+                        />
+                      )
+                    if (b.type === 'thinking')
+                      return (
+                        <Thinking
+                          key={id}
+                          text={b.text}
+                          redacted={b.redacted}
+                          forceOpen={open.has(id)}
+                        />
+                      )
+                    if (b.type === 'tool_result')
+                      return (
+                        <OrphanResult
+                          key={id}
+                          result={b.result}
+                          findQuery={findQuery}
+                          forceOpen={open.has(id)}
+                        />
+                      )
+                    if (b.type === 'image')
+                      return (
+                        <div
+                          key={id}
+                          className="flex items-center gap-2 px-2 py-1.5 text-[12.5px] text-muted-foreground"
+                        >
+                          <ImageIcon className="size-3.5" /> Image
+                        </div>
+                      )
+                    return null
+                  })}
+                </div>
+              </MessageMenu>
             )
           })}
         </div>
@@ -265,13 +375,29 @@ function EventRow({ msg, forceOpen }: { msg: ChatMessage; forceOpen?: boolean })
 export const Transcript = memo(function Transcript({
   messages,
   cwd,
-  findQuery
+  findQuery,
+  onBranch,
+  marks
 }: {
   messages: ChatMessage[]
   cwd?: string
   findQuery: string
+  onBranch?: OnBranch
+  /** Branch markers, keyed by the message they follow. */
+  marks?: Map<string, BranchMark[]>
 }) {
   const turns = useMemo(() => groupTurns(messages), [messages])
+  // Markers go after the turn that holds their message.
+  const marksByTurn = useMemo(() => {
+    const out = new Map<string, BranchMark[]>()
+    if (!marks?.size) return out
+    for (const t of turns) {
+      const ids = t.kind === 'assistant' ? t.msgs.map((m) => m.id) : [t.msg.id]
+      const found = ids.flatMap((id) => marks.get(id) ?? [])
+      if (found.length) out.set(t.id, found)
+    }
+    return out
+  }, [turns, marks])
   const open = useMemo(() => blocksMatching(messages, findQuery), [messages, findQuery])
   // Show a date separator before the first turn of each day.
   const dayStarts = useMemo(() => {
@@ -306,11 +432,20 @@ export const Transcript = memo(function Transcript({
                 <div className="h-px flex-1 bg-border" />
               </div>
             )}
-            {t.kind === 'user' && <UserBubble msg={t.msg} />}
+            {t.kind === 'user' && (
+              <UserBubble msg={t.msg} onBranch={t.msg.kind === 'prompt' ? onBranch : undefined} />
+            )}
             {t.kind === 'assistant' && (
-              <AssistantTurn msgs={t.msgs} cwd={cwd} open={open} findQuery={findQuery} />
+              <AssistantTurn
+                msgs={t.msgs}
+                cwd={cwd}
+                open={open}
+                findQuery={findQuery}
+                onBranch={onBranch}
+              />
             )}
             {t.kind === 'event' && <EventRow msg={t.msg} forceOpen={open.has(t.msg.id)} />}
+            {marksByTurn.has(t.id) && <BranchMarks marks={marksByTurn.get(t.id)!} />}
           </div>
         )
       })}

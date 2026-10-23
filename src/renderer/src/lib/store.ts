@@ -14,11 +14,37 @@ import { EMPTY_FILTERS, type Filters, type SortKey } from './filters'
 
 export type FocusField = 'name' | 'description' | 'tags' | 'find' | 'search' | null
 
+export interface BranchTarget {
+  /** Transcript message id. */
+  at: string
+  mode: 'include' | 'before'
+}
+
 interface ResumeRequest {
   key: string
   fork: boolean
   /** Start a new session in the same folder. */
   newSession?: boolean
+  /** Branch from a message (creates a new session file first). */
+  branch?: BranchTarget
+}
+
+const GROUP_KEY = 'csd.groupBranches'
+
+function readGroupBranches(): boolean {
+  try {
+    return localStorage.getItem(GROUP_KEY) !== '0'
+  } catch {
+    return true
+  }
+}
+
+export function saveGroupBranches(v: boolean): void {
+  try {
+    localStorage.setItem(GROUP_KEY, v ? '1' : '0')
+  } catch {
+    // per-viewer convenience only
+  }
 }
 
 interface State {
@@ -43,6 +69,10 @@ interface State {
   paletteOpen: boolean
   shortcutsOpen: boolean
   resume: ResumeRequest | null
+  /** First "Branch from here": explain what it writes before going on. */
+  branchIntro: { key: string; branch: BranchTarget } | null
+  /** Show branches under their parent in the session list. */
+  groupBranches: boolean
   focus: { field: FocusField; nonce: number }
 
   set: (patch: Partial<State>) => void
@@ -50,6 +80,8 @@ interface State {
   select: (key: string | null) => void
   requestFocus: (field: FocusField) => void
   patchSession: (s: SessionSummary) => void
+  /** Add or replace a session (e.g. a branch that was just created). */
+  upsertSession: (s: SessionSummary) => void
 }
 
 export const useApp = create<State>((set) => ({
@@ -74,12 +106,21 @@ export const useApp = create<State>((set) => ({
   paletteOpen: false,
   shortcutsOpen: false,
   resume: null,
+  branchIntro: null,
+  groupBranches: readGroupBranches(),
   focus: { field: null, nonce: 0 },
 
   set: (patch) => set(patch),
   setFilters: (patch) => set((s) => ({ filters: { ...s.filters, ...patch } })),
-  select: (key) => set({ selectedKey: key }),
+  // A focus request belongs to the session it was made for.
+  select: (key) => set((s) => ({ selectedKey: key, focus: { field: null, nonce: s.focus.nonce } })),
   requestFocus: (field) => set((s) => ({ focus: { field, nonce: s.focus.nonce + 1 } })),
   patchSession: (updated) =>
-    set((s) => ({ sessions: s.sessions.map((x) => (x.key === updated.key ? updated : x)) }))
+    set((s) => ({ sessions: s.sessions.map((x) => (x.key === updated.key ? updated : x)) })),
+  upsertSession: (updated) =>
+    set((s) =>
+      s.sessions.some((x) => x.key === updated.key)
+        ? { sessions: s.sessions.map((x) => (x.key === updated.key ? updated : x)) }
+        : { sessions: [...s.sessions, updated] }
+    )
 }))

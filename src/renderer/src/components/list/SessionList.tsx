@@ -76,7 +76,18 @@ function SkeletonRows() {
   )
 }
 
-export function SessionList({ items, total }: { items: SessionSummary[]; total: number }) {
+export function SessionList({
+  items,
+  total,
+  depth,
+  branchCounts
+}: {
+  items: SessionSummary[]
+  total: number
+  /** Nesting depth per key when branches are grouped under their parent. */
+  depth?: Map<string, number>
+  branchCounts?: Map<string, number>
+}) {
   const selectedKey = useApp((s) => s.selectedKey)
   const hits = useApp((s) => s.hits)
   const loaded = useApp((s) => s.loaded)
@@ -148,6 +159,8 @@ export function SessionList({ items, total }: { items: SessionSummary[]; total: 
                     session={s}
                     selected={s.key === selectedKey}
                     hit={hits?.get(s.key)}
+                    depth={depth?.get(s.key) ?? 0}
+                    branches={branchCounts?.get(s.key) ?? 0}
                     onSelect={select}
                     onOpen={() => requestFocus('name')}
                   />

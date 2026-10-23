@@ -1,5 +1,13 @@
 import { memo } from 'react'
-import { Archive, EyeOff, GitBranch, MessageSquare, WifiOff } from 'lucide-react'
+import {
+  Archive,
+  CornerDownRight,
+  EyeOff,
+  GitBranch,
+  GitFork,
+  MessageSquare,
+  WifiOff
+} from 'lucide-react'
 import type { SearchHit } from '@shared/api'
 import type { SessionSummary } from '@shared/types'
 import { formatDateTime, formatRelative } from '@shared/format'
@@ -31,17 +39,24 @@ export const SessionRow = memo(function SessionRow({
   session: s,
   selected,
   hit,
+  depth = 0,
+  branches = 0,
   onSelect,
   onOpen
 }: {
   session: SessionSummary
   selected: boolean
   hit?: SearchHit
+  /** > 0: shown as a branch under the row above. */
+  depth?: number
+  /** Number of sessions branched from this one. */
+  branches?: number
   onSelect: (key: string) => void
   onOpen: (key: string) => void
 }) {
   const p = preview(s)
   const tags = s.meta.tags ?? []
+  const indent = Math.min(depth, 3) * 14
   return (
     <div
       role="option"
@@ -53,12 +68,20 @@ export const SessionRow = memo(function SessionRow({
         'group relative mx-2 flex h-[98px] flex-col justify-center gap-[3px] rounded-lg px-3 transition-colors duration-75',
         selected ? 'bg-selected' : 'hover:bg-hover'
       )}
+      style={indent ? { paddingLeft: 12 + indent } : undefined}
     >
       {selected && (
         <span className="absolute top-3 bottom-3 left-0 w-[3px] rounded-full bg-primary" />
       )}
       <div className="flex items-center gap-2">
-        <EnvDot env={s.env} />
+        {depth > 0 ? (
+          <CornerDownRight
+            className="-ml-0.5 size-3 shrink-0 text-subtle-foreground"
+            aria-label="Branch"
+          />
+        ) : (
+          <EnvDot env={s.env} />
+        )}
         <span
           className={cn(
             'min-w-0 flex-1 truncate text-[13px] font-medium',
@@ -114,6 +137,15 @@ export const SessionRow = memo(function SessionRow({
       <div className="flex min-w-0 items-center gap-2 pl-3.5 text-2xs text-subtle-foreground">
         <span className="truncate tabular-nums">{dateSpan(s)}</span>
         <span className="ml-auto flex shrink-0 items-center gap-1.5">
+          {branches > 0 && (
+            <span
+              className="inline-flex items-center gap-0.5 rounded bg-accent-soft px-1 text-[10px] font-medium text-primary tabular-nums"
+              title={`${branches} branch${branches === 1 ? '' : 'es'}`}
+            >
+              <GitFork className="size-2.5" />
+              {branches}
+            </span>
+          )}
           <BillingBadge billing={s.billing} compact />
           {hit &&
             hit.fields.includes('text') &&

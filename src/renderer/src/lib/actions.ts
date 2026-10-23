@@ -1,7 +1,7 @@
 // Session actions shared by buttons, menus, the command palette and shortcuts.
 
 import { toast } from 'sonner'
-import type { SessionMeta } from '@shared/types'
+import type { SessionMeta, SessionSummary } from '@shared/types'
 import { api } from './api'
 import { useApp } from './store'
 
@@ -14,6 +14,27 @@ export async function updateMeta(key: string, patch: Partial<SessionMeta>): Prom
 
 export function openResume(key: string, fork: boolean): void {
   get().set({ resume: { key, fork } })
+}
+
+/**
+ * Branch from a message. The first time, explain what it does (it adds a new
+ * session file in Claude's project folder) before opening the launch dialog.
+ */
+export function openBranch(key: string, at: string, mode: 'include' | 'before' = 'include'): void {
+  const branch = { at, mode }
+  if (get().settings.branchConfirmed) get().set({ resume: { key, fork: false, branch } })
+  else get().set({ branchIntro: { key, branch } })
+}
+
+/** Show a session that was just created (a branch) and open its rename box. */
+export function showNewSession(s: SessionSummary): void {
+  const st = get()
+  st.upsertSession(s)
+  // Make sure a search or filter doesn't hide it.
+  if (st.query.trim()) st.set({ query: '', hits: null, sort: st.sortBeforeSearch })
+  st.set({ view: 'sessions' })
+  st.select(s.key)
+  setTimeout(() => get().requestFocus('name'), 60)
 }
 
 /** Start a fresh Claude Code session in the same folder as `key`. */

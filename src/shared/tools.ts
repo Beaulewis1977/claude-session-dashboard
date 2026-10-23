@@ -22,7 +22,57 @@ export function relativeTo(path: string, cwd?: string): string {
   return path
 }
 
+/** Longest tool name and label kept: both come from session files, which can hold anything. */
+const MAX_NAME = 200
+const MAX_LABEL = 300
+
 export function toolLabel(name: string, input: unknown, cwd?: string): string {
+  const label = rawLabel(name.slice(0, MAX_NAME), input, cwd)
+  return label.length > MAX_LABEL ? `${label.slice(0, MAX_LABEL - 1)}…` : label
+}
+
+/**
+ * "Bash: npm test" → ["Bash:", "npm test"], "Edit src/a.ts" → ["Edit", "src/a.ts"]:
+ * the first word (with its colon), then the rest after one space. One pass
+ * over the label, however long or odd it is.
+ */
+export function splitToolLabel(label: string): [string, string?] {
+  let i = 0
+  while (i < label.length && label[i] !== ':' && !/\s/.test(label[i])) i++
+  if (i === 0) return [label]
+  if (label[i] === ':') i++
+  return i < label.length && /\s/.test(label[i]) ? [label.slice(0, i), label.slice(i + 1)] : [label]
+}
+
+function record(v: unknown): Record<string, unknown> | undefined {
+  return v && typeof v === 'object' && !Array.isArray(v)
+    ? (v as Record<string, unknown>)
+    : undefined
+}
+
+const text = (v: unknown): string => (typeof v === 'string' ? v : '')
+
+/** TodoWrite's list, as plain strings (anything else in the file is dropped). */
+export function todoItems(input: unknown): { content: string; status: string }[] {
+  const todos = record(input)?.todos
+  if (!Array.isArray(todos)) return []
+  return todos
+    .map(record)
+    .filter((t): t is Record<string, unknown> => !!t)
+    .map((t) => ({ content: text(t.content), status: text(t.status) }))
+}
+
+/** MultiEdit's edits, as plain strings. */
+export function editItems(input: unknown): { oldText: string; newText: string }[] {
+  const edits = record(input)?.edits
+  if (!Array.isArray(edits)) return []
+  return edits
+    .map(record)
+    .filter((e): e is Record<string, unknown> => !!e)
+    .map((e) => ({ oldText: text(e.old_string), newText: text(e.new_string) }))
+}
+
+function rawLabel(name: string, input: unknown, cwd?: string): string {
   const i = (input && typeof input === 'object' ? input : {}) as Record<string, unknown>
   const path = s(i.file_path) ?? s(i.notebook_path) ?? s(i.path)
   switch (name) {

@@ -14,9 +14,10 @@ import {
   Wrench
 } from 'lucide-react'
 import type { ContentBlock, ToolResult } from '@shared/types'
-import { relativeTo } from '@shared/tools'
+import { editItems, relativeTo, splitToolLabel, todoItems } from '@shared/tools'
 import { cn } from '@/lib/utils'
 import { truncateText } from '@/lib/transcript'
+import { ErrorBoundary, RenderFailed } from '../ErrorBoundary'
 import { CodeBlock } from './Markdown'
 
 type ToolUse = Extract<ContentBlock, { type: 'tool_use' }>
@@ -71,7 +72,7 @@ function Diff({ oldText, newText, path }: { oldText: string; newText: string; pa
   )
 }
 
-function Todos({ todos }: { todos: { content?: string; status?: string }[] }) {
+function Todos({ todos }: { todos: { content: string; status: string }[] }) {
   return (
     <ul className="space-y-1 rounded-lg border border-code-border bg-code-bg px-3 py-2 text-[12.5px]">
       {todos.map((t, i) => (
@@ -115,21 +116,19 @@ function ToolInput({ tool, cwd }: { tool: ToolUse; cwd?: string }) {
           path={path ? relativeTo(path, cwd) : undefined}
         />
       )
-    case 'MultiEdit': {
-      const edits = Array.isArray(i.edits) ? (i.edits as Record<string, unknown>[]) : []
+    case 'MultiEdit':
       return (
         <div className="space-y-2">
-          {edits.map((e, n) => (
+          {editItems(i).map((e, n) => (
             <Diff
               key={n}
-              oldText={s(e.old_string)}
-              newText={s(e.new_string)}
+              oldText={e.oldText}
+              newText={e.newText}
               path={n === 0 && path ? relativeTo(path, cwd) : undefined}
             />
           ))}
         </div>
       )
-    }
     case 'Write':
       return (
         <CodeBlock language={path ? relativeTo(path, cwd) : 'file'}>
@@ -137,11 +136,7 @@ function ToolInput({ tool, cwd }: { tool: ToolUse; cwd?: string }) {
         </CodeBlock>
       )
     case 'TodoWrite':
-      return (
-        <Todos
-          todos={Array.isArray(i.todos) ? (i.todos as { content?: string; status?: string }[]) : []}
-        />
-      )
+      return <Todos todos={todoItems(i)} />
     case 'Task':
     case 'Agent':
       if (s(i.prompt))
@@ -154,7 +149,7 @@ function ToolInput({ tool, cwd }: { tool: ToolUse; cwd?: string }) {
   }
   return (
     <CodeBlock language="json">
-      <code>{JSON.stringify(tool.input, null, 2)}</code>
+      <code>{truncateText(JSON.stringify(tool.input, null, 2) ?? '', 200, 20000).text}</code>
     </CodeBlock>
   )
 }
@@ -264,7 +259,7 @@ export const ToolCall = memo(function ToolCall({
 }) {
   const [open, setOpen] = useState(false)
   const isError = tool.result?.isError
-  const [verb, ...rest] = tool.label.split(/(?<=^[^\s:]+:?)\s/)
+  const [verb, rest] = splitToolLabel(tool.label)
   return (
     <Collapsible
       open={open || !!forceOpen}
@@ -280,10 +275,8 @@ export const ToolCall = memo(function ToolCall({
           />
           <span className="min-w-0 truncate">
             <span className="font-medium text-foreground">{verb}</span>
-            {rest.length > 0 && (
-              <span className="ml-1.5 font-mono text-[11.5px] text-muted-foreground">
-                {rest.join(' ')}
-              </span>
+            {rest !== undefined && (
+              <span className="ml-1.5 font-mono text-[11.5px] text-muted-foreground">{rest}</span>
             )}
           </span>
           {isError && (
@@ -297,8 +290,10 @@ export const ToolCall = memo(function ToolCall({
         </>
       }
     >
-      <ToolInput tool={tool} cwd={cwd} />
-      {tool.result && <ResultView result={tool.result} findQuery={findQuery} />}
+      <ErrorBoundary fallback={<RenderFailed what="This tool call" />}>
+        <ToolInput tool={tool} cwd={cwd} />
+        {tool.result && <ResultView result={tool.result} findQuery={findQuery} />}
+      </ErrorBoundary>
     </Collapsible>
   )
 })

@@ -36,6 +36,7 @@ import { registerUsageIpc } from './ipc-usage'
 import { registerAccountsIpc } from './ipc-accounts'
 import { registerAskIpc } from './ipc-ask'
 import { AccountsService, createAccountsStore, type Encryptor } from './services/accounts'
+import { httpsFetcher } from './services/anthropic-api'
 import { BillingService } from './services/billing'
 import { createFixturesPlatform, createRealPlatform, type Platform } from './platform'
 import { BridgeInstaller, createBridgeStore } from './services/bridge'
@@ -177,8 +178,9 @@ async function main(): Promise<void> {
   if (FIXTURES) await seedFixtureAccounts(appRoot, accountsStore, metadata, settings)
   const accounts = new AccountsService(accountsStore, encryptor, {
     // Node's fetch in the main process: not routed through the window's session,
-    // whose network stays blocked. Only reportUrl() URLs ever reach this.
-    fetcher: (url, init) => fetch(url, { headers: init.headers, signal: init.signal }),
+    // whose network stays blocked. Only reportUrl() URLs ever reach this, and
+    // redirects are never followed.
+    fetcher: httpsFetcher,
     userAgent: `ClaudeSessionDashboard/${app.getVersion()}`,
     sampleAdminDir: FIXTURES
       ? join(fixturesLayout(appRoot).fixturesDir, 'usage', 'admin')

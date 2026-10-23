@@ -1,7 +1,8 @@
 // Runs "Ask Claude" questions through `claude -p` on the user's subscription.
 // The prompt goes on stdin; the command line holds fixed flags only, with no
-// tools allowed and never --dangerously-skip-permissions. Answers are kept in
-// the app's own data folder.
+// tools allowed and never --dangerously-skip-permissions. Before anything is
+// sent, `claude auth status` (in the same environment) must confirm the
+// subscription. Answers are kept in the app's own data folder.
 
 import { execFile, spawn } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
@@ -10,12 +11,17 @@ import { access, mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import {
   askCommand,
+  authStatusCommand,
   buildAskPrompt,
+  isBillingOverride,
   parseAskOutput,
+  subscriptionCheck,
+  tooOldForAsk,
   type AskCli,
   type AskCommand,
   type AskData,
-  type AskHistoryItem
+  type AskHistoryItem,
+  type SubscriptionCheck
 } from '@shared/ask'
 import { now } from '@shared/clock'
 import { JsonStore } from '../core/json-store'
@@ -54,11 +60,13 @@ export function createAskStore(dataDir: string): JsonStore<AskHistoryFile> {
 const MAX_HISTORY = 200
 const PREVIEW_TTL = 30 * 60_000
 
-/** Environment for the CLI: the subscription, not an API key that happens to be set. */
-function childEnv(): NodeJS.ProcessEnv {
-  const env = { ...process.env }
-  delete env.ANTHROPIC_API_KEY
-  delete env.ANTHROPIC_AUTH_TOKEN
+/**
+ * Environment for the CLI: the subscription, not an API key, a gateway or a
+ * cloud provider that happens to be configured in the app's environment.
+ */
+export function childEnv(base: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+  const env = { ...base }
+  for (const k of Object.keys(env)) if (isBillingOverride(k)) delete env[k]
   return env
 }
 
@@ -169,6 +177,8 @@ export interface AskServiceDeps {
   timeoutSec: () => number
   findCli?: () => Promise<AskCli | undefined>
   runner?: AskRunner
+  /** Would this CLI run on the subscription? (Default: `claude auth status`.) */
+  checkAuth?: (cli: AskCli, cwd: string) => Promise<SubscriptionCheck>
   /** Fixtures mode: answer with a sample instead of running anything. */
   simulate?: boolean
 }
@@ -182,7 +192,9 @@ export interface AskStatus {
 export class AskService {
   private cli: Promise<AskCli | undefined> | undefined
   private previews = new Map<string, { question: string; prompt: string; at: number }>()
-  private running = new Map<string, RunHandle>()
+  /** Questions being answered, from the moment Send is clicked (so Cancel always works). */
+  private running = new Map<string, { cancelled: boolean; handle?: RunHandle }>()
+  private authOk = new Map<string, number>()
 
   constructor(private readonly deps: AskServiceDeps) {}
 
@@ -219,7 +231,28 @@ export class AskService {
   }
 
   cancel(id: string): void {
-    this.running.get(id)?.cancel()
+    const r = this.running.get(id)
+    if (!r) return
+    r.cancelled = true
+    r.handle?.cancel()
+  }
+
+  /** `claude auth status` in the same environment the question runs in (a confirmed answer is kept 5 minutes). */
+  private async checkAuth(cli: AskCli, cwd: string): Promise<SubscriptionCheck> {
+    const key = `${cli.kind}|${cli.path ?? ''}|${cli.distro ?? ''}`
+    const at = this.authOk.get(key)
+    if (at && Date.now() - at < 5 * 60_000) return { ok: true, method: 'cached' }
+    let res: SubscriptionCheck
+    if (this.deps.checkAuth) res = await this.deps.checkAuth(cli, cwd)
+    else {
+      const out = await (this.deps.runner ?? spawnRunner)(authStatusCommand(cli), '', {
+        cwd,
+        timeoutMs: 30_000
+      }).done
+      res = subscriptionCheck(out.stdout, out.code)
+    }
+    if (res.ok) this.authOk.set(key, Date.now())
+    return res
   }
 
   /** Run a previewed prompt (so what was shown is what is sent). */
@@ -227,6 +260,8 @@ export class AskService {
     const p = this.previews.get(previewId)
     if (!p) throw new Error('This preview has expired. Ask again.')
     this.previews.delete(previewId)
+    const req: { cancelled: boolean; handle?: RunHandle } = { cancelled: false }
+    this.running.set(previewId, req)
     const started = Date.now()
     const base = {
       id: previewId,
@@ -234,56 +269,84 @@ export class AskService {
       question: p.question,
       sentBytes: Buffer.byteLength(p.prompt)
     }
+    const stopped = (where: string, error: string): AskHistoryItem => ({
+      ...base,
+      ok: false,
+      answer: '',
+      error,
+      durationMs: Date.now() - started,
+      where
+    })
     let item: AskHistoryItem
-    if (this.deps.simulate) {
-      await new Promise((r) => setTimeout(r, 900))
-      item = {
-        ...base,
-        ok: true,
-        answer: sampleAnswer(p.question),
-        durationMs: Date.now() - started,
-        where: 'Sample answer (fixtures mode)'
-      }
-    } else {
-      const cli = await this.findCli()
-      if (!cli) {
-        item = {
-          ...base,
-          ok: false,
-          answer: '',
-          error: "Claude Code wasn't found on Windows or in WSL. Install it, then try again.",
-          durationMs: 0,
-          where: '—'
-        }
-      } else {
-        const cwd = join(this.deps.dataDir, 'ask')
-        await mkdir(cwd, { recursive: true })
-        const handle = (this.deps.runner ?? spawnRunner)(askCommand(cli), p.prompt, {
-          cwd,
-          timeoutMs: this.deps.timeoutSec() * 1000
-        })
-        this.running.set(previewId, handle)
-        const res = await handle.done.finally(() => this.running.delete(previewId))
-        const parsed = parseAskOutput(res.stdout, res.stderr, res.code)
-        item = {
-          ...base,
-          ok: parsed.ok && !res.timedOut && !res.cancelled,
-          answer: parsed.answer,
-          error: res.cancelled
-            ? 'Cancelled.'
-            : res.timedOut
-              ? `No answer after ${this.deps.timeoutSec()} seconds. Try again, or raise the timeout in Settings.`
-              : parsed.error,
-          costUsd: parsed.costUsd,
-          durationMs: Date.now() - started,
-          where: cli.label
-        }
-      }
+    try {
+      item = await this.answer(p.question, p.prompt, req, base, started, stopped)
+    } finally {
+      this.running.delete(previewId)
     }
     this.deps.store.update((d) => {
       d.items = [item, ...d.items].slice(0, MAX_HISTORY)
     })
     return item
+  }
+
+  private async answer(
+    question: string,
+    prompt: string,
+    req: { cancelled: boolean; handle?: RunHandle },
+    base: Pick<AskHistoryItem, 'id' | 'at' | 'question' | 'sentBytes'>,
+    started: number,
+    stopped: (where: string, error: string) => AskHistoryItem
+  ): Promise<AskHistoryItem> {
+    if (this.deps.simulate) {
+      await new Promise((r) => setTimeout(r, 900))
+      if (req.cancelled) return stopped('Sample answer (fixtures mode)', 'Cancelled.')
+      return {
+        ...base,
+        ok: true,
+        answer: sampleAnswer(question),
+        durationMs: Date.now() - started,
+        where: 'Sample answer (fixtures mode)'
+      }
+    }
+    // Every wait below can be cancelled; nothing is sent once it has been.
+    const cli = await this.findCli()
+    if (req.cancelled) return stopped(cli?.label ?? '—', 'Cancelled.')
+    if (!cli)
+      return {
+        ...stopped(
+          '—',
+          "Claude Code wasn't found on Windows or in WSL. Install it, then try again."
+        ),
+        durationMs: 0
+      }
+    const cwd = join(this.deps.dataDir, 'ask')
+    await mkdir(cwd, { recursive: true })
+    if (req.cancelled) return stopped(cli.label, 'Cancelled.')
+    const auth = await this.checkAuth(cli, cwd)
+    if (req.cancelled) return stopped(cli.label, 'Cancelled.')
+    if (!auth.ok) return stopped(cli.label, auth.reason)
+    const handle = (this.deps.runner ?? spawnRunner)(askCommand(cli), prompt, {
+      cwd,
+      timeoutMs: this.deps.timeoutSec() * 1000
+    })
+    req.handle = handle
+    const res = await handle.done
+    const parsed = parseAskOutput(res.stdout, res.stderr, res.code)
+    return {
+      ...base,
+      ok: parsed.ok && !res.timedOut && !res.cancelled,
+      answer: parsed.answer,
+      error: res.cancelled
+        ? 'Cancelled.'
+        : res.timedOut
+          ? `No answer after ${this.deps.timeoutSec()} seconds. Try again, or raise the timeout in Settings.`
+          : !parsed.ok && tooOldForAsk(res.stderr)
+            ? 'This version of Claude Code is too old for Ask Claude, which runs it in safe mode with none of your settings. Update it with `claude update`, then try again.'
+            : parsed.error,
+      costUsd: parsed.costUsd,
+      durationMs: Date.now() - started,
+      where: cli.label
+    }
   }
 }
 

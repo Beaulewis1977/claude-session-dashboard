@@ -397,16 +397,26 @@ dropped?", "Why did I hit my limit Tuesday?" or "Compare this month to last mont
 
 - It runs your own Claude Code: the Windows install if there is one, otherwise the default WSL
   distro. The command is fixed:
-  `claude -p --output-format json --tools "" --strict-mcp-config`, so Claude has **no tools** and no
-  MCP servers, and `--dangerously-skip-permissions` is never used. The question and the data go in
-  on **stdin**, never on the command line. `ANTHROPIC_API_KEY` is removed from its environment so
-  your plan is used.
+  `claude -p --output-format json --tools "" --strict-mcp-config --safe-mode --setting-sources ""`,
+  so Claude has **no tools** and no MCP servers, and `--dangerously-skip-permissions` is never used.
+  `--safe-mode` keeps your CLAUDE.md files, auto memory, hooks, plugins and skills out of the
+  request, and `--setting-sources ""` loads none of your settings files, so nothing beyond the
+  previewed text is added. (Settings your organization manages still apply.) The question and the
+  data go in on **stdin**, never on the command line.
+- **Only on your Claude subscription.** API keys, gateway URLs and provider switches
+  (`ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_BASE_URL`, `CLAUDE_CODE_USE_*`) are
+  removed from its environment, in WSL after your login profile has loaded. Then
+  `claude auth status`, run in that same environment, must confirm the subscription before the
+  question is sent. If Claude Code would use an API key, Bedrock, Vertex or anything else billed
+  separately, Ask Claude stops and says why. An older Claude Code that doesn't know the safe-mode
+  flags is asked to update instead of running without them.
 - **Only aggregated numbers are sent**, as compact JSON: window scores and ratios, the baseline,
   plan history, pace, daily and monthly token totals, the dates models and Claude Code versions
   first appeared, untracked-usage estimates and when limits were reached. No session titles,
   project names, ids or conversation text. Before the first question you see exactly what will be
   sent, with "Don't show again" (Settings → Ask Claude turns the preview back on).
-- A timeout (180 s by default) and **Cancel** stop the run. Answers show as formatted text with a
+- A timeout (180 s by default) and **Cancel** stop the run (Cancel works at any point, also before
+  anything has started). Answers show as formatted text with a
   Copy button, and every question and answer is kept in the app's `ask-history.json`.
 - **It uses your plan's usage**, like any Claude Code prompt. Claude Code also logs each run as a
   session; the app recognises them by the marker at the start of the prompt, labels them **Ask
@@ -683,6 +693,17 @@ These are choices I made where the spec left room, or had to deviate:
 - **Ask Claude flags** were checked against `claude --help` (2.1.309): `--tools ""` disables every
   built-in tool and `--strict-mcp-config` without `--mcp-config` loads no MCP servers. The runs
   keep their session logs (no `--no-session-persistence`) so their tokens are counted.
+  `--safe-mode` and `--setting-sources ""` were added after review: without them your user-level
+  CLAUDE.md, auto memory and hooks would have gone along with the previewed text.
+- **Subscription check:** `claude auth status` (JSON) reports `apiProvider` and, when an API key
+  would be used, `apiKeySource`. Ask Claude runs only for `apiProvider: firstParty` with
+  `authMethod` `claude.ai` or `oauth_token` (`claude setup-token`) and no API key. Anything else,
+  or an answer it can't read, is refused rather than guessed. A confirmed check is reused for 5
+  minutes. Because `auth status` can't skip settings files, a user-level `apiKeyHelper` is refused
+  too, even though the question itself wouldn't load it: the safe side for billing.
+- **Cancel** works from the moment you click Send: while Claude Code is being found (which can
+  take up to 20 seconds in WSL), during the subscription check, and while the answer is being
+  written. Nothing is started after a cancel.
 - **Implied capacity chart** in the Limit history tab was replaced by the "Used Claude elsewhere"
   list, since the Limit health card supersedes it.
 - **The claude.ai importer** has its own small zip reader (Node's zlib), so no new dependency.

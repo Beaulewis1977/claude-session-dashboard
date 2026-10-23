@@ -5,7 +5,9 @@
 // history, token totals, model and version change dates, untracked-usage
 // estimates and pace. Never session titles, project names, prompts or any
 // conversation text. The prompt goes to the CLI on stdin, never as an
-// argument, and the CLI runs with no tools.
+// argument, and the CLI runs with no tools, in safe mode with no settings
+// files (so no CLAUDE.md, memory or hooks are added), and only after
+// `claude auth status` confirms it would use the Claude subscription.
 
 import { ASK_MARKER } from './source-label'
 import type { HealthReport, PlanChange } from './usage/health'
@@ -23,8 +25,38 @@ export const SUGGESTED_QUESTIONS = [
   'Compare this month to last month'
 ]
 
-/** Arguments for `claude`: print mode, JSON output, no tools, no MCP servers. The prompt goes on stdin. */
-export const ASK_ARGS = ['-p', '--output-format', 'json', '--tools', '', '--strict-mcp-config']
+/**
+ * Arguments for `claude`: print mode, JSON output, no tools, no MCP servers.
+ * `--safe-mode` keeps CLAUDE.md files, auto memory, hooks, plugins and skills
+ * out, and `--setting-sources ""` loads none of the settings files (so neither
+ * their hooks nor an apiKeyHelper or provider switch in them apply). Sign-in
+ * works as normal. The prompt goes on stdin.
+ */
+export const ASK_ARGS = [
+  '-p',
+  '--output-format',
+  'json',
+  '--tools',
+  '',
+  '--strict-mcp-config',
+  '--safe-mode',
+  '--setting-sources',
+  ''
+]
+
+/** Environment variables that would bill an API key or another provider instead of the subscription. */
+const BILLING_VARS = ['ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN', 'ANTHROPIC_BASE_URL']
+
+export function isBillingOverride(name: string): boolean {
+  const n = name.toUpperCase()
+  return BILLING_VARS.includes(n) || n.startsWith('CLAUDE_CODE_USE_')
+}
+
+/**
+ * WSL runs a login shell (so `claude` is on PATH), and its profile can export
+ * those variables again. This clears them after the profile has loaded.
+ */
+export const WSL_CLEAR_BILLING = `for v in $(compgen -e); do case "$v" in ${BILLING_VARS.join('|')}|CLAUDE_CODE_USE_*) unset "$v";; esac; done`
 
 export interface AskCli {
   /** "native": a claude install on this OS (Windows); "wsl": inside a WSL distro. */
@@ -43,10 +75,13 @@ export interface AskCommand {
   shell: boolean
 }
 
-/** How to start the CLI. Fixed arguments only: the question and data never appear here. */
-export function askCommand(cli: AskCli): AskCommand {
+function claudeCommand(cli: AskCli, claudeArgs: string[]): AskCommand {
   if (cli.kind === 'wsl') {
-    const inner = ['claude', ...ASK_ARGS.map((a) => (a === '' ? '""' : a))].join(' ')
+    const inner = [
+      `${WSL_CLEAR_BILLING};`,
+      'claude',
+      ...claudeArgs.map((a) => (a === '' ? '""' : a))
+    ].join(' ')
     return {
       command: 'wsl.exe',
       args: [...(cli.distro ? ['-d', cli.distro] : []), '--cd', '~', '--', 'bash', '-lic', inner],
@@ -58,9 +93,79 @@ export function askCommand(cli: AskCli): AskCommand {
   return {
     command: shell ? `"${path}"` : path,
     // With a shell, an empty argument would vanish: quote it.
-    args: shell ? ASK_ARGS.map((a) => (a === '' ? '""' : a)) : [...ASK_ARGS],
+    args: shell ? claudeArgs.map((a) => (a === '' ? '""' : a)) : [...claudeArgs],
     shell
   }
+}
+
+/** How to start the CLI. Fixed arguments only: the question and data never appear here. */
+export function askCommand(cli: AskCli): AskCommand {
+  return claudeCommand(cli, ASK_ARGS)
+}
+
+/** `claude auth status`, in the same environment the question will run in. */
+export function authStatusCommand(cli: AskCli): AskCommand {
+  return claudeCommand(cli, ['auth', 'status'])
+}
+
+export type SubscriptionCheck = { ok: true; method: string } | { ok: false; reason: string }
+
+const PROVIDER_LABEL: Record<string, string> = {
+  bedrock: 'Amazon Bedrock',
+  vertex: "Google Cloud's Vertex AI",
+  foundry: 'Microsoft Foundry',
+  anthropicAws: 'Claude Platform on AWS',
+  anthropicGoogleCloud: 'Claude on Google Cloud',
+  gateway: 'a cloud gateway'
+}
+
+/**
+ * Would the CLI run on the Claude subscription? Reads `claude auth status`
+ * (JSON). Anything else, or an answer that can't be read, is refused: Ask
+ * Claude never runs on separately billed credits.
+ */
+export function subscriptionCheck(stdout: string, code: number | null = 0): SubscriptionCheck {
+  const i = stdout.indexOf('{')
+  const j = stdout.lastIndexOf('}')
+  let o: Record<string, unknown> | undefined
+  try {
+    if (i >= 0 && j > i) o = JSON.parse(stdout.slice(i, j + 1)) as Record<string, unknown>
+  } catch {
+    o = undefined
+  }
+  if (!o)
+    return {
+      ok: false,
+      reason: `Couldn't confirm that Claude Code would use your Claude subscription (\`claude auth status\` ${code === 0 ? 'gave no readable answer' : 'failed'}). Updating Claude Code (\`claude update\`) usually fixes this.`
+    }
+  if (o.loggedIn !== true)
+    return {
+      ok: false,
+      reason: "Claude Code isn't signed in. Run `claude` once and sign in with your Claude account."
+    }
+  const provider = typeof o.apiProvider === 'string' ? o.apiProvider : 'firstParty'
+  if (provider !== 'firstParty')
+    return {
+      ok: false,
+      reason: `Claude Code is set up to use ${PROVIDER_LABEL[provider] ?? provider}, which is billed separately. Ask Claude only runs on your Claude subscription.`
+    }
+  if (typeof o.apiKeySource === 'string' && o.apiKeySource)
+    return {
+      ok: false,
+      reason: `Claude Code would use an API key (from ${o.apiKeySource}), which is billed separately. Ask Claude only runs on your Claude subscription.`
+    }
+  const method = typeof o.authMethod === 'string' ? o.authMethod : ''
+  if (method !== 'claude.ai' && method !== 'oauth_token')
+    return {
+      ok: false,
+      reason: `Claude Code is signed in with ${method || 'an unknown method'}, not your Claude subscription. Ask Claude only runs on your subscription.`
+    }
+  return { ok: true, method }
+}
+
+/** The CLI refused one of the isolation flags: it's older than they are. */
+export function tooOldForAsk(stderr: string): boolean {
+  return /unknown option '--(safe-mode|setting-sources)'/.test(stderr)
 }
 
 // ------------------------------------------------------------------ data

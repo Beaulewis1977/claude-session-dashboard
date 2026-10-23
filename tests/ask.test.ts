@@ -7,16 +7,28 @@ import {
   ASK_MARKER,
   askCommand,
   askQuestionOf,
+  authStatusCommand,
   buildAskData,
   buildAskPrompt,
   parseAskOutput,
-  type AskCommand
+  subscriptionCheck,
+  WSL_CLEAR_BILLING,
+  type AskCli,
+  type AskCommand,
+  type SubscriptionCheck
 } from '@shared/ask'
 import { DEFAULT_HEALTH, healthReport, type WindowReading } from '@shared/usage/health'
 import { DEFAULT_PRICES } from '@shared/usage/pricing'
 import { detectSource } from '@shared/source-label'
 import type { UsageRecord } from '@shared/usage/types'
-import { AskService, createAskStore, spawnRunner, type AskRunner } from '../src/main/services/ask'
+import {
+  AskService,
+  childEnv,
+  createAskStore,
+  spawnRunner,
+  type AskRunner,
+  type RunResult
+} from '../src/main/services/ask'
 
 const H = 3_600_000
 const T0 = Date.parse('2026-09-01T10:00:00Z')
@@ -108,7 +120,11 @@ describe('Ask Claude prompt', () => {
       'json',
       '--tools',
       '',
-      '--strict-mcp-config'
+      '--strict-mcp-config',
+      // No CLAUDE.md, memory, hooks, plugins or skills, and no settings files.
+      '--safe-mode',
+      '--setting-sources',
+      ''
     ])
     const exe = askCommand({
       kind: 'native',
@@ -138,7 +154,7 @@ describe('Ask Claude prompt', () => {
         '--',
         'bash',
         '-lic',
-        'claude -p --output-format json --tools "" --strict-mcp-config'
+        `${WSL_CLEAR_BILLING}; claude -p --output-format json --tools "" --strict-mcp-config --safe-mode --setting-sources ""`
       ],
       shell: false
     })
@@ -181,6 +197,7 @@ describe('Ask Claude service', () => {
       data: async () => data(),
       timeoutSec: () => timeoutSec,
       findCli: async () => ({ kind: 'native', path: 'claude.exe', label: 'Windows' }),
+      checkAuth: async () => ({ ok: true, method: 'claude.ai' }),
       runner
     })
   }
@@ -280,5 +297,207 @@ describe('Ask Claude service', () => {
       { cwd: dir, timeoutMs: 200 }
     )
     expect((await hang.done).timedOut).toBe(true)
+  })
+})
+
+describe('Ask Claude: subscription only, and nothing extra sent', () => {
+  const status = (o: Record<string, unknown>) =>
+    JSON.stringify({ loggedIn: true, authMethod: 'claude.ai', apiProvider: 'firstParty', ...o })
+
+  it('accepts only the Claude subscription', () => {
+    expect(subscriptionCheck(status({}))).toEqual({ ok: true, method: 'claude.ai' })
+    // `claude setup-token` (CLAUDE_CODE_OAUTH_TOKEN) is the subscription too.
+    expect(subscriptionCheck(status({ authMethod: 'oauth_token' })).ok).toBe(true)
+    // WSL login shells can print text before the JSON.
+    expect(subscriptionCheck(`Welcome!\n${status({})}\n`).ok).toBe(true)
+    const no = (out: string, code = 0) => {
+      const r = subscriptionCheck(out, code)
+      return r.ok ? '' : r.reason
+    }
+    expect(no(status({ apiKeySource: 'ANTHROPIC_API_KEY' }))).toMatch(/API key .*billed separately/)
+    expect(no(status({ apiKeySource: 'apiKeyHelper' }))).toMatch(/API key/)
+    expect(no(status({ apiProvider: 'bedrock' }))).toMatch(/Amazon Bedrock/)
+    expect(no(status({ apiProvider: 'vertex' }))).toMatch(/Vertex/)
+    expect(no(status({ authMethod: 'api_key' }))).toMatch(/not your Claude subscription/)
+    expect(no(status({ authMethod: 'third_party' }))).toMatch(/not your Claude subscription/)
+    expect(no(status({ loggedIn: false }))).toMatch(/isn't signed in/)
+    expect(no('', 1)).toMatch(/Couldn't confirm/)
+    expect(no('error: unknown command')).toMatch(/Couldn't confirm/)
+  })
+
+  it('checks with `claude auth status` in the same environment as the question', () => {
+    const wsl = authStatusCommand({ kind: 'wsl', distro: 'Ubuntu', label: 'WSL' })
+    const inner = wsl.args[wsl.args.length - 1]
+    expect(inner).toBe(`${WSL_CLEAR_BILLING}; claude auth status`)
+    expect(authStatusCommand({ kind: 'native', path: 'claude.exe', label: 'W' }).args).toEqual([
+      'auth',
+      'status'
+    ])
+  })
+
+  it('removes API keys, gateways and provider switches from the environment', () => {
+    const env = childEnv({
+      PATH: '/bin',
+      USERPROFILE: 'C:\\Users\\beau',
+      ANTHROPIC_API_KEY: 'sk-ant-api',
+      ANTHROPIC_AUTH_TOKEN: 't',
+      ANTHROPIC_BASE_URL: 'https://gateway',
+      CLAUDE_CODE_USE_BEDROCK: '1',
+      CLAUDE_CODE_USE_VERTEX: '1',
+      Claude_Code_Use_Foundry: '1',
+      CLAUDE_CODE_OAUTH_TOKEN: 'subscription-token'
+    })
+    expect(env).toEqual({
+      PATH: '/bin',
+      USERPROFILE: 'C:\\Users\\beau',
+      CLAUDE_CODE_OAUTH_TOKEN: 'subscription-token'
+    })
+  })
+
+  it('clears the same variables in WSL after the login profile has loaded', () => {
+    // bash -lic runs the profile first, then this command: the clear-out comes first in it.
+    const cmd = askCommand({ kind: 'wsl', label: 'WSL' })
+    const inner = cmd.args[cmd.args.length - 1]
+    expect(inner.indexOf(WSL_CLEAR_BILLING)).toBe(0)
+    expect(inner.indexOf('claude -p')).toBeGreaterThan(WSL_CLEAR_BILLING.length)
+    for (const v of [
+      'ANTHROPIC_API_KEY',
+      'ANTHROPIC_AUTH_TOKEN',
+      'ANTHROPIC_BASE_URL',
+      'CLAUDE_CODE_USE_*'
+    ])
+      expect(WSL_CLEAR_BILLING).toContain(v)
+  })
+})
+
+describe('Ask Claude service: billing check and cancelling', () => {
+  let dir: string
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), 'csd-ask2-'))
+  })
+  afterEach(async () => {
+    await rm(dir, { recursive: true, force: true })
+  })
+
+  const ok: RunResult = {
+    stdout: '{"result":"Fine.","is_error":false}',
+    stderr: '',
+    code: 0,
+    timedOut: false,
+    cancelled: false
+  }
+  const cli: AskCli = { kind: 'native', path: 'claude.exe', label: 'Windows' }
+  function deferred<T>() {
+    let resolve: (v: T) => void = () => undefined
+    const promise = new Promise<T>((r) => (resolve = r))
+    return { promise, resolve }
+  }
+
+  it('never sends the question when Claude Code would bill something else', async () => {
+    const calls: AskCommand[] = []
+    const ask = new AskService({
+      store: createAskStore(dir),
+      dataDir: dir,
+      data: async () => data(),
+      timeoutSec: () => 60,
+      findCli: async () => cli,
+      runner: (cmd) => {
+        calls.push(cmd)
+        const out = cmd.args.includes('auth')
+          ? '{"loggedIn":true,"authMethod":"claude.ai","apiProvider":"firstParty","apiKeySource":"ANTHROPIC_API_KEY"}'
+          : ok.stdout
+        return { done: Promise.resolve({ ...ok, stdout: out }), cancel: () => undefined }
+      }
+    })
+    const p = await ask.preview('Have my limits dropped?')
+    const item = await ask.run(p.id)
+    expect(item).toMatchObject({ ok: false, answer: '' })
+    expect(item.error).toMatch(/API key/)
+    // Only the status check ran; the prompt never went anywhere.
+    expect(calls.map((c) => c.args.slice(0, 2))).toEqual([['auth', 'status']])
+  })
+
+  it('runs the status check first, then the question, when it is the subscription', async () => {
+    const calls: { cmd: AskCommand; stdin: string }[] = []
+    const ask = new AskService({
+      store: createAskStore(dir),
+      dataDir: dir,
+      data: async () => data(),
+      timeoutSec: () => 60,
+      findCli: async () => cli,
+      runner: (cmd, stdin) => {
+        calls.push({ cmd, stdin })
+        const out = cmd.args.includes('auth')
+          ? '{"loggedIn":true,"authMethod":"claude.ai","apiProvider":"firstParty"}'
+          : ok.stdout
+        return { done: Promise.resolve({ ...ok, stdout: out }), cancel: () => undefined }
+      }
+    })
+    const p = await ask.preview('Have my limits dropped?')
+    expect(await ask.run(p.id)).toMatchObject({ ok: true, answer: 'Fine.' })
+    expect(calls.map((c) => c.cmd.args[0])).toEqual(['auth', '-p'])
+    expect(calls[0].stdin).toBe('')
+    expect(calls[1].stdin).toBe(p.prompt)
+    // A confirmed check is reused for a while.
+    const q = await ask.preview('Compare this month to last month')
+    await ask.run(q.id)
+    expect(calls.map((c) => c.cmd.args[0])).toEqual(['auth', '-p', '-p'])
+  })
+
+  for (const stage of ['finding Claude Code', 'checking the subscription'] as const) {
+    it(`cancels while ${stage}, and then never starts the CLI`, async () => {
+      const found = deferred<AskCli | undefined>()
+      const checked = deferred<SubscriptionCheck>()
+      let started = 0
+      const ask = new AskService({
+        store: createAskStore(dir),
+        dataDir: dir,
+        data: async () => data(),
+        timeoutSec: () => 60,
+        findCli: () => found.promise,
+        checkAuth: () => checked.promise,
+        runner: () => {
+          started++
+          return { done: Promise.resolve(ok), cancel: () => undefined }
+        }
+      })
+      const p = await ask.preview('Why did I hit my limit Tuesday?')
+      const pending = ask.run(p.id)
+      if (stage === 'finding Claude Code') {
+        ask.cancel(p.id)
+        found.resolve(cli)
+        checked.resolve({ ok: true, method: 'claude.ai' })
+      } else {
+        found.resolve(cli)
+        await new Promise((r) => setTimeout(r, 10))
+        ask.cancel(p.id)
+        checked.resolve({ ok: true, method: 'claude.ai' })
+      }
+      expect(await pending).toMatchObject({ ok: false, error: 'Cancelled.' })
+      expect(started).toBe(0)
+    })
+  }
+
+  it('says to update Claude Code when it is too old for the privacy flags', async () => {
+    const ask = new AskService({
+      store: createAskStore(dir),
+      dataDir: dir,
+      data: async () => data(),
+      timeoutSec: () => 60,
+      findCli: async () => cli,
+      checkAuth: async () => ({ ok: true, method: 'claude.ai' }),
+      runner: () => ({
+        done: Promise.resolve({
+          stdout: '',
+          stderr: "error: unknown option '--safe-mode'",
+          code: 1,
+          timedOut: false,
+          cancelled: false
+        }),
+        cancel: () => undefined
+      })
+    })
+    const p = await ask.preview('Have my limits dropped?')
+    expect((await ask.run(p.id)).error).toMatch(/too old .*claude update/)
   })
 })

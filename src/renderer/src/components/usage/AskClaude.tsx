@@ -83,7 +83,11 @@ function PreviewDialog({
             <>
               Exactly this text goes to <span className="font-mono">claude -p</span> on stdin (
               {formatBytes(preview.bytes)}): aggregated numbers only, no session titles, projects or
-              conversation text. It runs with no tools and uses your plan&apos;s usage.
+              conversation text. Claude Code runs in safe mode with no tools and none of your
+              settings, CLAUDE.md files, memory or hooks, so nothing else is added. It only runs
+              once Claude Code confirms it will use your Claude subscription (never an API key or
+              another provider), and it uses your plan&apos;s usage. Policies set by an organization
+              still apply.
             </>
           }
         />

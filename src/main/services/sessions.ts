@@ -6,12 +6,14 @@
 import { EventEmitter } from 'node:events'
 import { readdir, readFile, stat } from 'node:fs/promises'
 import { basename, join } from 'node:path'
-import { analyzeEvents, buildMessages, parseJsonl } from '@shared/jsonl'
+import { analyzeEvents, buildMessages, isUuid, parseJsonl } from '@shared/jsonl'
 import { baseName } from '@shared/format'
 import { computeTitle } from '@shared/title'
+import type { SessionLineage } from '@shared/lineage'
 import type {
   ArchiveRecord,
   Availability,
+  BranchRecord,
   SessionDetail,
   SessionMeta,
   SessionsPayload,
@@ -29,9 +31,10 @@ import { SearchIndex } from './search'
 import { detectSources, type ResolvedSource } from './sources'
 import { cleanMetaPatch, type AppPaths, type MetadataFile, type SettingsFile } from './store'
 
-type BaseSummary = Omit<SessionSummary, 'meta' | 'title' | 'titleSource'>
+type BaseSummary = Omit<SessionSummary, 'meta' | 'title' | 'titleSource' | 'billing' | 'lineage'>
 
-const CACHE_VERSION = 1
+// v2: lineage fields (firstUuid, forkedFrom, copiedFrom).
+const CACHE_VERSION = 2
 
 interface CacheFile {
   version: number
@@ -139,7 +142,13 @@ export function parseSessionText(
       toolCallCount: a.toolCallCount,
       malformedLines,
       sizeBytes: file.size,
-      models: a.models
+      models: a.models,
+      firstUuid: a.firstUuid,
+      forkedFrom: a.forkedFrom,
+      copiedFrom:
+        a.sessionId && a.sessionId !== file.sessionId && isUuid(a.sessionId)
+          ? a.sessionId
+          : undefined
     }
   }
 }
@@ -362,6 +371,8 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
 
   /** Resolves billing for a session (set by the app: tags + bridge inference). */
   billingResolver?: (sessionId: string, meta: SessionMeta) => SessionBilling | undefined
+  /** Resolves where a session was branched from (set by the lineage service). */
+  lineageResolver?: (key: string) => SessionLineage | undefined
 
   private withMeta(base: BaseSummary): SessionSummary {
     const meta = this.metadata.value.sessions[base.sessionId] ?? {}
@@ -369,8 +380,34 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
       ...base,
       meta,
       ...computeTitle(meta, base.summary, base.firstPrompt),
-      billing: this.billingResolver?.(base.sessionId, meta)
+      billing: this.billingResolver?.(base.sessionId, meta),
+      lineage: this.lineageResolver?.(base.key)
     }
+  }
+
+  /**
+   * Record a branch made from the app (in the app's metadata only) and give it
+   * a default name if it has none.
+   */
+  recordBranch(sessionId: string, branch: BranchRecord, name?: string): void {
+    this.metadata.update((d) => {
+      const prev = d.sessions[sessionId] ?? {}
+      d.sessions[sessionId] = {
+        ...prev,
+        branch,
+        ...(name && !prev.name ? { name } : {}),
+        updatedAt: new Date().toISOString()
+      }
+    })
+    for (const e of this.entries.values())
+      if (e.base.sessionId === sessionId) void this.reindex(e.base.key)
+    this.emitChanged()
+  }
+
+  /** Load a file the app just created, and return its summary. */
+  async loadNew(sourceId: string, path: string): Promise<SessionSummary | undefined> {
+    await this.fileChanged(sourceId, path)
+    return this.get(`${sourceId}:${basename(path).slice(0, -6)}`)
   }
 
   /** Tell the renderer that derived fields (e.g. billing) changed. */

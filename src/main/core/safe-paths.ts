@@ -60,3 +60,27 @@ export function assertBridgeWrite(target: string): void {
     throw new UnsafeWriteError(`Refusing to write outside the bridge folder: ${target}`)
   }
 }
+
+const SESSION_UUID_FILE_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.jsonl$/i
+
+/**
+ * Exception #3 ("Branch from here"): the app may add one new session file,
+ * `<uuid>.jsonl`, directly in the project folder of the session it branches
+ * from. The file is created exclusively, so nothing existing is ever changed.
+ */
+export function assertBranchWrite(target: string, projectDir: string): void {
+  const t = resolve(target)
+  const parts = t.split(/[\\/]+/)
+  const name = parts[parts.length - 1] ?? ''
+  const dir = parts.slice(0, -1).join(sep).toLowerCase()
+  const expected = resolve(projectDir)
+    .split(/[\\/]+/)
+    .join(sep)
+    .toLowerCase()
+  if (dir !== expected || !SESSION_UUID_FILE_RE.test(name)) {
+    throw new UnsafeWriteError(
+      `Refusing to write anything but a new session file in ${projectDir}: ${target}`
+    )
+  }
+}

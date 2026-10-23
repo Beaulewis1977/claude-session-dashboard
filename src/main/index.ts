@@ -35,6 +35,7 @@ import { BillingService } from './services/billing'
 import { createFixturesPlatform, createRealPlatform, type Platform } from './platform'
 import { BridgeInstaller, createBridgeStore } from './services/bridge'
 import { Launcher } from './services/launcher'
+import { LineageService } from './services/lineage'
 import { LimitsService } from './services/limits'
 import { SessionService } from './services/sessions'
 import { appPaths, createMetadataStore, createSettingsStore } from './services/store'
@@ -143,6 +144,7 @@ async function main(): Promise<void> {
 
   const sessions = new SessionService(platform, paths, metadata, settings)
   const watcher = new SourceWatcher(sessions)
+  const lineage = new LineageService(sessions)
 
   // API keys: encrypted with safeStorage (DPAPI on Windows). On Linux the
   // "basic_text" backend isn't real encryption, so keys are refused there.
@@ -188,6 +190,7 @@ async function main(): Promise<void> {
       }
       if (opts.fork || opts.newSession) billing.expect(s.sourceId, cwd, tag)
       else sessions.tagBilling(s.sessionId, tag)
+      if (opts.fork) lineage.expectFork(s)
     }
   })
   const usage = new UsageService(sessions, usagePaths(paths.dataDir, paths.archiveDir), () => ({

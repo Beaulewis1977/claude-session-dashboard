@@ -204,7 +204,7 @@ describe('SessionService (fixtures)', () => {
     expect(again.get(changed.key)!.userMessageCount).toBe(changed.userMessageCount + 1)
     expect(again.searchKeys('added between runs').map((h) => h.key)).toEqual([changed.key])
     expect(again.searchKeys('safari cookie')[0].key).toContain('7f3c9a12')
-    await stat(join(paths.dataDir, 'cache', 'sessions-v1.json'))
+    await stat(join(paths.dataDir, 'cache', 'sessions-v2.json'))
   })
 
   it('builds WSL previews and exports Markdown', async () => {

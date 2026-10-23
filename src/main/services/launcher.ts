@@ -3,6 +3,7 @@
 
 import { join } from 'node:path'
 import type {
+  BranchPreview,
   LaunchOptions,
   LaunchPreview,
   LaunchResult,
@@ -12,6 +13,7 @@ import type {
 import { buildLaunchCommand, type LaunchCommand } from '../core/launch'
 import { restoreIfMissing } from '../core/restore'
 import type { Platform } from '../platform'
+import { BranchService } from './branches'
 import type { SessionService } from './sessions'
 
 /** API-credit launches (Phase 5). */
@@ -27,12 +29,16 @@ export interface LaunchBilling {
 }
 
 export class Launcher {
+  readonly branches: BranchService
+
   constructor(
     private readonly platform: Platform,
     private readonly sessions: SessionService,
     private readonly defaultTerminal: () => TerminalPref,
     private readonly billing?: LaunchBilling
-  ) {}
+  ) {
+    this.branches = new BranchService(sessions, (p) => platform.pathExists(p))
+  }
 
   /** Host path for checking a session's cwd (WSL paths go through the distro root). */
   private hostPath(s: SessionSummary, cwd: string): string | undefined {
@@ -92,6 +98,37 @@ export class Launcher {
     const { terminal, fellBack } = await this.resolveTerminal(
       opts.terminal ?? this.defaultTerminal()
     )
+    if (opts.branch) {
+      // Branch from a message: the command resumes the new session that will be created.
+      let branch: BranchPreview | undefined
+      let branchError: string | undefined
+      try {
+        branch = await this.branches.preview(s, opts.branch)
+      } catch (err) {
+        branchError = (err as Error).message
+      }
+      const cmd = this.command(
+        branch ? { ...s, sessionId: branch.newSessionId } : s,
+        { ...opts, fork: false, newSession: false },
+        cwd ?? (s.env === 'wsl' ? '~' : '.'),
+        terminal
+      )
+      return {
+        commandLine: cmd.commandLine,
+        claudeCommand: cmd.claudeCommand,
+        fellBack,
+        cwd,
+        cwdExists: await this.cwdExists(s, cwd),
+        willRestore: false,
+        restoreImpossible: false,
+        originalPath: branch?.targetPath ?? s.originalPath,
+        terminal: cmd.terminal,
+        terminalReason: cmd.terminalReason,
+        billingLabel: this.billingLabel(opts),
+        branch,
+        branchError
+      }
+    }
     const originalExists = await this.platform.pathExists(s.originalPath)
     const record = this.sessions.archiveRecord(s.key)
     const cmd = this.command(s, opts, cwd ?? (s.env === 'wsl' ? '~' : '.'), terminal)
@@ -115,6 +152,22 @@ export class Launcher {
     const s = this.sessions.get(opts.key)
     if (!s) return { ok: false, restored: false, commandLine: '', error: 'Session not found' }
     const cwd = opts.cwdOverride ?? s.cwd
+    // Create a branch without opening a terminal: the folder doesn't matter yet.
+    if (opts.branch?.createOnly) {
+      try {
+        const created = await this.branches.create(s, opts.branch)
+        const { terminal } = await this.resolveTerminal(opts.terminal ?? this.defaultTerminal())
+        const cmd = this.command(
+          created,
+          { ...opts, fork: false },
+          cwd ?? (s.env === 'wsl' ? '~' : '.'),
+          terminal
+        )
+        return { ok: true, restored: false, commandLine: cmd.commandLine, branch: created }
+      } catch (err) {
+        return { ok: false, restored: false, commandLine: '', error: (err as Error).message }
+      }
+    }
     if (!cwd)
       return {
         ok: false,
@@ -144,6 +197,24 @@ export class Launcher {
             "The API key for this account isn't available. Add it again in Settings → Accounts."
         }
       }
+    }
+
+    // Branch from a message: create the new session file, then resume that one.
+    if (opts.branch) {
+      let created: SessionSummary
+      try {
+        created = await this.branches.create(s, opts.branch)
+      } catch (err) {
+        return { ok: false, restored: false, commandLine: '', error: (err as Error).message }
+      }
+      const res = await this.launch({
+        ...opts,
+        key: created.key,
+        fork: false,
+        newSession: false,
+        branch: undefined
+      })
+      return { ...res, branch: this.sessions.get(created.key) ?? created }
     }
 
     // 1. Restore the original file from the archive if it's missing. Never overwrite.

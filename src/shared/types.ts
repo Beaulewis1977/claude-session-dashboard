@@ -4,6 +4,8 @@ import { DEFAULT_PRICES, type ModelPrice } from './usage/pricing'
 import type { WeekStart } from './usage/types'
 import type { SessionBilling } from './usage/credits'
 import { DEFAULT_WEIGHTS, type CapacityWeights, type Plan } from './usage/limits'
+import type { ForkedFrom } from './jsonl'
+import type { SessionLineage } from './lineage'
 
 export type EnvKind = 'windows' | 'wsl'
 
@@ -43,7 +45,22 @@ export interface SessionMeta {
     source: 'launch' | 'manual'
     at?: string
   }
+  /** Set by the app when this session was made with "Branch from here" or Fork. */
+  branch?: BranchRecord
   updatedAt?: string
+}
+
+export interface BranchRecord {
+  parentSessionId: string
+  parentKey?: string
+  /** 'app': Branch from here (a new file). 'fork': `--fork-session` from the app. */
+  via: 'app' | 'fork'
+  /** Transcript message the branch ends with (for 'app'). */
+  atMessageId?: string
+  atPreview?: string
+  /** The cut was moved to keep tool calls with their results. */
+  snapped?: 'forward' | 'backward'
+  createdAt: string
 }
 
 export interface ArchiveRecord {
@@ -111,6 +128,14 @@ export interface SessionSummary {
   titleSource: TitleSource
   /** Subscription or API billing (tag, bridge inference, or unknown). */
   billing?: SessionBilling
+  /** uuid of the first prompt; forks and branches share it. */
+  firstUuid?: string
+  /** `forkedFrom` marker in the file (Claude Code's `/branch`, or this app's branches). */
+  forkedFrom?: ForkedFrom
+  /** The file's entries carry this other session's id (an older-style copy). */
+  copiedFrom?: string
+  /** Where this session was branched or forked from, if known. */
+  lineage?: SessionLineage
 }
 
 export interface ToolResult {
@@ -179,6 +204,8 @@ export interface AppSettings {
   projectBilling: Record<string, string>
   /** How often to refresh Admin API reports (minutes, 0 = only on demand). */
   adminRefreshMinutes: number
+  /** The user has seen and accepted the "Branch from here" explanation. */
+  branchConfirmed: boolean
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -195,7 +222,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   capacityWeights: DEFAULT_WEIGHTS,
   defaultBilling: 'subscription',
   projectBilling: {},
-  adminRefreshMinutes: 60
+  adminRefreshMinutes: 60,
+  branchConfirmed: false
 }
 
 export interface ScanState {
@@ -231,6 +259,34 @@ export interface LaunchOptions {
   billingAccountId?: string
   /** Start a new session in the folder instead of resuming. */
   newSession?: boolean
+  /** Branch from a message: create a new session file, then resume it. */
+  branch?: BranchRequest
+}
+
+export interface BranchRequest {
+  /** Transcript message id. */
+  at: string
+  /** 'include' keeps the message; 'before' keeps only what came before it. */
+  mode: 'include' | 'before'
+  /** The id shown in the preview, so the copied command matches what gets created. */
+  newSessionId?: string
+  /** Create the branch without opening a terminal. */
+  createOnly?: boolean
+}
+
+export interface BranchPreview {
+  newSessionId: string
+  /** Where the new session file will be written. */
+  targetPath: string
+  atMessageId: string
+  atRole: 'user' | 'assistant'
+  atPreview: string
+  atTime?: string
+  snapped: 'none' | 'forward' | 'backward'
+  snapTools: string[]
+  keptMessages: number
+  totalMessages: number
+  name: string
 }
 
 export interface LaunchPreview {
@@ -251,6 +307,9 @@ export interface LaunchPreview {
   /** API billing: Windows Terminal can't take the key safely, so PowerShell is used. */
   terminalReason?: string
   billingLabel: string
+  /** For a branch: what will be kept, or why it can't be made. */
+  branch?: BranchPreview
+  branchError?: string
 }
 
 export interface LaunchResult {
@@ -259,6 +318,8 @@ export interface LaunchResult {
   commandLine: string
   error?: string
   simulated?: boolean
+  /** The new branch (created even if opening the terminal then failed). */
+  branch?: SessionSummary
 }
 
 export interface SessionsPayload {

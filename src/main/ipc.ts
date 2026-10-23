@@ -5,9 +5,11 @@ import { clockOffset } from '@shared/clock'
 import { sessionToMarkdown } from '@shared/markdown'
 import { sanitizePrices } from '@shared/usage/pricing'
 import { sanitizePlan, sanitizeThresholds, sanitizeWeights } from '@shared/usage/limits'
+import { isUuid } from '@shared/jsonl'
 import type {
   AppInfo,
   AppSettings,
+  BranchRequest,
   LaunchOptions,
   SessionMeta,
   TerminalPref,
@@ -57,7 +59,8 @@ function publicSettings(s: SettingsFile): AppSettings {
     capacityWeights: { ...s.capacityWeights },
     defaultBilling: s.defaultBilling,
     projectBilling: { ...s.projectBilling },
-    adminRefreshMinutes: s.adminRefreshMinutes
+    adminRefreshMinutes: s.adminRefreshMinutes,
+    branchConfirmed: s.branchConfirmed === true
   }
 }
 
@@ -65,6 +68,18 @@ const billingValue = (v: unknown): string | undefined =>
   typeof v === 'string' && (v === 'subscription' || /^acct-[A-Za-z0-9-]{1,40}$/.test(v))
     ? v
     : undefined
+
+function branchRequest(v: unknown): BranchRequest | undefined {
+  if (!v || typeof v !== 'object') return undefined
+  const b = v as Record<string, unknown>
+  if (typeof b.at !== 'string' || !b.at || b.at.length > 200) return undefined
+  return {
+    at: b.at,
+    mode: b.mode === 'before' ? 'before' : 'include',
+    newSessionId: isUuid(b.newSessionId) ? b.newSessionId : undefined,
+    createOnly: b.createOnly === true
+  }
+}
 
 function launchOpts(v: unknown): LaunchOptions {
   const o = (v ?? {}) as Record<string, unknown>
@@ -76,6 +91,7 @@ function launchOpts(v: unknown): LaunchOptions {
     billingAccountId:
       typeof o.billingAccountId === 'string' && o.billingAccountId ? o.billingAccountId : undefined,
     newSession: o.newSession === true,
+    branch: branchRequest(o.branch),
     terminal: TERMINALS.includes(o.terminal as TerminalPref)
       ? (o.terminal as TerminalPref)
       : undefined
@@ -158,6 +174,7 @@ export function registerIpc(deps: IpcDeps): void {
         }
         s.projectBilling = next
       }
+      if (typeof p.branchConfirmed === 'boolean') s.branchConfirmed = p.branchConfirmed
       if (typeof p.adminRefreshMinutes === 'number' && p.adminRefreshMinutes >= 0)
         s.adminRefreshMinutes = Math.min(1440, Math.round(p.adminRefreshMinutes))
     })

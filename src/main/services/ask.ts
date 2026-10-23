@@ -92,7 +92,9 @@ function newRequest(): AskRequest {
 
 /** Spawns the CLI, writes the prompt to stdin, and kills it on timeout or cancel. */
 export const spawnRunner: AskRunner = (cmd, stdin, opts) => {
-  const child = spawn(cmd.command, cmd.args, {
+  // wsl.exe by its full path (the shared command names it only).
+  const command = cmd.command === 'wsl.exe' ? systemExe('wsl.exe') : cmd.command
+  const child = spawn(command, cmd.args, {
     cwd: opts.cwd,
     shell: cmd.shell,
     windowsHide: true,

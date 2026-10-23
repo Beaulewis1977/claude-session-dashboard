@@ -87,8 +87,8 @@ export async function archiveSession(
     return undefined
   }
   assertAppDataWrite(dest, appDataDir)
-  await mkdir(dirname(dest), { recursive: true })
   await assertRealAppDataWrite(dest, appDataDir)
+  await mkdir(dirname(dest), { recursive: true })
   const tmp = `${dest}.${process.pid}.tmp`
   // Claude Code may be appending to the session right now: don't lock it.
   await copyShared(input.originalPath, tmp)

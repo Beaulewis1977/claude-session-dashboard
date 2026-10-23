@@ -358,8 +358,8 @@ export class BridgeInstaller {
         `${src.id.replace(/[^A-Za-z0-9._-]+/g, '_')}-${stamp}-settings.json`
       )
       assertAppDataWrite(backupPath, this.host.dataDir)
-      await mkdir(this.backupDir, { recursive: true })
       await assertRealAppDataWrite(backupPath, this.host.dataDir)
+      await mkdir(this.backupDir, { recursive: true })
       await copyShared(p.settingsPath, backupPath)
     }
 

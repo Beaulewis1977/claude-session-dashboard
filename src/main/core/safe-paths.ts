@@ -25,16 +25,28 @@ export function assertAppDataWrite(target: string, appDataDir: string): void {
   }
 }
 
+/** The real path (links followed) of `p`'s nearest folder that exists. */
+async function realExisting(p: string): Promise<string> {
+  for (let dir = resolve(p); ; dir = dirname(dir)) {
+    try {
+      return await realpath(dir)
+    } catch (err) {
+      if (dirname(dir) === dir) throw err
+    }
+  }
+}
+
 /**
  * `assertAppDataWrite`, then the same check on the real folder, with links
  * followed: a junction or symbolic link inside the app's folder can't lead a
- * write outside it. Call it once the target's folder exists.
+ * write outside it. Call it before creating the target's folder, so no
+ * folder is created beyond a link either.
  */
 export async function assertRealAppDataWrite(target: string, appDataDir: string): Promise<void> {
   assertAppDataWrite(target, appDataDir)
   const [dir, base, st] = await Promise.all([
-    realpath(dirname(target)),
-    realpath(appDataDir),
+    realExisting(dirname(target)),
+    realExisting(appDataDir),
     lstat(target).catch(() => undefined)
   ])
   if (!isInside(dir, base) || st?.isSymbolicLink()) {

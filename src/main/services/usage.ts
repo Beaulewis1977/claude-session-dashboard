@@ -397,8 +397,8 @@ export class UsageService extends EventEmitter<{ changed: [] }> {
         const [a, b] = await Promise.all([stat(src), stat(dest).catch(() => undefined)])
         if (b && b.size >= a.size) continue
         assertAppDataWrite(dest, this.paths.dataDir)
-        await mkdir(destDir, { recursive: true })
         await assertRealAppDataWrite(dest, this.paths.dataDir)
+        await mkdir(destDir, { recursive: true })
         const tmp = `${dest}.${process.pid}.tmp`
         // Subagent logs are written while a session runs: don't lock them.
         await copyShared(src, tmp)

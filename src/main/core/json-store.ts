@@ -11,8 +11,8 @@ export async function writeFileAtomic(
   appDataDir: string
 ): Promise<void> {
   assertAppDataWrite(path, appDataDir)
-  await mkdir(dirname(path), { recursive: true })
   await assertRealAppDataWrite(path, appDataDir)
+  await mkdir(dirname(path), { recursive: true })
   const tmp = `${path}.${process.pid}.${randomBytes(4).toString('hex')}.tmp`
   await writeFile(tmp, data, 'utf8')
   let lastErr: unknown

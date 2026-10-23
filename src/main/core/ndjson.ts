@@ -42,8 +42,8 @@ export async function appendNdjson(
 ): Promise<void> {
   if (!rows.length) return
   assertAppDataWrite(path, appDataDir)
-  await mkdir(dirname(path), { recursive: true })
   await assertRealAppDataWrite(path, appDataDir)
+  await mkdir(dirname(path), { recursive: true })
   await appendFile(path, rows.map((r) => JSON.stringify(r)).join('\n') + '\n', 'utf8')
 }
 

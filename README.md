@@ -57,8 +57,13 @@ The app is built around these rules (see `CLAUDE.md`):
    cache, and Chromium's own files).
 3. There is no "delete session" feature. **Hide** is only a flag in the app's metadata.
 4. **No network calls.** All outgoing requests from the window are blocked, remote images in
-   transcripts aren't loaded, and fonts are bundled. Links in transcripts open in your browser only
-   when you click them.
+   transcripts aren't loaded, fonts are bundled, and spellcheck (which would download dictionaries)
+   is off. Links in transcripts open in your browser only when you click them.
+5. **Session files are untrusted input.** Launching only starts known programs by full path and never
+   lets a recorded folder be read as a command (see [Using it](#using-it)). The windows answer IPC only
+   from the app's own page, never navigate away, and get no web permissions. The packaged app has
+   Electron's `RunAsNode`, `NODE_OPTIONS` and inspector switches turned off and only runs its own,
+   integrity-checked `app.asar`.
 
 Phase 5 ([`docs/PHASE-5-USAGE-TRACKING.md`](docs/PHASE-5-USAGE-TRACKING.md)) adds exactly two
 exceptions, and each one only happens after you approve it in the app (the later additions below
@@ -156,16 +161,30 @@ The executables aren't code-signed, so Windows SmartScreen may warn you the firs
   scan sources with their status, extra folders, the archive location and size, and each Claude
   home's `cleanupPeriodDays` (read-only).
 
-The launch commands are built as argument arrays and started with `child_process.spawn` (detached),
-so paths with spaces work:
+The launch commands are built as argument arrays, so paths with spaces work. Every program is
+started by its full path (shown here by name):
 
 ```text
-Windows session:  wt.exe -d "<cwd>" cmd /k claude --resume <id> [--dangerously-skip-permissions] [--fork-session]
+Windows session:  wt.exe -d "<cwd>" cmd.exe /s /k "\"<claude>\" --resume <id> [--dangerously-skip-permissions] [--fork-session]"
 WSL session:      wt.exe wsl.exe -d <distro> --cd "<linux-cwd>" -- bash -lic "claude --resume <id> [...]"
 ```
 
 If `wt.exe` isn't found, the app falls back to a new PowerShell window. You can also pick PowerShell
-or cmd as your preferred terminal.
+or cmd as your preferred terminal; they open in a new console window of their own.
+
+- **Programs come from known places, never from the project folder.** Windows would otherwise look
+  in the current folder first, so a `wt.exe`, `cmd.exe` or `claude.cmd` in a project could stand in
+  for the real one. `cmd.exe`, PowerShell and `wsl.exe` come from `System32`, Windows Terminal from
+  its app alias, and Claude Code from the absolute folders on your `PATH` (what typing `claude`
+  would run). If Claude Code isn't found, the dialog says so instead of launching. npm's
+  `claude.cmd` starts `node` by name, so the command first turns off the current-folder lookup
+  (`NoDefaultCurrentDirectoryInExePath`); the app sets the same for everything it starts.
+- **The folder is never read as a command.** cmd starts _in_ the folder instead of being given it,
+  PowerShell only sees it as a literal string, and a folder whose name Windows Terminal or cmd would
+  read specially (`;` or `%`, a network share for cmd) opens in PowerShell instead, with a note in
+  the dialog. A WSL folder with a quote, backslash or control character in its name is refused. A
+  WSL folder is checked through `\\wsl.localhost\<distro>` before launching (for a stopped distro,
+  opening the Resume dialog starts it); if the distro can't be reached, nothing is launched.
 
 ### Branching
 
@@ -529,11 +548,11 @@ src/
   shared/      Types and pure logic used by both processes: JSONL parsing, titles, Markdown export,
                branch planning (branch.ts) and lineage detection (lineage.ts)
   main/
-    core/      Small, tested building blocks: WSL decoding, launch commands, archive, restore,
-               atomic JSON store, write guards
+    core/      Small, tested building blocks: WSL decoding, launch commands, finding programs by
+               full path (which.ts), archive, restore, atomic JSON store, write guards
     services/  Source detection, the session catalogue, search index, watcher, launcher
     platform.ts  Everything that touches the OS (wsl.exe, wt.exe, spawn), with a fixtures version
-    ipc.ts     The API the window can call
+    ipc.ts     The API the window can call (every handler goes through ipc-guard.ts)
   preload/     Exposes that API as window.csd (context isolation, sandboxed)
   renderer/    React UI (Tailwind CSS, shadcn-style components on Radix, lucide icons)
 fixtures/      Sample Windows and WSL sessions, including malformed lines and old formats
@@ -554,8 +573,9 @@ tests/         Vitest unit and integration tests
   not copied over the archive, so the archive never loses data. Size, SHA-256, original path,
   environment and `cwd` are recorded in `metadata.json`.
 - **Storage:** `metadata.json` and `settings.json` are written atomically (temp file, then rename).
-  Search uses MiniSearch (pure JS). A startup cache of summaries and the search index means only
-  changed files are re-parsed at launch.
+  A failed write (a locked file, a full disk) is retried and never blocks later saves, and a junction
+  or link can't send a write outside the app's data folder. Search uses MiniSearch (pure JS). A startup cache of
+  summaries and the search index means only changed files are re-parsed at launch.
 
 ## Decisions and notes
 
@@ -578,8 +598,10 @@ These are choices I made where the spec left room, or had to deviate:
   resuming from a different folder may not find the session. The dialog says so. The app does not
   copy the session into another project folder, because that would mean writing into `.claude`.
 - **Copy resume command** copies the full launch command (it works from Run, cmd or PowerShell).
-  "Copy claude command only" copies just `claude --resume …` for pasting into a terminal that's
-  already in the right folder.
+  The Windows Terminal and PowerShell commands include the folder; the cmd command doesn't (the app
+  starts cmd in the folder rather than putting the folder into a cmd command line), so run that one
+  from the folder. "Copy claude command only" copies just `claude --resume …` for pasting into a
+  terminal that's already in the right folder.
 - **Renderer libraries are dev dependencies.** Vite bundles them, so only `chokidar` and
   `minisearch` (used by the main process) ship in the installer.
 - **Fixtures mode** copies `fixtures/` into `.fixtures-data/` (git-ignored) and runs against that copy.
@@ -723,6 +745,10 @@ These are choices I made where the spec left room, or had to deviate:
   <kbd>F5</kbd> in the app to rescan.
 - **Resume opens a window that closes immediately (WSL).** Check that `claude` works in a login shell:
   `wsl -d <distro> -- bash -lic "claude --version"`.
+- **"Claude Code wasn't found on this computer's PATH" (Windows).** The app looks for `claude.exe`,
+  `claude.cmd` or `claude.bat` in the folders on `PATH` (never in the project folder). Check that
+  `where.exe claude` finds it in a new terminal; if you installed it while the app was open,
+  restart the app.
 - **The gauges stay empty after enabling live limits.** Send a message in Claude Code (the bridge
   only runs on status line updates), and check that the environment says "Receiving data" in
   Settings → Live limits. `rate_limits` only exists for Pro/Max subscriptions. In WSL, check

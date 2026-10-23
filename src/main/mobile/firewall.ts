@@ -38,6 +38,24 @@ export function firewallAddArgs(port: number, address: string, program: string):
   ]
 }
 
+/** Point the existing rule at a new port / address (one elevated command instead of two). */
+export function firewallUpdateArgs(port: number, address: string, program: string): string[] {
+  checkInputs(port, address, program)
+  return [
+    'advfirewall',
+    'firewall',
+    'set',
+    'rule',
+    `name=${FIREWALL_RULE_NAME}`,
+    'new',
+    `localport=${port}`,
+    `localip=${address}`,
+    'remoteip=localsubnet',
+    'profile=private',
+    `program=${program}`
+  ]
+}
+
 export function firewallDeleteArgs(): string[] {
   return ['advfirewall', 'firewall', 'delete', 'rule', `name=${FIREWALL_RULE_NAME}`]
 }

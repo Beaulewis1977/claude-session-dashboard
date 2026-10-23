@@ -146,6 +146,12 @@ export function LaunchSheet({
                 </>
               )}
             </div>
+            {!result.simulated && (
+              <p className="rounded-lg bg-secondary/70 px-3 py-2.5 text-[12.5px] leading-relaxed text-muted-foreground">
+                Claude has the whole conversation, but the Claude app only shows messages from now
+                on. The earlier ones are here in the dashboard.
+              </p>
+            )}
             <Button variant="ghost" className="h-11 w-full" onClick={onClose}>
               Done
             </Button>

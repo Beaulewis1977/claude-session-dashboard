@@ -177,6 +177,31 @@ describe('Remote Control launch commands', () => {
     expect(childEnv({ A: '1' }, { env: { B: '2' } })).toEqual({ A: '1', B: '2' })
   })
 
+  it("never passes on a running Claude Code session's own variables", () => {
+    // The app started from inside a Claude Code session inherits these.
+    const env = childEnv(
+      {
+        PATH: 'x',
+        CLAUDECODE: '1',
+        CLAUDE_CODE_SESSION_ID: 's',
+        CLAUDE_CODE_BRIDGE_SESSION_ID: 'b',
+        CLAUDE_CODE_MESSAGING_TOKEN: 't',
+        CLAUDE_CODE_MESSAGING_SOCKET: 'p',
+        CLAUDE_CODE_CHILD_SESSION: '1',
+        CLAUDE_CODE_ENTRYPOINT: 'cli',
+        CLAUDE_PID: '9',
+        CLAUDE_CODE_GIT_BASH_PATH: 'C:/Git/bin/bash.exe',
+        CLAUDE_CONFIG_DIR: 'C:/cfg'
+      },
+      {}
+    )
+    expect(env).toEqual({
+      PATH: 'x',
+      CLAUDE_CODE_GIT_BASH_PATH: 'C:/Git/bin/bash.exe',
+      CLAUDE_CONFIG_DIR: 'C:/cfg'
+    })
+  })
+
   it.runIf(process.platform === 'win32')(
     'cmd really passes the name as one argument (and nothing else runs)',
     () => {

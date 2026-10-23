@@ -64,8 +64,32 @@ export function childEnv(
 ): NodeJS.ProcessEnv {
   const out: NodeJS.ProcessEnv = { ...base, ...cmd.env }
   const drop = new Set((cmd.unsetEnv ?? []).map((k) => k.toUpperCase()))
-  for (const k of Object.keys(out)) if (drop.has(k.toUpperCase())) delete out[k]
+  for (const k of Object.keys(out))
+    if (drop.has(k.toUpperCase()) || isClaudeSessionVar(k)) delete out[k]
   return out
+}
+
+/**
+ * Variables a running Claude Code session gives its own child processes. If
+ * the app itself was started from inside Claude Code (e.g. `npm run dev` in a
+ * Claude session), a launched session would inherit them and act as that
+ * session's child (asking to sign in, or attaching to its Remote Control).
+ * Settings such as CLAUDE_CODE_GIT_BASH_PATH or CLAUDE_CONFIG_DIR are kept.
+ */
+const CLAUDE_SESSION_VARS = new Set([
+  'CLAUDECODE',
+  'CLAUDE_PID',
+  'CLAUDE_CODE_ENTRYPOINT',
+  'CLAUDE_CODE_SESSION_ID',
+  'CLAUDE_CODE_CHILD_SESSION',
+  'CLAUDE_CODE_SESSION_ATTENDED',
+  'CLAUDE_CODE_BRIDGE_SESSION_ID',
+  'CLAUDE_CODE_SSE_PORT'
+])
+
+export function isClaudeSessionVar(name: string): boolean {
+  const k = name.toUpperCase()
+  return CLAUDE_SESSION_VARS.has(k) || k.startsWith('CLAUDE_CODE_MESSAGING_')
 }
 
 /** Windows Terminal opens its own window: start it straight from the app. */
@@ -78,7 +102,7 @@ function spawnWindow(cmd: LaunchCommand): Promise<void> {
       windowsHide: false,
       windowsVerbatimArguments: cmd.verbatim,
       // The API key (if any) lives only in this child's environment.
-      env: cmd.env || cmd.unsetEnv ? childEnv(process.env, cmd) : undefined
+      env: childEnv(process.env, cmd)
     })
     child.once('error', reject)
     child.once('spawn', () => {

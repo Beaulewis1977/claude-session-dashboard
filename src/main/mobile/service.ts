@@ -258,7 +258,9 @@ export class MobileService extends EventEmitter<{ changed: [] }> {
     }
     if (!s.enabled) await this.deps.saveSettings({ ...s, enabled: true })
     if (s.mode === 'tailscale') {
-      const r = await this.deps.tailscale.serveOn(s.httpsPort, s.port)
+      const r = await this.deps.tailscale
+        .serveOn(s.httpsPort, s.port)
+        .catch((err: Error) => ({ ok: false, link: undefined, error: err.message }))
       if (r.ok) {
         this.deps.store.update((f) => {
           f.serveRule = { httpsPort: s.httpsPort, target: `http://127.0.0.1:${s.port}` }
@@ -283,16 +285,20 @@ export class MobileService extends EventEmitter<{ changed: [] }> {
     await this.server.stop()
     this.pairing = undefined
     this.registry.cancelPairing()
+    // Our rule: the one the app recorded, or (if it was added by hand) a rule on
+    // our HTTPS port that proxies exactly to our own local server. serveOff
+    // removes it only when it still matches that; anything else is left alone.
     const rule = this.deps.store.value.serveRule
-    if (rule) {
-      const r = await this.deps.tailscale.serveOff(rule.httpsPort, prev.port)
+    this.lastError = undefined
+    if (prev.mode === 'tailscale' || rule) {
+      const r = await this.deps.tailscale
+        .serveOff(rule?.httpsPort ?? prev.httpsPort, prev.port)
+        .catch((err: Error) => ({ ok: false, error: err.message }))
       if (r.ok)
         this.deps.store.update((f) => {
           f.serveRule = undefined
         })
-      else this.lastError = r.error
-    } else {
-      this.lastError = undefined
+      else if (rule) this.lastError = r.error
     }
     if (!keepEnabled && this.settings.enabled)
       await this.deps.saveSettings({ ...this.settings, enabled: false })

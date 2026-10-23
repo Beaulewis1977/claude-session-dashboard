@@ -21,6 +21,7 @@ import {
   FIREWALL_RULE_NAME,
   firewallAddArgs,
   firewallDeleteArgs,
+  firewallUpdateArgs,
   netshCommandLine
 } from '../src/main/mobile/firewall'
 import {
@@ -752,6 +753,18 @@ describe('home Wi-Fi mode', () => {
       'rule',
       `name=${FIREWALL_RULE_NAME}`
     ])
+    const upd = firewallUpdateArgs(47822, '192.168.1.30', 'C:\\a.exe')
+    expect(upd.slice(0, 6)).toEqual([
+      'advfirewall',
+      'firewall',
+      'set',
+      'rule',
+      `name=${FIREWALL_RULE_NAME}`,
+      'new'
+    ])
+    expect(upd).toEqual(
+      expect.arrayContaining(['profile=private', 'remoteip=localsubnet', 'localip=192.168.1.30'])
+    )
     expect(() => firewallAddArgs(47821, '0.0.0.0; netsh', 'C:\\a.exe')).toThrow()
     expect(() => firewallAddArgs(80, '192.168.1.20', 'C:\\a.exe')).toThrow()
     expect(() => firewallAddArgs(47821, '192.168.1.20', 'a.exe" & calc')).toThrow()
@@ -807,5 +820,80 @@ describe('helpers', () => {
       '/mobile.json'
     ])
       expect(await web.file(p)).toBeUndefined()
+  })
+})
+
+// ----------------------------------------------------------- the service
+
+describe('turning phone access on and off', () => {
+  async function service(existing: Record<string, string>, calls: string[][]) {
+    const { MobileService } = await import('../src/main/mobile/service')
+    const { DEFAULT_MOBILE } = await import('../src/shared/mobile')
+    let settings = { ...DEFAULT_MOBILE, port: 0 }
+    const st = store()
+    const svc = new MobileService({
+      store: st,
+      settings: () => settings,
+      saveSettings: async (next) => {
+        settings = next
+      },
+      call: async () => null,
+      launch: {
+        session: () => undefined,
+        preview: async () => {
+          throw new Error('unused')
+        },
+        launch: async () => ({ ok: false, restored: false, commandLine: '' }),
+        settings: () => ({ terminal: 'wt', branchConfirmed: false }),
+        confirm: async () => false
+      },
+      web: { file: async () => undefined },
+      webAppFile: join(dir, 'mobile.html'),
+      tailscale: fakeTailscale({ existing, calls }),
+      keys: {
+        available: () => false,
+        encrypt: (s) => Buffer.from(s),
+        decrypt: (b) => b.toString()
+      },
+      appVersion: '1.0.0',
+      fixtures: true,
+      claudePath: async () => undefined
+    })
+    return { svc, st, port: () => settings.port }
+  }
+
+  it('starts on 127.0.0.1, adds our serve rule, and removes only that one', async () => {
+    const calls: string[][] = []
+    const { svc, st } = await service({ '443': 'http://127.0.0.1:3000' }, calls)
+    const on = await svc.start()
+    expect(on.running).toBe(true)
+    expect(on.listening).toMatch(/^127\.0\.0\.1:\d+$/)
+    expect(st.value.serveRule?.httpsPort).toBe(8443)
+    const off = await svc.stop()
+    expect(off.running).toBe(false)
+    expect(st.value.serveRule).toBeUndefined()
+    const changes = calls.filter((c) => c[0] === 'serve' && c[1] !== 'status')
+    expect(changes.map((c) => c.at(-1))).toEqual([
+      expect.stringMatching(/^http:\/\/127\.0\.0\.1:/),
+      'off'
+    ])
+    expect((await svc.tailscale.status(443, 3000)).serve).toBe('on')
+  })
+
+  it('removes a matching rule it did not record (added by hand), but not a foreign one', async () => {
+    const calls: string[][] = []
+    // Our exact target on our port, as `tailscale serve` would have made it by hand.
+    const { svc, st } = await service({ '8443': 'http://127.0.0.1:47821' }, calls)
+    st.update((f) => {
+      f.serveRule = undefined
+    })
+    await svc.stop({ ...svc.settings, port: 47821 })
+    expect((await svc.tailscale.status(8443, 47821)).serve).toBe('off')
+
+    const other: string[][] = []
+    const foreign = await service({ '8443': 'http://127.0.0.1:9999' }, other)
+    await foreign.svc.stop({ ...foreign.svc.settings, port: 47821 })
+    expect(other.some((c) => c.at(-1) === 'off')).toBe(false)
+    expect((await foreign.svc.tailscale.status(8443, 9999)).serve).toBe('on')
   })
 })

@@ -15,6 +15,7 @@ import {
   firewallCommandText,
   firewallDeleteArgs,
   firewallRuleExists,
+  firewallUpdateArgs,
   FIREWALL_RULE_NAME,
   runElevatedNetsh
 } from './mobile/firewall'
@@ -79,14 +80,80 @@ export function registerMobileIpc(deps: MobileIpcDeps): void {
     }
   }
 
+  /**
+   * Add our rule (or point it at the current port and address). The rule is
+   * rebuilt from the settings each time, so nothing needs to be kept for it.
+   */
+  const addFirewallRule = async (): Promise<{
+    ok: boolean
+    error?: string
+    cancelled?: boolean
+  }> => {
+    const s = mobile.settings
+    const address = s.lanAddress
+    if (!address) return { ok: false, error: 'Pick the network address first.' }
+    const saved = store.value.firewallRule
+    const replace = !!saved && (saved.address !== address || saved.port !== s.port)
+    let args: string[]
+    try {
+      args = replace
+        ? firewallUpdateArgs(s.port, address, process.execPath)
+        : firewallAddArgs(s.port, address, process.execPath)
+    } catch (err) {
+      return { ok: false, error: (err as Error).message }
+    }
+    const yes = await ask(
+      replace
+        ? 'Update the home Wi-Fi firewall rule?'
+        : 'Allow phones on your home Wi-Fi to connect?',
+      `${replace ? 'The address or port changed, so the rule the app added is pointed at the new one. ' : ''}This allows only this app, only port ${s.port} on ${address}, only from your local network, only when Windows treats the network as Private. Windows will ask for administrator rights. Turning home Wi-Fi mode off offers to remove it again.
+
+${firewallCommandText(args)}`,
+      replace ? 'Update rule' : 'Add rule'
+    )
+    if (!yes) return { ok: false, cancelled: true }
+    const r = deps.fixtures ? { ok: true } : await runElevatedNetsh(args)
+    if (r.ok) {
+      store.update((f) => {
+        f.firewallRule = { name: FIREWALL_RULE_NAME, port: s.port, address }
+      })
+      mobile.registry.log({
+        action: 'firewall',
+        detail: `${replace ? 'Updated' : 'Added'} “${FIREWALL_RULE_NAME}”`,
+        ok: true
+      })
+      mobile.changed()
+    }
+    return r
+  }
+
+  /** Home Wi-Fi mode is running without a matching rule: offer it right away. */
+  const offerFirewallRule = async (): Promise<void> => {
+    const s = mobile.settings
+    if (s.mode !== 'lan' || !s.lanAddress || !mobile.server.running) return
+    const saved = store.value.firewallRule
+    if (saved && saved.address === s.lanAddress && saved.port === s.port) return
+    if (!saved && (await firewallRuleExists())) return
+    await addFirewallRule()
+  }
+
   handle('mobile:status', () => mobile.status())
   handle('mobile:update', async (_e, patch: Partial<MobileSettings>) => {
     const leavingLan = mobile.settings.mode === 'lan' && patch?.mode === 'tailscale'
     const st = await mobile.update(patch ?? {})
     if (leavingLan) await offerFirewallRemoval()
+    else if (st.running && st.settings.mode === 'lan') {
+      await offerFirewallRule()
+      return mobile.status()
+    }
     return st
   })
-  handle('mobile:start', () => mobile.start())
+  handle('mobile:start', async () => {
+    const st = await mobile.start()
+    if (!st.running || st.settings.mode !== 'lan') return st
+    await offerFirewallRule()
+    return mobile.status()
+  })
   handle('mobile:stop', async () => {
     const st = await mobile.stop()
     if (mobile.settings.mode === 'lan') await offerFirewallRemoval()
@@ -103,32 +170,7 @@ export function registerMobileIpc(deps: MobileIpcDeps): void {
   handle('mobile:claudeCheck', () => mobile.claudeCheck())
   handle('mobile:diagnostics', () => mobile.diagnostics())
 
-  handle('mobile:firewallAdd', async () => {
-    const s = mobile.settings
-    const address = s.lanAddress
-    if (!address) return { ok: false, error: 'Pick the network address first.' }
-    let args: string[]
-    try {
-      args = firewallAddArgs(s.port, address, process.execPath)
-    } catch (err) {
-      return { ok: false, error: (err as Error).message }
-    }
-    const yes = await ask(
-      'Allow phones on your home Wi-Fi to connect?',
-      `This adds one Windows Firewall rule: only this app, only port ${s.port} on ${address}, only from your local network, only when Windows treats the network as Private. Windows will ask for administrator rights. Turning home Wi-Fi mode off offers to remove it again.\n\n${firewallCommandText(args)}`,
-      'Add rule'
-    )
-    if (!yes) return { ok: false, cancelled: true }
-    const r = deps.fixtures ? { ok: true } : await runElevatedNetsh(args)
-    if (r.ok) {
-      store.update((f) => {
-        f.firewallRule = { name: FIREWALL_RULE_NAME, port: s.port, address }
-      })
-      mobile.registry.log({ action: 'firewall', detail: `Added “${FIREWALL_RULE_NAME}”`, ok: true })
-      mobile.changed()
-    }
-    return r
-  })
+  handle('mobile:firewallAdd', () => addFirewallRule())
   handle('mobile:firewallRemove', async () => {
     await offerFirewallRemoval()
     mobile.changed()

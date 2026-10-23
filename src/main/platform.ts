@@ -5,7 +5,7 @@ import { execFile, spawn } from 'node:child_process'
 import { readFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join, win32 } from 'node:path'
-import type { LaunchCommand, LaunchTools } from './core/launch'
+import { quoteWindowsArg, type LaunchCommand, type LaunchTools } from './core/launch'
 import {
   fileExists as exists,
   findOnPath,
@@ -48,6 +48,75 @@ function runWsl(args: string[]): Promise<Buffer | undefined> {
         // `wsl -l --running` exits non-zero when nothing is running.
         if (err && (err as NodeJS.ErrnoException).code === 'ENOENT') resolve(undefined)
         else resolve(stdout ?? Buffer.alloc(0))
+      }
+    )
+  })
+}
+
+/** Windows Terminal opens its own window: start it straight from the app. */
+function spawnWindow(cmd: LaunchCommand): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(cmd.command, cmd.args, {
+      cwd: cmd.spawnCwd,
+      detached: true,
+      stdio: 'ignore',
+      windowsHide: false,
+      windowsVerbatimArguments: cmd.verbatim,
+      // The API key (if any) lives only in this child's environment.
+      env: cmd.env ? { ...process.env, ...cmd.env } : undefined
+    })
+    child.once('error', reject)
+    child.once('spawn', () => {
+      child.unref()
+      resolve()
+    })
+  })
+}
+
+/**
+ * Runs in a hidden PowerShell: starts $env:CSD_LAUNCH_FILE through the shell,
+ * like the Run box does, in a new console window of its own.
+ */
+const OPEN_CONSOLE = [
+  "$ErrorActionPreference = 'Stop'",
+  '$i = New-Object System.Diagnostics.ProcessStartInfo',
+  '$i.FileName = $env:CSD_LAUNCH_FILE',
+  '$i.Arguments = $env:CSD_LAUNCH_ARGS',
+  'if ($env:CSD_LAUNCH_DIR) { $i.WorkingDirectory = $env:CSD_LAUNCH_DIR }',
+  '$i.UseShellExecute = $true',
+  // Not passed on to the terminal.
+  'Remove-Item Env:CSD_LAUNCH_* -ErrorAction SilentlyContinue',
+  '[void][System.Diagnostics.Process]::Start($i)'
+].join('; ')
+
+/**
+ * Open cmd or PowerShell in a new console window. Started straight from the
+ * app they'd get none: Electron has no console to share, a detached child
+ * gets none of its own, and its input would be the app's (nothing), so it
+ * would exit at once. A hidden PowerShell opens them through the shell
+ * instead: they get their own window, keep running after the app quits, and
+ * inherit the environment (with the API key, if any). The program, its
+ * arguments and the folder reach that PowerShell only as environment
+ * variables, so nothing reads them as a script.
+ */
+function openConsole(cmd: LaunchCommand): Promise<void> {
+  const args = cmd.verbatim ? cmd.args.join(' ') : cmd.args.map(quoteWindowsArg).join(' ')
+  const env: NodeJS.ProcessEnv = {
+    ...process.env,
+    ...cmd.env,
+    CSD_LAUNCH_FILE: cmd.command,
+    CSD_LAUNCH_ARGS: args
+  }
+  if (cmd.spawnCwd) env.CSD_LAUNCH_DIR = cmd.spawnCwd
+  const ps = win32.join(systemRoot(), 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe')
+  return new Promise((resolve, reject) => {
+    execFile(
+      ps,
+      ['-NoProfile', '-NonInteractive', '-Command', OPEN_CONSOLE],
+      { env, windowsHide: true, timeout: 30_000 },
+      (err, _stdout, stderr) => {
+        if (err) reject(new Error(String(stderr).trim() || err.message))
+        else resolve()
       }
     )
   })
@@ -96,22 +165,7 @@ export function createRealPlatform(): Platform {
       return tools
     },
     spawnDetached(cmd) {
-      return new Promise((resolve, reject) => {
-        const child = spawn(cmd.command, cmd.args, {
-          cwd: cmd.spawnCwd,
-          detached: true,
-          stdio: 'ignore',
-          windowsHide: false,
-          windowsVerbatimArguments: cmd.verbatim,
-          // The API key (if any) lives only in this child's environment.
-          env: cmd.env ? { ...process.env, ...cmd.env } : undefined
-        })
-        child.once('error', reject)
-        child.once('spawn', () => {
-          child.unref()
-          resolve()
-        })
-      })
+      return cmd.terminal === 'wt' ? spawnWindow(cmd) : openConsole(cmd)
     },
     async gitBash() {
       if (!isWindows) return undefined

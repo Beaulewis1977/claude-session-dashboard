@@ -121,7 +121,7 @@ beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), 'csd-credits-'))
 })
 afterEach(async () => {
-  await rm(root, { recursive: true, force: true })
+  await rm(root, { recursive: true, force: true, maxRetries: 5 })
 })
 
 async function service(enc = fakeEncryptor(), fetcher?: Fetcher) {

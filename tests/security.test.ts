@@ -48,7 +48,7 @@ beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), 'csd-security-'))
 })
 afterEach(async () => {
-  await rm(root, { recursive: true, force: true })
+  await rm(root, { recursive: true, force: true, maxRetries: 5 })
 })
 
 // ------------------------------------------------------- SEC-01 / SEC-02

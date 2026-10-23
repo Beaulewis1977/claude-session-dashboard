@@ -125,7 +125,7 @@ beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), 'csd-import-'))
 })
 afterEach(async () => {
-  await rm(root, { recursive: true, force: true })
+  await rm(root, { recursive: true, force: true, maxRetries: 5 })
 })
 
 describe('zip reader', () => {

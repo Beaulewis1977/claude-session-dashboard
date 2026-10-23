@@ -188,7 +188,7 @@ beforeEach(async () => {
 })
 afterEach(async () => {
   setClockOffset(0)
-  await rm(root, { recursive: true, force: true })
+  await rm(root, { recursive: true, force: true, maxRetries: 5 })
 })
 
 describe('LimitsService (fixtures)', () => {

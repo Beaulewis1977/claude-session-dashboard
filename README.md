@@ -597,11 +597,11 @@ These are choices I made where the spec left room, or had to deviate:
 - **Choosing a different folder for Resume:** Claude Code looks sessions up by project folder, so
   resuming from a different folder may not find the session. The dialog says so. The app does not
   copy the session into another project folder, because that would mean writing into `.claude`.
-- **Copy resume command** copies the full launch command (it works from Run, cmd or PowerShell).
-  The Windows Terminal and PowerShell commands include the folder; the cmd command doesn't (the app
-  starts cmd in the folder rather than putting the folder into a cmd command line), so run that one
-  from the folder. "Copy claude command only" copies just `claude --resume …` for pasting into a
-  terminal that's already in the right folder.
+- **Copy resume command** copies a **PowerShell** command that opens the same terminal the Resume
+  button would (`Start-Process`, in the session's folder). Paste it into PowerShell. The program, its
+  arguments and the folder appear only inside single-quoted PowerShell strings, so a folder name
+  from a session file can't run anything when pasted. "Copy claude command only" copies just
+  `claude --resume …` for pasting into a terminal that's already in the right folder.
 - **Renderer libraries are dev dependencies.** Vite bundles them, so only `chokidar` and
   `minisearch` (used by the main process) ship in the installer.
 - **Fixtures mode** copies `fixtures/` into `.fixtures-data/` (git-ignored) and runs against that copy.

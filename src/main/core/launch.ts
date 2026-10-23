@@ -2,7 +2,8 @@
 //
 // Commands are spawned with `child_process.spawn(command, args, { detached: true })`.
 // Arguments are never joined into a shell string, so paths with spaces work.
-// `commandLine` is only for display and the "Copy resume command" action.
+// `commandLine` is only for display and the "Copy resume command" action: a
+// PowerShell command that opens the same terminal (see shownCommand).
 //
 // Every program is started by absolute path (see which.ts), so nothing in a
 // project folder can stand in for the terminal, the shell or Claude. The
@@ -77,12 +78,24 @@ export const CMD_FOLDER_REASON =
 export const CMD_UNC_REASON =
   "cmd can't start in a network folder (\\\\server\\share), so PowerShell is used instead."
 
-/** Why `terminal` can't be given this folder safely (PowerShell is used instead). */
-function folderReason(terminal: TerminalPref, env: EnvKind, cwd: string): string | undefined {
+export const TOOL_PATH_REASON =
+  'The path to Claude Code or wsl.exe contains a character Windows Terminal or cmd reads specially (";", "%" or "!"), so PowerShell is used instead.'
+
+/** Why `terminal` can't be given this folder, or these programs, safely (PowerShell is used instead). */
+function folderReason(
+  terminal: TerminalPref,
+  env: EnvKind,
+  cwd: string,
+  tools: LaunchTools
+): string | undefined {
+  // The program that goes inside the terminal's command line.
+  const inner = (env === 'wsl' ? tools.wsl : tools.claude) ?? ''
   // Windows Terminal splits every argument at ";" and expands %variables% in the line it runs.
   if (terminal === 'wt' && /[;%]/.test(cwd)) return WT_FOLDER_REASON
+  if (terminal === 'wt' && /[;%]/.test(inner + (tools.cmd ?? ''))) return TOOL_PATH_REASON
   // cmd expands %variables% (and !variables!) even inside quotes.
   if (terminal === 'cmd' && env === 'wsl' && /[%!]/.test(cwd)) return CMD_FOLDER_REASON
+  if (terminal === 'cmd' && /[%!]/.test(inner)) return TOOL_PATH_REASON
   // cmd would start in C:\Windows instead.
   if (terminal === 'cmd' && env === 'windows' && /^[\\/]{2}/.test(cwd)) return CMD_UNC_REASON
   return undefined
@@ -163,6 +176,27 @@ export function formatCommandLine(command: string, args: string[]): string {
   return [command, ...args].map(quoteWindowsArg).join(' ')
 }
 
+/** The arguments as Windows passes them to the program (cmd.exe's are taken as they are). */
+export function nativeArgs(cmd: Pick<LaunchCommand, 'args' | 'verbatim'>): string {
+  return cmd.verbatim ? cmd.args.join(' ') : cmd.args.map(quoteWindowsArg).join(' ')
+}
+
+/**
+ * The command shown and copied: PowerShell that opens the same terminal
+ * (Start-Process, in the session's folder for cmd and PowerShell). The
+ * program, its arguments and the folder appear only inside single-quoted
+ * PowerShell strings, so pasting it can't run anything from the session file;
+ * Start-Process hands the arguments to the program exactly as written.
+ */
+export function shownCommand(
+  cmd: Pick<LaunchCommand, 'command' | 'args' | 'verbatim' | 'spawnCwd'>
+): string {
+  const start = `Start-Process -FilePath ${psQuote(cmd.command)} -ArgumentList ${psQuote(nativeArgs(cmd))}`
+  return cmd.spawnCwd
+    ? `Push-Location -LiteralPath ${psQuote(cmd.spawnCwd)}; ${start}; Pop-Location`
+    : start
+}
+
 /**
  * PowerShell single-quoted string literal. PowerShell also ends such a string
  * at the typographic single quotes (‘ ’ ‚ ‛), so those are doubled too.
@@ -190,6 +224,11 @@ function cmdClaudeLine(claude: string, cArgs: string[]): string {
 }
 
 export function buildLaunchCommand(input: LaunchInput): LaunchCommand {
+  const cmd = build(input)
+  return { ...cmd, commandLine: shownCommand(cmd) }
+}
+
+function build(input: LaunchInput): Omit<LaunchCommand, 'commandLine'> {
   const cArgs = claudeArgs(input.sessionId, input.skipPermissions, input.fork, input.newSession)
   const claudeCommand = ['claude', ...cArgs].join(' ')
   const problem = cwdProblem(input.env, input.cwd)
@@ -208,7 +247,7 @@ export function buildLaunchCommand(input: LaunchInput): LaunchCommand {
         ? { ANTHROPIC_API_KEY: apiKey, WSLENV: wslenvWithKey(input.wslenv) }
         : { ANTHROPIC_API_KEY: apiKey }
   }
-  const folder = folderReason(input.terminal, input.env, input.cwd)
+  const folder = folderReason(input.terminal, input.env, input.cwd, tools)
   if (folder) {
     input = { ...input, terminal: 'powershell' }
     terminalReason = folder
@@ -234,8 +273,7 @@ export function buildLaunchCommand(input: LaunchInput): LaunchCommand {
           ...base,
           command: wt,
           args,
-          verbatim: false,
-          commandLine: formatCommandLine(wt, args)
+          verbatim: false
         }
       }
       case 'powershell': {
@@ -246,8 +284,7 @@ export function buildLaunchCommand(input: LaunchInput): LaunchCommand {
           ...base,
           command: ps,
           args,
-          verbatim: false,
-          commandLine: formatCommandLine(ps, args)
+          verbatim: false
         }
       }
       case 'cmd': {
@@ -258,8 +295,7 @@ export function buildLaunchCommand(input: LaunchInput): LaunchCommand {
           ...base,
           command: cmd,
           args,
-          verbatim: true,
-          commandLine: [quoteWindowsArg(cmd), ...args].join(' ')
+          verbatim: true
         }
       }
     }
@@ -278,8 +314,7 @@ export function buildLaunchCommand(input: LaunchInput): LaunchCommand {
         ...base,
         command: wt,
         args,
-        verbatim: false,
-        commandLine: formatCommandLine(wt, args)
+        verbatim: false
       }
     }
     case 'powershell': {
@@ -298,8 +333,7 @@ export function buildLaunchCommand(input: LaunchInput): LaunchCommand {
         command: ps,
         args,
         verbatim: false,
-        spawnCwd: input.cwd,
-        commandLine: formatCommandLine(ps, args)
+        spawnCwd: input.cwd
       }
     }
     case 'cmd': {
@@ -311,8 +345,7 @@ export function buildLaunchCommand(input: LaunchInput): LaunchCommand {
         command: cmd,
         args,
         verbatim: true,
-        spawnCwd: input.cwd,
-        commandLine: [quoteWindowsArg(cmd), ...args].join(' ')
+        spawnCwd: input.cwd
       }
     }
   }

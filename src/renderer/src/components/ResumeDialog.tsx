@@ -433,7 +433,7 @@ function ResumeDialogBody({
 
           <div>
             <div className="mb-1.5 flex items-center justify-between">
-              <span className="text-xs font-medium">Command</span>
+              <span className="text-xs font-medium">PowerShell command</span>
               <button
                 type="button"
                 onClick={() => {

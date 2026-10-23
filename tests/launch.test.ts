@@ -8,6 +8,7 @@ import {
   formatCommandLine,
   psQuote,
   quoteWindowsArg,
+  TOOL_PATH_REASON,
   WT_FOLDER_REASON,
   type LaunchInput
 } from '../src/main/core/launch'
@@ -62,7 +63,7 @@ describe('Windows sessions', () => {
     expect(cmd.spawnCwd).toBeUndefined()
     expect(cmd.claudeCommand).toBe(`claude --resume ${ID} --dangerously-skip-permissions`)
     expect(cmd.commandLine).toBe(
-      `"${WT}" -d "C:\\Users\\beau\\My Projects\\desktop app" ${CMD} /s /k "\\"${CLAUDE}\\" --resume ${ID} --dangerously-skip-permissions"`
+      `Start-Process -FilePath '${WT}' -ArgumentList '-d "C:\\Users\\beau\\My Projects\\desktop app" ${CMD} /s /k "\\"${CLAUDE}\\" --resume ${ID} --dangerously-skip-permissions"'`
     )
   })
 
@@ -148,7 +149,7 @@ describe('WSL sessions', () => {
     ])
     expect(cmd.spawnCwd).toBeUndefined()
     expect(cmd.commandLine).toBe(
-      `"${WT}" ${WSL} -d Ubuntu --cd "/root/infra scripts" -- bash -lic "claude --resume ${ID} --dangerously-skip-permissions --fork-session"`
+      `Start-Process -FilePath '${WT}' -ArgumentList '${WSL} -d Ubuntu --cd "/root/infra scripts" -- bash -lic "claude --resume ${ID} --dangerously-skip-permissions --fork-session"'`
     )
   })
 
@@ -245,13 +246,35 @@ describe('working folders are never read as commands (SEC-02)', () => {
     const cmd = launch({ env: 'windows', cwd, terminal: 'cmd' })
     expect(cmd.spawnCwd).toBe(cwd)
     expect(cmd.args.join(' ')).not.toContain('R&D')
-    expect(cmd.commandLine).not.toContain('R&D')
+    // The copied command only names it in a PowerShell literal.
+    expect(cmd.commandLine).toMatch(
+      /^Push-Location -LiteralPath 'C:\\R&D\\a%CMDCMDLINE%b \^ \| \(x\)'; /
+    )
   })
 
   it("doesn't start cmd in a network folder (it would fall back to C:\\Windows)", () => {
     const cmd = launch({ env: 'windows', cwd: '\\\\server\\share\\proj', terminal: 'cmd' })
     expect(cmd.terminal).toBe('powershell')
     expect(cmd.terminalReason).toBe(CMD_UNC_REASON)
+  })
+
+  it('applies the same rules to the paths of Claude Code and wsl.exe', () => {
+    const odd = { ...TOOLS, claude: 'C:\\Users\\100%x\\claude.exe', wsl: 'C:\\W;in\\wsl.exe' }
+    for (const [env, terminal] of [
+      ['windows', 'wt'],
+      ['windows', 'cmd'],
+      ['wsl', 'wt']
+    ] as const) {
+      const cmd = launch({
+        env,
+        distro: 'Ubuntu',
+        cwd: env === 'wsl' ? '/x' : 'C:\\x',
+        terminal,
+        tools: odd
+      })
+      expect(cmd.terminal).toBe('powershell')
+      expect(cmd.terminalReason).toBe(TOOL_PATH_REASON)
+    }
   })
 
   it('keeps a WSL folder that cmd would expand away from cmd', () => {
@@ -282,6 +305,57 @@ describe('working folders are never read as commands (SEC-02)', () => {
     for (const cwd of ['C:\\code', 'd:/code', '\\\\server\\share'])
       expect(cwdProblem('windows', cwd)).toBeUndefined()
   })
+})
+
+describe('the shown and copied command', () => {
+  // Folder names a session file could record (no Windows rule forbids these characters).
+  const HOSTILE = [
+    'C:\\synthetic\\$(Write-Output AUDIT_MARKER)',
+    "C:\\synthetic\\it's ‘quoted’ $env:USERPROFILE `n & calc",
+    'C:\\synthetic\\a;Write-Output AUDIT_MARKER;b %PATH% !x!'
+  ]
+
+  it('is PowerShell that starts the same program with the same arguments', () => {
+    const cmd = launch({ env: 'windows', cwd: 'C:\\code\\app', terminal: 'cmd' })
+    expect(cmd.commandLine).toBe(
+      `Push-Location -LiteralPath 'C:\\code\\app'; Start-Process -FilePath '${CMD}' -ArgumentList '/s /k ""${CLAUDE}" --resume ${ID}"'; Pop-Location`
+    )
+    const wt = launch({ env: 'wsl', distro: 'Ubuntu', cwd: '/home/me/a b', terminal: 'wt' })
+    expect(wt.commandLine).toBe(
+      `Start-Process -FilePath '${WT}' -ArgumentList '${WSL} -d Ubuntu --cd "/home/me/a b" -- bash -lic "claude --resume ${ID}"'`
+    )
+  })
+
+  it.runIf(process.platform === 'win32')(
+    "can't run anything from the folder name when pasted into PowerShell",
+    async () => {
+      const { spawnSync } = await import('node:child_process')
+      const commands: string[] = []
+      for (const cwd of HOSTILE)
+        for (const terminal of ['wt', 'powershell', 'cmd'] as const)
+          commands.push(launch({ env: 'windows', cwd, terminal }).commandLine)
+      // Parse only (nothing is run): count everything PowerShell would evaluate.
+      const script = [
+        '$out = foreach ($line in ($env:CSD_COMMANDS -split "`n")) {',
+        '  $errors = $null',
+        '  $ast = [System.Management.Automation.Language.Parser]::ParseInput($line, [ref]$null, [ref]$errors)',
+        '  $active = $ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.SubExpressionAst] -or $n -is [System.Management.Automation.Language.ExpandableStringExpressionAst] -or $n -is [System.Management.Automation.Language.VariableExpressionAst] }, $true)',
+        '  $names = $ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.CommandAst] }, $true) | ForEach-Object { $_.GetCommandName() }',
+        '  "$($errors.Count)|$(@($active).Count)|$($names -join ",")"',
+        '}',
+        '$out -join "`n"'
+      ].join('\n')
+      const r = spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script], {
+        env: { ...process.env, CSD_COMMANDS: commands.join('\n') },
+        encoding: 'utf8'
+      })
+      const lines = r.stdout.trim().split(/\r?\n/)
+      expect(lines).toHaveLength(commands.length)
+      for (const line of lines)
+        expect(line).toMatch(/^0\|0\|(Push-Location,Start-Process,Pop-Location|Start-Process)$/)
+    },
+    30_000
+  )
 })
 
 describe('psQuote', () => {

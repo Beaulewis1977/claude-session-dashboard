@@ -5,7 +5,7 @@ import { execFile, spawn } from 'node:child_process'
 import { readFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join, win32 } from 'node:path'
-import { quoteWindowsArg, type LaunchCommand, type LaunchTools } from './core/launch'
+import { nativeArgs, type LaunchCommand, type LaunchTools } from './core/launch'
 import {
   fileExists as exists,
   findOnPath,
@@ -100,7 +100,7 @@ const OPEN_CONSOLE = [
  * variables, so nothing reads them as a script.
  */
 function openConsole(cmd: LaunchCommand): Promise<void> {
-  const args = cmd.verbatim ? cmd.args.join(' ') : cmd.args.map(quoteWindowsArg).join(' ')
+  const args = nativeArgs(cmd)
   const env: NodeJS.ProcessEnv = {
     ...process.env,
     ...cmd.env,

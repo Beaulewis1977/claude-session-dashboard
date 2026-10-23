@@ -188,7 +188,7 @@ describe('SessionService (fixtures)', () => {
     })
     expect(res).toMatchObject({ ok: true, restored: true, simulated: true })
     expect(res.commandLine).toBe(
-      `C:\\Users\\beau\\AppData\\Local\\Microsoft\\WindowsApps\\wt.exe -d C:\\Users\\beau\\code\\new-place C:\\Windows\\System32\\cmd.exe /s /k "\\"C:\\Users\\beau\\.local\\bin\\claude.exe\\" --resume ${s.sessionId} --dangerously-skip-permissions --fork-session"`
+      `Start-Process -FilePath 'C:\\Users\\beau\\AppData\\Local\\Microsoft\\WindowsApps\\wt.exe' -ArgumentList '-d C:\\Users\\beau\\code\\new-place C:\\Windows\\System32\\cmd.exe /s /k "\\"C:\\Users\\beau\\.local\\bin\\claude.exe\\" --resume ${s.sessionId} --dangerously-skip-permissions --fork-session"'`
     )
     const restored = await readFile(s.originalPath, 'utf8')
     expect(restored).toBe(await readFile(s.archivePath!, 'utf8'))
@@ -251,7 +251,7 @@ describe('SessionService (fixtures)', () => {
       terminal: 'wt'
     })
     expect(p.commandLine).toBe(
-      `C:\\Users\\beau\\AppData\\Local\\Microsoft\\WindowsApps\\wt.exe C:\\Windows\\System32\\wsl.exe -d Ubuntu --cd "/root/infra scripts" -- bash -lic "claude --resume ${s.sessionId}"`
+      `Start-Process -FilePath 'C:\\Users\\beau\\AppData\\Local\\Microsoft\\WindowsApps\\wt.exe' -ArgumentList 'C:\\Windows\\System32\\wsl.exe -d Ubuntu --cd "/root/infra scripts" -- bash -lic "claude --resume ${s.sessionId}"'`
     )
     const detail = (await sessions.detail(s.key))!
     const md = sessionToMarkdown(detail)

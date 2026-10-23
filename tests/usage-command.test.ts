@@ -99,4 +99,56 @@ describe('/usage output', () => {
     // Command output isn't a prompt; only the pasted message is a turn.
     expect(a.turns.map((t) => t.id)).toEqual(['u4'])
   })
+
+  it("never mistakes quoted /usage output for a reading, and keeps the reply's tokens", () => {
+    const base = { sessionId: 's1', cwd: 'C:\\x', version: '2.1.200' }
+    const quoted = `Here is what that looked like:\n\n\`\`\`\n<local-command-stdout>${PANEL}</local-command-stdout>\n\`\`\``
+    const events = [
+      {
+        ...base,
+        type: 'user',
+        uuid: 'q1',
+        timestamp: '2026-10-22T21:40:00Z',
+        message: { role: 'user', content: 'Why does /usage print this?' }
+      },
+      // Claude explaining /usage output in a reply: a real response with real tokens.
+      {
+        ...base,
+        type: 'assistant',
+        uuid: 'a1',
+        requestId: 'req_1',
+        timestamp: '2026-10-22T21:40:05Z',
+        message: {
+          id: 'msg_1',
+          role: 'assistant',
+          model: 'claude-opus-4-5',
+          content: [{ type: 'text', text: quoted }],
+          usage: { input_tokens: 1200, output_tokens: 300 }
+        }
+      },
+      // The envelope pasted inside a longer prompt is not a reading either.
+      {
+        ...base,
+        type: 'user',
+        uuid: 'q2',
+        timestamp: '2026-10-22T21:41:00Z',
+        message: {
+          role: 'user',
+          content: `compare with <local-command-stdout>${PANEL}</local-command-stdout> please`
+        }
+      }
+    ]
+    expect(commandOutput(events[1])).toBeUndefined()
+    expect(commandOutput(events[2])).toBeUndefined()
+    const a = analyzeUsage(events, {
+      key: 'windows:s1',
+      project: 'x',
+      env: 'windows',
+      timeZone: 'UTC'
+    })
+    expect(a.usageReadings).toEqual([])
+    expect(a.records).toHaveLength(1)
+    expect(a.records[0]).toMatchObject({ input: 1200, output: 300 })
+    expect(a.turns.map((t) => t.id)).toContain('q1')
+  })
 })

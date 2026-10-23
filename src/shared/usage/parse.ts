@@ -22,19 +22,28 @@ export interface UsageContext {
 }
 
 const STDOUT_RE = /<local-command-stdout>([\s\S]*?)<\/local-command-stdout>/
+const ENVELOPE_RE = /^<local-command-stdout>([\s\S]*)<\/local-command-stdout>$/
 
-/** Output of a local slash command (e.g. /usage), in either logged form. */
+/**
+ * Output of a local slash command (e.g. /usage), in either logged form: a user
+ * line that is nothing but the `<local-command-stdout>` envelope, or a
+ * `local_command` system line. The same text quoted in Claude's reply or pasted
+ * into a prompt is conversation, not a reading.
+ */
 export function commandOutput(e: RawEvent): string | undefined {
   const m = obj(e.message)
+  const type = str(e.type) ?? str(m?.role)
+  const local = type === 'system' && str(e.subtype) === 'local_command'
+  if (type !== 'user' && !local) return undefined
   const c = m && 'content' in m ? m.content : e.content
   let text = ''
   if (typeof c === 'string') text = c
   else if (Array.isArray(c))
     text = c.map((b) => (obj(b)?.type === 'text' ? String(obj(b)?.text ?? '') : '')).join('\n')
   if (!text.includes('% used')) return undefined
-  const out = STDOUT_RE.exec(text)?.[1]
-  if (out) return out
-  return e.type === 'system' && str(e.subtype) === 'local_command' ? text : undefined
+  const envelope = ENVELOPE_RE.exec(text.trim())?.[1]
+  if (envelope !== undefined) return envelope
+  return local ? (STDOUT_RE.exec(text)?.[1] ?? text) : undefined
 }
 
 function obj(v: unknown): Record<string, unknown> | undefined {

@@ -10,8 +10,15 @@ import type {
   SessionSummary,
   TerminalPref
 } from '@shared/types'
-import { buildLaunchCommand, type LaunchCommand } from '../core/launch'
+import {
+  buildLaunchCommand,
+  claudeArgs,
+  cwdProblem,
+  type LaunchCommand,
+  type LaunchTools
+} from '../core/launch'
 import { restoreIfMissing } from '../core/restore'
+import { isAbsoluteWindowsPath } from '../core/which'
 import type { Platform } from '../platform'
 import { BranchService } from './branches'
 import type { SessionService } from './sessions'
@@ -28,6 +35,11 @@ export interface LaunchBilling {
   launched(s: SessionSummary, opts: LaunchOptions, cwd: string): void
 }
 
+export const CLAUDE_NOT_FOUND =
+  "Claude Code wasn't found on this computer's PATH. Install it (or open a new terminal once after installing), then try again."
+
+type CwdState = 'exists' | 'missing' | 'unreachable'
+
 export class Launcher {
   readonly branches: BranchService
 
@@ -40,27 +52,31 @@ export class Launcher {
     this.branches = new BranchService(sessions, (p) => platform.pathExists(p))
   }
 
-  /** Host path for checking a session's cwd (WSL paths go through the distro root). */
-  private hostPath(s: SessionSummary, cwd: string): string | undefined {
-    if (s.env === 'windows') return cwd
-    const root = this.sessions.source(s.sourceId)?.distroRoot
-    return root ? join(root, ...cwd.split('/').filter(Boolean)) : undefined
+  /**
+   * Does the session's folder exist? WSL folders are checked through the
+   * distro's file system; a distro that can't be reached can't be checked,
+   * and then nothing is launched.
+   */
+  private async cwdState(s: SessionSummary, cwd: string): Promise<CwdState> {
+    if (s.env === 'windows') return (await this.platform.pathExists(cwd)) ? 'exists' : 'missing'
+    const known = this.sessions.source(s.sourceId)?.distroRoot
+    const roots = known ? [known] : s.distro ? this.platform.distroRoots(s.distro) : []
+    const parts = cwd.split('/').filter(Boolean)
+    for (const root of roots)
+      if (await this.platform.pathExists(join(root, ...parts))) return 'exists'
+    for (const root of roots) if (await this.platform.pathExists(root)) return 'missing'
+    return 'unreachable'
   }
 
-  private async cwdExists(s: SessionSummary, cwd: string | undefined): Promise<boolean> {
-    if (!cwd) return false
-    const host = this.hostPath(s, cwd)
-    // A stopped distro can't be checked from Windows; let WSL report it.
-    if (!host) return true
-    return this.platform.pathExists(host)
+  private unreachable(s: SessionSummary): string {
+    return `Can't reach ${s.distro ? `WSL: ${s.distro}` : 'this WSL distro'} to check the folder. Start the distro, then try again.`
   }
 
-  private async resolveTerminal(
-    requested: TerminalPref
-  ): Promise<{ terminal: TerminalPref; fellBack: boolean }> {
-    if (requested === 'wt' && !(await this.platform.hasWindowsTerminal())) {
-      return { terminal: 'powershell', fellBack: true }
-    }
+  private resolveTerminal(
+    requested: TerminalPref,
+    tools: LaunchTools
+  ): { terminal: TerminalPref; fellBack: boolean } {
+    if (requested === 'wt' && !tools.wt) return { terminal: 'powershell', fellBack: true }
     return { terminal: requested, fellBack: false }
   }
 
@@ -69,6 +85,7 @@ export class Launcher {
     opts: LaunchOptions,
     cwd: string,
     terminal: TerminalPref,
+    tools: LaunchTools,
     apiKey?: string
   ): LaunchCommand {
     return buildLaunchCommand({
@@ -80,10 +97,43 @@ export class Launcher {
       newSession: opts.newSession,
       skipPermissions: opts.skipPermissions,
       terminal,
+      tools,
       // Only used to decide the terminal and env; never shown.
       apiKey: apiKey ?? (opts.billingAccountId ? 'sk-ant-api00-preview-placeholder' : undefined),
       wslenv: process.env.WSLENV
     })
+  }
+
+  /** The command to show, or why there is none. */
+  private tryCommand(...args: Parameters<Launcher['command']>): {
+    cmd?: LaunchCommand
+    error?: string
+  } {
+    try {
+      return { cmd: this.command(...args) }
+    } catch (err) {
+      return { error: (err as Error).message }
+    }
+  }
+
+  /** Just the `claude …` part, even when the full command can't be built. */
+  private claudeCommand(s: SessionSummary, opts: LaunchOptions, cmd?: LaunchCommand): string {
+    if (cmd) return cmd.claudeCommand
+    try {
+      return [
+        'claude',
+        ...claudeArgs(s.sessionId, opts.skipPermissions, opts.fork, opts.newSession)
+      ].join(' ')
+    } catch {
+      return ''
+    }
+  }
+
+  /** Shown in place of a missing folder, so the command can still be previewed. */
+  private placeholderCwd(s: SessionSummary): string {
+    if (s.env === 'wsl') return '~'
+    const home = this.platform.windowsHome
+    return isAbsoluteWindowsPath(home) ? home : 'C:\\'
   }
 
   private billingLabel(opts: LaunchOptions): string {
@@ -95,9 +145,13 @@ export class Launcher {
     const s = this.sessions.get(opts.key)
     if (!s) throw new Error('Session not found')
     const cwd = opts.cwdOverride ?? s.cwd
-    const { terminal, fellBack } = await this.resolveTerminal(
-      opts.terminal ?? this.defaultTerminal()
+    const tools = await this.platform.launchTools()
+    const { terminal, fellBack } = this.resolveTerminal(
+      opts.terminal ?? this.defaultTerminal(),
+      tools
     )
+    const state = cwd && !cwdProblem(s.env, cwd) ? await this.cwdState(s, cwd) : undefined
+    const folderError = state === 'unreachable' ? this.unreachable(s) : undefined
     if (opts.branch) {
       // Branch from a message: the command resumes the new session that will be created.
       let branch: BranchPreview | undefined
@@ -107,44 +161,49 @@ export class Launcher {
       } catch (err) {
         branchError = (err as Error).message
       }
-      const cmd = this.command(
-        branch ? { ...s, sessionId: branch.newSessionId } : s,
-        { ...opts, fork: false, newSession: false },
-        cwd ?? (s.env === 'wsl' ? '~' : '.'),
-        terminal
+      const target = branch ? { ...s, sessionId: branch.newSessionId } : s
+      const branchOpts = { ...opts, fork: false, newSession: false }
+      const { cmd, error } = this.tryCommand(
+        target,
+        branchOpts,
+        cwd ?? this.placeholderCwd(s),
+        terminal,
+        tools
       )
       return {
-        commandLine: cmd.commandLine,
-        claudeCommand: cmd.claudeCommand,
+        commandLine: cmd?.commandLine ?? '',
+        claudeCommand: this.claudeCommand(target, branchOpts, cmd),
         fellBack,
         cwd,
-        cwdExists: await this.cwdExists(s, cwd),
+        cwdExists: state === 'exists',
         willRestore: false,
         restoreImpossible: false,
         originalPath: branch?.targetPath ?? s.originalPath,
-        terminal: cmd.terminal,
-        terminalReason: cmd.terminalReason,
+        terminal: cmd?.terminal ?? terminal,
+        terminalReason: cmd?.terminalReason,
         billingLabel: this.billingLabel(opts),
         branch,
-        branchError
+        branchError,
+        launchError: error ?? folderError
       }
     }
     const originalExists = await this.platform.pathExists(s.originalPath)
     const record = this.sessions.archiveRecord(s.key)
-    const cmd = this.command(s, opts, cwd ?? (s.env === 'wsl' ? '~' : '.'), terminal)
+    const { cmd, error } = this.tryCommand(s, opts, cwd ?? this.placeholderCwd(s), terminal, tools)
     return {
-      commandLine: cmd.commandLine,
-      claudeCommand: cmd.claudeCommand,
+      commandLine: cmd?.commandLine ?? '',
+      claudeCommand: this.claudeCommand(s, opts, cmd),
       fellBack,
       cwd,
-      cwdExists: await this.cwdExists(s, cwd),
+      cwdExists: state === 'exists',
       willRestore: !opts.newSession && !originalExists && !!record,
       restoreImpossible:
         !opts.newSession && !originalExists && !record && s.availability !== 'source-offline',
       originalPath: s.originalPath,
-      terminal: cmd.terminal,
-      terminalReason: cmd.terminalReason,
-      billingLabel: this.billingLabel(opts)
+      terminal: cmd?.terminal ?? terminal,
+      terminalReason: cmd?.terminalReason,
+      billingLabel: this.billingLabel(opts),
+      launchError: error ?? folderError
     }
   }
 
@@ -158,51 +217,48 @@ export class Launcher {
         commandLine: '',
         error: 'Conversations imported from claude.ai can be read and searched, but not resumed.'
       }
+    const fail = (error: string, restored = false): LaunchResult => ({
+      ok: false,
+      restored,
+      commandLine: '',
+      error
+    })
     const cwd = opts.cwdOverride ?? s.cwd
+    const tools = await this.platform.launchTools()
     // Create a branch without opening a terminal: the folder doesn't matter yet.
     if (opts.branch?.createOnly) {
+      let created: SessionSummary
       try {
-        const created = await this.branches.create(s, opts.branch)
-        const { terminal } = await this.resolveTerminal(opts.terminal ?? this.defaultTerminal())
-        const cmd = this.command(
-          created,
-          { ...opts, fork: false },
-          cwd ?? (s.env === 'wsl' ? '~' : '.'),
-          terminal
-        )
-        return { ok: true, restored: false, commandLine: cmd.commandLine, branch: created }
+        created = await this.branches.create(s, opts.branch)
       } catch (err) {
-        return { ok: false, restored: false, commandLine: '', error: (err as Error).message }
+        return fail((err as Error).message)
       }
+      const { terminal } = this.resolveTerminal(opts.terminal ?? this.defaultTerminal(), tools)
+      const { cmd } = this.tryCommand(
+        created,
+        { ...opts, fork: false },
+        cwd ?? this.placeholderCwd(s),
+        terminal,
+        tools
+      )
+      return { ok: true, restored: false, commandLine: cmd?.commandLine ?? '', branch: created }
     }
-    if (!cwd)
-      return {
-        ok: false,
-        restored: false,
-        commandLine: '',
-        error: 'No working directory is recorded for this session.'
-      }
-    if (!(await this.cwdExists(s, cwd))) {
-      return {
-        ok: false,
-        restored: false,
-        commandLine: '',
-        error: `The folder no longer exists: ${cwd}`
-      }
-    }
+    if (!cwd) return fail('No working directory is recorded for this session.')
+    const problem = cwdProblem(s.env, cwd)
+    if (problem) return fail(problem)
+    const state = await this.cwdState(s, cwd)
+    if (state === 'unreachable') return fail(this.unreachable(s))
+    if (state === 'missing') return fail(`The folder no longer exists: ${cwd}`)
+    if (s.env === 'windows' && !tools.claude) return fail(CLAUDE_NOT_FOUND)
 
     // API billing: the key, decrypted only now and passed only to the child process.
     let apiKey: string | undefined
     if (opts.billingAccountId) {
       apiKey = this.billing?.keyFor(opts.billingAccountId)
       if (!apiKey && this.platform.canLaunch) {
-        return {
-          ok: false,
-          restored: false,
-          commandLine: '',
-          error:
-            "The API key for this account isn't available. Add it again in Settings → Accounts."
-        }
+        return fail(
+          "The API key for this account isn't available. Add it again in Settings → Accounts."
+        )
       }
     }
 
@@ -212,7 +268,7 @@ export class Launcher {
       try {
         created = await this.branches.create(s, opts.branch)
       } catch (err) {
-        return { ok: false, restored: false, commandLine: '', error: (err as Error).message }
+        return fail((err as Error).message)
       }
       const res = await this.launch({
         ...opts,
@@ -224,6 +280,14 @@ export class Launcher {
       return { ...res, branch: this.sessions.get(created.key) ?? created }
     }
 
+    let { terminal } = this.resolveTerminal(opts.terminal ?? this.defaultTerminal(), tools)
+    let cmd: LaunchCommand
+    try {
+      cmd = this.command(s, opts, cwd, terminal, tools, apiKey)
+    } catch (err) {
+      return fail((err as Error).message)
+    }
+
     // 1. Restore the original file from the archive if it's missing. Never overwrite.
     let restored = false
     if (!opts.newSession && !(await this.platform.pathExists(s.originalPath))) {
@@ -231,28 +295,15 @@ export class Launcher {
       if (rec) {
         const outcome = await restoreIfMissing(rec.archivePath, rec.originalPath)
         restored = outcome === 'restored'
-        if (outcome === 'archive-missing') {
-          return {
-            ok: false,
-            restored,
-            commandLine: '',
-            error: 'The archive copy of this session is missing.'
-          }
-        }
+        if (outcome === 'archive-missing')
+          return fail('The archive copy of this session is missing.', restored)
         if (restored) void this.sessions.fileChanged(s.sourceId, rec.originalPath)
       } else if (s.availability !== 'source-offline') {
-        return {
-          ok: false,
-          restored,
-          commandLine: '',
-          error: 'The session file is missing and there is no archive copy.'
-        }
+        return fail('The session file is missing and there is no archive copy.', restored)
       }
     }
 
     // 2. Launch.
-    let { terminal } = await this.resolveTerminal(opts.terminal ?? this.defaultTerminal())
-    let cmd = this.command(s, opts, cwd, terminal, apiKey)
     if (!this.platform.canLaunch) {
       this.billing?.launched(s, opts, cwd)
       return { ok: true, restored, commandLine: cmd.commandLine, simulated: true }
@@ -262,7 +313,7 @@ export class Launcher {
     } catch (err) {
       if (terminal === 'wt' && (err as NodeJS.ErrnoException).code === 'ENOENT') {
         terminal = 'powershell'
-        cmd = this.command(s, opts, cwd, terminal, apiKey)
+        cmd = this.command(s, opts, cwd, terminal, tools, apiKey)
         try {
           await this.platform.spawnDetached(cmd)
         } catch (err2) {

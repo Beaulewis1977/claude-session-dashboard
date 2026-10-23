@@ -66,7 +66,12 @@ export async function copyResumeCommand(
       fork: false,
       skipPermissions: settings.skipPermissionsDefault
     })
-    await api.copyText(which === 'launch' ? p.commandLine : p.claudeCommand)
+    const text = which === 'launch' ? p.commandLine : p.claudeCommand
+    if (!text) {
+      toast.error('Could not build the command', { description: p.launchError })
+      return
+    }
+    await api.copyText(text)
     toast.success(which === 'launch' ? 'Resume command copied' : 'Claude command copied', {
       description: which === 'claude' && p.cwd ? `Run it from ${p.cwd}` : undefined
     })

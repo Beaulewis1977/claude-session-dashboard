@@ -2,11 +2,18 @@
 // goes through this adapter, so fixtures mode can run anywhere.
 
 import { execFile, spawn } from 'node:child_process'
-import { constants } from 'node:fs'
-import { access, readFile } from 'node:fs/promises'
+import { readFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
-import { join } from 'node:path'
-import type { LaunchCommand } from './core/launch'
+import { join, win32 } from 'node:path'
+import type { LaunchCommand, LaunchTools } from './core/launch'
+import {
+  fileExists as exists,
+  findOnPath,
+  findWindowsClaude,
+  findWindowsTerminal,
+  systemExe,
+  systemRoot
+} from './core/which'
 import { parseDistroList, wslRoots } from './core/wsl'
 
 export interface Platform {
@@ -22,7 +29,8 @@ export interface Platform {
   /** Candidate host paths for a distro's filesystem root, preferred first. */
   distroRoots(distro: string): string[]
   pathExists(p: string): Promise<boolean>
-  hasWindowsTerminal(): Promise<boolean>
+  /** Absolute paths of the terminal, shells and Claude Code (never looked up in a project folder). */
+  launchTools(): Promise<LaunchTools>
   spawnDetached(cmd: LaunchCommand): Promise<void>
   /** Output of `ccusage daily --json`, or undefined if ccusage isn't installed. */
   runCcusage(): Promise<string | undefined>
@@ -30,19 +38,10 @@ export interface Platform {
   gitBash(): Promise<string | undefined>
 }
 
-async function exists(p: string): Promise<boolean> {
-  try {
-    await access(p, constants.F_OK)
-    return true
-  } catch {
-    return false
-  }
-}
-
 function runWsl(args: string[]): Promise<Buffer | undefined> {
   return new Promise((resolve) => {
     execFile(
-      'wsl.exe',
+      systemExe('wsl.exe'),
       args,
       { encoding: 'buffer', windowsHide: true, timeout: 8000 },
       (err, stdout) => {
@@ -56,7 +55,8 @@ function runWsl(args: string[]): Promise<Buffer | undefined> {
 
 export function createRealPlatform(): Platform {
   const isWindows = process.platform === 'win32'
-  let wtCache: boolean | undefined
+  let wtCache: string | null | undefined
+  let claudeCache: string | undefined
   return {
     fixtures: false,
     canLaunch: isWindows,
@@ -75,18 +75,25 @@ export function createRealPlatform(): Platform {
     },
     distroRoots: (distro) => wslRoots(distro),
     pathExists: exists,
-    async hasWindowsTerminal() {
-      if (wtCache !== undefined) return wtCache
-      if (!isWindows) return (wtCache = false)
-      const local = process.env.LOCALAPPDATA
-      if (local && (await exists(join(local, 'Microsoft', 'WindowsApps', 'wt.exe'))))
-        return (wtCache = true)
-      wtCache = await new Promise<boolean>((resolve) =>
-        execFile('where.exe', ['wt.exe'], { windowsHide: true, timeout: 4000 }, (err) =>
-          resolve(!err)
-        )
-      )
-      return wtCache
+    async launchTools() {
+      const tools: LaunchTools = {
+        cmd: systemExe('cmd.exe'),
+        powershell: win32.join(
+          systemRoot(),
+          'System32',
+          'WindowsPowerShell',
+          'v1.0',
+          'powershell.exe'
+        ),
+        wsl: systemExe('wsl.exe')
+      }
+      if (!isWindows) return tools
+      if (wtCache === undefined) wtCache = (await findWindowsTerminal()) ?? null
+      tools.wt = wtCache ?? undefined
+      // Look again if Claude Code wasn't found, or isn't where it was.
+      if (!claudeCache || !(await exists(claudeCache))) claudeCache = await findWindowsClaude()
+      tools.claude = claudeCache
+      return tools
     },
     spawnDetached(cmd) {
       return new Promise((resolve, reject) => {
@@ -121,11 +128,7 @@ export function createRealPlatform(): Platform {
           join(process.env.LOCALAPPDATA, 'Programs', 'Git', 'bin', 'bash.exe')
       ]
       for (const c of candidates) if (c && (await exists(c))) return c
-      const git = await new Promise<string | undefined>((resolve) =>
-        execFile('where.exe', ['git.exe'], { windowsHide: true, timeout: 4000 }, (err, out) =>
-          resolve(err ? undefined : String(out).split(/\r?\n/)[0]?.trim())
-        )
-      )
+      const git = await findOnPath('git', ['.exe'])
       // ...\Git\cmd\git.exe → ...\Git\bin\bash.exe
       const bash = git ? join(git, '..', '..', 'bin', 'bash.exe') : undefined
       return bash && (await exists(bash)) ? bash : undefined
@@ -133,6 +136,7 @@ export function createRealPlatform(): Platform {
     runCcusage() {
       return new Promise((resolve) => {
         // Fixed arguments only; `shell` lets Windows find the npm `ccusage.cmd` shim.
+        // cmd.exe skips the current folder (NoDefaultCurrentDirectoryInExePath, set at startup).
         execFile(
           'ccusage',
           ['daily', '--json'],
@@ -175,8 +179,15 @@ export function createFixturesPlatform(fixturesDir: string, sourcesDir: string):
       if (p.startsWith(sourcesDir)) return exists(p)
       return true
     },
-    async hasWindowsTerminal() {
-      return true
+    async launchTools() {
+      // Typical Windows paths, for the commands shown; nothing is started.
+      return {
+        wt: 'C:\\Users\\beau\\AppData\\Local\\Microsoft\\WindowsApps\\wt.exe',
+        powershell: 'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe',
+        cmd: 'C:\\Windows\\System32\\cmd.exe',
+        wsl: 'C:\\Windows\\System32\\wsl.exe',
+        claude: 'C:\\Users\\beau\\.local\\bin\\claude.exe'
+      }
     },
     async spawnDetached() {
       // Never spawn anything in fixtures mode.

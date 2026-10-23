@@ -21,6 +21,7 @@ import { sanitizeElsewhere, sanitizeHealth, sanitizePlanHistory } from '@shared/
 import { sanitizePace } from '@shared/usage/pace'
 import type { ThemePref } from '@shared/types'
 import { SOURCE_LABELS } from '@shared/source-label'
+import { NO_CWD_SEARCH } from './core/launch'
 import {
   fixturesLayout,
   prepareFixtures,
@@ -45,6 +46,12 @@ import { SessionService } from './services/sessions'
 import { appPaths, createMetadataStore, createSettingsStore } from './services/store'
 import { UsageService, usagePaths } from './services/usage'
 import { SourceWatcher } from './services/watcher'
+
+// Windows looks for a program in the current folder before PATH. The app
+// starts programs by absolute path anyway; this documented opt-out also covers
+// anything found by name, here (libuv honours it) and in every process the app
+// starts (cmd.exe honours it, e.g. for the `node` that npm's claude.cmd runs).
+if (process.platform === 'win32') process.env[NO_CWD_SEARCH] = '1'
 
 const FIXTURES = process.argv.includes('--fixtures') || process.env.CSD_FIXTURES === '1'
 const appRoot = app.getAppPath()

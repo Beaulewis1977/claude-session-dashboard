@@ -6,8 +6,7 @@
 
 import { execFile, spawn } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
-import { constants } from 'node:fs'
-import { access, mkdir } from 'node:fs/promises'
+import { mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import {
   askCommand,
@@ -25,6 +24,7 @@ import {
 } from '@shared/ask'
 import { now } from '@shared/clock'
 import { JsonStore } from '../core/json-store'
+import { findWindowsClaude, systemExe } from '../core/which'
 
 export interface RunResult {
   stdout: string
@@ -105,7 +105,7 @@ export const spawnRunner: AskRunner = (cmd, stdin, opts) => {
     // A shell-wrapped .cmd needs the whole tree killed on Windows.
     if (process.platform === 'win32' && child.pid)
       execFile(
-        'taskkill',
+        systemExe('taskkill.exe'),
         ['/pid', String(child.pid), '/T', '/F'],
         { windowsHide: true },
         () => undefined
@@ -143,15 +143,6 @@ export const spawnRunner: AskRunner = (cmd, stdin, opts) => {
   }
 }
 
-async function exists(p: string): Promise<boolean> {
-  try {
-    await access(p, constants.F_OK)
-    return true
-  } catch {
-    return false
-  }
-}
-
 function run(cmd: string, args: string[], timeout: number): Promise<string | undefined> {
   return new Promise((resolve) =>
     execFile(cmd, args, { windowsHide: true, timeout }, (err, out) =>
@@ -163,20 +154,10 @@ function run(cmd: string, args: string[], timeout: number): Promise<string | und
 /** Windows install first, then the default WSL distro. */
 export async function findClaudeCli(): Promise<AskCli | undefined> {
   if (process.platform === 'win32') {
-    const home = process.env.USERPROFILE ?? ''
-    const candidates = [
-      join(home, '.local', 'bin', 'claude.exe'),
-      process.env.APPDATA && join(process.env.APPDATA, 'npm', 'claude.cmd')
-    ]
-    for (const c of candidates)
-      if (c && (await exists(c))) return { kind: 'native', path: c, label: 'Windows' }
-    const where = await run('where.exe', ['claude'], 4000)
-    const first = where
-      ?.split(/\r?\n/)
-      .map((l) => l.trim())
-      .find((l) => /\.(exe|cmd)$/i.test(l))
-    if (first) return { kind: 'native', path: first, label: 'Windows' }
-    const wsl = await run('wsl.exe', ['--', 'bash', '-lic', 'command -v claude'], 20_000)
+    // By absolute path, never from the current folder (see core/which.ts).
+    const path = await findWindowsClaude()
+    if (path) return { kind: 'native', path, label: 'Windows' }
+    const wsl = await run(systemExe('wsl.exe'), ['--', 'bash', '-lic', 'command -v claude'], 20_000)
     if (wsl?.trim()) return { kind: 'wsl', label: 'WSL (default distro)' }
     return undefined
   }

@@ -16,6 +16,7 @@ import {
   firewallDeleteArgs,
   firewallRuleExists,
   firewallUpdateArgs,
+  leftHomeWifi,
   FIREWALL_RULE_NAME,
   runElevatedNetsh
 } from './mobile/firewall'
@@ -139,9 +140,9 @@ ${firewallCommandText(args)}`,
 
   handle('mobile:status', () => mobile.status())
   handle('mobile:update', async (_e, patch: Partial<MobileSettings>) => {
-    const leavingLan = mobile.settings.mode === 'lan' && patch?.mode === 'tailscale'
+    const before = mobile.settings.mode
     const st = await mobile.update(patch ?? {})
-    if (leavingLan) await offerFirewallRemoval()
+    if (leftHomeWifi(before, st.settings.mode)) await offerFirewallRemoval()
     else if (st.running && st.settings.mode === 'lan') {
       await offerFirewallRule()
       return mobile.status()

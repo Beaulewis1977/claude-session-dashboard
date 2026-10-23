@@ -855,3 +855,15 @@ describe('PR3-R3-04: quitting during a restart keeps phone access on for next ti
     expect(svc.settings.enabled).toBe(true)
   })
 })
+
+// ------------------------------------------------- fourth review (R4)
+
+describe('PR3-R4-01: a rolled-back mode change keeps the firewall rule', () => {
+  it('offers removal only when home Wi-Fi mode was really left', async () => {
+    const { leftHomeWifi } = await import('../src/main/mobile/firewall')
+    expect(leftHomeWifi('lan', 'tailscale')).toBe(true)
+    expect(leftHomeWifi('lan', 'lan')).toBe(false) // rolled back
+    expect(leftHomeWifi('tailscale', 'tailscale')).toBe(false)
+    expect(leftHomeWifi('tailscale', 'lan')).toBe(false)
+  })
+})

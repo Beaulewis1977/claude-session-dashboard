@@ -133,3 +133,12 @@ export function firewallRuleExists(): Promise<boolean> {
     )
   })
 }
+
+/**
+ * Offer to remove the rule only when home Wi-Fi mode was really left: a
+ * mode change that was rolled back (e.g. the old Tailscale rule couldn't be
+ * removed) leaves home Wi-Fi on, and its rule still needed.
+ */
+export function leftHomeWifi(before: string, after: string): boolean {
+  return before === 'lan' && after !== 'lan'
+}

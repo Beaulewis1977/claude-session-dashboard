@@ -256,4 +256,56 @@ describe('claude.ai export import', () => {
     expect(res.ok).toBe(false)
     expect(res.error).toMatch(/No conversations.json/)
   })
+
+  it('picks up a re-import that changes the text but not the size', async () => {
+    const conv = (title: string, word: string) => [
+      {
+        uuid: 'c0ffee00-1111-4222-8333-444455556666',
+        name: title,
+        created_at: '2026-09-14T18:20:00Z',
+        chat_messages: [
+          {
+            uuid: 'x1',
+            text: `Shopping list: ${word}`,
+            sender: 'human',
+            created_at: '2026-09-14T18:20:00Z'
+          },
+          { uuid: 'x2', text: 'Noted.', sender: 'assistant', created_at: '2026-09-14T18:20:05Z' }
+        ]
+      }
+    ]
+    const zipPath = join(root, 'export.zip')
+    const write = (title: string, word: string) =>
+      writeFile(
+        zipPath,
+        makeZip([{ name: 'conversations.json', data: JSON.stringify(conv(title, word)) }])
+      )
+    const paths = appPaths(join(root, 'appdata'))
+    const metadata = createMetadataStore(paths)
+    const settings = createSettingsStore(paths)
+    await metadata.load()
+    await settings.load()
+    await write('First title', 'cucumber')
+    await importClaudeAiExport(zipPath, paths, metadata)
+    const empty = join(root, 'empty-sources')
+    const platform = createFixturesPlatform(empty, empty)
+    platform.listDistros = async () => []
+    platform.listRunningDistros = async () => []
+    const sessions = new SessionService(platform, paths, metadata, settings)
+    await sessions.start()
+    const key = 'claude-ai:c0ffee00-1111-4222-8333-444455556666'
+    expect(sessions.get(key)?.title).toBe('First title')
+    const size = metadata.value.archive[key].size
+
+    // Same byte length, different words.
+    await write('Other title', 'avocados')
+    const res = await importClaudeAiExport(zipPath, paths, metadata)
+    expect(res).toMatchObject({ ok: true, updated: 1 })
+    expect(metadata.value.archive[key].size).toBe(size)
+    await sessions.refreshArchive()
+    expect(sessions.get(key)?.title).toBe('Other title')
+    expect(sessions.searchKeys('avocados').map((h) => h.key)).toContain(key)
+    expect(sessions.searchKeys('cucumber').map((h) => h.key)).not.toContain(key)
+    await sessions.idle()
+  })
 })

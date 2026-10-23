@@ -53,6 +53,8 @@ interface Entry {
   base: BaseSummary
   size: number
   mtimeMs: number
+  /** Imported entries: the archive copy's SHA-256, to notice any re-import. */
+  rev?: string
 }
 
 interface FileInfo {
@@ -605,7 +607,7 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
       const src = this.source(rec.sourceId)
       let availability: Availability
       if (rec.origin === 'claude-ai') {
-        if (e && e.mtimeMs === rec.size) continue
+        if (e && e.rev === rec.sha256) continue
         await this.loadArchived(rec, 'imported')
         continue
       }
@@ -659,8 +661,14 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
       base.projectDir = 'claude.ai'
       base.projectName = 'claude.ai'
     }
-    // Imported entries remember their size to notice a re-import.
-    this.entries.set(base.key, { base, size, mtimeMs: availability === 'imported' ? rec.size : 0 })
+    // Imported entries remember their content hash: a re-import can change the
+    // text without changing the size.
+    this.entries.set(base.key, {
+      base,
+      size,
+      mtimeMs: 0,
+      ...(availability === 'imported' ? { rev: rec.sha256 } : {})
+    })
     this.index(base, searchText)
   }
 

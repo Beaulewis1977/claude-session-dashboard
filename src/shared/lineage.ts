@@ -73,10 +73,26 @@ export function sharedPrefix(a: LineageInput, b: LineageInput): number {
   return n
 }
 
+/**
+ * Most message-id comparisons spent inferring parents from shared history.
+ * Sessions are compared in pairs within a family, so many long, alike
+ * transcripts could otherwise keep the main process busy; past this, the rest
+ * are left without an inferred parent.
+ */
+export const LINEAGE_BUDGET = 5_000_000
+/** Families bigger than this aren't compared pair by pair at all. */
+export const MAX_FAMILY = 200
+
 /** Is `t` the original that `s` was forked from, given they share `n` messages? */
-function isOriginalOf(t: LineageInput, s: LineageInput, n: number): boolean {
-  const nextS = s.starts![startIndex(s) + n]
-  const nextT = t.starts![startIndex(t) + n]
+function isOriginalOf(
+  t: LineageInput,
+  s: LineageInput,
+  n: number,
+  ti = startIndex(t),
+  si = startIndex(s)
+): boolean {
+  const nextS = s.starts![si + n]
+  const nextT = t.starts![ti + n]
   if (!nextS) return false // s adds nothing of its own
   if (!nextT) return true // t stops where s goes on
   if (t.bornAt && s.bornAt && Math.abs(t.bornAt - s.bornAt) > 2000) return t.bornAt < s.bornAt
@@ -86,7 +102,10 @@ function isOriginalOf(t: LineageInput, s: LineageInput, n: number): boolean {
   return t.key < s.key
 }
 
-export function computeLineage(inputs: LineageInput[]): Map<string, SessionLineage> {
+export function computeLineage(
+  inputs: LineageInput[],
+  budget = LINEAGE_BUDGET
+): Map<string, SessionLineage> {
   const out = new Map<string, SessionLineage>()
   const byKey = new Map(inputs.map((s) => [s.key, s]))
   const byId = new Map<string, LineageInput[]>()
@@ -147,15 +166,37 @@ export function computeLineage(inputs: LineageInput[]): Map<string, SessionLinea
     list.push(s)
     families.set(s.firstUuid, list)
   }
-  for (const members of families.values()) {
-    if (members.length < 2) continue
+  let left = budget
+  const offsets = new Map<LineageInput, number>()
+  const offset = (s: LineageInput): number => {
+    let i = offsets.get(s)
+    if (i === undefined) {
+      i = startIndex(s)
+      offsets.set(s, i)
+      left -= s.starts?.length ?? 0
+    }
+    return i
+  }
+  const prefix = (a: LineageInput, b: LineageInput): number => {
+    const ia = offset(a)
+    const ib = offset(b)
+    const sa = a.starts!
+    const sb = b.starts!
+    let n = 0
+    while (ia + n < sa.length && ib + n < sb.length && sa[ia + n].uuid === sb[ib + n].uuid) n++
+    left -= n + 1
+    return n
+  }
+  families: for (const members of families.values()) {
+    if (members.length < 2 || members.length > MAX_FAMILY) continue
     for (const s of members) {
       if (out.has(s.key)) continue
       let best: { t: LineageInput; n: number } | undefined
       for (const t of members) {
+        if (left <= 0) break families
         if (t === s || t.sessionId === s.sessionId) continue
-        const n = sharedPrefix(s, t)
-        if (!n || !isOriginalOf(t, s, n)) continue
+        const n = prefix(s, t)
+        if (!n || !isOriginalOf(t, s, n, offset(t), offset(s))) continue
         if (
           !best ||
           n > best.n ||
@@ -166,7 +207,7 @@ export function computeLineage(inputs: LineageInput[]): Map<string, SessionLinea
           best = { t, n }
       }
       if (!best) continue
-      const m = s.starts![startIndex(s) + best.n - 1]
+      const m = s.starts![offset(s) + best.n - 1]
       out.set(s.key, {
         parentKey: best.t.key,
         parentSessionId: best.t.sessionId,

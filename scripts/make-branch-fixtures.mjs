@@ -57,7 +57,9 @@ class Continue {
       cwd: last.cwd,
       version: '2.0.21',
       gitBranch: last.gitBranch,
-      userType: 'external'
+      userType: 'external',
+      // Same product as the session it continues (Claude Code 2.x records it).
+      ...(last.entrypoint ? { entrypoint: last.entrypoint } : {})
     }
     this.t = Date.parse(start)
     this.lines = []

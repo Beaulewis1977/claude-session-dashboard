@@ -6,6 +6,7 @@ import { writeFile } from 'node:fs/promises'
 import { now } from '@shared/clock'
 import { dayKey, localTimeZone } from '@shared/usage/time'
 import { totalTokens } from '@shared/usage/parse'
+import { compareRange } from '@shared/usage/health'
 import {
   buildTrends,
   compareTrends,
@@ -21,7 +22,15 @@ import type { SessionService } from './services/sessions'
 import type { UsageService } from './services/usage'
 
 const PERIODS: Period[] = ['hour', 'day', 'week', 'month']
-const DIMENSIONS: Dimension[] = ['model', 'session', 'project', 'env', 'version', 'billing']
+const DIMENSIONS: Dimension[] = [
+  'model',
+  'session',
+  'project',
+  'env',
+  'version',
+  'billing',
+  'source'
+]
 
 export function cleanQuery(v: unknown): UsageQuery {
   const o = (v ?? {}) as Record<string, unknown>
@@ -46,6 +55,7 @@ export interface UsageIpcDeps {
   sessions: SessionService
   platform: Platform
   billingOf?: (key: string) => string
+  sourceOf?: (key: string) => string
   /** Called after the bridge was enabled or disabled. */
   onBridgeChanged?: () => void
   weekStart: () => 'monday' | 'sunday'
@@ -89,6 +99,13 @@ export function registerUsageIpc(deps: UsageIpcDeps): void {
     return src
   }
   ipcMain.handle('limits:state', () => deps.limits.state())
+  ipcMain.handle('limits:compareHealth', (_e, kind, a, b) => {
+    // Incomplete dates (e.g. while typing) compare nothing rather than a made-up range.
+    const ra = compareRange(a)
+    const rb = compareRange(b)
+    if (!ra || !rb) return null
+    return deps.limits.compare(kind === 'seven_day' ? 'seven_day' : 'five_hour', ra, rb)
+  })
 
   const side = (v: unknown): CompareSide => {
     const o = (v ?? {}) as Record<string, unknown>
@@ -100,12 +117,23 @@ export function registerUsageIpc(deps: UsageIpcDeps): void {
   }
   ipcMain.handle('usage:trends', async (_e, groupBy) => {
     const by: TrendGroupBy = groupBy === 'model' || groupBy === 'version' ? groupBy : 'all'
-    const state = await deps.limits.state()
+    // Limit-health scores ($ per 1%, per 1x of plan) mark capacity changes.
+    const health = deps.limits.health('five_hour')
     return buildTrends({
       records: usage.allRecords(),
       turns: usage.allTurns(),
       readings: deps.limits.readings(),
-      capacity: state.capacity5h,
+      capacity: health.windows
+        .filter((w) => w.closed && !w.excluded && w.dollars > 0)
+        .map((w) => ({
+          ts: w.resetsAt,
+          kind: 'five_hour' as const,
+          pct: w.pct,
+          weighted: w.dollars,
+          capacity: w.perPct / w.mult,
+          mix: ''
+        })),
+      plans: health.plans,
       timeZone: localTimeZone(),
       weekStart: deps.weekStart(),
       groupBy: by
@@ -131,7 +159,9 @@ export function registerUsageIpc(deps: UsageIpcDeps): void {
     await shell.openPath(deps.installer.backupDir)
   })
 
-  ipcMain.handle('usage:report', (_e, q) => usage.report(cleanQuery(q), deps.billingOf))
+  ipcMain.handle('usage:report', (_e, q) =>
+    usage.report(cleanQuery(q), deps.billingOf, deps.sourceOf)
+  )
   ipcMain.handle('usage:session', (_e, key) => usage.sessionUsage(String(key)))
   ipcMain.handle('usage:status', () => usage.status())
   ipcMain.handle('usage:recalculate', async () => {

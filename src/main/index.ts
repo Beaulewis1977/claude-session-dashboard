@@ -17,7 +17,10 @@ import {
   sanitizeThresholds,
   sanitizeWeights
 } from '@shared/usage/limits'
+import { sanitizeElsewhere, sanitizeHealth, sanitizePlanHistory } from '@shared/usage/health'
+import { sanitizePace } from '@shared/usage/pace'
 import type { ThemePref } from '@shared/types'
+import { SOURCE_LABELS } from '@shared/source-label'
 import {
   fixturesLayout,
   prepareFixtures,
@@ -30,6 +33,7 @@ import { registerIpc } from './ipc'
 import { createMeter } from './meter'
 import { registerUsageIpc } from './ipc-usage'
 import { registerAccountsIpc } from './ipc-accounts'
+import { registerAskIpc } from './ipc-ask'
 import { AccountsService, createAccountsStore, type Encryptor } from './services/accounts'
 import { BillingService } from './services/billing'
 import { createFixturesPlatform, createRealPlatform, type Platform } from './platform'
@@ -136,6 +140,12 @@ async function main(): Promise<void> {
     if (typeof s.defaultBilling !== 'string') s.defaultBilling = 'subscription'
     if (!s.projectBilling || typeof s.projectBilling !== 'object') s.projectBilling = {}
     if (typeof s.adminRefreshMinutes !== 'number') s.adminRefreshMinutes = 60
+    s.planHistory = sanitizePlanHistory(s.planHistory)
+    s.health = sanitizeHealth(s.health)
+    s.pace = sanitizePace(s.pace)
+    s.elsewhere = sanitizeElsewhere(s.elsewhere)
+    if (typeof s.askSkipPreview !== 'boolean') s.askSkipPreview = false
+    if (typeof s.askTimeoutSec !== 'number') s.askTimeoutSec = 180
   })
   if (FIXTURES) {
     await seedFixtureData(appRoot, paths.archiveDir, metadata)
@@ -203,6 +213,7 @@ async function main(): Promise<void> {
     sessions,
     launcher,
     settings,
+    metadata,
     watcher,
     applyTheme,
     onSettingsChanged: () => usage.emit('changed')
@@ -214,6 +225,10 @@ async function main(): Promise<void> {
     scriptsDir: join(appRoot, 'resources', 'bridge'),
     gitBash: () => platform.gitBash()
   })
+  const sourceOf = (key: string): string => {
+    const ses = sessions.get(key)
+    return ses ? SOURCE_LABELS[ses.source] : SOURCE_LABELS.unknown
+  }
   const limits = new LimitsService(
     sessions,
     usage,
@@ -226,14 +241,20 @@ async function main(): Promise<void> {
       alertsEnabled: settings.value.alertsEnabled,
       alertThresholds: settings.value.alertThresholds,
       weights: settings.value.capacityWeights,
-      prices: settings.value.prices
+      prices: settings.value.prices,
+      health: settings.value.health,
+      planHistory: settings.value.planHistory,
+      pace: settings.value.pace,
+      elsewhere: settings.value.elsewhere
     }),
     (title, body) => {
       if (!Notification.isSupported()) return
       const n = new Notification({ title, body, icon: join(appRoot, 'resources', 'icon.png') })
       n.on('click', () => showUsage())
       n.show()
-    }
+    },
+    undefined,
+    sourceOf
   )
   bridgeGuess = (sid) => limits.billingOf(sid)
   usage.on('changed', () => limits.emit('changed'))
@@ -245,6 +266,7 @@ async function main(): Promise<void> {
     sessions,
     platform,
     weekStart: () => settings.value.weekStart,
+    sourceOf,
     billingOf: (key) => {
       const b = sessions.get(key)?.billing
       if (!b || b.mode === 'unknown') return 'Unknown'
@@ -265,6 +287,13 @@ async function main(): Promise<void> {
     })
   }
   registerAccountsIpc(creditsDeps)
+  const askIpc = await registerAskIpc({
+    dataDir: paths.dataDir,
+    usage,
+    limits,
+    settings,
+    simulate: FIXTURES
+  })
   limits.on('changed', () => accounts.emit('changed'))
 
   nativeTheme.themeSource = settings.value.theme
@@ -306,6 +335,7 @@ async function main(): Promise<void> {
       accounts.stop()
       await accountsStore.flush().catch(() => undefined)
       await bridgeStore.flush().catch(() => undefined)
+      await askIpc.flush().catch(() => undefined)
       await Promise.all([metadata.flush(), settings.flush()]).catch(() => undefined)
       app.quit()
     })()

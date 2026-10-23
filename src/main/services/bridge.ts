@@ -8,11 +8,12 @@
 // "Disable" puts the previous `statusLine` back exactly. Nothing is deleted.
 
 import { createHash, randomBytes } from 'node:crypto'
-import { copyFile, mkdir, readFile, rename, unlink, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, rename, unlink, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import type { BridgeApplyResult, BridgeEnv, BridgePlan } from '@shared/usage/limits'
 import type { SourceInfo } from '@shared/types'
 import { JsonStore } from '../core/json-store'
+import { copyShared } from '../core/shared-copy'
 import {
   assertAppDataWrite,
   assertBridgeWrite,
@@ -320,7 +321,7 @@ export class BridgeInstaller {
       )
       assertAppDataWrite(backupPath, this.host.dataDir)
       await mkdir(this.backupDir, { recursive: true })
-      await copyFile(p.settingsPath, backupPath)
+      await copyShared(p.settingsPath, backupPath)
     }
 
     if (action === 'install') {

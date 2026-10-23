@@ -39,6 +39,10 @@ export class BranchService {
   }
 
   private writable(s: SessionSummary): void {
+    if (s.availability === 'imported')
+      throw new BranchError(
+        'Conversations imported from claude.ai can be read and searched, but not resumed or branched.'
+      )
     const src = this.sessions.source(s.sourceId)
     if (!src || src.status !== 'ok')
       throw new BranchError(
@@ -65,6 +69,7 @@ export class BranchService {
   }
 
   async preview(s: SessionSummary, req: BranchRequest): Promise<BranchPreview> {
+    this.writable(s)
     const plan = await this.plan(s, req)
     const newSessionId = await this.freeId(s, req.newSessionId)
     return {

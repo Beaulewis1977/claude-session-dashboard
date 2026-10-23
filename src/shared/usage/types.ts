@@ -1,6 +1,7 @@
 // Types for Phase 5: token usage, limits, credits and trends.
 
 import type { EnvKind } from '../types'
+import type { UsageCommandReading } from './usage-command'
 
 export const TOKEN_TYPES = ['input', 'output', 'cacheWrite', 'cacheRead'] as const
 export type TokenType = (typeof TOKEN_TYPES)[number]
@@ -87,12 +88,14 @@ export interface UsageAnalysis {
   records: UsageRecord[]
   turns: TurnSample[]
   limitHits: LimitHit[]
+  /** Limit readings from /usage output recorded in the transcript. */
+  usageReadings: UsageCommandReading[]
 }
 
 // --------------------------------------------------------------- reports
 
 export type Period = 'hour' | 'day' | 'week' | 'month'
-export type Dimension = 'model' | 'session' | 'project' | 'env' | 'version' | 'billing'
+export type Dimension = 'model' | 'session' | 'project' | 'env' | 'version' | 'billing' | 'source'
 export type WeekStart = 'monday' | 'sunday'
 
 export interface UsageQuery {

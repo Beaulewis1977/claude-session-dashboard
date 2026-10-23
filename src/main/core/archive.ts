@@ -3,10 +3,11 @@
 
 import { createHash } from 'node:crypto'
 import { createReadStream } from 'node:fs'
-import { copyFile, mkdir, readdir, rename, stat, unlink } from 'node:fs/promises'
+import { mkdir, readdir, rename, stat, unlink } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import type { ArchiveRecord } from '@shared/types'
 import { assertAppDataWrite } from './safe-paths'
+import { copyShared } from './shared-copy'
 
 export function safeSegment(s: string): string {
   return s.replace(/[^A-Za-z0-9._-]+/g, '_').slice(0, 100) || '_'
@@ -75,7 +76,8 @@ export async function archiveSession(
   assertAppDataWrite(dest, appDataDir)
   await mkdir(dirname(dest), { recursive: true })
   const tmp = `${dest}.${process.pid}.tmp`
-  await copyFile(input.originalPath, tmp)
+  // Claude Code may be appending to the session right now: don't lock it.
+  await copyShared(input.originalPath, tmp)
   try {
     const copied = await stat(tmp)
     // Never replace a larger archive copy with a smaller one (the file may have

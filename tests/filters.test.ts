@@ -1,12 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import type { SessionSummary } from '@shared/types'
 import {
+  clearedFilters,
   EMPTY_FILTERS,
   facets,
   inDateRange,
   presetRange,
   sortSessions,
-  visibleSessions
+  visibleSessions,
+  type Filters
 } from '@/lib/filters'
 import { formatDateTime, formatRelative } from '@shared/format'
 
@@ -31,6 +33,8 @@ function s(partial: Partial<SessionSummary> & { key: string }): SessionSummary {
     meta: {},
     title: partial.key,
     titleSource: 'fallback',
+    source: 'terminal-windows',
+    sourceReason: 'entrypoint "cli"',
     ...partial
   }
 }
@@ -142,6 +146,39 @@ describe('filtering', () => {
   })
 })
 
+describe('source filter', () => {
+  const withAsk = [
+    s({ key: 'v', source: 'vscode' }),
+    s({ key: 't', source: 'terminal-windows' }),
+    s({ key: 'ask', source: 'ask-claude' })
+  ]
+  it('hides Ask Claude runs unless that source is picked, and filters by source', () => {
+    expect(visibleSessions(withAsk, EMPTY_FILTERS, 'activity', null).map((x) => x.key)).toEqual([
+      'v',
+      't'
+    ])
+    expect(
+      visibleSessions(withAsk, { ...EMPTY_FILTERS, source: 'ask-claude' }, 'activity', null).map(
+        (x) => x.key
+      )
+    ).toEqual(['ask'])
+    expect(
+      visibleSessions(withAsk, { ...EMPTY_FILTERS, source: 'vscode' }, 'activity', null).map(
+        (x) => x.key
+      )
+    ).toEqual(['v'])
+  })
+  it('counts sources, with the dashboard’s own runs last and out of the view counts', () => {
+    const f = facets(withAsk, EMPTY_FILTERS)
+    expect(f.source.map((x) => [x.label, x.count])).toEqual([
+      ['Terminal (Windows)', 1],
+      ['VS Code', 1],
+      ['Ask Claude (dashboard)', 1]
+    ])
+    expect(f.views.visible).toBe(2)
+  })
+})
+
 describe('formatting', () => {
   it('formats local date/time like "Oct 22, 2026 2:47 PM"', () => {
     expect(formatDateTime(new Date(2026, 9, 22, 14, 47).toISOString())).toBe('Oct 22, 2026 2:47 PM')
@@ -152,5 +189,20 @@ describe('formatting', () => {
     expect(formatRelative('2026-10-22T11:55:00Z', now)).toBe('5m')
     expect(formatRelative('2026-10-22T09:00:00Z', now)).toBe('3h')
     expect(formatRelative('2026-10-19T12:00:00Z', now)).toBe('3d')
+  })
+})
+
+describe('clearedFilters', () => {
+  it('clears every filter, including the source, and keeps the view', () => {
+    const f: Filters = {
+      visibility: 'hidden',
+      env: 'windows',
+      project: 'c:\\code\\app',
+      tag: 'bug',
+      date: { preset: '7d', from: '2026-10-16', to: '2026-10-22' },
+      source: 'terminal-windows'
+    }
+    expect(clearedFilters(f)).toEqual({ ...EMPTY_FILTERS, visibility: 'hidden' })
+    expect(clearedFilters(f).source).toBeNull()
   })
 })

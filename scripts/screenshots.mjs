@@ -157,6 +157,31 @@ for (const theme of ['dark', 'light']) {
     .locator(':scope > :nth-child(3)')
     .screenshot({ path: join(out, `credits${suffix}.png`) })
   console.log('saved', `credits${suffix}`)
+  // Limit health ($ per 1% against the baseline) and where the limits went.
+  const health = win.locator('[data-shot="health"]')
+  await health.scrollIntoViewIfNeeded()
+  await win.waitForTimeout(500)
+  await health.screenshot({ path: join(out, `limit-health${suffix}.png`) })
+  console.log('saved', `limit-health${suffix}`)
+  if (theme === 'dark') {
+    await win.getByRole('button', { name: 'Compare' }).click()
+    await win.waitForTimeout(900)
+    await health.screenshot({ path: join(out, 'limit-compare.png') })
+    console.log('saved', 'limit-compare')
+    await win.getByRole('button', { name: 'Compare' }).click()
+
+    // Ask Claude: the preview of exactly what is sent, then the answer.
+    await win.getByRole('button', { name: 'Ask Claude' }).first().click()
+    await win.waitForTimeout(500)
+    await win.getByRole('button', { name: 'Have my limits dropped?' }).click()
+    await win.waitForSelector('text=What will be sent to Claude')
+    await shot('ask-preview')
+    await win.getByRole('button', { name: 'Send' }).click()
+    await win.waitForSelector('text=Confidence', { timeout: 10_000 })
+    await shot('ask-claude')
+    await win.keyboard.press('Escape')
+    await win.waitForTimeout(300)
+  }
   await scrollUsage(640)
   await shot(`usage-charts${suffix}`)
   await win.locator('[data-shot="tabs"]').scrollIntoViewIfNeeded()

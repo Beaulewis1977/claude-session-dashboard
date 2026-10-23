@@ -5,8 +5,7 @@
 // only parses files that changed.
 
 import { EventEmitter } from 'node:events'
-import { constants } from 'node:fs'
-import { copyFile, mkdir, readdir, readFile, rename, stat, unlink } from 'node:fs/promises'
+import { mkdir, readdir, readFile, rename, stat, unlink } from 'node:fs/promises'
 import { basename, dirname, join } from 'node:path'
 import { parseJsonl } from '@shared/jsonl'
 import { now } from '@shared/clock'
@@ -15,6 +14,7 @@ import { analyzeUsage } from '@shared/usage/parse'
 import { UsageDeduper } from '@shared/usage/dedupe'
 import { estimateCost, type ModelPrice } from '@shared/usage/pricing'
 import { localTimeZone } from '@shared/usage/time'
+import type { UsageCommandReading } from '@shared/usage/usage-command'
 import type {
   LimitHit,
   SessionUsage,
@@ -29,10 +29,12 @@ import type { SessionSummary } from '@shared/types'
 import { writeFileAtomic } from '../core/json-store'
 import { listFiles, readNdjson, writeNdjson } from '../core/ndjson'
 import { assertAppDataWrite, isInside } from '../core/safe-paths'
+import { copyShared } from '../core/shared-copy'
 import type { SessionService } from './sessions'
 
 // 2: dedupe follows ccusage (session-scoped requestless ids, sidechain replays).
-const INDEX_VERSION = 2
+// 3: /usage output is read as limit readings (backfill).
+const INDEX_VERSION = 3
 
 interface IndexFile {
   version: number
@@ -92,6 +94,7 @@ export class UsageService extends EventEmitter<{ changed: [] }> {
   private stale = new Set<string>()
   private turns = new Map<string, TurnSample>()
   private hits = new Map<string, LimitHit>()
+  private usageCmd = new Map<string, UsageCommandReading>()
   private index: IndexFile = { version: INDEX_VERSION, sessions: {} }
   private dirtyMonths = new Set<string>()
   private dirtyTurnMonths = new Set<string>()
@@ -153,6 +156,7 @@ export class UsageService extends EventEmitter<{ changed: [] }> {
     this.stale.clear()
     this.turns.clear()
     this.hits.clear()
+    this.usageCmd.clear()
     this.index = { version: INDEX_VERSION, sessions: {} }
     // Rewrite every existing month file (possibly as empty).
     for (const m of months) this.dirtyMonths.add(m)
@@ -188,7 +192,16 @@ export class UsageService extends EventEmitter<{ changed: [] }> {
     return [...this.hits.values()].sort((a, b) => a.ts - b.ts)
   }
 
-  report(query: UsageQuery, billingOf?: (key: string) => string): UsageReport {
+  /** Limit readings from /usage output in transcripts (backfill). */
+  usageCommandReadings(): UsageCommandReading[] {
+    return [...this.usageCmd.values()].sort((a, b) => a.ts - b.ts)
+  }
+
+  report(
+    query: UsageQuery,
+    billingOf?: (key: string) => string,
+    sourceOf?: (key: string) => string
+  ): UsageReport {
     const s = this.settings()
     return buildReport(this.allRecords(), query, {
       timeZone: localTimeZone(),
@@ -197,6 +210,7 @@ export class UsageService extends EventEmitter<{ changed: [] }> {
       now: now(),
       loading: !this.loaded || (this.parsing && this.records.size === 0),
       billingOf,
+      sourceOf,
       sessionLabel: (key) => {
         const ses = this.sessions.get(key)
         return ses ? { label: ses.title, detail: ses.projectName } : undefined
@@ -267,6 +281,9 @@ export class UsageService extends EventEmitter<{ changed: [] }> {
     for (const h of await readNdjson<LimitHit>(join(dir, 'limit-hits.ndjson'))) {
       if (h && typeof h.id === 'string') this.hits.set(h.id, h)
     }
+    for (const r of await readNdjson<UsageCommandReading>(join(dir, 'usage-readings.ndjson'))) {
+      if (r && typeof r.id === 'string' && typeof r.ts === 'number') this.usageCmd.set(r.id, r)
+    }
     this.loaded = true
     this.invalidate()
   }
@@ -294,6 +311,8 @@ export class UsageService extends EventEmitter<{ changed: [] }> {
     let changed = false
     try {
       for (const s of list) {
+        // Imported claude.ai conversations have no token usage.
+        if (s.availability === 'imported') continue
         const { sig, subagents } = await this.signature(s)
         if (!force && this.index.sessions[s.key] === sig) continue
         if (this.stale.delete(s.key)) this.purge(s.key)
@@ -355,6 +374,12 @@ export class UsageService extends EventEmitter<{ changed: [] }> {
         this.hitsDirty = true
       }
     }
+    for (const r of a.usageReadings) {
+      if (!this.usageCmd.has(r.id)) {
+        this.usageCmd.set(r.id, r)
+        this.hitsDirty = true
+      }
+    }
     return true
   }
 
@@ -374,7 +399,8 @@ export class UsageService extends EventEmitter<{ changed: [] }> {
         assertAppDataWrite(dest, this.paths.dataDir)
         await mkdir(destDir, { recursive: true })
         const tmp = `${dest}.${process.pid}.tmp`
-        await copyFile(src, tmp, constants.COPYFILE_FICLONE)
+        // Subagent logs are written while a session runs: don't lock them.
+        await copyShared(src, tmp)
         await rename(tmp, dest).catch(async (err) => {
           await unlink(tmp).catch(() => undefined)
           throw err
@@ -419,6 +445,7 @@ export class UsageService extends EventEmitter<{ changed: [] }> {
       if (this.hitsDirty) {
         this.hitsDirty = false
         await writeNdjson(join(dir, 'limit-hits.ndjson'), this.limitHits(), dataDir)
+        await writeNdjson(join(dir, 'usage-readings.ndjson'), this.usageCommandReadings(), dataDir)
       }
       if (this.indexDirty) {
         this.indexDirty = false

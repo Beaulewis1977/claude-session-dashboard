@@ -18,6 +18,8 @@ const SAFARI = '7f3c9a12-4b8e-4d21-9c6a-1e2f3a4b5c6d'
 const FIXED_ID = '3a3a3a3a-3a3a-4a3a-8a3a-3a3a3a3a3a3a'
 
 let root: string
+/** Background archive copies to finish before cleanup (Windows won't remove a busy folder). */
+let busy: SessionService[] = []
 
 async function setup() {
   await cp(FIXTURES, join(root, 'fixtures'), { recursive: true })
@@ -31,6 +33,7 @@ async function setup() {
   await settings.load()
   await seedFixtureData(root, paths.archiveDir, metadata)
   const sessions = new SessionService(platform, paths, metadata, settings)
+  busy.push(sessions)
   const lineage = new LineageService(sessions, 1)
   const launcher = new Launcher(platform, sessions, () => settings.value.terminal)
   await sessions.start()
@@ -47,6 +50,8 @@ beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), 'csd-branch-'))
 })
 afterEach(async () => {
+  await Promise.all(busy.map((b) => b.idle().catch(() => undefined)))
+  busy = []
   await rm(root, { recursive: true, force: true })
 })
 
@@ -190,6 +195,8 @@ describe('Branch from here (fixtures)', () => {
     const get = (id: string) => sessions.list().find((s) => s.sessionId === id)!
     const fork = get('f07c1a2b-3c4d-4e5f-8a6b-7c8d9e0f1a2b')
     expect(fork.lineage).toMatchObject({ parentKey: `windows:${SAFARI}`, via: 'shared-history' })
+    // A fork is labelled with the same product as its original.
+    expect(fork.source).toBe(get(SAFARI).source)
     const branch = get('b7a1c2d3-e4f5-4a6b-8c7d-9e0f1a2b3c4d')
     expect(branch.lineage).toMatchObject({
       parentKey: 'windows:2b6d8e4f-1a3c-4e5f-8a7b-9c0d1e2f3a4b',

@@ -1,3 +1,4 @@
+import { SourceBadge } from '../SourceBadge'
 import { memo } from 'react'
 import {
   Archive,
@@ -146,6 +147,7 @@ export const SessionRow = memo(function SessionRow({
               {branches}
             </span>
           )}
+          <SourceBadge source={s.source} reason={s.sourceReason} compact />
           <BillingBadge billing={s.billing} compact />
           {hit &&
             hit.fields.includes('text') &&

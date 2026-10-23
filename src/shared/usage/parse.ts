@@ -6,6 +6,8 @@ import type { EnvKind } from '../types'
 import { classifyUserText, str, type RawEvent } from '../jsonl'
 import { recordId, UsageDeduper } from './dedupe'
 import type { LimitHit, TurnSample, UsageAnalysis, UsageRecord } from './types'
+import { parseUsageCommandOutput, type UsageCommandReading } from './usage-command'
+import { localTimeZone } from './time'
 
 export interface UsageContext {
   key: string
@@ -15,6 +17,48 @@ export interface UsageContext {
   sessionId?: string
   /** File name, to tell apart lines without a message id in subagent files. */
   file?: string
+  /** Time zone for /usage reset times without one. Default: the machine's. */
+  timeZone?: string
+}
+
+const STDOUT_RE = /<local-command-stdout>([\s\S]*?)<\/local-command-stdout>/
+const ENVELOPE_RE = /^<local-command-stdout>([\s\S]*)<\/local-command-stdout>$/
+
+function eventText(e: RawEvent): string {
+  const m = obj(e.message)
+  const c = m && 'content' in m ? m.content : e.content
+  if (typeof c === 'string') return c
+  if (Array.isArray(c))
+    return c.map((b) => (obj(b)?.type === 'text' ? String(obj(b)?.text ?? '') : '')).join('\n')
+  return ''
+}
+
+/** A line recording that `/usage` was run (`/usage`, or the `<command-name>` form). */
+export function isUsageCommand(e: RawEvent): boolean {
+  const type = str(e.type) ?? str(obj(e.message)?.role)
+  if (type !== 'user' && type !== 'system') return false
+  const t = eventText(e).trim()
+  return /<command-name>\/?usage<\/command-name>/.test(t) || /^\/usage(\s|$)/.test(t)
+}
+
+/**
+ * Output of a local slash command (e.g. /usage). Two logged forms count: a
+ * `local_command` system line (written by Claude Code, never typed), and a user
+ * line that is nothing but the `<local-command-stdout>` envelope written right
+ * after the `/usage` command it answers (`afterUsageCommand`). Claude Code logs
+ * the command and its output together, so anything else is text someone typed,
+ * pasted or quoted: conversation, not a reading.
+ */
+export function commandOutput(e: RawEvent, afterUsageCommand = false): string | undefined {
+  const m = obj(e.message)
+  const type = str(e.type) ?? str(m?.role)
+  const local = type === 'system' && str(e.subtype) === 'local_command'
+  if (type !== 'user' && !local) return undefined
+  const text = eventText(e)
+  if (!text.includes('% used')) return undefined
+  if (local) return STDOUT_RE.exec(text)?.[1] ?? text
+  if (!afterUsageCommand) return undefined
+  return ENVELOPE_RE.exec(text.trim())?.[1]
 }
 
 function obj(v: unknown): Record<string, unknown> | undefined {
@@ -181,6 +225,8 @@ export function analyzeUsage(events: RawEvent[], ctx: UsageContext): UsageAnalys
   const sessionId = ctx.sessionId ?? ctx.key.slice(ctx.key.lastIndexOf(':') + 1)
   const turns: TurnSample[] = []
   const limitHits: LimitHit[] = []
+  const usageReadings: UsageCommandReading[] = []
+  const zone = ctx.timeZone ?? localTimeZone()
   let version: string | undefined
   let turn: TurnSample | undefined
   let interruptedPending = false
@@ -193,14 +239,34 @@ export function analyzeUsage(events: RawEvent[], ctx: UsageContext): UsageAnalys
   }
 
   let lineNo = 0
+  // The last main-chain user/system line, to tell /usage output from pasted text.
+  let prev: RawEvent | undefined
   for (const e of events) {
     lineNo++
+    const before = prev
+    const kind = str(e.type) ?? str(obj(e.message)?.role)
+    if (e.isSidechain !== true && (kind === 'user' || kind === 'system' || kind === 'assistant'))
+      prev = e
     const v = str(e.version)
     if (v) version = v
     const type = str(e.type)
     const ts = time(e.timestamp)
     const message = obj(e.message)
     const role = type ?? str(message?.role)
+
+    if (ts !== undefined && e.isSidechain !== true) {
+      // Output belongs to the /usage line right before it (its parent, when recorded).
+      const parent = str(e.parentUuid)
+      const ranUsage =
+        !!before && isUsageCommand(before) && (!parent || parent === str(before.uuid))
+      const out = commandOutput(e, ranUsage)
+      if (out) {
+        const id = str(e.uuid) ?? `${ctx.key}:${ts}`
+        for (const r of parseUsageCommandOutput(out, ts, zone))
+          usageReadings.push({ id: `${id}:${r.kind}`, ts, key: ctx.key, ...r })
+        continue
+      }
+    }
 
     if (type === 'system') {
       // Retries after an API error are logged as system events.
@@ -356,7 +422,7 @@ export function analyzeUsage(events: RawEvent[], ctx: UsageContext): UsageAnalys
     }
   }
   closeTurn()
-  return { records: [...local.values()], turns, limitHits }
+  return { records: [...local.values()], turns, limitHits, usageReadings }
 }
 
 function toRecord(

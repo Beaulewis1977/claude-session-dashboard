@@ -62,6 +62,7 @@ function groupColor(report: TrendsReport, key: string, i: number): string {
 function markerStyle(k: TrendMarker['kind']): { stroke: string; opacity: number } {
   if (k === 'capacity') return { stroke: 'var(--foreground)', opacity: 0.55 }
   if (k === 'model') return { stroke: 'var(--model-opus)', opacity: 0.6 }
+  if (k === 'plan') return { stroke: 'var(--primary)', opacity: 0.6 }
   return { stroke: 'var(--chart-axis)', opacity: 0.5 }
 }
 
@@ -423,8 +424,8 @@ export function TrendsTab() {
         </div>
         <InfoTip side="left">
           Weekly values per model or Claude Code version, from your session logs (and the status
-          line for context use). Vertical lines mark a new model, a Claude Code update, and a change
-          in implied capacity.
+          line for context use). Vertical lines mark a new model, a Claude Code update, a plan
+          change, and a change in how much work each 1% of your limit buys (limit health).
         </InfoTip>
         <Segmented
           ariaLabel="Group trends by"
@@ -458,7 +459,10 @@ export function TrendsTab() {
               update
             </span>
             <span className="inline-flex items-center gap-1.5">
-              <span className="h-3 w-px bg-foreground/60" /> Capacity change
+              <span className="h-3 w-px bg-foreground/60" /> $/1% change
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <span className="h-3 w-px" style={{ background: 'var(--primary)' }} /> Plan change
             </span>
           </span>
         </div>

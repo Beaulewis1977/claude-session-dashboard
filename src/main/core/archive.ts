@@ -13,8 +13,21 @@ export function safeSegment(s: string): string {
   return s.replace(/[^A-Za-z0-9._-]+/g, '_').slice(0, 100) || '_'
 }
 
+/**
+ * The archive file name for a session id. A plain lower-case id (every
+ * Claude Code session id) is used as it is. Any other id (one that would be
+ * cut short or have characters replaced, or with capitals, which Windows
+ * doesn't tell apart) gets a hash of the whole id, so two ids never share a
+ * file. Only hashed names contain a ".", so they can't match a plain one.
+ */
+export function archiveName(sessionId: string): string {
+  if (/^[a-z0-9][a-z0-9_-]{0,99}$/.test(sessionId)) return sessionId
+  const hash = createHash('sha256').update(sessionId).digest('hex').slice(0, 32)
+  return `${safeSegment(sessionId).slice(0, 60)}.${hash}`
+}
+
 export function archivePathFor(archiveDir: string, sourceId: string, sessionId: string): string {
-  return join(archiveDir, safeSegment(sourceId), `${safeSegment(sessionId)}.jsonl`)
+  return join(archiveDir, safeSegment(sourceId), `${archiveName(sessionId)}.jsonl`)
 }
 
 export async function sha256File(path: string): Promise<string> {

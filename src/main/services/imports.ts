@@ -15,7 +15,16 @@ import type { MetadataFile } from './store'
 
 export const CLAUDE_AI_SOURCE = 'claude-ai'
 /** Exports this big are refused (the whole zip is read into memory). */
-const MAX_ZIP_BYTES = 2 * 1024 * 1024 * 1024 - 1
+const MAX_ZIP_BYTES = 1024 * 1024 * 1024
+
+async function exists(p: string): Promise<boolean> {
+  try {
+    await stat(p)
+    return true
+  } catch {
+    return false
+  }
+}
 
 export async function importClaudeAiExport(
   zipPath: string,
@@ -43,7 +52,11 @@ export async function importClaudeAiExport(
         error: 'No conversations.json in this zip. Is it a claude.ai data export?',
         ...empty
       }
-    data = JSON.parse(readZipEntry(buf, entry).toString('utf8').replace(/^\uFEFF/, ''))
+    data = JSON.parse(
+      readZipEntry(buf, entry)
+        .toString('utf8')
+        .replace(/^\uFEFF/, '')
+    )
   } catch (err) {
     return { ok: false, error: (err as Error).message, ...empty }
   }
@@ -60,15 +73,32 @@ export async function importClaudeAiExport(
     skipped: converted.skipped
   }
   const now = new Date().toISOString()
+  // Which record owns each archive file (Windows paths ignore case).
+  const owners = new Map<string, string>()
+  for (const [k, r] of Object.entries(metadata.value.archive))
+    owners.set(r.archivePath.toLowerCase(), k)
   for (const c of converted.conversations) {
     const key = `${CLAUDE_AI_SOURCE}:${c.uuid}`
     const prev = metadata.value.archive[key]
     const sha256 = createHash('sha256').update(c.jsonl).digest('hex')
-    if (prev?.sha256 === sha256) {
+    const archivePath = archivePathFor(dirs.archiveDir, CLAUDE_AI_SOURCE, c.uuid)
+    // Records from before archive names were collision-proof may point at a
+    // shared file: those are written again under their own name.
+    if (
+      prev?.sha256 === sha256 &&
+      prev.archivePath === archivePath &&
+      (await exists(archivePath))
+    ) {
       res.unchanged++
       continue
     }
-    const archivePath = archivePathFor(dirs.archiveDir, CLAUDE_AI_SOURCE, c.uuid)
+    // Never overwrite another conversation's copy.
+    const owner = owners.get(archivePath.toLowerCase())
+    if (owner !== undefined && owner !== key) {
+      res.skipped++
+      continue
+    }
+    owners.set(archivePath.toLowerCase(), key)
     assertAppDataWrite(archivePath, dirs.dataDir)
     await writeFileAtomic(archivePath, c.jsonl, dirs.dataDir)
     const rec: ArchiveRecord = {

@@ -167,6 +167,30 @@ export interface SessionAnalysis {
   models: string[]
   /** Plain text of the conversation, for full-text search. */
   searchText: string
+  /** uuid of the first real prompt. Forks and branches keep it, so it groups a family. */
+  firstUuid?: string
+  /** Set when the file was made by Claude Code's `/branch` (or by this app's "Branch from here"). */
+  forkedFrom?: ForkedFrom
+}
+
+export interface ForkedFrom {
+  sessionId: string
+  /** uuid of the last copied entry. */
+  messageUuid?: string
+  /** Id of the transcript message that entry belongs to. */
+  messageId?: string
+}
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+export function isUuid(v: unknown): v is string {
+  return typeof v === 'string' && UUID_RE.test(v)
+}
+
+/** A user event that holds only tool results (part of the assistant's flow, not a prompt). */
+export function isToolResultOnly(e: RawEvent): boolean {
+  const c = contentOf(e)
+  return Array.isArray(c) && c.length > 0 && c.every((b) => obj(b)?.type === 'tool_result')
 }
 
 const SEARCH_TEXT_LIMIT = 400_000
@@ -185,6 +209,9 @@ export function analyzeEvents(events: RawEvent[]): SessionAnalysis {
   let textLength = 0
   let minT = Infinity
   let maxT = -Infinity
+  // Id of the transcript message the current event belongs to (see buildMessages).
+  let messageStart: string | undefined
+  let assistantMsgId: string | undefined
 
   const pushText = (t: string): void => {
     if (textLength >= SEARCH_TEXT_LIMIT || !t) return
@@ -214,6 +241,25 @@ export function analyzeEvents(events: RawEvent[]): SessionAnalysis {
     }
     if (isSidechain(e)) continue
 
+    const uuid = str(e.uuid)
+    if (uuid && type === 'assistant') {
+      const mid = str(messageOf(e)?.id)
+      if (!mid || mid !== assistantMsgId) messageStart = uuid
+      assistantMsgId = mid
+    } else if (uuid && type === 'user' && e.isMeta !== true && !isToolResultOnly(e)) {
+      messageStart = uuid
+      assistantMsgId = undefined
+    }
+    const ff = obj(e.forkedFrom)
+    const ffSession = str(ff?.sessionId)
+    if (ffSession) {
+      a.forkedFrom = {
+        sessionId: ffSession,
+        messageUuid: str(ff?.messageUuid) ?? uuid,
+        messageId: messageStart
+      }
+    }
+
     const role = roleOf(e)
     if (role === 'user' && type !== 'system') {
       if (e.isMeta === true || e.isCompactSummary === true) continue
@@ -223,7 +269,10 @@ export function analyzeEvents(events: RawEvent[]): SessionAnalysis {
       const c = classifyUserText(text)
       if (c.kind === 'prompt') {
         a.userMessageCount++
-        if (!a.firstPrompt) a.firstPrompt = c.text
+        if (!a.firstPrompt) {
+          a.firstPrompt = c.text
+          a.firstUuid = uuid
+        }
         pushText(c.text)
       }
     } else if (role === 'assistant') {
@@ -310,14 +359,32 @@ function blocksFromAssistantContent(content: unknown, cwd?: string): ContentBloc
  * message id are merged, and tool results are attached to their tool calls.
  */
 export function buildMessages(events: RawEvent[], cwd?: string): ChatMessage[] {
+  return buildMessagesWithRanges(events, cwd).messages
+}
+
+/**
+ * Like buildMessages, plus the range of event indexes `[first, last]` each
+ * message was built from (used to cut a session at a message).
+ */
+export function buildMessagesWithRanges(
+  events: RawEvent[],
+  cwd?: string
+): { messages: ChatMessage[]; ranges: Map<string, [number, number]> } {
   const messages: ChatMessage[] = []
+  const ranges = new Map<string, [number, number]>()
   const toolUses = new Map<string, Extract<ContentBlock, { type: 'tool_use' }>>()
   const assistantById = new Map<string, ChatMessage>()
   let counter = 0
   if (!cwd) cwd = events.map((e) => str(e.cwd)).find(Boolean)
   const nextId = (e: RawEvent): string => str(e.uuid) ?? `m${counter++}`
 
-  for (const e of events) {
+  const push = (m: ChatMessage, i: number): void => {
+    messages.push(m)
+    ranges.set(m.id, [i, i])
+  }
+
+  for (let i = 0; i < events.length; i++) {
+    const e = events[i]
     const type = str(e.type)
     if (type === 'summary' || isSidechain(e)) continue
     const timestamp = validTimestamp(e.timestamp)
@@ -326,21 +393,27 @@ export function buildMessages(events: RawEvent[], cwd?: string): ChatMessage[] {
       const text = str(e.content)
       const subtype = str(e.subtype)
       if (subtype === 'compact_boundary') {
-        messages.push({
-          id: nextId(e),
-          role: 'system',
-          kind: 'system',
-          timestamp,
-          blocks: [{ type: 'text', text: 'Conversation compacted' }]
-        })
+        push(
+          {
+            id: nextId(e),
+            role: 'system',
+            kind: 'system',
+            timestamp,
+            blocks: [{ type: 'text', text: 'Conversation compacted' }]
+          },
+          i
+        )
       } else if (text && e.isMeta !== true) {
-        messages.push({
-          id: nextId(e),
-          role: 'system',
-          kind: 'system',
-          timestamp,
-          blocks: [{ type: 'text', text }]
-        })
+        push(
+          {
+            id: nextId(e),
+            role: 'system',
+            kind: 'system',
+            timestamp,
+            blocks: [{ type: 'text', text }]
+          },
+          i
+        )
       }
       continue
     }
@@ -351,13 +424,16 @@ export function buildMessages(events: RawEvent[], cwd?: string): ChatMessage[] {
       if (e.isCompactSummary === true) {
         const text = textFromBlocks(content)
         if (text)
-          messages.push({
-            id: nextId(e),
-            role: 'user',
-            kind: 'compact',
-            timestamp,
-            blocks: [{ type: 'text', text }]
-          })
+          push(
+            {
+              id: nextId(e),
+              role: 'user',
+              kind: 'compact',
+              timestamp,
+              blocks: [{ type: 'text', text }]
+            },
+            i
+          )
         continue
       }
       if (e.isMeta === true) continue
@@ -387,7 +463,7 @@ export function buildMessages(events: RawEvent[], cwd?: string): ChatMessage[] {
           }
         }
       }
-      if (blocks.length) messages.push({ id: nextId(e), role: 'user', kind, timestamp, blocks })
+      if (blocks.length) push({ id: nextId(e), role: 'user', kind, timestamp, blocks }, i)
       continue
     }
 
@@ -401,6 +477,8 @@ export function buildMessages(events: RawEvent[], cwd?: string): ChatMessage[] {
       // Merge only into the most recent message, so ordering stays intact.
       if (existing && messages[messages.length - 1] === existing) {
         existing.blocks.push(...blocks)
+        const r = ranges.get(existing.id)
+        if (r) r[1] = i
         continue
       }
       if (!blocks.length) continue
@@ -413,8 +491,8 @@ export function buildMessages(events: RawEvent[], cwd?: string): ChatMessage[] {
         blocks
       }
       if (msgId) assistantById.set(msgId, msg)
-      messages.push(msg)
+      push(msg, i)
     }
   }
-  return messages
+  return { messages, ranges }
 }

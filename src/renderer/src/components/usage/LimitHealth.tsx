@@ -562,7 +562,7 @@ export function LimitHealthCard({
             </span>
             <span className="inline-flex items-center gap-1.5">
               <span className="size-2 rounded-sm border border-dashed border-[var(--chart-axis)]" />{' '}
-              Left out (used elsewhere)
+              Left out (used elsewhere, or a plan change)
             </span>
             <span className="inline-flex items-center gap-1.5">
               <span className="h-0.5 w-3 bg-foreground/55" /> Baseline × plan

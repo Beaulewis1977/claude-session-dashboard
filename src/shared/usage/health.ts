@@ -305,8 +305,10 @@ export interface WindowScore {
   untrackedEstimated: boolean
   /** Overlaps a range marked by hand as "used Claude elsewhere". */
   elsewhere: boolean
+  /** The plan changed between the window's start and its reading. */
+  planChanged?: boolean
   /** Left out of the baseline and the verdict, and why. */
-  excluded?: 'elsewhere' | 'untracked'
+  excluded?: 'elsewhere' | 'untracked' | 'plan-change'
   /** Shown with a warning: a large share of the % may come from usage not in the logs. */
   warning?: string
 }
@@ -465,7 +467,11 @@ export function scoreWindows(
       continue
     }
     const t = tally(records, start, top.ts, prices, isSub, true, priceAs)
-    const plan = planAt(spans, g.resetsAt)
+    // The plan when the usage was measured, not at the (later) reset: an
+    // upgrade that starts after the reading must not rescale it. A window that
+    // spans a plan change has no single plan, so it's left out below.
+    const plan = planAt(spans, top.ts)
+    const planChanged = planAt(spans, start) !== plan
     const w: WindowScore = {
       kind,
       start,
@@ -480,6 +486,7 @@ export function scoreWindows(
       models: t.models,
       plan: planLabel(plan),
       mult: plan.mult,
+      ...(planChanged ? { planChanged } : {}),
       from: inWindow.some((r) => r.from === 'bridge') ? 'bridge' : 'usage-command',
       readings: inWindow.length,
       untrackedClear: 0,
@@ -506,7 +513,8 @@ export function scoreWindows(
   }
 
   const markExcluded = (w: WindowScore): void => {
-    if (w.elsewhere) w.excluded = 'elsewhere'
+    if (w.planChanged) w.excluded = 'plan-change'
+    else if (w.elsewhere) w.excluded = 'elsewhere'
     else if (
       settings.excludeUntracked &&
       (w.untrackedClear / w.pct) * 100 >= settings.untrackedLimit
@@ -543,6 +551,8 @@ export function scoreWindows(
       w.warning = `${Math.round((w.untrackedClear / w.pct) * 100)}% of this window's usage happened while nothing ran on this computer (claude.ai, mobile, cloud…). Left out.`
     } else if (w.excluded === 'elsewhere') {
       w.warning = 'You marked this time as "used Claude elsewhere". Left out.'
+    } else if (w.excluded === 'plan-change') {
+      w.warning = 'Your plan changed during this window, so its 1% has no single size. Left out.'
     }
   }
   return { windows, skippedLow, baseline }

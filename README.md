@@ -356,7 +356,9 @@ and divides by the % the window reached. A higher score means 1% bought more wor
    multiplier, each with a start date. Every window is compared with baseline × the multiplier of
    the plan it ran on, so one baseline works across plans and an upgrade doesn't read as a cut. With
    no history, your current plan (Max 5x by default) applies to every window; changing the plan in
-   Settings records the switch for you. The chart marks plan changes.
+   Settings records the switch for you. The chart marks plan changes. A window is scored with the
+   plan in effect when its reading was taken; a window that spans a plan change is left out, since
+   its 1% has no single size.
 3. **The verdict.** "Possible reduction" only when the last **2** finished windows in a row (setting)
    fell below baseline ÷ **1.5** (setting). Windows under **10%** are skipped as too coarse. Until
    there are enough windows it says "Not enough data yet, N windows needed".

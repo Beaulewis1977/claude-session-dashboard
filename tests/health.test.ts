@@ -157,6 +157,46 @@ describe('window scoring', () => {
     expect(max[0].plan).toBe('Max 5x')
   })
 
+  it('uses the plan at the time of the reading, and leaves out a window that spans a change', () => {
+    // Pro baseline Sep 1–4 ($2 at 20% = 0.1 $/1%), then Max 5x from Sep 6.
+    const { readings, records } = windows([20, 20, 20, 20])
+    const planHistory = sanitizePlanHistory([
+      { from: '2026-08-01', plan: 'pro' },
+      { from: '2026-09-06', plan: 'max5' }
+    ])
+    const sep6 = ymdStart('2026-09-06')
+    // Used and read on Pro (Sep 5, 9–11 PM); the window resets after the upgrade.
+    const before = {
+      readings: [{ ts: sep6 - H, pct: 20, resetsAt: sep6 + 2 * H, from: 'bridge' as const }],
+      records: [rec(sep6 - 2.5 * H, 50_000), rec(sep6 - 1.5 * H, 50_000)]
+    }
+    const a = scoreWindows([...readings, ...before.readings], [...records, ...before.records], {
+      ...opts({ minPct: 1 }),
+      planHistory
+    })
+    const w = a.windows.find((x) => x.resetsAt === sep6 + 2 * H)!
+    expect(w.plan).toBe('Pro')
+    expect(w.ratio).toBeCloseTo(1)
+    expect(w.low).toBe(false)
+    expect(w.excluded).toBeUndefined()
+
+    // Started on Pro, read on Max 5x: no single plan, so it's left out.
+    const across = {
+      readings: [{ ts: sep6 + H, pct: 20, resetsAt: sep6 + 2 * H, from: 'bridge' as const }],
+      records: [rec(sep6 - 2.5 * H, 50_000), rec(sep6 + 0.5 * H, 50_000)]
+    }
+    const b = scoreWindows([...readings, ...across.readings], [...records, ...across.records], {
+      ...opts({ minPct: 1 }),
+      planHistory
+    })
+    const x = b.windows.find((y) => y.resetsAt === sep6 + 2 * H)!
+    expect(x.excluded).toBe('plan-change')
+    expect(x.warning).toMatch(/plan changed/)
+    // The baseline and the other windows are unaffected.
+    expect(b.baseline?.value).toBeCloseTo(0.1)
+    expect(b.windows.filter((y) => y.excluded)).toHaveLength(1)
+  })
+
   it('stores a baseline taken on Max per 1x, so it applies to Pro too', () => {
     const { readings, records } = windows([4, 4, 4, 20])
     const res = scoreWindows(readings, records, {

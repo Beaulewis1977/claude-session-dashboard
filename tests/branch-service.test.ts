@@ -184,6 +184,25 @@ describe('Branch from here (fixtures)', () => {
     expect(sessions.get(parent.key)?.lineage).toBeUndefined()
   })
 
+  it('detects the sample fork and the sample /branch copy', async () => {
+    const { sessions, lineage } = await setup()
+    await lineage.refresh()
+    const get = (id: string) => sessions.list().find((s) => s.sessionId === id)!
+    const fork = get('f07c1a2b-3c4d-4e5f-8a6b-7c8d9e0f1a2b')
+    expect(fork.lineage).toMatchObject({ parentKey: `windows:${SAFARI}`, via: 'shared-history' })
+    const branch = get('b7a1c2d3-e4f5-4a6b-8c7d-9e0f1a2b3c4d')
+    expect(branch.lineage).toMatchObject({
+      parentKey: 'windows:2b6d8e4f-1a3c-4e5f-8a7b-9c0d1e2f3a4b',
+      via: 'claude-branch'
+    })
+    // The branch point is the migration plan message, which the parent shows too.
+    const parent = (await sessions.detail(branch.lineage!.parentKey!))!
+    const at = parent.messages.find((m) => m.id === branch.lineage!.atMessageId)!
+    expect(at.blocks[0]).toMatchObject({ type: 'text' })
+    expect((at.blocks[0] as { text: string }).text).toMatch(/^## Migration plan/)
+    expect(get(SAFARI).lineage).toBeUndefined()
+  })
+
   it('names and links a fork launched from the app when it appears', async () => {
     const { sessions, lineage } = await setup()
     const parent = sessions.list().find((s) => s.sessionId === SAFARI)!

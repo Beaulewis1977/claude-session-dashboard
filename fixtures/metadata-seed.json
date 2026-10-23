@@ -3,14 +3,35 @@
     "7f3c9a12-4b8e-4d21-9c6a-1e2f3a4b5c6d": {
       "name": "Safari login loop",
       "description": "Cookie path was /auth so /dashboard never saw it.\nFixed path + SameSite, added a regression test.",
-      "tags": ["bug", "auth"]
+      "tags": [
+        "bug",
+        "auth"
+      ]
     },
     "e9a1b2c3-d4e5-4f60-8172-839405a6b7c8": {
-      "tags": ["api", "feature"]
+      "tags": [
+        "api",
+        "feature"
+      ]
     },
     "a0b1c2d3-e4f5-4a6b-9c8d-7e6f5a4b3c2d": {
       "description": "Nightly postgres backup timer. Still need to test restore.",
-      "tags": ["ops"]
+      "tags": [
+        "ops"
+      ]
+    },
+    "f07c1a2b-3c4d-4e5f-8a6b-7c8d9e0f1a2b": {
+      "name": "Safari login loop — first-party redirect",
+      "description": "Fork to try keeping SameSite=Lax with an extra redirect.",
+      "tags": [
+        "auth"
+      ]
+    },
+    "b7a1c2d3-e4f5-4a6b-8c7d-9e0f1a2b3c4d": {
+      "name": "moment → dayjs instead",
+      "tags": [
+        "refactor"
+      ]
     }
   }
 }

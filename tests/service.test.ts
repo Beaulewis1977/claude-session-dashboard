@@ -41,9 +41,9 @@ describe('SessionService (fixtures)', () => {
   it('finds Windows and WSL sessions, including /root, and reports stopped distros', async () => {
     const { sessions } = await setup()
     const list = sessions.list()
-    expect(list).toHaveLength(7)
+    expect(list).toHaveLength(9)
     const byEnv = (env: string) => list.filter((s) => s.env === env)
-    expect(byEnv('windows')).toHaveLength(4)
+    expect(byEnv('windows')).toHaveLength(6)
     expect(byEnv('wsl')).toHaveLength(3)
     expect(list.find((s) => s.cwd === '/root/infra scripts')?.sourceId).toBe('wsl-Ubuntu-root')
 

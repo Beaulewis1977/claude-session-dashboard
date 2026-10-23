@@ -653,3 +653,6 @@ writeFileSync(join(root, 'wsl-list.utf16'), utf16('Ubuntu\r\nDebian\r\ndocker-de
 writeFileSync(join(root, 'wsl-list-running.utf16'), utf16('Ubuntu\r\ndocker-desktop\r\n'))
 
 console.log('fixtures written to', root)
+
+// Sessions that show lineage (a fork and a /branch copy), derived from the above.
+await import('./make-branch-fixtures.mjs')

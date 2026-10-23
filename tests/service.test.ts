@@ -11,6 +11,8 @@ import { sessionToMarkdown } from '@shared/markdown'
 import { FIXTURES } from './helpers'
 
 let root: string
+/** Services with background work (archive copies) to finish before cleanup. */
+let busy: { idle(): Promise<void> }[] = []
 
 async function setup() {
   await cp(FIXTURES, join(root, 'fixtures'), { recursive: true })
@@ -24,6 +26,7 @@ async function setup() {
   await settings.load()
   await seedFixtureData(root, paths.archiveDir, metadata)
   const sessions = new SessionService(platform, paths, metadata, settings)
+  busy.push(sessions)
   const launcher = new Launcher(platform, sessions, () => settings.value.terminal)
   await sessions.start()
   await sessions.idle()
@@ -34,6 +37,10 @@ beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), 'csd-service-'))
 })
 afterEach(async () => {
+  // fileChanged() queues an archive copy in the background: let it finish
+  // before the folder goes, or Windows can refuse to remove it (ENOTEMPTY).
+  await Promise.all(busy.map((b) => b.idle().catch(() => undefined)))
+  busy = []
   await rm(root, { recursive: true, force: true })
 })
 
@@ -219,6 +226,7 @@ describe('SessionService (fixtures)', () => {
     await metadata.load()
     await settings.load()
     const again = new SessionService(platform, paths, metadata, settings)
+    busy.push(again)
     await again.start()
     await again.idle()
     expect(

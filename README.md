@@ -689,7 +689,10 @@ These are choices I made where the spec left room, or had to deviate:
   `remote_session_change`) and the CLI's own list of entrypoints. JetBrains runs the plain CLI, so
   it's only recognised when IDE context names the IDE.
 - **`/usage` output format**: the "Current session / Current week (all models) … N% used · Resets …"
-  panel text; other sections (Sonnet only, extra usage) are ignored.
+  panel text; other sections (Sonnet only, extra usage) are ignored. Only real command output is
+  read: a `local_command` system line, or the output line Claude Code writes right after the
+  `/usage` command it answers. The same panel quoted by Claude, or pasted into a message (even on
+  its own), is never taken as a reading.
 - **Ask Claude flags** were checked against `claude --help` (2.1.309): `--tools ""` disables every
   built-in tool and `--strict-mcp-config` without `--mcp-config` loads no MCP servers. The runs
   keep their session logs (no `--no-session-persistence`) so their tokens are counted.

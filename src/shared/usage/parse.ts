@@ -24,26 +24,41 @@ export interface UsageContext {
 const STDOUT_RE = /<local-command-stdout>([\s\S]*?)<\/local-command-stdout>/
 const ENVELOPE_RE = /^<local-command-stdout>([\s\S]*)<\/local-command-stdout>$/
 
+function eventText(e: RawEvent): string {
+  const m = obj(e.message)
+  const c = m && 'content' in m ? m.content : e.content
+  if (typeof c === 'string') return c
+  if (Array.isArray(c))
+    return c.map((b) => (obj(b)?.type === 'text' ? String(obj(b)?.text ?? '') : '')).join('\n')
+  return ''
+}
+
+/** A line recording that `/usage` was run (`/usage`, or the `<command-name>` form). */
+export function isUsageCommand(e: RawEvent): boolean {
+  const type = str(e.type) ?? str(obj(e.message)?.role)
+  if (type !== 'user' && type !== 'system') return false
+  const t = eventText(e).trim()
+  return /<command-name>\/?usage<\/command-name>/.test(t) || /^\/usage(\s|$)/.test(t)
+}
+
 /**
- * Output of a local slash command (e.g. /usage), in either logged form: a user
- * line that is nothing but the `<local-command-stdout>` envelope, or a
- * `local_command` system line. The same text quoted in Claude's reply or pasted
- * into a prompt is conversation, not a reading.
+ * Output of a local slash command (e.g. /usage). Two logged forms count: a
+ * `local_command` system line (written by Claude Code, never typed), and a user
+ * line that is nothing but the `<local-command-stdout>` envelope written right
+ * after the `/usage` command it answers (`afterUsageCommand`). Claude Code logs
+ * the command and its output together, so anything else is text someone typed,
+ * pasted or quoted: conversation, not a reading.
  */
-export function commandOutput(e: RawEvent): string | undefined {
+export function commandOutput(e: RawEvent, afterUsageCommand = false): string | undefined {
   const m = obj(e.message)
   const type = str(e.type) ?? str(m?.role)
   const local = type === 'system' && str(e.subtype) === 'local_command'
   if (type !== 'user' && !local) return undefined
-  const c = m && 'content' in m ? m.content : e.content
-  let text = ''
-  if (typeof c === 'string') text = c
-  else if (Array.isArray(c))
-    text = c.map((b) => (obj(b)?.type === 'text' ? String(obj(b)?.text ?? '') : '')).join('\n')
+  const text = eventText(e)
   if (!text.includes('% used')) return undefined
-  const envelope = ENVELOPE_RE.exec(text.trim())?.[1]
-  if (envelope !== undefined) return envelope
-  return local ? (STDOUT_RE.exec(text)?.[1] ?? text) : undefined
+  if (local) return STDOUT_RE.exec(text)?.[1] ?? text
+  if (!afterUsageCommand) return undefined
+  return ENVELOPE_RE.exec(text.trim())?.[1]
 }
 
 function obj(v: unknown): Record<string, unknown> | undefined {
@@ -224,8 +239,14 @@ export function analyzeUsage(events: RawEvent[], ctx: UsageContext): UsageAnalys
   }
 
   let lineNo = 0
+  // The last main-chain user/system line, to tell /usage output from pasted text.
+  let prev: RawEvent | undefined
   for (const e of events) {
     lineNo++
+    const before = prev
+    const kind = str(e.type) ?? str(obj(e.message)?.role)
+    if (e.isSidechain !== true && (kind === 'user' || kind === 'system' || kind === 'assistant'))
+      prev = e
     const v = str(e.version)
     if (v) version = v
     const type = str(e.type)
@@ -234,7 +255,11 @@ export function analyzeUsage(events: RawEvent[], ctx: UsageContext): UsageAnalys
     const role = type ?? str(message?.role)
 
     if (ts !== undefined && e.isSidechain !== true) {
-      const out = commandOutput(e)
+      // Output belongs to the /usage line right before it (its parent, when recorded).
+      const parent = str(e.parentUuid)
+      const ranUsage =
+        !!before && isUsageCommand(before) && (!parent || parent === str(before.uuid))
+      const out = commandOutput(e, ranUsage)
       if (out) {
         const id = str(e.uuid) ?? `${ctx.key}:${ts}`
         for (const r of parseUsageCommandOutput(out, ts, zone))

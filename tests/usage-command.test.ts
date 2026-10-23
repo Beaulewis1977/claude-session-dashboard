@@ -151,4 +151,66 @@ describe('/usage output', () => {
     expect(a.records[0]).toMatchObject({ input: 1200, output: 300 })
     expect(a.turns.map((t) => t.id)).toContain('q1')
   })
+
+  it('counts a stdout envelope only right after the /usage command it answers', () => {
+    const base = { sessionId: 's1', cwd: 'C:\\x', version: '2.1.200' }
+    const env = (uuid: string, parentUuid: string | undefined, ts: string) => ({
+      ...base,
+      type: 'user',
+      uuid,
+      ...(parentUuid ? { parentUuid } : {}),
+      timestamp: ts,
+      message: { role: 'user', content: `<local-command-stdout>${PANEL}</local-command-stdout>` }
+    })
+    const user = (uuid: string, content: string, ts: string, parentUuid?: string) => ({
+      ...base,
+      type: 'user',
+      uuid,
+      ...(parentUuid ? { parentUuid } : {}),
+      timestamp: ts,
+      message: { role: 'user', content }
+    })
+    const readings = (events: object[]) =>
+      analyzeUsage(events, {
+        key: 'windows:s1',
+        project: 'x',
+        env: 'windows',
+        timeZone: 'UTC'
+      }).usageReadings.map((r) => r.id)
+
+    // The review's case: an envelope pasted on its own after an ordinary question.
+    expect(
+      readings([
+        user('a', 'Explain usage output', '2026-10-22T21:00:00Z'),
+        env('b', 'a', '2026-10-22T21:01:00Z')
+      ])
+    ).toEqual([])
+    // Claude Code's own order: the command, then its output (parent = the command).
+    expect(
+      readings([
+        user('c', '<command-name>/usage</command-name>', '2026-10-22T21:46:59Z'),
+        env('d', 'c', '2026-10-22T21:47:00Z')
+      ])
+    ).toEqual(['d:five_hour', 'd:seven_day'])
+    // Plain "/usage" works too.
+    expect(
+      readings([user('e', '/usage', '2026-10-22T21:46:59Z'), env('f', 'e', '2026-10-22T21:47:00Z')])
+    ).toEqual(['f:five_hour', 'f:seven_day'])
+    // Right after a /usage line but pointing somewhere else: not its output.
+    expect(
+      readings([
+        user('g', '<command-name>/usage</command-name>', '2026-10-22T21:46:59Z'),
+        env('h', 'zzz', '2026-10-22T21:47:00Z')
+      ])
+    ).toEqual([])
+    // Pasted again later in the conversation: only the first one is a reading.
+    expect(
+      readings([
+        user('i', '<command-name>/usage</command-name>', '2026-10-22T21:46:59Z'),
+        env('j', 'i', '2026-10-22T21:47:00Z'),
+        user('k', 'what about this one', '2026-10-22T22:00:00Z'),
+        env('l', 'k', '2026-10-22T22:01:00Z')
+      ])
+    ).toEqual(['j:five_hour', 'j:seven_day'])
+  })
 })

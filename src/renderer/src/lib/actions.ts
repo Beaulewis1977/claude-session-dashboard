@@ -1,7 +1,8 @@
 // Session actions shared by buttons, menus, the command palette and shortcuts.
 
 import { toast } from 'sonner'
-import type { SessionMeta, SessionSummary } from '@shared/types'
+import type { SessionDetail, SessionMeta, SessionSummary } from '@shared/types'
+import { sessionToMarkdown } from '@shared/markdown'
 import { api } from './api'
 import { useApp } from './store'
 
@@ -78,6 +79,23 @@ export async function copyResumeCommand(
   } catch (err) {
     toast.error('Could not build the command', { description: String((err as Error).message) })
   }
+}
+
+/** Copies text from the viewer's copy buttons and confirms with a toast. */
+export async function copyText(text: string, message = 'Copied ✓'): Promise<boolean> {
+  try {
+    await api.copyText(text)
+    toast(message, { duration: 1500 })
+    return true
+  } catch (err) {
+    toast.error("Couldn't copy", { description: (err as Error).message })
+    return false
+  }
+}
+
+/** The whole conversation as Markdown, the same text "Export to Markdown" writes. */
+export function copyConversation(detail: SessionDetail, summary: SessionSummary): void {
+  void copyText(sessionToMarkdown({ ...detail, summary }), 'Conversation copied ✓')
 }
 
 export async function copySessionId(sessionId: string): Promise<void> {

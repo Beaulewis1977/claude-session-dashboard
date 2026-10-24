@@ -28,7 +28,9 @@
     "tests/**/*",
     "src/renderer/src/lib/filters.ts",
     "src/renderer/src/lib/transcript.ts",
+    "src/renderer/src/lib/copy.ts",
     "src/renderer/src/lib/remote.ts",
     "src/renderer/src/mobile/bootstrap.ts"
-  ]
+  ],
+  "exclude": ["tests/clipboard.test.ts"]
 }

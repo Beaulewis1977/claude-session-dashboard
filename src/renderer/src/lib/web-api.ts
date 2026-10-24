@@ -12,6 +12,7 @@ import type {
 } from '@shared/mobile'
 import type { SessionsPayload } from '@shared/types'
 import { sessionToMarkdown } from '@shared/markdown'
+import { writeClipboard } from './clipboard'
 
 const TOKEN_KEY = 'csd.mobile.token'
 
@@ -221,9 +222,7 @@ export const webApi: CsdApi = {
     download(`${name}.md`, sessionToMarkdown(d), 'text/markdown')
     return { saved: true }
   },
-  copyText: async (text) => {
-    await navigator.clipboard?.writeText(text)
-  },
+  copyText: (text) => writeClipboard(text),
   setTheme: async () => undefined,
   openExternal: async (url) => {
     if (/^https:\/\//i.test(url)) window.open(url, '_blank', 'noopener,noreferrer')

@@ -34,7 +34,8 @@ function toolResult(r: ToolResult): string {
   return head + (r.text ? fence(r.text) : '_(no output)_')
 }
 
-function block(b: ContentBlock): string {
+/** One content block as Markdown (also used by the viewer's "Copy as Markdown"). */
+export function blockToMarkdown(b: ContentBlock): string {
   switch (b.type) {
     case 'text':
       return b.text
@@ -84,19 +85,22 @@ export function sessionToMarkdown(detail: SessionDetail): string {
     const when = m.timestamp ? ` · ${formatDateTime(m.timestamp)}` : ''
     if (m.role === 'system' || m.kind === 'compact') {
       lines.push(
-        `_${m.kind === 'compact' ? 'Conversation compacted' : m.blocks.map(block).join(' ')}${when}_`,
+        `_${m.kind === 'compact' ? 'Conversation compacted' : m.blocks.map(blockToMarkdown).join(' ')}${when}_`,
         ''
       )
       continue
     }
     if (m.kind === 'command') {
-      lines.push(`**You** ran \`${m.blocks.map(block).join(' ')}\`${when}`, '')
+      lines.push(`**You** ran \`${m.blocks.map(blockToMarkdown).join(' ')}\`${when}`, '')
       continue
     }
     const who = m.role === 'user' ? '## 🧑 You' : '## 🤖 Claude'
     lines.push(`${who}${when}`, '')
     for (const b of m.blocks)
-      lines.push(m.kind === 'command-output' && b.type === 'text' ? fence(b.text) : block(b), '')
+      lines.push(
+        m.kind === 'command-output' && b.type === 'text' ? fence(b.text) : blockToMarkdown(b),
+        ''
+      )
   }
   return (
     lines

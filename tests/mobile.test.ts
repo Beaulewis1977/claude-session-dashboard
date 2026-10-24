@@ -156,7 +156,7 @@ describe('where the server may listen', () => {
   const ifaces = {
     'Wi-Fi': [{ address: '192.168.1.20', family: 'IPv4', internal: false }],
     'vEthernet (WSL)': [{ address: '172.25.208.1', family: 'IPv4', internal: false }],
-    Tailscale: [{ address: '100.111.120.35', family: 'IPv4', internal: false }],
+    Tailscale: [{ address: '100.88.77.66', family: 'IPv4', internal: false }],
     Public: [{ address: '8.8.8.8', family: 'IPv4', internal: false }],
     Loopback: [{ address: '127.0.0.1', family: 'IPv4', internal: true }]
   } as unknown as NodeJS.Dict<import('node:os').NetworkInterfaceInfo[]>
@@ -167,7 +167,7 @@ describe('where the server may listen', () => {
 
   it('home Wi-Fi: only a private address this PC has', () => {
     expect(bindAddress({ mode: 'lan', lanAddress: '192.168.1.20' }, ifaces)).toBe('192.168.1.20')
-    for (const bad of ['0.0.0.0', '8.8.8.8', '100.111.120.35', '192.168.1.99', '::', '', undefined])
+    for (const bad of ['0.0.0.0', '8.8.8.8', '100.88.77.66', '192.168.1.99', '::', '', undefined])
       expect(() => bindAddress({ mode: 'lan', lanAddress: bad }, ifaces)).toThrow(BindError)
     expect(lanAddresses(ifaces)).toEqual([{ address: '192.168.1.20', interface: 'Wi-Fi' }])
     expect(isPrivateIPv4('172.31.0.1')).toBe(true)

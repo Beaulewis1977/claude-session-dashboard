@@ -1,5 +1,28 @@
 # Changelog
 
+## 1.3.0 (October 24, 2026)
+
+**A real terminal on your PC from your phone.**
+
+- **Terminal access (SSH over Tailscale):** Settings → Phone → Terminal access sets up Windows' own
+  OpenSSH Server step by step, with a live check at every step: install, a firewall rule limited to
+  Tailscale (Windows' "any address" rule turned off with your OK), the default shell (PowerShell 7,
+  Windows PowerShell or WSL), your phone's key, the phone app, and a test.
+  - Every change shows the exact script first, asks Windows for administrator rights, is logged,
+    and has its own Undo. **Turn off terminal access** undoes everything the setup changed.
+  - **Keys:** paste your SSH app's public key, or send it from the dashboard on your phone (**Send
+    SSH key to PC**) and allow it on the PC after comparing fingerprints. Then turn password login
+    off (sshd_config is backed up first).
+  - Shows the PC's host-key fingerprints to check when your SSH app first connects.
+- **Open terminal here** on every session and project. On the PC it opens a terminal in that
+  folder. On the phone it gives an `ssh://` link and a copyable command that lands in the folder,
+  for PowerShell or WSL. It only appears once terminal access is set up.
+- **Copy AI help prompt** in both Troubleshooting panels: paste it into Claude or another AI
+  assistant for help with a connection. It points the assistant at the new
+  `docs/AI-SETUP-GUIDE.md` (read-only checks first, your OK before any change, no secrets).
+- Safety: SSH is reachable only over Tailscale; the dashboard never runs commands for the phone, and
+  never deletes keys or settings you had before.
+
 ## 1.2.0 (October 23, 2026)
 
 - Add Copy buttons for messages, code blocks, full tool input/output and whole conversations, with a

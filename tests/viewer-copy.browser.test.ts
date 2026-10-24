@@ -157,6 +157,8 @@ async function openFixture(
     permissions: ['clipboard-read', 'clipboard-write']
   })
   const page = await context.newPage()
+  page.setDefaultTimeout(5_000)
+  page.setDefaultNavigationTimeout(10_000)
   if (clipboard !== 'native') {
     await page.addInitScript(`
       window.savedClipboard = navigator.clipboard
@@ -198,7 +200,7 @@ async function expectInViewport(page: Page): Promise<void> {
   }
 }
 
-describe('viewer copy in a real phone-size browser', () => {
+describe('viewer copy in a real phone-size browser', { timeout: 20_000 }, () => {
   for (const [width, touch] of [
     [320, true],
     [390, true],
@@ -331,6 +333,59 @@ describe('viewer copy in a real phone-size browser', () => {
         await copy.evaluate((element) => element === element.ownerDocument.activeElement)
       ).toBe(true)
       expect(await page.evaluate('document.querySelectorAll("textarea").length')).toBe(0)
+    } finally {
+      await context.close()
+    }
+  })
+
+  it('preserves backward transcript selection endpoints after a fallback copy', async ({
+    skip
+  }) => {
+    if (!browser) skip(unavailableReason)
+    const { context, page } = await openFixture('copy', 390, 'fallback')
+    try {
+      const copy = page.getByRole('button', { name: 'Copy message', exact: true }).nth(1)
+      await copy.focus()
+      const before = await page
+        .getByText('Hello from the viewer', { exact: true })
+        .evaluateHandle((element) => {
+          const anchorNode = element.lastChild
+          const focusNode = element.querySelector('strong')?.firstChild
+          const selection = element.ownerDocument.getSelection()
+          if (!anchorNode || !focusNode || !selection) {
+            throw new Error('Expected transcript text nodes and a browser selection')
+          }
+          selection.setBaseAndExtent(anchorNode, 5, focusNode, 1)
+          return {
+            anchorNode,
+            anchorOffset: selection.anchorOffset,
+            focusNode,
+            focusOffset: selection.focusOffset
+          }
+        })
+      expect(await page.evaluate('getSelection().toString()')).toBe('ello from')
+      await page.keyboard.press('Enter')
+      await page.getByText('Copied ✓', { exact: true }).waitFor()
+      expect(await page.evaluate('window.savedClipboard.readText()')).toBe(
+        '**Hello** from the viewer'
+      )
+      expect(await page.evaluate('getSelection().toString()')).toBe('ello from')
+      expect(
+        await before.evaluate((saved) => {
+          const selection = saved.anchorNode.ownerDocument?.getSelection()
+          if (!selection) throw new Error('Expected the saved transcript selection document')
+          return {
+            anchorNode: selection.anchorNode === saved.anchorNode,
+            anchorOffset: selection.anchorOffset === saved.anchorOffset,
+            focusNode: selection.focusNode === saved.focusNode,
+            focusOffset: selection.focusOffset === saved.focusOffset
+          }
+        })
+      ).toEqual({ anchorNode: true, anchorOffset: true, focusNode: true, focusOffset: true })
+      expect(
+        await copy.evaluate((element) => element === element.ownerDocument.activeElement)
+      ).toBe(true)
+      await before.dispose()
     } finally {
       await context.close()
     }

@@ -26,6 +26,15 @@ export function copyWithTextarea(text: string, doc: Document = document): boolea
         }
       : null
   const selection = doc.getSelection()
+  const endpoints =
+    selection?.anchorNode && selection.focusNode
+      ? {
+          anchorNode: selection.anchorNode,
+          anchorOffset: selection.anchorOffset,
+          focusNode: selection.focusNode,
+          focusOffset: selection.focusOffset
+        }
+      : null
   const ranges: Range[] = []
   if (selection)
     for (let i = 0; i < selection.rangeCount; i++) ranges.push(selection.getRangeAt(i).cloneRange())
@@ -61,7 +70,16 @@ export function copyWithTextarea(text: string, doc: Document = document): boolea
     active?.focus?.({ preventScroll: true })
     if (selection) {
       selection.removeAllRanges()
-      for (const r of ranges) selection.addRange(r)
+      if (endpoints && ranges.length === 1) {
+        selection.setBaseAndExtent(
+          endpoints.anchorNode,
+          endpoints.anchorOffset,
+          endpoints.focusNode,
+          endpoints.focusOffset
+        )
+      } else {
+        for (const r of ranges) selection.addRange(r)
+      }
     }
     // Restoring DOM ranges can reset a focused input's selection in Chromium.
     if (active && inputSelection) {

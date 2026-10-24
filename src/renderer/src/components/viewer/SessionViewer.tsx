@@ -5,6 +5,7 @@ import {
   ArrowDownToLine,
   ArrowUpToLine,
   CalendarClock,
+  ClipboardCopy,
   Clock,
   Copy,
   Ellipsis,
@@ -31,6 +32,7 @@ import { formatBytes, formatDateTime } from '@shared/format'
 import { messagePreview } from '@shared/branch'
 import { api } from '@/lib/api'
 import {
+  copyConversation,
   copyResumeCommand,
   copySessionId,
   exportMarkdown,
@@ -115,11 +117,14 @@ function Header({
   session,
   allTags,
   onFind,
+  onCopyConversation,
   branchPointPreview
 }: {
   session: SessionSummary
   allTags: string[]
   onFind: () => void
+  /** Unset until the transcript has loaded. */
+  onCopyConversation?: () => void
   branchPointPreview?: string
 }) {
   const focus = useApp((s) => s.focus)
@@ -209,6 +214,12 @@ function Header({
                   <Hash /> Copy session ID
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  disabled={!onCopyConversation}
+                  onSelect={() => onCopyConversation?.()}
+                >
+                  <ClipboardCopy /> Copy whole conversation
+                </DropdownMenuItem>
                 <DropdownMenuItem
                   onSelect={() => void exportMarkdown(session.key)}
                   shortcut={`${MOD}+E`}
@@ -472,6 +483,7 @@ export function SessionViewer({
           session={session}
           allTags={allTags}
           onFind={openFind}
+          onCopyConversation={detail ? () => copyConversation(detail, session) : undefined}
           branchPointPreview={branchPointPreview}
         />
         {findOpen && (

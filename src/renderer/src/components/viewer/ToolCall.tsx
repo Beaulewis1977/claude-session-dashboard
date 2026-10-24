@@ -17,8 +17,9 @@ import type { ContentBlock, ToolResult } from '@shared/types'
 import { editItems, relativeTo, splitToolLabel, todoItems } from '@shared/tools'
 import { cn } from '@/lib/utils'
 import { truncateText } from '@/lib/transcript'
+import { toolInputText, toolOutputText } from '@/lib/copy'
 import { ErrorBoundary, RenderFailed } from '../ErrorBoundary'
-import { CodeBlock } from './Markdown'
+import { CodeBlock, CopyButton } from './Markdown'
 
 type ToolUse = Extract<ContentBlock, { type: 'tool_use' }>
 
@@ -208,6 +209,18 @@ export function ResultView({ result, findQuery }: { result: ToolResult; findQuer
   )
 }
 
+/** Copy input / Copy output for an expanded tool call (always the full text, never the preview). */
+function CopyRow({ input, output }: { input?: () => string; output?: ToolResult }) {
+  const hasOutput = !!output?.text
+  if (!input && !hasOutput) return null
+  return (
+    <div className="-mt-0.5 flex justify-end gap-1">
+      {input && <CopyButton label="Copy input" getText={input} />}
+      {hasOutput && <CopyButton label="Copy output" getText={() => toolOutputText(output!)} />}
+    </div>
+  )
+}
+
 export function Collapsible({
   open,
   onToggle,
@@ -291,6 +304,7 @@ export const ToolCall = memo(function ToolCall({
       }
     >
       <ErrorBoundary fallback={<RenderFailed what="This tool call" />}>
+        <CopyRow input={() => toolInputText(tool)} output={tool.result} />
         <ToolInput tool={tool} cwd={cwd} />
         {tool.result && <ResultView result={tool.result} findQuery={findQuery} />}
       </ErrorBoundary>
@@ -319,6 +333,7 @@ export const OrphanResult = memo(function OrphanResult({
         </>
       }
     >
+      <CopyRow output={result} />
       <ResultView result={result} findQuery={findQuery} />
     </Collapsible>
   )

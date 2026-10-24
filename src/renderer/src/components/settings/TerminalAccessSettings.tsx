@@ -1,4 +1,4 @@
-// Settings → Phone → Terminal access: status, the setup wizard, "Turn off
+// Settings → Terminal access (SSH): status, the setup wizard, "Turn off
 // terminal access", and the log of every change the wizard made.
 
 import { useEffect, useState } from 'react'

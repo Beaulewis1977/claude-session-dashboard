@@ -191,7 +191,7 @@ firewall rule and pair. Your phone must be on the same Wi-Fi.
 
 ### Set up terminal access
 
-Settings → **Phone** → **Terminal access** → **Set up terminal access…**. Each step checks itself,
+Settings → **Terminal access (SSH)** → **Set up terminal access…**. Each step checks itself,
 and each change shows the exact script first; Windows then asks for administrator rights.
 
 1. **Tailscale connected** on the PC (and on your phone).

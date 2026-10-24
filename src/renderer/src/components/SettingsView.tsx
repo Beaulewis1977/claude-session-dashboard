@@ -33,6 +33,7 @@ import { LiveLimitsSettings } from './settings/LiveLimitsSettings'
 import { UsageSettings } from './settings/UsageSettings'
 import { HealthSettings } from './settings/HealthSettings'
 import { MobileSettingsSection } from './settings/MobileSettings'
+import { TerminalAccessBlock } from './settings/TerminalAccessSettings'
 
 export function Section({
   title,
@@ -253,6 +254,13 @@ export function SettingsView() {
         </Section>
 
         <MobileSettingsSection />
+
+        <Section
+          title="Terminal access (SSH)"
+          description="A real terminal on this PC from your phone, through Windows’ own OpenSSH Server, over Tailscale only. Every change is shown first and can be undone."
+        >
+          <TerminalAccessBlock />
+        </Section>
 
         <LiveLimitsSettings update={update} />
 

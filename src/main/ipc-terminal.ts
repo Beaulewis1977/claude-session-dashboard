@@ -1,4 +1,4 @@
-// Settings → Phone → Terminal access, and "Open terminal here": IPC for the
+// Settings → Terminal access (SSH), and "Open terminal here": IPC for the
 // desktop window. Only `terminal:phoneInfo` is on the phone's allow-list
 // (mobile/rpc.ts); a phone can never make or undo a change from here.
 

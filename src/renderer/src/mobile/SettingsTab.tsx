@@ -309,7 +309,7 @@ function SendKeyCard({ readOnly }: { readOnly: boolean }) {
   return (
     <Card
       title="Send SSH key to PC"
-      note="For terminal access. On the PC, open Settings → Phone → Terminal access → Keys and click “Get key from phone” first. Only the public key: it’s safe to share."
+      note="For terminal access. On the PC, open Settings → Terminal access (SSH) → Keys and click “Get key from phone” first. Only the public key: it’s safe to share."
     >
       <div className="space-y-2.5 px-4 py-3">
         {sent !== null ? (

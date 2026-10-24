@@ -32,7 +32,6 @@ import { Input } from '../ui/input'
 import { Segmented } from '../ui/segmented'
 import { Row, Section } from '../SettingsView'
 import { MobileWizard } from './MobileWizard'
-import { TerminalAccessBlock } from './TerminalAccessSettings'
 
 function ActivityLog() {
   const [items, setItems] = useState<ActivityEntry[] | null>(null)
@@ -374,8 +373,6 @@ export function MobileSettingsSection() {
         Remote Control on, on your Claude subscription, and with permission prompts on (never
         --dangerously-skip-permissions). At most one every 10 seconds.
       </div>
-
-      <TerminalAccessBlock />
 
       <details className="group">
         <summary className="flex cursor-pointer list-none items-center gap-1.5 text-[13px] font-medium">

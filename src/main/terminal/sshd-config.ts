@@ -32,6 +32,22 @@ export function passwordAuthSetting(text: string): 'yes' | 'no' {
 }
 
 /**
+ * Lines that can allow passwords whatever the global setting says: an
+ * `Include` (its file isn't read here) or `PasswordAuthentication yes` inside
+ * a Match block. They're never changed, only reported.
+ */
+export function passwordOverrides(text: string): string[] {
+  const { lines: ls } = lines(text)
+  const end = globalEnd(ls)
+  return ls
+    .map((l, i) => ({ l: l.trim(), i }))
+    .filter(
+      ({ l, i }) => /^Include\s/i.test(l) || (i > end && /^PasswordAuthentication\s+yes\b/i.test(l))
+    )
+    .map(({ l }) => l)
+}
+
+/**
  * The same text with the global PasswordAuthentication set to `value`: the
  * first active line before any Match block is changed in place; otherwise a
  * line is added after the commented-out default (or before the first Match).

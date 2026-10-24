@@ -16,12 +16,13 @@ export interface FakePc {
 }
 
 export function fakePc(
-  opts: { config?: Buffer; admin?: boolean; installed?: boolean } = {}
+  opts: { config?: Buffer; admin?: boolean; installed?: boolean; failStop?: boolean } = {}
 ): FakePc {
   const state: FakePc['state'] = {
     sshdExe: !!opts.installed,
     sshdService: opts.installed ? { status: 'Stopped', startType: 'Manual' } : undefined,
     oursRule: false,
+    otherSshRules: [],
     defaultRule: opts.installed ? { enabled: true } : undefined,
     admin: opts.admin ?? true,
     account: 'local',
@@ -57,6 +58,8 @@ export function fakePc(
       case 'service':
         if (!state.sshdService)
           return { ok: false, error: 'Cannot find any service with service name sshd.' }
+        if (opts.failStop && typeof q.StartType === 'string' && !q.Running)
+          return { ok: false, error: 'sshd did not stop.' }
         state.sshdService =
           typeof q.StartType === 'string'
             ? { status: q.Running ? 'Running' : 'Stopped', startType: q.StartType }
@@ -67,7 +70,9 @@ export function fakePc(
         return { ok: true }
       case 'default-rule':
         if (!state.defaultRule) return { ok: false, error: 'No rule named OpenSSH-Server-In-TCP.' }
-        state.defaultRule = { enabled: body.startsWith('Enable') }
+        if (q.RequireStopped && state.sshdService?.status === 'Running')
+          return { ok: false, error: 'sshd is still running.' }
+        state.defaultRule = { enabled: /Enable-NetFirewallRule/.test(body) }
         return { ok: true }
       case 'shell':
         state.shell = typeof q.Shell === 'string' ? q.Shell : undefined

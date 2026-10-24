@@ -31,7 +31,12 @@ export interface ProbeResult {
   sshdService?: { status: string; startType: string }
   sshdExe: boolean
   sshdVersion?: string
+  /** Our rule exists and is exactly as the wizard made it. */
   oursRule: boolean
+  /** Our rule exists but was changed (why). */
+  ruleProblem?: string
+  /** Other enabled rules that allow sshd in (their names). */
+  otherSshRules: string[]
   defaultRule?: { enabled: boolean }
   shell?: string
   /** HKLM\SOFTWARE\OpenSSH\DefaultShellCommandOption, if someone set it. */
@@ -156,7 +161,21 @@ if ($svc) { $o.sshdService = @{ status = [string]$svc.Status; startType = [strin
 $exe = Join-Path $env:SystemRoot 'System32\\OpenSSH\\sshd.exe'
 $o.sshdExe = Test-Path -LiteralPath $exe
 if ($o.sshdExe) { $o.sshdVersion = [string](Get-Item -LiteralPath $exe).VersionInfo.ProductVersion }
-$o.oursRule = [bool](Get-NetFirewallRule -Name 'CSD-SSH-Tailscale' -ErrorAction SilentlyContinue)
+$fw = Get-NetFirewallRule -Name 'CSD-SSH-Tailscale' -ErrorAction SilentlyContinue
+if ($fw) {
+  $o.ours = @{
+    enabled = ([string]$fw.Enabled -eq 'True'); action = [string]$fw.Action; direction = [string]$fw.Direction
+    remote = @(($fw | Get-NetFirewallAddressFilter).RemoteAddress | ForEach-Object { [string]$_ })
+    iface = @(($fw | Get-NetFirewallInterfaceFilter).InterfaceAlias | ForEach-Object { [string]$_ })
+    port = @(($fw | Get-NetFirewallPortFilter).LocalPort | ForEach-Object { [string]$_ })
+    program = [string]($fw | Get-NetFirewallApplicationFilter).Program
+  }
+}
+# Other enabled rules that let sshd in (besides ours and Windows' default, checked by name).
+$o.otherSsh = @(Get-NetFirewallApplicationFilter -Program '*\\OpenSSH\\sshd.exe' -ErrorAction SilentlyContinue |
+  Get-NetFirewallRule -ErrorAction SilentlyContinue |
+  Where-Object { $_.Enabled -eq 'True' -and $_.Direction -eq 'Inbound' -and $_.Action -eq 'Allow' -and $_.Name -ne 'CSD-SSH-Tailscale' -and $_.Name -ne 'OpenSSH-Server-In-TCP' } |
+  ForEach-Object { [string]$_.DisplayName })
 $d = Get-NetFirewallRule -Name 'OpenSSH-Server-In-TCP' -ErrorAction SilentlyContinue
 if ($d) { $o.defaultRule = @{ enabled = ([string]$d.Enabled -eq 'True') } }
 $o.shell = (Get-ItemProperty -Path 'HKLM:\\SOFTWARE\\OpenSSH' -Name DefaultShell -ErrorAction SilentlyContinue).DefaultShell
@@ -180,6 +199,40 @@ $o | ConvertTo-Json -Compress -Depth 5`
 export async function realProbe(): Promise<ProbeResult> {
   const r = await run([...PS_FLAGS, '-EncodedCommand', encodedCommand(PROBE)], process.env, 30_000)
   return parseProbe(r.stdout)
+}
+
+const list = (v: unknown): string[] =>
+  (Array.isArray(v) ? v : v === undefined || v === null ? [] : [v]).map((x) => String(x))
+
+/**
+ * Is our rule still exactly what the wizard made? Enabled, inbound, allow,
+ * sshd.exe only, port 22 only, Tailscale's ranges only, on its adapter only.
+ * A rule that was switched off or widened by hand doesn't count.
+ */
+export function ruleCheck(
+  raw: unknown,
+  tsAlias: string | undefined
+): { oursRule: boolean; ruleProblem?: string } {
+  if (!raw || typeof raw !== 'object') return { oursRule: false }
+  const r = raw as Record<string, unknown>
+  const remote = list(r.remote).map((a) => a.replace('/255.192.0.0', '/10').toLowerCase())
+  const want = ['100.64.0.0/10', 'fd7a:115c:a1e0::/48']
+  const problems = [
+    r.enabled !== true && 'it is turned off',
+    (r.action !== 'Allow' || r.direction !== 'Inbound') && 'it is not an inbound allow rule',
+    !/\\OpenSSH\\sshd\.exe$/i.test(String(r.program ?? '')) && 'it is not limited to sshd.exe',
+    list(r.port).join(',') !== '22' && 'it is not limited to port 22',
+    (remote.length !== want.length || !want.every((w) => remote.includes(w))) &&
+      'it allows addresses outside Tailscale',
+    (list(r.iface).length !== 1 || !tsAlias || list(r.iface)[0] !== tsAlias) &&
+      'it is not limited to the Tailscale adapter'
+  ].filter(Boolean)
+  return problems.length
+    ? {
+        oursRule: false,
+        ruleProblem: `The app's firewall rule was changed: ${problems.join(', ')}.`
+      }
+    : { oursRule: true }
 }
 
 /** Get-LocalUser's PrincipalSource: which password an SSH login needs. */
@@ -233,7 +286,10 @@ export function parseProbe(text: string): ProbeResult {
         : undefined,
     sshdExe: j.sshdExe === true,
     sshdVersion: str(j.sshdVersion),
-    oursRule: j.oursRule === true,
+    ...ruleCheck(j.ours, str(j.tsAlias)),
+    otherSshRules: (Array.isArray(j.otherSsh) ? j.otherSsh : j.otherSsh ? [j.otherSsh] : []).filter(
+      (x): x is string => typeof x === 'string' && !!x
+    ),
     defaultRule:
       j.defaultRule && typeof j.defaultRule === 'object'
         ? { enabled: (j.defaultRule as { enabled?: unknown }).enabled === true }

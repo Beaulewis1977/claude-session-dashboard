@@ -98,6 +98,10 @@ export interface TerminalStatus {
   sshd: { installed: boolean; running: boolean; startType?: string; version?: string }
   firewall: {
     ours: boolean
+    /** Our rule exists but was changed by hand (why). */
+    problem?: string
+    /** Other enabled rules that let sshd in. */
+    others: string[]
     /** Windows' own "OpenSSH SSH Server (sshd)" rule, which allows any address. */
     defaultRule: { exists: boolean; enabled: boolean }
   }
@@ -107,7 +111,9 @@ export interface TerminalStatus {
   /** Empty while sshd isn't running. */
   hostKeys: HostKey[]
   /** The global PasswordAuthentication setting ('unknown' when sshd_config can't be read). */
-  passwordAuth: 'yes' | 'no' | 'unknown'
+  passwordAuth: 'yes' | 'no' | 'partial' | 'unknown'
+  /** Lines (Include, PasswordAuthentication yes in a Match block) that can turn passwords back on. */
+  passwordOverrides: string[]
   lastLogin?: SshLogin
   eventLogReadable: boolean
   tailscale: { installed: boolean; loggedIn: boolean; dnsName?: string; interfaceAlias?: string }

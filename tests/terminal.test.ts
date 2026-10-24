@@ -38,11 +38,16 @@ import {
   shownText,
   TAILSCALE_RANGES
 } from '../src/main/terminal/scripts'
-import { accountKind, parseHostKeys, parseProbe, PROBE } from '../src/main/terminal/host'
+import { accountKind, parseHostKeys, parseProbe, PROBE, ruleCheck } from '../src/main/terminal/host'
 import { AI_GUIDE_URL, aiHelpPrompt } from '../src/shared/ai-help'
-import { passwordAuthSetting, setPasswordAuth } from '../src/main/terminal/sshd-config'
+import {
+  passwordAuthSetting,
+  passwordOverrides,
+  setPasswordAuth
+} from '../src/main/terminal/sshd-config'
 import {
   emptyTerminalFile,
+  passwordState,
   shellKind,
   sshUserName,
   startTypeFor,
@@ -628,13 +633,15 @@ describe('terminal access service', () => {
     expect('token' in p && p.summary).toContain('SSH keys stay in place')
     expect('token' in p && (await svc.apply(p.token)).ok).toBe(true)
     expect(pc.ran).toHaveLength(1)
+    // sshd stops first; Windows' broad rule comes back last, and only once sshd has stopped.
     expect(pc.ran[0].parts.map((x) => x.name)).toEqual([
+      'service',
       'sshd-config',
       'shell',
-      'default-rule',
       'firewall',
-      'service'
+      'default-rule'
     ])
+    expect(pc.ran[0].parts.at(-1)!.params.RequireStopped).toBe(true)
     expect(pc.state).toMatchObject({
       oursRule: false,
       defaultRule: { enabled: true },
@@ -1014,5 +1021,71 @@ describe('help for first connects and AI assistants', () => {
     expect(p).toContain('Ask me before you change anything')
     expect(p).toContain('OpenSSH Server: installed')
     expect(aiHelpPrompt('phone', 'x')).toContain('phone companion')
+  })
+})
+
+describe('after the second review', () => {
+  const good = {
+    enabled: true,
+    action: 'Allow',
+    direction: 'Inbound',
+    remote: ['100.64.0.0/255.192.0.0', 'fd7a:115c:a1e0::/48'],
+    iface: ['Tailscale'],
+    port: ['22'],
+    program: 'C:/WINDOWS/System32/OpenSSH/sshd.exe'.split('/').join(String.fromCharCode(92))
+  }
+
+  it('counts our firewall rule only while it is exactly as the wizard made it', () => {
+    expect(ruleCheck(good, 'Tailscale')).toEqual({ oursRule: true })
+    expect(ruleCheck({ ...good, enabled: false }, 'Tailscale').ruleProblem).toMatch(/turned off/)
+    expect(ruleCheck({ ...good, remote: ['Any'] }, 'Tailscale').ruleProblem).toMatch(
+      /outside Tailscale/
+    )
+    expect(ruleCheck({ ...good, iface: ['Ethernet'] }, 'Tailscale').oursRule).toBe(false)
+    expect(ruleCheck({ ...good, port: ['22', '2222'] }, 'Tailscale').oursRule).toBe(false)
+    expect(ruleCheck({ ...good, program: 'Any' }, 'Tailscale').oursRule).toBe(false)
+    expect(ruleCheck(undefined, 'Tailscale')).toEqual({ oursRule: false })
+  })
+
+  it('reports password login as partly on when a Match block or Include can allow it', () => {
+    const base = 'PasswordAuthentication no\n'
+    expect(passwordState(base)).toBe('no')
+    expect(passwordState(base + 'Match User bob\n  PasswordAuthentication yes\n')).toBe('partial')
+    expect(passwordState('Include extra.conf\n' + base)).toBe('partial')
+    expect(passwordOverrides('Include extra.conf\n' + base)).toEqual(['Include extra.conf'])
+    expect(passwordState('Port 22\n')).toBe('yes')
+  })
+})
+
+describe('turning off when sshd won’t stop', () => {
+  it('keeps Windows’ broad rule off, and its undo record', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'csd-stop-'))
+    const store = new JsonStore<TerminalFile>(join(dir, 't.json'), dir, emptyTerminalFile)
+    const pc = fakePc({ config: Buffer.from('Port 22\n'), failStop: true })
+    const svc = new TerminalService({
+      store,
+      dataDir: dir,
+      supported: false,
+      simulated: true,
+      run: pc.run,
+      probe: pc.probe,
+      tailscale: async () => ({ installed: true, loggedIn: true, dnsName: 'pc.example.ts.net' }),
+      exists: async () => true,
+      user: 'sample'
+    })
+    const run = async (a: Parameters<TerminalService['prepare']>[0]) => {
+      const p = await svc.prepare(a)
+      return 'error' in p ? { ok: false } : svc.apply(p.token)
+    }
+    await run({ kind: 'install' })
+    await run({ kind: 'firewall-add' })
+    await run({ kind: 'default-rule-disable' })
+    await run({ kind: 'service-on' })
+    expect((await run({ kind: 'turn-off', uninstall: false, removeKeys: false })).ok).toBe(false)
+    expect(pc.state.defaultRule).toEqual({ enabled: false })
+    expect(store.value.defaultRuleDisabled).toBe(true)
+    expect(pc.state.oursRule).toBe(false)
+    await store.flush()
+    await rm(dir, { recursive: true, force: true })
   })
 })

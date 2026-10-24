@@ -133,7 +133,8 @@ export function TerminalWizard({
     const ts = st.tailscale
     const sshOk = st.sshd.running && /^automatic/i.test(st.sshd.startType ?? '')
     // Only Tailscale can reach SSH: our rule is in, Windows' "any address" rule is off.
-    const limited = st.firewall.ours && !st.firewall.defaultRule.enabled
+    const limited =
+      st.firewall.ours && !st.firewall.defaultRule.enabled && st.firewall.others.length === 0
     const keyLogin = st.lastLogin?.method === 'publickey' && st.lastLogin.tailscale
     const recentLogin =
       st.lastLogin?.tailscale && Date.parse(st.lastLogin.at) > openedAt - 15 * 60_000
@@ -273,6 +274,19 @@ export function TerminalWizard({
             </p>
             {st.firewall.ours ? (
               <Status c="ok">The Tailscale-only rule is in place.</Status>
+            ) : st.firewall.problem ? (
+              <>
+                <Status c="fail">
+                  {st.firewall.problem} Add it again to put it back as it should be.
+                </Status>
+                <Button
+                  variant="primary"
+                  disabled={isBusy('firewall-add')}
+                  onClick={() => void change({ kind: 'firewall-add' })}
+                >
+                  <Smartphone /> Add the Tailscale-only rule again…
+                </Button>
+              </>
             ) : (
               <Button
                 variant="primary"
@@ -302,6 +316,13 @@ export function TerminalWizard({
               ) : (
                 <Status c="ok">Windows’ “any address” SSH rule is off.</Status>
               ))}
+            {st.firewall.others.length > 0 && (
+              <Status c="fail">
+                Other firewall rules also let sshd in: {st.firewall.others.join(', ')}. They may
+                allow SSH from outside Tailscale. The wizard doesn’t change rules it didn’t make:
+                check them in Windows Defender Firewall (Inbound Rules).
+              </Status>
+            )}
             {limited && st.sshd.installed && !sshOk && (
               <Button
                 variant="primary"
@@ -548,6 +569,12 @@ export function TerminalWizard({
               )}
               {st.passwordAuth === 'no' ? (
                 <Status c="ok">Password login is off: only keys can log in.</Status>
+              ) : st.passwordAuth === 'partial' ? (
+                <Status c="todo">
+                  Password login is off for everyone by default, but sshd_config has lines that can
+                  turn it back on for some logins (the wizard never changes them):{' '}
+                  <span className="font-mono">{st.passwordOverrides.join(' · ')}</span>
+                </Status>
               ) : st.passwordAuth === 'yes' ? (
                 <div className="space-y-1.5">
                   <Button

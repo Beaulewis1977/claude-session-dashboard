@@ -54,7 +54,11 @@ const SERVICE_ON = `Set-Service -Name sshd -StartupType Automatic
 Start-Service -Name sshd`
 
 const SERVICE_SET = `Set-Service -Name sshd -StartupType $q.StartType
-if ($q.Running) { Start-Service -Name sshd } else { Stop-Service -Name sshd -ErrorAction SilentlyContinue }`
+if ($q.Running) { Start-Service -Name sshd } else {
+  Stop-Service -Name sshd -Force
+  # Turn off relies on this: Windows' broad rule is only put back once sshd has stopped.
+  if ((Get-Service -Name sshd).Status -ne 'Stopped') { throw 'sshd did not stop.' }
+}`
 
 const FIREWALL_ADD = `Get-NetFirewallRule -Name $q.Name -ErrorAction SilentlyContinue | Remove-NetFirewallRule
 $rule = @{
@@ -69,7 +73,9 @@ New-NetFirewallRule @rule | Out-Null`
 const FIREWALL_REMOVE = `Get-NetFirewallRule -Name $q.Name -ErrorAction SilentlyContinue | Remove-NetFirewallRule`
 
 const RULE_DISABLE = `Disable-NetFirewallRule -Name $q.Name`
-const RULE_ENABLE = `Enable-NetFirewallRule -Name $q.Name`
+const RULE_ENABLE = `# During Turn off: never re-open the broad rule while sshd still runs.
+if ($q.RequireStopped -and (Get-Service -Name sshd -ErrorAction SilentlyContinue).Status -eq 'Running') { throw 'sshd is still running, so Windows''s "any address" rule stays off.' }
+Enable-NetFirewallRule -Name $q.Name`
 
 const SHELL_SET = `if (-not (Test-Path ${REG})) { New-Item -Path ${REG} -Force | Out-Null }
 New-ItemProperty -Path ${REG} -Name DefaultShell -Value $q.Shell -PropertyType String -Force | Out-Null`
@@ -121,7 +127,8 @@ if ($code -ne 0) { throw "sshd rejected the new settings: $check" }
 [IO.File]::WriteAllBytes($cfg, $new)
 $out.written = $true
 # The file is changed now: a failed restart is reported, not treated as "nothing changed".
-try { if ((Get-Service -Name sshd).Status -eq 'Running') { Restart-Service -Name sshd } } catch { $out.restartError = $_.Exception.Message }`
+# If sshd can't restart, its old settings may still be in force: that's a failure (the Undo record stays).
+try { if ((Get-Service -Name sshd).Status -eq 'Running') { Restart-Service -Name sshd } } catch { $out.restartError = $_.Exception.Message; throw "The file was changed, but sshd didn't restart: $($_.Exception.Message)" }`
 
 // ---------------------------------------------------------------- builders
 
@@ -236,14 +243,14 @@ export function firewallRemoveScript(): BuiltScript {
   )
 }
 
-export function defaultRuleScript(enable: boolean): BuiltScript {
+export function defaultRuleScript(enable: boolean, requireStopped = false): BuiltScript {
   return enable
     ? one(
         'Turn Windows’ default SSH rule back on?',
         `Turns the rule “OpenSSH SSH Server (sshd)” (${DEFAULT_SSH_RULE}) back on, as it was before. It allows SSH from any address.`,
         'default-rule',
         RULE_ENABLE,
-        { Name: DEFAULT_SSH_RULE }
+        { Name: DEFAULT_SSH_RULE, RequireStopped: requireStopped }
       )
     : one(
         'Turn off Windows’ default SSH rule?',
@@ -365,6 +372,9 @@ function b64json(v: unknown): string {
 export function scriptText(s: BuiltScript, resultFile: string): string {
   const head = [
     "$ErrorActionPreference = 'Stop'",
+    // Only Windows' own modules: an elevated script must not auto-load a command from the user's
+    // module folder (which a program running as the user could write to).
+    "$env:PSModulePath = Join-Path $env:SystemRoot 'System32\\WindowsPowerShell\\v1.0\\Modules'",
     `$all = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${b64json({ resultFile, parts: s.parts.map((p) => p.params) })}')) | ConvertFrom-Json`,
     '$res = @{ ok = $true; parts = @{} }'
   ]

@@ -55,7 +55,7 @@ import {
   type BuiltScript,
   type StartType
 } from './scripts'
-import { lineDiff, passwordAuthSetting, setPasswordAuth } from './sshd-config'
+import { lineDiff, passwordAuthSetting, passwordOverrides, setPasswordAuth } from './sshd-config'
 
 export interface StoredKey {
   fingerprint: string
@@ -134,6 +134,12 @@ export function sshUserName(
     : name
 }
 
+/** "no" only if nothing in sshd_config (a Match block, an Include) can turn passwords back on. */
+export function passwordState(text: string): 'yes' | 'no' | 'partial' {
+  if (passwordAuthSetting(text) === 'yes') return 'yes'
+  return passwordOverrides(text).length ? 'partial' : 'no'
+}
+
 const sha256 = (b: Buffer): string => createHash('sha256').update(b).digest('hex')
 
 /** Windows' service start types as Set-Service takes them. */
@@ -167,6 +173,14 @@ export class TerminalService extends EventEmitter<{ changed: [] }> {
 
   constructor(private readonly deps: TerminalDeps) {
     super()
+  }
+
+  /** App-data paths as %APPDATA%\ClaudeSessionDashboard\… (the same for everyone; no user name). */
+  private shown(p: string): string {
+    const d = this.deps.dataDir
+    return p.toLowerCase().startsWith(d.toLowerCase())
+      ? `%APPDATA%\\ClaudeSessionDashboard${p.slice(d.length)}`
+      : p
   }
 
   private now(): number {
@@ -263,6 +277,8 @@ export class TerminalService extends EventEmitter<{ changed: [] }> {
       },
       firewall: {
         ours: p.oursRule,
+        problem: p.ruleProblem,
+        others: p.otherSshRules,
         defaultRule: { exists: !!p.defaultRule, enabled: !!p.defaultRule?.enabled }
       },
       shell: {
@@ -275,12 +291,19 @@ export class TerminalService extends EventEmitter<{ changed: [] }> {
       keys: { file: this.keyFile(p.admin), admin: p.admin },
       account: p.account,
       hostKeys: running ? await this.hostKeys() : [],
-      passwordAuth: p.config ? passwordAuthSetting(p.config.toString('utf8')) : 'unknown',
+      passwordAuth: p.config ? passwordState(p.config.toString('utf8')) : 'unknown',
+      passwordOverrides: p.config ? passwordOverrides(p.config.toString('utf8')) : [],
       lastLogin: logins[0],
       eventLogReadable: p.eventsOk,
       tailscale: { ...ts, interfaceAlias: p.tsAlias },
       // Not while Windows' "any address" rule could let other networks reach SSH.
-      ready: running && p.oursRule && !p.defaultRule?.enabled && !!ts.loggedIn && !!ts.dnsName,
+      ready:
+        running &&
+        p.oursRule &&
+        !p.defaultRule?.enabled &&
+        !p.otherSshRules.length &&
+        !!ts.loggedIn &&
+        !!ts.dnsName,
       changes: {
         installedByApp: !!f.installedByApp,
         service: f.service,
@@ -372,7 +395,7 @@ export class TerminalService extends EventEmitter<{ changed: [] }> {
       case 'service-on': {
         if (!p.sshdService) return { error: 'Install OpenSSH Server first.' }
         // Never listen while SSH could be reached from outside Tailscale.
-        if (!p.oursRule || p.defaultRule?.enabled)
+        if (!p.oursRule || p.defaultRule?.enabled || p.otherSshRules.length)
           return {
             error:
               'Limit SSH to Tailscale first (the Firewall step): add the Tailscale-only rule and turn off Windows’ “any address” rule. Then start sshd.'
@@ -535,12 +558,12 @@ export class TerminalService extends EventEmitter<{ changed: [] }> {
         const plan = single(
           configWriteScript({
             title: 'Turn off password login?',
-            summary: `Sets “PasswordAuthentication no” in C:\\ProgramData\\ssh\\sshd_config, so only your SSH keys can log in, checks it with sshd -t and restarts sshd. The current file is saved first to ${backupFile}; Undo puts it back exactly.\n\nThe change:\n${lineDiff(text, content.toString('utf8'))}${keyLogin ? '' : '\n\nNo key login has been seen yet. If your key doesn’t work, you can’t log in from the phone until you undo this here.'}`,
+            summary: `Sets “PasswordAuthentication no” in C:\\ProgramData\\ssh\\sshd_config, so only your SSH keys can log in, checks it with sshd -t and restarts sshd. The current file is saved first to ${this.shown(backupFile)}; Undo puts it back exactly.\n\nThe change:\n${lineDiff(text, content.toString('utf8'))}${keyLogin ? '' : '\n\nNo key login has been seen yet. If your key doesn’t work, you can’t log in from the phone until you undo this here.'}`,
             content,
             expect: sha256(p.config)
           }),
           'Turn off password login',
-          `Turned off password login (backup: ${backupFile})`,
+          `Turned off password login (backup: ${this.shown(backupFile)})`,
           (out) => {
             if (out.written)
               this.deps.store.update(
@@ -561,23 +584,23 @@ export class TerminalService extends EventEmitter<{ changed: [] }> {
         if (!p.config) return { error: 'sshd_config can’t be read right now.' }
         if (sha256(p.config) !== c.writtenSha256)
           return {
-            error: `sshd_config was changed after the wizard edited it, so it wasn’t put back automatically. The original is saved at ${c.backupFile}.`
+            error: `sshd_config was changed after the wizard edited it, so it wasn’t put back automatically. The original is saved at ${this.shown(c.backupFile)}.`
           }
         let original: Buffer
         try {
           original = await readFile(c.backupFile)
         } catch {
-          return { error: `The backup ${c.backupFile} is missing.` }
+          return { error: `The backup ${this.shown(c.backupFile)} is missing.` }
         }
         return single(
           configWriteScript({
             title: 'Put sshd_config back?',
-            summary: `Restores C:\\ProgramData\\ssh\\sshd_config from the backup made before the wizard changed it (${c.backupFile}), and restarts sshd. Password login works again.\n\nThe change:\n${lineDiff(p.config.toString('utf8'), original.toString('utf8'))}`,
+            summary: `Restores C:\\ProgramData\\ssh\\sshd_config from the backup made before the wizard changed it (${this.shown(c.backupFile)}), and restarts sshd. Password login works again.\n\nThe change:\n${lineDiff(p.config.toString('utf8'), original.toString('utf8'))}`,
             content: original,
             expect: c.writtenSha256
           }),
           'Put it back',
-          `Restored sshd_config from ${c.backupFile}`,
+          `Restored sshd_config from ${this.shown(c.backupFile)}`,
           (out) => {
             if (out.written) this.deps.store.update((x) => (x.sshdConfig = undefined))
             if (out.restartError) return `but sshd didn’t restart: ${String(out.restartError)}`
@@ -598,23 +621,12 @@ export class TerminalService extends EventEmitter<{ changed: [] }> {
     p: ProbeResult
   ): Promise<Plan | { error: string }> {
     const f = this.file
-    const steps: { kind: TerminalAction }[] = []
-    if (f.sshdConfig) steps.push({ kind: { kind: 'password-restore' } })
-    if (f.shell) steps.push({ kind: { kind: 'shell-restore' } })
-    if (a.removeKeys)
-      for (const k of f.keys)
-        steps.push({ kind: { kind: 'key-remove', fingerprint: k.fingerprint } })
-    if (f.defaultRuleDisabled) steps.push({ kind: { kind: 'default-rule-restore' } })
-    if (f.firewallRule || p.oursRule) steps.push({ kind: { kind: 'firewall-remove' } })
     const plans: Plan[] = []
     const skipped: string[] = []
-    for (const s of steps) {
-      const r = await this.plan(s.kind, p)
-      if ('error' in r) skipped.push(r.error)
-      else plans.push(r)
-    }
-    // The service: stopped and disabled if the wizard installed it, else put back as it was.
-    if (p.sshdService && (f.installedByApp || f.service)) {
+    // 1. Stop sshd first (and check it stopped), so nothing below can widen access while it runs:
+    //    stopped and disabled if the wizard installed it, else put back as it was.
+    const stopping = !!p.sshdService && (f.installedByApp || !!f.service)
+    if (stopping) {
       const t: StartType = f.installedByApp ? 'Disabled' : startTypeFor(f.service?.prevStartType)
       plans.push({
         script: serviceSetScript(t, false, 'turn-off'),
@@ -628,6 +640,31 @@ export class TerminalService extends EventEmitter<{ changed: [] }> {
         log: [`Stopped sshd and set it to ${t}`]
       })
     }
+    // 2. Then put back the settings, keys and our rule.
+    const steps: TerminalAction[] = []
+    if (f.sshdConfig) steps.push({ kind: 'password-restore' })
+    if (f.shell) steps.push({ kind: 'shell-restore' })
+    if (a.removeKeys)
+      for (const k of f.keys) steps.push({ kind: 'key-remove', fingerprint: k.fingerprint })
+    if (f.firewallRule || p.oursRule) steps.push({ kind: 'firewall-remove' })
+    for (const s of steps) {
+      const r = await this.plan(s, p)
+      if ('error' in r) skipped.push(r.error)
+      else plans.push(r)
+    }
+    // 3. Windows' "any address" rule last, and (if sshd was being stopped) only if it really stopped.
+    if (f.defaultRuleDisabled)
+      plans.push({
+        script: defaultRuleScript(true, stopping),
+        okLabel: '',
+        commit: [
+          (out) => {
+            if (out.ok !== false) this.deps.store.update((x) => (x.defaultRuleDisabled = undefined))
+          }
+        ],
+        before: [() => undefined],
+        log: ['Turned Windows’ default SSH rule back on']
+      })
     if (a.uninstall && f.installedByApp) {
       const r = await this.plan({ kind: 'uninstall' }, p)
       if (!('error' in r)) plans.push(r)
@@ -704,8 +741,10 @@ export class TerminalService extends EventEmitter<{ changed: [] }> {
       // Undo information first: a change that fails halfway can still be undone.
       const { log: _log, ...saved } = structuredClone(this.file)
       plan.before.forEach((b) => b())
+      // On disk before anything runs: if the app closes meanwhile, the undo information survives.
+      await this.deps.store.flush()
       const out = await this.deps.run(s)
-      if (!out.parts.length && !out.unknown)
+      if (out.cancelled && !out.parts.length)
         // Nothing ran (declined, or it never started): forget what `before` recorded.
         this.deps.store.update((x) => {
           for (const k of Object.keys(x) as (keyof TerminalFile)[]) if (k !== 'log') delete x[k]

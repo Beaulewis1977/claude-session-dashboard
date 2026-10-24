@@ -218,7 +218,13 @@ export function SessionScreen({ session }: { session: SessionSummary }) {
         </DropdownMenu>
       </header>
 
-      <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+      <div
+        ref={scrollRef}
+        className={cn(
+          'min-h-0 flex-1 overflow-y-auto overscroll-contain',
+          findOpen && '[--tool-copy-top:3.5rem]'
+        )}
+      >
         <div className="border-b border-border px-4 pt-4 pb-4">
           <EditableTitle
             key={session.meta.name ?? ''}
@@ -329,11 +335,12 @@ export function SessionScreen({ session }: { session: SessionSummary }) {
         </div>
       </div>
 
+      {/* Above the footer and the sticky Copy · ⋯ row a message can pin to the bottom. */}
       {detail && messages.length > 6 && (
         <Button
           variant="outline"
           size="icon"
-          className="absolute right-4 bottom-[calc(env(safe-area-inset-bottom)+112px)] z-10 size-10 rounded-full bg-popover/90 shadow-md backdrop-blur"
+          className="absolute right-4 bottom-[calc(env(safe-area-inset-bottom)+156px)] z-10 size-10 rounded-full bg-popover/90 shadow-md backdrop-blur"
           aria-label="Jump to latest"
           onClick={() => {
             const el = scrollRef.current

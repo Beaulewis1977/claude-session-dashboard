@@ -50,18 +50,31 @@ export type OnBranch = (messageId: string, mode: 'include' | 'before') => void
 const noHover = (): boolean =>
   typeof matchMedia === 'function' && matchMedia('(hover: none)').matches
 
+/**
+ * Copy · Branch · ⋯ for one message or tool group, in one of three layouts:
+ * - `pill` (desktop): floats on the bubble's top edge, shown on hover.
+ * - `inline` (desktop): a small row at the top of a tool group.
+ * - `row` (touch): a full-width row at the bottom with 40px buttons. It sticks to
+ *   the bottom of the screen while the message runs past it, so Copy is always
+ *   in reach, even in the middle of a long message.
+ * Pill and row are one element (CSS switches it on touch devices); `inline`
+ * groups render a separate `row` for touch.
+ */
 function MessageActions({
   id,
   blocks,
   side,
-  inline = false,
+  layout = 'pill',
+  rowClassName,
   onBranch,
   canBranchBefore
 }: {
   id: string
   blocks: ContentBlock[]
   side: 'left' | 'right'
-  inline?: boolean
+  layout?: 'pill' | 'inline' | 'row'
+  /** Touch row background, matching what it sits on, so text scrolls under it cleanly. */
+  rowClassName?: string
   onBranch?: OnBranch
   canBranchBefore?: boolean
 }) {
@@ -70,16 +83,26 @@ function MessageActions({
   const copyMarkdown = (): Promise<boolean> => copyText(blocksToMarkdown(blocks))
   const copyPlain = (): void => void copyText(blocksToPlainText(blocks))
   const btn =
-    'inline-flex h-6 items-center gap-1 rounded-full px-1.5 text-muted-foreground hover:bg-hover hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring'
+    'inline-flex h-6 items-center justify-center gap-1 rounded-full px-1.5 text-muted-foreground hover:bg-hover hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring touch:h-10 touch:min-w-10 touch:rounded-lg touch:px-3 touch:text-[13px] touch:text-foreground touch:active:bg-hover [&_svg]:touch:size-4'
+  const touchRow = cn(
+    'touch:sticky touch:top-auto touch:right-auto touch:bottom-0 touch:left-auto touch:z-[5] touch:-mx-2 touch:mt-2 touch:-mb-1 touch:flex touch:h-auto touch:w-auto touch:gap-1 touch:rounded-none touch:border-0 touch:border-t touch:border-border/70 touch:px-1 touch:pt-1 touch:opacity-100 touch:shadow-none',
+    rowClassName
+  )
   return (
     <div
+      data-message-actions
+      data-find-skip
       className={cn(
         'z-10 flex h-6 w-max items-center rounded-full border border-border bg-popover text-2xs font-medium shadow-sm transition-opacity duration-100',
-        inline
-          ? 'ml-auto opacity-90'
-          : 'absolute -top-3 opacity-0 group-hover/msg:opacity-100 focus-within:opacity-100 touch:opacity-90',
-        menuOpen && 'opacity-100',
-        !inline && (side === 'left' ? 'left-3' : 'right-3')
+        layout === 'inline' && 'ml-auto opacity-90 touch:hidden',
+        layout === 'pill' &&
+          cn(
+            'absolute -top-3 opacity-0 group-hover/msg:opacity-100 focus-within:opacity-100',
+            side === 'left' ? 'left-3' : 'right-3',
+            touchRow
+          ),
+        layout === 'row' && cn('hidden', touchRow),
+        menuOpen && 'opacity-100'
       )}
     >
       <button
@@ -260,34 +283,29 @@ function UserBubble({ msg, onBranch }: { msg: ChatMessage; onBranch?: OnBranch }
         {msg.timestamp && <span>{formatTime(msg.timestamp)}</span>}
       </div>
       <MessageMenu id={msg.id} blocks={msg.blocks} onBranch={onBranch} canBranchBefore>
-        <div className="group/msg relative max-w-[82%] rounded-2xl rounded-tr-md border border-user-bubble-border bg-user-bubble px-4 py-2.5 shadow-xs touch:pt-4">
-          <MessageActions
-            id={msg.id}
-            blocks={msg.blocks}
-            side="right"
-            onBranch={onBranch}
-            canBranchBefore
-          />
-          <div ref={ref} className={cn(!expanded && 'max-h-[340px] overflow-hidden')}>
-            {msg.blocks.map((b, i) =>
-              b.type === 'text' ? (
-                <Markdown key={i} text={b.text} breaks />
-              ) : b.type === 'image' ? (
-                <div
-                  key={i}
-                  className="my-1 inline-flex items-center gap-1.5 rounded-md border border-border bg-background/60 px-2 py-1 text-xs text-muted-foreground"
-                >
-                  <ImageIcon className="size-3.5" /> Image
-                  {b.mediaType ? ` (${b.mediaType.replace('image/', '')})` : ''}
-                </div>
-              ) : b.type === 'tool_result' ? (
-                <OrphanResult key={i} result={b.result} />
-              ) : null
+        <div className="group/msg relative max-w-[82%] rounded-2xl rounded-tr-md border border-user-bubble-border bg-user-bubble px-4 py-2.5 shadow-xs touch:min-w-40">
+          <div className="relative">
+            <div ref={ref} className={cn(!expanded && 'max-h-[340px] overflow-hidden')}>
+              {msg.blocks.map((b, i) =>
+                b.type === 'text' ? (
+                  <Markdown key={i} text={b.text} breaks />
+                ) : b.type === 'image' ? (
+                  <div
+                    key={i}
+                    className="my-1 inline-flex items-center gap-1.5 rounded-md border border-border bg-background/60 px-2 py-1 text-xs text-muted-foreground"
+                  >
+                    <ImageIcon className="size-3.5" /> Image
+                    {b.mediaType ? ` (${b.mediaType.replace('image/', '')})` : ''}
+                  </div>
+                ) : b.type === 'tool_result' ? (
+                  <OrphanResult key={i} result={b.result} />
+                ) : null
+              )}
+            </div>
+            {overflows && !expanded && (
+              <div className="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-user-bubble to-transparent" />
             )}
           </div>
-          {overflows && !expanded && (
-            <div className="pointer-events-none absolute inset-x-0 bottom-0 h-16 rounded-b-2xl bg-gradient-to-t from-user-bubble to-transparent" />
-          )}
           {(overflows || expanded) && (
             <button
               type="button"
@@ -300,6 +318,14 @@ function UserBubble({ msg, onBranch }: { msg: ChatMessage; onBranch?: OnBranch }
               {expanded ? 'Show less' : 'Show more'}
             </button>
           )}
+          <MessageActions
+            id={msg.id}
+            blocks={msg.blocks}
+            side="right"
+            rowClassName="touch:bg-user-bubble"
+            onBranch={onBranch}
+            canBranchBefore
+          />
         </div>
       </MessageMenu>
     </div>
@@ -357,18 +383,22 @@ function AssistantTurn({
                   blocks={groupBlocks}
                   onBranch={onBranch}
                 >
-                  <div className="group/msg relative w-fit max-w-full rounded-2xl rounded-tl-md border border-assistant-bubble-border bg-assistant-bubble px-4 py-2.5 shadow-xs touch:pt-4">
+                  <div className="group/msg relative w-fit max-w-full rounded-2xl rounded-tl-md border border-assistant-bubble-border bg-assistant-bubble px-4 py-2.5 shadow-xs touch:min-w-40">
+                    <Markdown text={head.b.text} />
                     <MessageActions
                       id={at.id}
                       blocks={groupBlocks}
                       side="left"
+                      rowClassName="touch:bg-assistant-bubble"
                       onBranch={onBranch}
                     />
-                    <Markdown text={head.b.text} />
                   </div>
                 </MessageMenu>
               )
             }
+            // A tool group: desktop gets a small action row at the top, touch a
+            // sticky one at the bottom. overflow-clip, not hidden: hidden would
+            // make this box a scroll container and stop the sticky rows.
             return (
               <MessageMenu
                 key={`${head.m.id}:${head.i}`}
@@ -376,12 +406,12 @@ function AssistantTurn({
                 blocks={groupBlocks}
                 onBranch={onBranch}
               >
-                <div className="max-w-full overflow-hidden rounded-xl border border-border bg-background/50 p-1">
+                <div className="max-w-full overflow-clip rounded-xl border border-border bg-background/50 p-1">
                   <MessageActions
                     id={at.id}
                     blocks={groupBlocks}
                     side="right"
-                    inline
+                    layout="inline"
                     onBranch={onBranch}
                   />
                   {g.map(({ m, b, i }) => {
@@ -425,6 +455,14 @@ function AssistantTurn({
                       )
                     return null
                   })}
+                  <MessageActions
+                    id={at.id}
+                    blocks={groupBlocks}
+                    side="right"
+                    layout="row"
+                    rowClassName="touch:mx-0 touch:-mb-1 touch:bg-background"
+                    onBranch={onBranch}
+                  />
                 </div>
               </MessageMenu>
             )

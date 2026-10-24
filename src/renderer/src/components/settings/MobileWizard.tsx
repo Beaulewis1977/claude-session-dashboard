@@ -37,6 +37,7 @@ import { cn } from '@/lib/utils'
 import { QrCode } from '../QrCode'
 import { Button } from '../ui/button'
 import { Dialog, DialogContent, DialogHeader } from '../ui/dialog'
+import { AiHelpButton } from './AiHelpButton'
 import { Countdown, Mark, PhonePicture, Status, Steps, type Step } from './wizard-parts'
 
 function useClaudeCheck(): [ClaudeCheck | null, () => void, boolean] {
@@ -831,6 +832,7 @@ function Troubleshooting({
         >
           <ClipboardCopy /> Copy diagnostics
         </Button>
+        <AiHelpButton topic="phone" diagnostics={() => api.mobileDiagnostics()} />
         <div className="flex-1" />
         <Button variant="ghost" onClick={onBack}>
           Back to setup

@@ -35,7 +35,7 @@ import { fakeTailscale, TailscaleClient } from './mobile/tailscale'
 import { webAssets } from './mobile/web-assets'
 import { registerTerminalIpc } from './ipc-terminal'
 import { fakePc } from './terminal/fake'
-import { realProbe, realRunner } from './terminal/host'
+import { realHostKeys, realProbe, realRunner } from './terminal/host'
 import {
   emptyTerminalFile,
   sshUserName,
@@ -468,6 +468,7 @@ async function main(): Promise<void> {
     simulated: FIXTURES,
     run: fakeSsh?.run ?? realRunner(join(paths.dataDir, 'terminal-work')),
     probe: fakeSsh?.probe ?? realProbe,
+    hostKeys: fakeSsh?.hostKeys ?? realHostKeys,
     tailscale: () => mobile.refreshTailscale(),
     exists: fileExists,
     user: FIXTURES ? 'beau' : sshUserName()

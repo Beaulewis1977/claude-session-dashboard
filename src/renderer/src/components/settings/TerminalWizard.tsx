@@ -41,6 +41,7 @@ import { QrCode } from '../QrCode'
 import { Button } from '../ui/button'
 import { Dialog, DialogContent, DialogHeader } from '../ui/dialog'
 import { Textarea } from '../ui/input'
+import { AiHelpButton } from './AiHelpButton'
 import { useChange, useTerminalStatus } from './terminal-change'
 import { Countdown, PhonePicture, Status, Steps, WizardFrame, type Step } from './wizard-parts'
 
@@ -414,6 +415,13 @@ export function TerminalWizard({
               {st.keys.admin ? ' (the file OpenSSH uses for administrator accounts)' : ''}. Your
               existing keys are never changed.
             </p>
+            {st.keys.admin && (
+              <Status c="todo">
+                Add keys here, not with your SSH app’s “Export key to host”: that writes{' '}
+                <span className="font-mono">~/.ssh/authorized_keys</span>, which Windows ignores for
+                administrator accounts.
+              </Status>
+            )}
             {st.pendingKey ? (
               <div className="space-y-2 rounded-lg border border-info/30 bg-info/5 p-3">
                 <div className="text-[13px]">
@@ -627,6 +635,32 @@ export function TerminalWizard({
                 ]}
               />
             </div>
+            {st.hostKeys.length > 0 && (
+              <div className="rounded-lg border border-border px-3 py-2 text-xs leading-relaxed">
+                <div className="font-medium">First connect: “Trust this host?”</div>
+                <div className="text-muted-foreground">
+                  Accept only if the fingerprint your app shows is one of these (some apps show
+                  another key type, or an MD5 form; if none match, don’t connect):
+                </div>
+                {st.hostKeys.map((k) => (
+                  <div key={k.fingerprint} className="selectable font-mono text-[11.5px]">
+                    {k.type} {k.fingerprint}
+                  </div>
+                ))}
+              </div>
+            )}
+            {st.passwordAuth !== 'no' && (
+              <p className="text-xs text-muted-foreground">
+                Logging in with a password? It’s the Windows password of the account{' '}
+                <span className="font-mono">{st.user}</span> on this PC
+                {st.account === 'microsoft'
+                  ? ' (your Microsoft account password)'
+                  : st.account === 'local'
+                    ? ' (a local account, so not your Microsoft account password)'
+                    : ''}
+                , never your PIN or your SSH app’s own password. A key avoids all of that.
+              </p>
+            )}
             <label className="flex cursor-pointer items-center gap-2 text-[13px]">
               <input
                 type="checkbox"
@@ -760,8 +794,20 @@ const FIXES: [string, string][] = [
     'The key wasn’t added, or the app uses a different key. Compare the fingerprint in step 5 with the app’s. For administrator accounts the key must be in C:\\ProgramData\\ssh\\administrators_authorized_keys (the wizard does this).'
   ],
   [
-    'Password is rejected',
-    'Use your Windows password (for a Microsoft account, the account password, not the PIN). If you turned off password login, use your key, or undo that in step 5.'
+    '“Failed password” with the right password',
+    'SSH wants the Windows password of the PC account shown as User in step 6: for a local account its own password, for a Microsoft account the Microsoft password. Never your PIN, and never your SSH app’s own account or vault password. Easiest: use a key (step 5).'
+  ],
+  [
+    '“Trust this host?” shows a different fingerprint',
+    'The PC has several host keys (ED25519, ECDSA, RSA) and apps show one of them, sometimes as MD5. Step 6 lists them: accept only if one matches. If none do, don’t connect.'
+  ],
+  [
+    'Works on Wi-Fi, not on mobile data (or not at all)',
+    'Tailscale must be on on the phone, and the PC must be awake (not asleep). Android runs one VPN at a time: another VPN app turns Tailscale off.'
+  ],
+  [
+    'I used the app’s “Export key to host”',
+    'For administrator accounts Windows only reads C:\\ProgramData\\ssh\\administrators_authorized_keys, so that key isn’t used. Add it in step 5 instead.'
   ],
   [
     'Wrong shell, or the folder command fails',
@@ -829,6 +875,7 @@ function TerminalTroubleshooting({
         >
           <ClipboardCopy /> Copy diagnostics
         </Button>
+        <AiHelpButton topic="terminal" diagnostics={() => api.terminalDiagnostics()} />
         <Button variant="outline" onClick={() => void api.terminalOpenBackups()}>
           <FolderOpen /> Open backups folder
         </Button>

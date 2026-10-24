@@ -4,10 +4,12 @@
 import { createHash } from 'node:crypto'
 import type { ProbeResult, RunOutcome, ScriptRunner } from './host'
 import type { BuiltScript } from './scripts'
+import type { HostKey } from '@shared/terminal'
 
 export interface FakePc {
   probe(): Promise<ProbeResult>
   run: ScriptRunner
+  hostKeys(): Promise<HostKey[]>
   state: ProbeResult & { keys: string[] }
   /** Every script that "ran", for tests. */
   ran: BuiltScript[]
@@ -22,6 +24,7 @@ export function fakePc(
     oursRule: false,
     defaultRule: opts.installed ? { enabled: true } : undefined,
     admin: opts.admin ?? true,
+    account: 'local',
     tsAlias: 'Tailscale',
     defaultDistro: 'Ubuntu-24.04',
     config: opts.installed ? opts.config : undefined,
@@ -104,6 +107,14 @@ export function fakePc(
     state,
     ran,
     probe: async () => ({ ...state, events: [...state.events] }),
+    // Sample fingerprints (not any real machine's).
+    hostKeys: async () =>
+      state.sshdService?.status === 'Running'
+        ? [
+            { type: 'ED25519', fingerprint: 'SHA256:sAmPLe0hostKeyEd25519Fixture0000000000000' },
+            { type: 'ECDSA', fingerprint: 'SHA256:sAmPLe0hostKeyEcdsaFixture000000000000000' }
+          ]
+        : [],
     run: async (s): Promise<RunOutcome> => {
       ran.push(s)
       const parts = s.parts.map((p) => part(p.name, p.body, p.params))

@@ -279,6 +279,10 @@ See [More details](docs/DETAILS.md#scripts) for every script and how the code is
 
 ## Troubleshooting
 
+- **Phone or SSH connection not working?** Open Troubleshooting in Settings → Phone (or Terminal
+  access) and click **Copy AI help prompt**, then paste it into Claude or another AI assistant. It
+  points the assistant at [`docs/AI-SETUP-GUIDE.md`](docs/AI-SETUP-GUIDE.md): read-only checks first,
+  your OK before any change, and no secrets.
 - **Nothing shows up.** Check the scan sources in Settings. Add your `.claude` folder with **Add
   folder…** if it lives somewhere unusual.
 - **A WSL distro shows "Can't read".** Open the distro once (for example `wsl -d Ubuntu`), then press

@@ -10,6 +10,7 @@ import { execFile } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
 import { readFile, unlink } from 'node:fs/promises'
 import { join, win32 } from 'node:path'
+import type { AccountKind, HostKey } from '@shared/terminal'
 import { systemRoot } from '../core/which'
 import { encodedCommand, scriptText, type BuiltScript } from './scripts'
 
@@ -36,6 +37,8 @@ export interface ProbeResult {
   /** HKLM\SOFTWARE\OpenSSH\DefaultShellCommandOption, if someone set it. */
   shellOption?: string
   admin: boolean
+  /** Which password an SSH login would need (if passwords are on). */
+  account?: AccountKind
   tsAlias?: string
   defaultDistro?: string
   /** sshd_config exactly as on disk. */
@@ -159,6 +162,7 @@ if ($d) { $o.defaultRule = @{ enabled = ([string]$d.Enabled -eq 'True') } }
 $o.shell = (Get-ItemProperty -Path 'HKLM:\\SOFTWARE\\OpenSSH' -Name DefaultShell -ErrorAction SilentlyContinue).DefaultShell
 $o.shellOption = (Get-ItemProperty -Path 'HKLM:\\SOFTWARE\\OpenSSH' -Name DefaultShellCommandOption -ErrorAction SilentlyContinue).DefaultShellCommandOption
 $o.admin = [bool]((& (Join-Path $env:SystemRoot 'System32\\whoami.exe') /groups /fo csv /nh) -match 'S-1-5-32-544')
+$o.account = [string](Get-LocalUser -Name $env:USERNAME -ErrorAction SilentlyContinue).PrincipalSource
 $o.tsAlias = [string](Get-NetAdapter -ErrorAction SilentlyContinue | Where-Object { $_.InterfaceDescription -like 'Tailscale*' } | Select-Object -First 1).Name
 $lx = 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Lxss'
 $g = (Get-ItemProperty -Path $lx -ErrorAction SilentlyContinue).DefaultDistribution
@@ -176,6 +180,40 @@ $o | ConvertTo-Json -Compress -Depth 5`
 export async function realProbe(): Promise<ProbeResult> {
   const r = await run([...PS_FLAGS, '-EncodedCommand', encodedCommand(PROBE)], process.env, 30_000)
   return parseProbe(r.stdout)
+}
+
+/** Get-LocalUser's PrincipalSource: which password an SSH login needs. */
+export function accountKind(source: string | undefined): AccountKind | undefined {
+  if (!source) return undefined
+  if (/^Local$/i.test(source)) return 'local'
+  if (/^MicrosoftAccount$/i.test(source)) return 'microsoft'
+  return 'other'
+}
+
+// The PC's own SSH host keys, as an SSH app shows them when it first connects.
+// Read from the running server (the key files themselves are administrator-only).
+const HOST_KEYS = `$ErrorActionPreference = 'SilentlyContinue'
+$dir = Join-Path $env:SystemRoot 'System32\\OpenSSH'
+$keys = & (Join-Path $dir 'ssh-keyscan.exe') -T 5 -t ed25519,ecdsa,rsa 127.0.0.1 2>$null
+if ($keys) { $keys | & (Join-Path $dir 'ssh-keygen.exe') -l -f - 2>$null }`
+
+/** "256 SHA256:… 127.0.0.1 (ED25519)" lines → type and fingerprint. */
+export function parseHostKeys(text: string): HostKey[] {
+  const out: HostKey[] = []
+  for (const line of text.split(/\r?\n/)) {
+    const m = /^\d+\s+(SHA256:[A-Za-z0-9+/]+)\s+\S+\s+\((\w+)\)\s*$/.exec(line.trim())
+    if (m) out.push({ type: m[2], fingerprint: m[1] })
+  }
+  return out
+}
+
+export async function realHostKeys(): Promise<HostKey[]> {
+  const r = await run(
+    [...PS_FLAGS, '-EncodedCommand', encodedCommand(HOST_KEYS)],
+    process.env,
+    20_000
+  )
+  return parseHostKeys(r.stdout)
 }
 
 export function parseProbe(text: string): ProbeResult {
@@ -203,6 +241,7 @@ export function parseProbe(text: string): ProbeResult {
     shell: str(j.shell),
     shellOption: str(j.shellOption),
     admin: j.admin === true,
+    account: accountKind(str(j.account)),
     tsAlias: str(j.tsAlias),
     defaultDistro: str(j.defaultDistro),
     config: typeof j.configB64 === 'string' ? Buffer.from(j.configB64, 'base64') : undefined,

@@ -38,7 +38,8 @@ import {
   shownText,
   TAILSCALE_RANGES
 } from '../src/main/terminal/scripts'
-import { parseProbe, PROBE } from '../src/main/terminal/host'
+import { accountKind, parseHostKeys, parseProbe, PROBE } from '../src/main/terminal/host'
+import { AI_GUIDE_URL, aiHelpPrompt } from '../src/shared/ai-help'
 import { passwordAuthSetting, setPasswordAuth } from '../src/main/terminal/sshd-config'
 import {
   emptyTerminalFile,
@@ -53,7 +54,7 @@ import { FIXTURES, TOOLS } from './helpers'
 
 // A throwaway test key (made with ssh-keygen; `ssh-keygen -lf` gives the fingerprint below).
 const KEY =
-  'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIED8g+pZcZaYnLeQS1BBDXSLK/6w0yJqzqRhWVG8RRmu iphone-15'
+  'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIED8g+pZcZaYnLeQS1BBDXSLK/6w0yJqzqRhWVG8RRmu csd-test-key'
 const KEY_FP = 'SHA256:Kdv0Vqz8APCLEpeC4chVMO+GgvG2ZPlMRJxYrAX1NuM'
 const KEY_BLOB = KEY.split(' ')[1]
 
@@ -261,7 +262,7 @@ describe('public keys', () => {
     expect(k.ok).toBe(true)
     if (!k.ok) return
     expect(k.type).toBe('ssh-ed25519')
-    expect(k.comment).toBe('iphone-15')
+    expect(k.comment).toBe('csd-test-key')
     expect(k.line).toBe(KEY)
     expect(await keyFingerprint(k.base64)).toBe(KEY_FP)
   })
@@ -417,6 +418,7 @@ describe('terminal access service', () => {
       simulated: true,
       run: pc.run,
       probe: pc.probe,
+      hostKeys: pc.hostKeys,
       tailscale: async () => ({
         installed: true,
         loggedIn: tsUp,
@@ -504,6 +506,7 @@ describe('terminal access service', () => {
     expect((await svc.status()).ready).toBe(false)
     pc.state.defaultRule = { enabled: false }
     await svc.status()
+    expect((await svc.phoneInfo()).hostKeys?.[0]?.type).toBe('ED25519')
     expect(await svc.phoneInfo()).toMatchObject({
       ready: true,
       host: 'ryzen-desktop.tail1234.ts.net',
@@ -587,7 +590,7 @@ describe('terminal access service', () => {
     expect('token' in p && (await svc.apply(p.token)).ok).toBe(true)
     expect(store.value.keys[0]).toMatchObject({
       fingerprint: KEY_FP,
-      comment: 'iphone-15',
+      comment: 'csd-test-key',
       admin: true
     })
     expect((await run({ kind: 'key-add', key: KEY })).error).toMatch(/already/)
@@ -682,7 +685,7 @@ describe('terminal access service', () => {
 
   it('never takes ownership of a key that was already in the file', async () => {
     await run({ kind: 'install' })
-    pc.state.keys.push(KEY.replace('iphone-15', 'added-by-me'))
+    pc.state.keys.push(KEY.replace('csd-test-key', 'added-by-me'))
     const r = await run({ kind: 'key-add', key: KEY })
     expect(r.ok).toBe(true)
     expect(store.value.keys).toHaveLength(0)
@@ -987,3 +990,29 @@ describe.skipIf(process.platform !== 'win32')(
     }, 60_000)
   }
 )
+
+describe('help for first connects and AI assistants', () => {
+  it('reads host key fingerprints and account types', () => {
+    expect(
+      parseHostKeys(
+        '3072 SHA256:fAkeRsaHostKeyForTests000000000000000000000 127.0.0.1 (RSA)\r\n256 SHA256:fAkeEd25519HostKeyForTests0000000000000000 127.0.0.1 (ED25519)\nnoise'
+      )
+    ).toEqual([
+      { type: 'RSA', fingerprint: 'SHA256:fAkeRsaHostKeyForTests000000000000000000000' },
+      { type: 'ED25519', fingerprint: 'SHA256:fAkeEd25519HostKeyForTests0000000000000000' }
+    ])
+    expect(accountKind('Local')).toBe('local')
+    expect(accountKind('MicrosoftAccount')).toBe('microsoft')
+    expect(accountKind('AzureAD')).toBe('other')
+    expect(accountKind(undefined)).toBeUndefined()
+  })
+
+  it('builds an AI help prompt that points at the guide and carries the diagnostics', () => {
+    const p = aiHelpPrompt('terminal', 'OpenSSH Server: installed\n')
+    expect(p).toContain(AI_GUIDE_URL)
+    expect(p).toContain('docs/AI-SETUP-GUIDE.md')
+    expect(p).toContain('Ask me before you change anything')
+    expect(p).toContain('OpenSSH Server: installed')
+    expect(aiHelpPrompt('phone', 'x')).toContain('phone companion')
+  })
+})

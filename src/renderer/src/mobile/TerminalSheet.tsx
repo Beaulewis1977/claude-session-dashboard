@@ -105,6 +105,21 @@ export function TerminalSheet({
               one tap.
             </span>
           </div>
+          {info.hostKeys && info.hostKeys.length > 0 && (
+            <details className="rounded-lg border border-border px-3 py-2 text-[12.5px]">
+              <summary className="cursor-pointer font-medium">
+                First connect: “Trust this host?”
+              </summary>
+              <p className="mt-1.5 text-muted-foreground">
+                Accept only if the app shows one of these fingerprints:
+              </p>
+              {info.hostKeys.map((k) => (
+                <div key={k.fingerprint} className="selectable font-mono text-[11.5px] break-all">
+                  {k.type} {k.fingerprint}
+                </div>
+              ))}
+            </details>
+          )}
           <Button variant="ghost" className="h-11 w-full" onClick={onClose}>
             Done
           </Button>

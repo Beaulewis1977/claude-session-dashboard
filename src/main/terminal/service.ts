@@ -20,6 +20,7 @@ import {
   parseSshdLogins,
   SSH_PORT,
   type ActionResult,
+  type HostKey,
   type PendingKey,
   type PreparedChange,
   type ShellOption,
@@ -93,6 +94,8 @@ export interface TerminalDeps {
   simulated: boolean
   run: ScriptRunner
   probe(): Promise<ProbeResult>
+  /** The running sshd's host key fingerprints. */
+  hostKeys?(): Promise<HostKey[]>
   tailscale(): Promise<{ installed: boolean; loggedIn: boolean; dnsName?: string }>
   exists(p: string): Promise<boolean>
   user: string
@@ -159,6 +162,7 @@ export class TerminalService extends EventEmitter<{ changed: [] }> {
   private pending: (PendingKey & { line: string }) | undefined
   private listenUntil = 0
   private busy = false
+  private hostKeyCache: { at: number; keys: HostKey[] } | undefined
   private prepared: { token: string; action: TerminalAction; plan: Plan; at: number } | undefined
 
   constructor(private readonly deps: TerminalDeps) {
@@ -269,6 +273,8 @@ export class TerminalService extends EventEmitter<{ changed: [] }> {
         options
       },
       keys: { file: this.keyFile(p.admin), admin: p.admin },
+      account: p.account,
+      hostKeys: running ? await this.hostKeys() : [],
       passwordAuth: p.config ? passwordAuthSetting(p.config.toString('utf8')) : 'unknown',
       lastLogin: logins[0],
       eventLogReadable: p.eventsOk,
@@ -314,8 +320,18 @@ export class TerminalService extends EventEmitter<{ changed: [] }> {
       host: st.ready ? st.tailscale.dnsName : undefined,
       user: st.ready ? st.user : undefined,
       port: SSH_PORT,
-      shell: { kind: st.shell.kind, path: st.shell.path, distro: st.shell.distro }
+      shell: { kind: st.shell.kind, path: st.shell.path, distro: st.shell.distro },
+      hostKeys: st.ready ? st.hostKeys : undefined
     }
+  }
+
+  /** Each read connects to sshd (and shows in its log): kept for 10 minutes. */
+  private async hostKeys(): Promise<HostKey[]> {
+    const c = this.hostKeyCache
+    if (c && c.keys.length && this.now() - c.at < 10 * 60_000) return c.keys
+    const keys = (await this.deps.hostKeys?.().catch(() => [])) ?? []
+    this.hostKeyCache = { at: this.now(), keys }
+    return keys
   }
 
   // ------------------------------------------------------------ planning

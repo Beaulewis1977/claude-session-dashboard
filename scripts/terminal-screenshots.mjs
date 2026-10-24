@@ -17,7 +17,7 @@ await mkdir(out, { recursive: true })
 
 // A throwaway public key (only its fingerprint is ever shown).
 const KEY =
-  'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIED8g+pZcZaYnLeQS1BBDXSLK/6w0yJqzqRhWVG8RRmu iphone-15'
+  'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIED8g+pZcZaYnLeQS1BBDXSLK/6w0yJqzqRhWVG8RRmu csd-test-key'
 
 const args = [root, '--fixtures']
 if (process.platform === 'linux') args.push('--no-sandbox')

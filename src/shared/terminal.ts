@@ -29,6 +29,18 @@ export interface TerminalAccessInfo {
   user?: string
   port: number
   shell: SshShellInfo
+  /** To compare when the SSH app asks to trust the PC. */
+  hostKeys?: HostKey[]
+}
+
+/** The Windows account type: which password a (password) SSH login needs. */
+export type AccountKind = 'local' | 'microsoft' | 'other'
+
+/** One of the PC's SSH host keys, as an SSH app shows it on first connect. */
+export interface HostKey {
+  /** "ED25519", "ECDSA", "RSA". */
+  type: string
+  fingerprint: string
 }
 
 /** A login sshd recorded in its event log. */
@@ -91,6 +103,9 @@ export interface TerminalStatus {
   }
   shell: SshShellInfo & { options: ShellOption[]; defaultDistro?: string }
   keys: { file: string; admin: boolean }
+  account?: AccountKind
+  /** Empty while sshd isn't running. */
+  hostKeys: HostKey[]
   /** The global PasswordAuthentication setting ('unknown' when sshd_config can't be read). */
   passwordAuth: 'yes' | 'no' | 'unknown'
   lastLogin?: SshLogin

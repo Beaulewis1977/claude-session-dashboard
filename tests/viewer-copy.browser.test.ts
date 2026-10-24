@@ -1,7 +1,7 @@
 import { resolve } from 'node:path'
 import { mkdir } from 'node:fs/promises'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { chromium, type Browser, type BrowserContext, type Page } from 'playwright'
+import { chromium, type Browser, type BrowserContext, type Locator, type Page } from 'playwright'
 import { createServer, type ViteDevServer } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
@@ -52,6 +52,45 @@ fixtures.image = [
   user('user-message', 'Look'),
   assistant([{ type: 'image', mediaType: 'image/png' }])
 ]
+// Every message type on one phone screen: one-word messages, a long reply, and a
+// tool call whose output is far taller than the screen.
+const longReply = Array.from(
+  { length: 40 },
+  (_, i) => `Paragraph ${i + 1} of a long answer, with enough words to wrap on a phone.`
+).join('\n\n')
+const longOutput = Array.from({ length: 200 }, (_, i) => `output line ${i + 1}`).join('\n')
+fixtures.phone = [
+  user('user-one-word', 'Hi'),
+  {
+    id: 'assistant-one-word',
+    role: 'assistant',
+    kind: 'response',
+    blocks: [{ type: 'text', text: 'Yes' }]
+  },
+  user('user-long-ask', 'Explain it'),
+  {
+    id: 'assistant-long',
+    role: 'assistant',
+    kind: 'response',
+    blocks: [{ type: 'text', text: longReply }]
+  },
+  user('user-run', 'Run it'),
+  {
+    id: 'assistant-tool',
+    role: 'assistant',
+    kind: 'response',
+    blocks: [
+      {
+        type: 'tool_use',
+        id: 'tool-long',
+        name: 'Bash',
+        label: 'Bash: seq 200',
+        input: { command: 'seq 200' },
+        result: { text: longOutput, isError: false }
+      }
+    ]
+  }
+]
 const groupPlainText: Record<string, string> = {
   tool: 'Bash: echo hello\n\necho hello\n\nhello',
   thinking: 'Consider the result',
@@ -61,7 +100,7 @@ const groupPlainText: Record<string, string> = {
 const harness = `
 import React from 'react'
 import { createRoot } from 'react-dom/client'
-import { Toaster } from 'sonner'
+import { Toaster, toast } from 'sonner'
 import { Transcript } from '/src/renderer/src/components/viewer/Transcript.tsx'
 import { TooltipProvider } from '/src/renderer/src/components/ui/tooltip.tsx'
 import { writeClipboard } from '/src/renderer/src/lib/clipboard.ts'
@@ -70,12 +109,16 @@ const fixtures = ${JSON.stringify(fixtures)}
 const fixture = new URLSearchParams(location.search).get('fixture') || 'short'
 window.csd = { copyText: writeClipboard }
 window.branches = []
+window.dismissToasts = () => toast.dismiss()
+// A scroll container like the app's, so sticky action rows behave as on a phone.
 createRoot(document.getElementById('root')).render(
   React.createElement(TooltipProvider, null,
-    React.createElement(Transcript, {
-      messages: fixtures[fixture], findQuery: '', className: 'px-3',
-      onBranch: (id, mode) => window.branches.push({ id, mode })
-    }),
+    React.createElement('div', { id: 'scroller', style: { height: '100vh', overflowY: 'auto' } },
+      React.createElement(Transcript, {
+        messages: fixtures[fixture], findQuery: '', className: 'px-3',
+        onBranch: (id, mode) => window.branches.push({ id, mode })
+      })
+    ),
     React.createElement(Toaster, { position: 'bottom-center' })
   )
 )
@@ -442,6 +485,156 @@ describe('viewer copy in a real phone-size browser', { timeout: 20_000 }, () => 
         await page.getByRole('button', { name: 'Copy message', exact: true }).nth(1).innerText()
       ).toBe('Copy')
       expect(await page.evaluate('document.querySelectorAll("textarea").length')).toBe(0)
+    } finally {
+      await context.close()
+    }
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Touch: every message and every expanded tool output has a Copy button that is
+// visible, at least 40px, inside the screen and not covered, wherever you are.
+
+type Box = { x: number; y: number; width: number; height: number }
+
+/** The button is shown (not faded), 40px or larger, fully on screen and the topmost thing at its centre. */
+async function expectTappable(page: Page, button: Locator, what: string): Promise<Box> {
+  const { width, height } = page.viewportSize()!
+  const box = (await button.boundingBox())!
+  expect(box, what).not.toBeNull()
+  expect(box.width, `${what}: width`).toBeGreaterThanOrEqual(40)
+  expect(box.height, `${what}: height`).toBeGreaterThanOrEqual(40)
+  expect(box.x, `${what}: left edge`).toBeGreaterThanOrEqual(0)
+  expect(box.y, `${what}: top edge`).toBeGreaterThanOrEqual(0)
+  expect(box.x + box.width, `${what}: right edge`).toBeLessThanOrEqual(width)
+  expect(box.y + box.height, `${what}: bottom edge`).toBeLessThanOrEqual(height)
+  // Let enter animations (expanding a tool call fades in) finish first.
+  // (Page-side code goes through `el`, as this file is type-checked without DOM types.)
+  await button.evaluate((el) =>
+    Promise.all(
+      el.ownerDocument
+        .getAnimations()
+        .map((a: { finished: Promise<unknown> }) => a.finished.catch(() => undefined))
+    )
+  )
+  const state = await button.evaluate((el) => {
+    const view = el.ownerDocument.defaultView!
+    let opacity = 1
+    for (let n = el; n; n = n.parentElement) opacity *= Number(view.getComputedStyle(n).opacity)
+    const r = el.getBoundingClientRect()
+    const top = el.ownerDocument.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2)
+    const name = top
+      ? `${top.tagName.toLowerCase()}.${[...top.classList].slice(0, 4).join('.')} "${(top.textContent ?? '').slice(0, 30)}"`
+      : 'nothing'
+    return { opacity, onTop: !!top && el.contains(top), top: name }
+  })
+  expect(state.opacity, `${what}: opacity`).toBeGreaterThanOrEqual(0.9)
+  expect(state.onTop, `${what}: covered by ${state.top}`).toBe(true)
+  return box
+}
+
+/** Scrolls the transcript so the element's vertical middle sits at the screen's middle. */
+async function scrollToMiddleOf(target: Locator): Promise<void> {
+  await target.evaluate((el) => {
+    const scroller = el.ownerDocument.getElementById('scroller')!
+    const r = el.getBoundingClientRect()
+    scroller.scrollTop += r.top + r.height / 2 - scroller.clientHeight / 2
+  })
+}
+
+async function copyAndRead(page: Page, button: Locator): Promise<string> {
+  await page.evaluate('navigator.clipboard.writeText("")')
+  await button.tap()
+  await page.getByText('Copied ✓', { exact: true }).first().waitFor()
+  const text = await page.evaluate<string>('navigator.clipboard.readText()')
+  // Clear the toast so it can't cover the next button being checked.
+  await page.evaluate('window.dismissToasts()')
+  await page.locator('[data-sonner-toast]').first().waitFor({ state: 'detached' })
+  return text.replace(/\r\n/g, '\n')
+}
+
+describe('touch copy buttons are visible and tappable', { timeout: 30_000 }, () => {
+  for (const width of [320, 390]) {
+    it(`one-word, long and tool messages at ${width}px`, async ({ skip }) => {
+      if (!browser) skip(unavailableReason)
+      const { context, page } = await openFixture('phone', width)
+      try {
+        const copies = page.getByRole('button', { name: 'Copy message', exact: true })
+        // You · Claude · You · Claude (long) · You · Claude (tool group).
+        expect(await copies.count()).toBe(6)
+        const bubbles = ['.bg-user-bubble', '.bg-assistant-bubble']
+
+        // One-word messages: the row fits inside the bubble and the screen.
+        for (const [index, selector, text] of [
+          [0, bubbles[0], 'Hi'],
+          [1, bubbles[1], 'Yes']
+        ] as const) {
+          const bubble = page.locator(selector).first()
+          await bubble.scrollIntoViewIfNeeded()
+          const box = await expectTappable(page, copies.nth(index), `one-word "${text}" Copy`)
+          const outer = (await bubble.boundingBox())!
+          expect(box.x).toBeGreaterThanOrEqual(outer.x)
+          expect(box.x + box.width).toBeLessThanOrEqual(outer.x + outer.width)
+          await expectTappable(
+            page,
+            bubble.getByRole('button', { name: 'More message actions', exact: true }),
+            `one-word "${text}" ⋯`
+          )
+          expect(await copyAndRead(page, copies.nth(index))).toBe(text)
+        }
+
+        // A long reply, read from the middle: its Copy is pinned on screen.
+        const long = page.locator(bubbles[1]).nth(1)
+        expect((await long.boundingBox())!.height).toBeGreaterThan(page.viewportSize()!.height)
+        await scrollToMiddleOf(long)
+        await expectTappable(page, copies.nth(3), 'long reply Copy (middle)')
+        await capturePreview(page, `phone-long-middle-${width}`)
+        expect(await copyAndRead(page, copies.nth(3))).toBe(longReply)
+        // ...and at its very end.
+        await long.evaluate((el) => el.scrollIntoView({ block: 'end' }))
+        await expectTappable(page, copies.nth(3), 'long reply Copy (end)')
+
+        // An expanded tool call with output taller than the screen.
+        await page.getByRole('button', { name: /Bash/ }).first().tap()
+        await page.getByRole('button', { name: /^Show all/ }).tap()
+        const output = page.locator('pre', { hasText: 'output line 200' })
+        expect((await output.boundingBox())!.height).toBeGreaterThan(page.viewportSize()!.height)
+        await scrollToMiddleOf(output)
+        const copyOutput = page.getByRole('button', { name: 'Copy output', exact: true })
+        await expectTappable(page, copyOutput, 'Copy output (middle of output)')
+        await expectTappable(
+          page,
+          page.getByRole('button', { name: 'Copy input', exact: true }),
+          'Copy input (middle of output)'
+        )
+        await expectTappable(page, copies.nth(5), 'tool group Copy (middle of output)')
+        await capturePreview(page, `phone-tool-middle-${width}`)
+        expect(await copyAndRead(page, copyOutput)).toBe(longOutput)
+      } finally {
+        await context.close()
+      }
+    })
+  }
+
+  it('stays hover-based with a mouse', async ({ skip }) => {
+    if (!browser) skip(unavailableReason)
+    const { context, page } = await openFixture('phone', 1024, 'native', false)
+    try {
+      const copy = page.getByRole('button', { name: 'Copy message', exact: true }).first()
+      const pill = copy.locator('xpath=..')
+      expect(
+        await pill.evaluate((el) => el.ownerDocument.defaultView!.getComputedStyle(el).opacity)
+      ).toBe('0')
+      expect(
+        await pill.evaluate((el) => el.ownerDocument.defaultView!.getComputedStyle(el).position)
+      ).toBe('absolute')
+      await page.locator('.bg-user-bubble').first().hover()
+      await expect
+        .poll(() =>
+          pill.evaluate((el) => el.ownerDocument.defaultView!.getComputedStyle(el).opacity)
+        )
+        .toBe('1')
+      expect((await copy.boundingBox())!.height).toBeLessThan(40)
     } finally {
       await context.close()
     }

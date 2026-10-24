@@ -329,11 +329,12 @@ export function SessionScreen({ session }: { session: SessionSummary }) {
         </div>
       </div>
 
+      {/* Above the footer and the sticky Copy · ⋯ row a message can pin to the bottom. */}
       {detail && messages.length > 6 && (
         <Button
           variant="outline"
           size="icon"
-          className="absolute right-4 bottom-[calc(env(safe-area-inset-bottom)+112px)] z-10 size-10 rounded-full bg-popover/90 shadow-md backdrop-blur"
+          className="absolute right-4 bottom-[calc(env(safe-area-inset-bottom)+156px)] z-10 size-10 rounded-full bg-popover/90 shadow-md backdrop-blur"
           aria-label="Jump to latest"
           onClick={() => {
             const el = scrollRef.current

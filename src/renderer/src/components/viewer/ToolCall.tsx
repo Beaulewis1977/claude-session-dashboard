@@ -209,14 +209,25 @@ export function ResultView({ result, findQuery }: { result: ToolResult; findQuer
   )
 }
 
+// On touch devices: 40px buttons, and the row sticks to the top of the screen
+// while the tool's output is in view, so Copy output is reachable in long output.
+const touchCopy =
+  'touch:h-10 touch:min-w-10 touch:whitespace-nowrap touch:rounded-lg touch:px-2.5 touch:text-[13px] touch:text-foreground touch:active:bg-hover [&_svg]:touch:size-4'
+
 /** Copy input / Copy output for an expanded tool call (always the full text, never the preview). */
 function CopyRow({ input, output }: { input?: () => string; output?: ToolResult }) {
   const hasOutput = !!output?.text
   if (!input && !hasOutput) return null
   return (
-    <div className="-mt-0.5 flex justify-end gap-1">
-      {input && <CopyButton label="Copy input" getText={input} />}
-      {hasOutput && <CopyButton label="Copy output" getText={() => toolOutputText(output!)} />}
+    <div className="-mt-0.5 flex justify-end gap-1 touch:sticky touch:top-0 touch:z-[4] touch:mt-0 touch:-mr-1 touch:-ml-[22px] touch:flex-wrap touch:gap-x-1 touch:gap-y-0 touch:bg-background touch:py-1">
+      {input && <CopyButton label="Copy input" getText={input} className={touchCopy} />}
+      {hasOutput && (
+        <CopyButton
+          label="Copy output"
+          getText={() => toolOutputText(output!)}
+          className={touchCopy}
+        />
+      )}
     </div>
   )
 }

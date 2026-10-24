@@ -30,6 +30,7 @@ import { RemoteLauncher } from '../src/main/mobile/remote-launch'
 import { rpcMethod, RPC } from '../src/main/mobile/rpc'
 import { MobileServer } from '../src/main/mobile/server'
 import { fakePc, type FakePc } from '../src/main/terminal/fake'
+import * as scripts from '../src/main/terminal/scripts'
 import {
   encodedCommand,
   firewallAddScript,
@@ -37,7 +38,7 @@ import {
   shownText,
   TAILSCALE_RANGES
 } from '../src/main/terminal/scripts'
-import { parseProbe } from '../src/main/terminal/host'
+import { parseProbe, PROBE } from '../src/main/terminal/host'
 import { passwordAuthSetting, setPasswordAuth } from '../src/main/terminal/sshd-config'
 import {
   emptyTerminalFile,
@@ -894,3 +895,76 @@ describe('a phone offering its SSH key', () => {
     expect(reg.activity(5)[0]).toMatchObject({ action: 'ssh-key', device: 'Pixel', ok: true })
   })
 })
+
+// ------------------------------------------------------------ PowerShell 5.1 parses every script
+
+describe.skipIf(process.platform !== 'win32')(
+  'the scripts, as Windows PowerShell reads them',
+  () => {
+    const ps = join(
+      process.env.SystemRoot ?? 'C:\\Windows',
+      'System32',
+      'WindowsPowerShell',
+      'v1.0',
+      'powershell.exe'
+    )
+    /** Parse errors only: nothing is run. */
+    const parseErrors = (text: string): string =>
+      execFileSync(
+        ps,
+        [
+          '-NoProfile',
+          '-NonInteractive',
+          '-Command',
+          '$t = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($env:CSD_SRC)); $e = $null; [void][Management.Automation.Language.Parser]::ParseInput($t, [ref]$null, [ref]$e); $e | ForEach-Object { $_.Message }'
+        ],
+        {
+          env: { ...process.env, CSD_SRC: Buffer.from(text, 'utf8').toString('base64') },
+          encoding: 'utf8'
+        }
+      ).trim()
+
+    it('parses every change script and the probe', () => {
+      const keys = 'C:\\ProgramData\\ssh\\administrators_authorized_keys'
+      const all = [
+        scripts.installScript(),
+        scripts.uninstallScript(),
+        scripts.serviceOnScript(),
+        scripts.serviceSetScript('Manual', true, 'undo'),
+        scripts.firewallAddScript({
+          program: 'C:\\Windows\\System32\\OpenSSH\\sshd.exe',
+          interfaceAlias: 'Tailscale'
+        }),
+        scripts.firewallRemoveScript(),
+        scripts.defaultRuleScript(false),
+        scripts.defaultRuleScript(true),
+        scripts.shellSetScript(
+          'C:\\Program Files\\PowerShell\\7\\pwsh.exe',
+          'PowerShell 7',
+          undefined
+        ),
+        scripts.shellRestoreScript(undefined),
+        scripts.keyAddScript({
+          file: keys,
+          line: KEY,
+          blob: KEY_BLOB,
+          admin: true,
+          fingerprint: KEY_FP
+        }),
+        scripts.keyRemoveScript({ file: keys, line: KEY, admin: true, fingerprint: KEY_FP }),
+        scripts.configWriteScript({
+          title: 't',
+          summary: 's',
+          content: Buffer.from('Port 22\n'),
+          expect: 'a'.repeat(64)
+        })
+      ]
+      const text = (s: scripts.BuiltScript): string => scriptText(s, 'C:\\x\\result.json')
+      for (const s of [...all, scripts.combine('t', 's', all)])
+        expect(parseErrors(text(s))).toBe('')
+      expect(parseErrors(PROBE)).toBe('')
+      // And a broken one is caught.
+      expect(parseErrors('if ($x) {')).not.toBe('')
+    }, 60_000)
+  }
+)

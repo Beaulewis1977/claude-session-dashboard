@@ -146,7 +146,7 @@ export function realRunner(workDir: string): ScriptRunner {
   }
 }
 
-const PROBE = `$ErrorActionPreference = 'SilentlyContinue'
+export const PROBE = `$ErrorActionPreference = 'SilentlyContinue'
 $o = @{ events = @(); eventsOk = $false }
 $svc = Get-Service -Name sshd -ErrorAction SilentlyContinue
 if ($svc) { $o.sshdService = @{ status = [string]$svc.Status; startType = [string]$svc.StartType } }

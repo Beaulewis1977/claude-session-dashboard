@@ -172,9 +172,9 @@ Settings → **Phone** → **Terminal access** → **Set up terminal access…**
 and each change shows the exact script first; Windows then asks for administrator rights.
 
 1. **Tailscale connected** on the PC (and on your phone).
-2. **OpenSSH Server:** **Install for me**, then **Start and set to Automatic**.
-3. **Firewall:** add the Tailscale-only rule, and (recommended) turn off Windows' default rule that
-   allows SSH from any address.
+2. **OpenSSH Server:** **Install for me**.
+3. **Firewall:** add the Tailscale-only rule and turn off Windows' default rule that allows SSH from
+   any address, then **start sshd** (it only starts once nothing outside Tailscale can reach it).
 4. **Default shell:** PowerShell 7, Windows PowerShell or WSL (your default distro).
 5. **Keys:** in your SSH app, create a key and copy its _public_ key. Paste it here, or click **Get
    key from phone** and send it from the dashboard on your phone (Settings → Send SSH key to PC),

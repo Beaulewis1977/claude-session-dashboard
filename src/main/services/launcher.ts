@@ -12,6 +12,7 @@ import type {
 } from '@shared/types'
 import {
   buildLaunchCommand,
+  buildShellCommand,
   claudeArgs,
   claudeCommandLine,
   cwdProblem,
@@ -241,6 +242,56 @@ export class Launcher {
       launchError: error ?? folderError,
       remoteControlName: this.remoteControl(s, opts)?.name
     }
+  }
+
+  /**
+   * "Open terminal here": a plain shell (no Claude) in the session's folder,
+   * in the terminal chosen in Settings. Desktop only.
+   */
+  async openShell(key: string): Promise<LaunchResult> {
+    const fail = (error: string): LaunchResult => ({
+      ok: false,
+      restored: false,
+      commandLine: '',
+      error
+    })
+    const s = this.sessions.get(key)
+    if (!s) return fail('Session not found')
+    if (s.availability === 'imported')
+      return fail('Conversations imported from claude.ai have no folder on this PC.')
+    const cwd = s.cwd
+    if (!cwd) return fail('No working directory is recorded for this session.')
+    const problem = cwdProblem(s.env, cwd)
+    if (problem) return fail(problem)
+    const state = await this.cwdState(s, cwd)
+    if (state === 'unreachable') return fail(this.unreachable(s))
+    if (state === 'missing') return fail(`The folder no longer exists: ${cwd}`)
+    const tools = await this.platform.launchTools()
+    let { terminal } = this.resolveTerminal(this.defaultTerminal(), tools)
+    const build = (): LaunchCommand =>
+      buildShellCommand({ env: s.env, cwd, distro: s.distro, terminal, tools })
+    let cmd: LaunchCommand
+    try {
+      cmd = build()
+    } catch (err) {
+      return fail((err as Error).message)
+    }
+    if (!this.platform.canLaunch)
+      return { ok: true, restored: false, commandLine: cmd.commandLine, simulated: true }
+    try {
+      await this.platform.spawnDetached(cmd)
+    } catch (err) {
+      if (terminal !== 'wt' || (err as NodeJS.ErrnoException).code !== 'ENOENT')
+        return { ...fail(String((err as Error).message)), commandLine: cmd.commandLine }
+      terminal = 'powershell'
+      cmd = build()
+      try {
+        await this.platform.spawnDetached(cmd)
+      } catch (err2) {
+        return { ...fail(String((err2 as Error).message)), commandLine: cmd.commandLine }
+      }
+    }
+    return { ok: true, restored: false, commandLine: cmd.commandLine }
   }
 
   async launch(opts: LaunchOptions, ctx: LaunchContext = DESKTOP): Promise<LaunchResult> {

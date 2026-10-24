@@ -18,7 +18,8 @@ import {
   PinOff,
   Play,
   Search,
-  Smartphone
+  Smartphone,
+  SquareTerminal
 } from 'lucide-react'
 import type { SessionDetail, SessionSummary } from '@shared/types'
 import { formatDateTime } from '@shared/format'
@@ -50,6 +51,8 @@ import { SessionUsageStrip } from '@/components/viewer/SessionUsage'
 import { Transcript, type OnBranch } from '@/components/viewer/Transcript'
 import { useFind } from '@/components/viewer/useFind'
 import { LaunchSheet, type LaunchTarget } from './LaunchSheet'
+import { TerminalSheet } from './TerminalSheet'
+import { canOpenTerminal } from '@shared/terminal'
 import { useMobile } from './state'
 
 /** True while the user has text selected (e.g. dragging a selection handle). */
@@ -101,6 +104,10 @@ export function SessionScreen({ session }: { session: SessionSummary }) {
   const sessions = useApp((s) => s.sessions)
   const me = useMobile((s) => s.me)
   const readOnly = me?.readOnly ?? false
+  // Shown only once terminal access (SSH over Tailscale) is set up on the PC.
+  const terminal = useMobile((s) => s.terminal)
+  const [terminalOpen, setTerminalOpen] = useState(false)
+  const showTerminal = canOpenTerminal(terminal, session)
   const [detail, setDetail] = useState<SessionDetail | null>(null)
   const [error, setError] = useState(false)
   const [findOpen, setFindOpen] = useState(false)
@@ -174,6 +181,17 @@ export function SessionScreen({ session }: { session: SessionSummary }) {
           <ChevronLeft className="size-6" /> Sessions
         </Button>
         <div className="flex-1" />
+        {showTerminal && (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="size-11"
+            aria-label="Open terminal here"
+            onClick={() => setTerminalOpen(true)}
+          >
+            <SquareTerminal className="size-5" />
+          </Button>
+        )}
         <Button
           variant="ghost"
           size="icon"
@@ -193,6 +211,14 @@ export function SessionScreen({ session }: { session: SessionSummary }) {
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-60">
+            {showTerminal && (
+              <>
+                <DropdownMenuItem onSelect={() => setTerminalOpen(true)}>
+                  <SquareTerminal /> Open terminal here
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+              </>
+            )}
             <DropdownMenuItem onSelect={() => write(() => togglePinned(session.key))}>
               {session.meta.pinned ? <PinOff /> : <Pin />}
               {session.meta.pinned ? 'Unpin' : 'Pin to top'}
@@ -380,6 +406,14 @@ export function SessionScreen({ session }: { session: SessionSummary }) {
         </footer>
       )}
 
+      {terminalOpen && canOpenTerminal(terminal, session) && (
+        <TerminalSheet
+          info={terminal}
+          target={session}
+          title={session.title}
+          onClose={() => setTerminalOpen(false)}
+        />
+      )}
       {launch && <LaunchSheet session={session} target={launch} onClose={() => setLaunch(null)} />}
     </div>
   )

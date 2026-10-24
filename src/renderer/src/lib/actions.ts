@@ -4,6 +4,7 @@ import { toast } from 'sonner'
 import type { SessionDetail, SessionMeta, SessionSummary } from '@shared/types'
 import { sessionToMarkdown } from '@shared/markdown'
 import { api } from './api'
+import { projectKey } from './filters'
 import { useApp } from './store'
 
 const get = () => useApp.getState()
@@ -124,6 +125,28 @@ export async function togglePinned(key: string): Promise<void> {
   const s = get().sessions.find((x) => x.key === key)
   if (!s) return
   await updateMeta(key, { pinned: !s.meta.pinned })
+}
+
+/** A local terminal (Settings → Terminal) in the session's folder. No Claude, just a shell. */
+export async function openTerminalHere(key: string): Promise<void> {
+  try {
+    const r = await api.openTerminalHere(key)
+    if (!r.ok) toast.error('Could not open a terminal', { description: r.error })
+    else if (r.simulated)
+      toast('Fixtures mode: nothing was started', { description: r.commandLine })
+  } catch (err) {
+    toast.error('Could not open a terminal', { description: (err as Error).message })
+  }
+}
+
+/** The most recent session in a project (its folder and environment open the terminal). */
+export function projectSessionKey(projectKeyValue: string): string | undefined {
+  const at = (s: SessionSummary): number => Date.parse(s.lastActivityAt ?? s.startedAt ?? '') || 0
+  return get()
+    .sessions.filter(
+      (s) => s.availability !== 'imported' && s.cwd && projectKey(s) === projectKeyValue
+    )
+    .sort((a, b) => at(b) - at(a))[0]?.key
 }
 
 export function showFile(key: string): void {

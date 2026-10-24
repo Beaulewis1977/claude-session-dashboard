@@ -12,6 +12,7 @@ and the decisions behind it.
 - [Branching](#branching)
 - [Keeping sessions longer in Claude Code itself](#keeping-sessions-longer-in-claude-code-itself)
 - [Phone companion](#phone-companion)
+- [Terminal access (SSH)](#terminal-access-ssh)
 - [Usage, limits and API credits](#usage-limits-and-api-credits)
 - [Scripts](#scripts)
 - [How it works](#how-it-works)
@@ -228,6 +229,65 @@ Settings → Phone → **Troubleshooting** lists common fixes, re-runs every che
 diagnostics (no tokens, codes, keys or e-mail). The usual causes: the Tailscale switch is off on the
 phone, HTTPS certificates are off for the tailnet, another program uses the port (change it under
 Advanced), or (home Wi-Fi) Windows treats the network as Public.
+
+## Terminal access (SSH)
+
+A real terminal on this PC from your phone, through **Windows' own OpenSSH Server**, reachable only
+over Tailscale. Settings → Phone → **Terminal access** sets it up; the dashboard never runs commands
+for the phone.
+
+### How a change is made
+
+Every change goes through the same steps: the app works out the exact PowerShell script and shows
+it (with its inputs) in a dialog; nothing happens until you click OK; then Windows asks for
+administrator rights. Inputs such as your key travel into the script as base64 data, never as
+script text. The result (and each failure or decline) is written to the **Change log**, and what
+the wizard changed is recorded in `%APPDATA%\ClaudeSessionDashboard\terminal.json` so each change can
+be undone, alone or all together with **Turn off terminal access**.
+
+| Step         | Change                                                                                                                 | Undo                                                                                               |
+| ------------ | ---------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| OpenSSH      | `Add-WindowsCapability OpenSSH.Server`                                                                                 | Uninstall (only if the wizard installed it)                                                        |
+| Service      | `sshd` set to Automatic and started                                                                                    | Stopped and put back to its previous start type                                                    |
+| Firewall     | Rule `CSD-SSH-Tailscale`: sshd.exe, TCP 22, from `100.64.0.0/10` and `fd7a:115c:a1e0::/48`, on the Tailscale adapter   | The rule is removed                                                                                |
+| Default rule | Windows' `OpenSSH-Server-In-TCP` (any address) turned off                                                              | Turned back on                                                                                     |
+| Shell        | `HKLM\SOFTWARE\OpenSSH\DefaultShell` (pwsh.exe, powershell.exe or bash.exe for WSL)                                    | Previous value restored, or removed if it wasn't set                                               |
+| Keys         | One line added to `administrators_authorized_keys` (admins, with the ACL OpenSSH requires) or `~\.ssh\authorized_keys` | Only that line is removed                                                                          |
+| Password     | `PasswordAuthentication no` in `sshd_config` (checked with `sshd -t` first; sshd restarted)                            | The backup in `terminal-backups\` is written back, only if the file is still what the wizard wrote |
+
+Note: Tailscale's own Windows firewall rule (`Tailscale-In`) allows anything addressed to this PC's
+Tailscale IP, since Tailscale filters that traffic itself. So WSL and other VMs on this PC can also
+reach SSH at that address. Devices on your LAN can't: Windows doesn't forward between network
+adapters, and SSH on the LAN address stays blocked.
+
+Keys you added yourself, and anything else in `sshd_config`, are never touched. Changing
+`sshd_config` is refused if the file changed between showing the script and running it.
+
+### Keys from your phone
+
+Click **Get key from phone** on the Keys step: for 10 minutes the PC accepts one public key from a
+paired phone (Settings → **Send SSH key to PC** on the phone). The key is only shown on the PC with
+its fingerprint; compare it with your SSH app's, then **Allow** (which shows the change like any
+other). Sending is refused in read-only mode, rate-limited and logged in the phone activity log.
+
+### Open terminal here
+
+- **Desktop:** in a session's ⋯ menu, and on a project in the sidebar (hover). Opens the terminal
+  chosen in Settings in that folder: Windows Terminal's default profile, PowerShell, or cmd; WSL
+  sessions open `wsl.exe -d <distro> --cd <folder>`.
+- **Phone:** shown only once terminal access is ready (sshd running, the Tailscale-only rule in
+  place, Tailscale signed in). On a session (the terminal icon or ⋯) or a project (filter by project
+  on the Sessions tab): an `ssh://user@host` link, and `ssh -t user@host "<command>"` that lands in
+  the folder for the shell you chose: `Set-Location -LiteralPath '<folder>'; pwsh -NoLogo` for
+  PowerShell, `cd '<folder>' && exec ${SHELL:-bash} -l` for WSL (`wsl.exe -d <distro> --cd …` for a
+  session in another distro). The commands never use double quotes, which Windows' OpenSSH would
+  strip on the way to the shell.
+
+### Troubleshooting terminal access
+
+The wizard's **Troubleshooting** panel lists common fixes, re-runs the checks, copies diagnostics
+(no keys) and opens the backups folder. The step 7 "Connected ✓" check reads sshd's event log
+(`OpenSSH/Operational`); if Windows won't let the app read it, tick "I'm connected" instead.
 
 ## Usage, limits and API credits
 
@@ -779,6 +839,18 @@ Phone companion:
 | ![Usage](mobile/usage-light.png) | ![Filters](mobile/filters.png) | ![Settings](mobile/settings.png)                 | ![Pairing](mobile/pair.png)               |
 
 ![Connect your phone](mobile/desktop-wizard-pair.png)
+
+Terminal access (`node scripts/terminal-screenshots.mjs` after `npm run build`; fixtures mode uses
+a stand-in PC, so nothing is installed or changed):
+
+|                                                         |                                                           |
+| ------------------------------------------------------- | --------------------------------------------------------- |
+| ![Exactly what will run](terminal/confirm-firewall.png) | ![Key from the phone](terminal/wizard-key-from-phone.png) |
+| ![Phone app step](terminal/wizard-phone-app.png)        | ![Turn off](terminal/confirm-turn-off.png)                |
+
+|                                                          |                                                       |                                              |
+| -------------------------------------------------------- | ----------------------------------------------------- | -------------------------------------------- |
+| ![Open terminal here](terminal/phone-terminal-sheet.png) | ![A WSL project](terminal/phone-terminal-project.png) | ![Send SSH key](terminal/phone-send-key.png) |
 
 Usage and limits:
 

@@ -4,7 +4,8 @@ A Windows desktop app that collects every Claude Code session from Windows and W
 can read each session as a conversation, give it your own name, description and tags, keep it
 forever in an archive, and resume, fork or branch it in a terminal with its full context. It also
 shows your plan limits and token usage, and has a phone companion so you can do the same from your
-phone. Everything stays on your PC.
+phone, plus guided setup for a real terminal on your PC from your phone (SSH over Tailscale).
+Everything stays on your PC and your own private network.
 
 ![The main screen: session list, filters and a session open in the viewer](docs/main.png)
 
@@ -13,6 +14,7 @@ phone. Everything stays on your PC.
     <td><img src="docs/mobile/sessions.png" width="200" alt="Phone: session list" /></td>
     <td><img src="docs/mobile/session.png" width="200" alt="Phone: a session as chat bubbles" /></td>
     <td><img src="docs/mobile/resumed.png" width="200" alt="Phone: a session started on the PC with Remote Control" /></td>
+    <td><img src="docs/terminal/phone-terminal-sheet.png" width="200" alt="Phone: Open terminal here, with an ssh link and command" /></td>
   </tr>
 </table>
 
@@ -42,6 +44,9 @@ phone. Everything stays on your PC.
   environment, source, tag, date range and hidden sessions.
 - **Readable transcripts:** chat bubbles, Markdown, highlighted code, and tool calls and thinking
   blocks collapsed until you click them. Find-in-session and **Export to Markdown**.
+- **Copy anything:** Copy buttons on every message, code block and tool call (the full input and
+  output, even when the view is shortened), plus **Copy whole conversation** as Markdown. Text can be
+  selected and copied normally too, on the PC and on your phone.
 - **A permanent archive.** Every session file is copied to the app's data folder, so it survives
   Claude Code's `cleanupPeriodDays` cleanup. Sessions whose original is gone get an "archived only"
   badge.
@@ -90,6 +95,32 @@ phone. Everything stays on your PC.
 - A phone **can't** run any other command, change security or pairing settings, see API keys, or use
   Ask Claude. Phone launches always use your subscription and keep permission prompts on.
 - Optional read-only mode, confirm-on-PC for launches, and an activity log of every phone action.
+
+### Terminal access (SSH)
+
+- **A real terminal on your PC from your phone**, through Windows' own OpenSSH Server, over
+  Tailscale only. A wizard sets it up step by step and shows every change before it runs; each
+  change can be undone, and **Turn off terminal access** undoes them all.
+- **Open terminal here** on every session and project: on the PC it opens a terminal in that folder;
+  on the phone it gives an `ssh://` link and a copyable `ssh` command that lands in the folder (for
+  PowerShell or WSL).
+- **Keys made easy:** paste your SSH app's public key, or send it from the dashboard on your phone
+  (**Send SSH key to PC**) and approve it on the PC after comparing fingerprints. Then turn password
+  login off with one click (backed up, with Undo).
+- Works with any SSH app: the wizard links Termius (free plan) on iPhone and Android, and the free
+  a-Shell (iPhone) and ConnectBot (Android), and shows the PC's host-key fingerprints to check on
+  first connect.
+
+### Guided setup and help
+
+- **Every connection has a setup wizard with live checks** (✓ / ✗ at each step): **Connect your
+  phone** (Tailscale or home Wi-Fi, pairing by QR code, Remote Control check) and **Terminal
+  access** (OpenSSH, firewall, shell, keys, phone app, test).
+- **Troubleshooting** panels list the common fixes, re-run every check and copy diagnostics with no
+  secrets in them.
+- **Copy AI help prompt:** paste it into Claude or another AI assistant to get help with a
+  connection. It points the assistant at [`docs/AI-SETUP-GUIDE.md`](docs/AI-SETUP-GUIDE.md), which
+  tells it to start with read-only checks, ask you before any change, and never ask for secrets.
 
 ## Install
 
@@ -158,6 +189,28 @@ Settings → **Phone** → **Connect your phone…** walks you through it and ch
 No Tailscale? Choose **Home Wi-Fi** in the wizard: pick the PC's network address, approve the
 firewall rule and pair. Your phone must be on the same Wi-Fi.
 
+### Set up terminal access
+
+Settings → **Phone** → **Terminal access** → **Set up terminal access…**. Each step checks itself,
+and each change shows the exact script first; Windows then asks for administrator rights.
+
+1. **Tailscale connected** on the PC (and on your phone).
+2. **OpenSSH Server:** **Install for me**.
+3. **Firewall:** add the Tailscale-only rule and turn off Windows' default rule that allows SSH from
+   any address, then **start sshd** (it only starts once nothing outside Tailscale can reach it).
+4. **Default shell:** PowerShell 7, Windows PowerShell or WSL (your default distro).
+5. **Keys:** in your SSH app, create a key and copy its _public_ key. Paste it here, or click **Get
+   key from phone** and send it from the dashboard on your phone (Settings → Send SSH key to PC),
+   then check the fingerprint and click **Allow**. Log in once with the key, then **Turn off
+   password login** (sshd_config is backed up first).
+6. **Phone app:** Termius (free plan) on iPhone or Android, or the free a-Shell (iPhone) and
+   ConnectBot (Android). Add a host with the host name, user and port shown.
+7. **Test:** connect from the phone; the step turns ✓ when sshd records the login.
+
+**Turn off terminal access** undoes exactly what the wizard changed (and, if you tick them, removes
+the keys it added and uninstalls OpenSSH Server if it installed it). The **Change log** lists every
+change.
+
 ### Turn on live limits
 
 1. Open Settings → **Live limits** (or click **Enable live limits** on the Usage view).
@@ -196,7 +249,7 @@ The full rules are in [`CLAUDE.md`](CLAUDE.md). In short:
 - **No network calls.** Outgoing requests from the window are blocked, remote images in
   transcripts aren't loaded, and spellcheck is off.
 
-Three opt-in exceptions, each only after you approve it in the app:
+Four opt-in exceptions, each only after you approve it in the app:
 
 1. **Live limits** changes only the `statusLine` key in Claude Code's `settings.json`. You see the
    diff first, the file is backed up, and Disable restores the old value exactly.
@@ -205,6 +258,10 @@ Three opt-in exceptions, each only after you approve it in the app:
 3. **The phone companion** is off by default. It listens on `127.0.0.1` and is published to your own
    tailnet only (never the public internet), or, in home Wi-Fi mode, on one private address behind a
    firewall rule you approve.
+4. **Terminal access** changes Windows' SSH setup (OpenSSH Server, one firewall rule limited to
+   Tailscale, the default shell, your key, and optionally password login). Each change shows its
+   exact script first, is logged, and can be undone; your existing keys and settings are never
+   removed. The dashboard never runs commands for the phone: Windows' OpenSSH does the logins.
 
 API keys are encrypted with Windows (DPAPI) and never shown, logged or put on a command line. See
 [More details](docs/DETAILS.md#safety-in-full) for the full list.
@@ -245,6 +302,10 @@ See [More details](docs/DETAILS.md#scripts) for every script and how the code is
 
 ## Troubleshooting
 
+- **Phone or SSH connection not working?** Open Troubleshooting in Settings → Phone (or Terminal
+  access) and click **Copy AI help prompt**, then paste it into Claude or another AI assistant. It
+  points the assistant at [`docs/AI-SETUP-GUIDE.md`](docs/AI-SETUP-GUIDE.md): read-only checks first,
+  your OK before any change, and no secrets.
 - **Nothing shows up.** Check the scan sources in Settings. Add your `.claude` folder with **Add
   folder…** if it lives somewhere unusual.
 - **A WSL distro shows "Can't read".** Open the distro once (for example `wsl -d Ubuntu`), then press

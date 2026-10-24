@@ -140,6 +140,9 @@ export const RPC: Record<string, RpcMethod> = {
     kind: 'read',
     args: ([k, a, b]) => [k, a, b]
   },
+  // Terminal access: where the phone's SSH app connects (host, user, port,
+  // shell), and whether it's set up. Never the setup itself.
+  getTerminalAccess: { channel: 'terminal:phoneInfo', kind: 'read', args: none },
   getCredits: {
     channel: 'credits:state',
     kind: 'read',

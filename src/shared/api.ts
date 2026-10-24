@@ -33,6 +33,14 @@ import type {
   MobileStatus,
   PairingInfo
 } from './mobile'
+import type {
+  ActionResult,
+  PreparedChange,
+  TerminalAccessInfo,
+  TerminalAction,
+  TerminalLogEntry,
+  TerminalStatus
+} from './terminal'
 
 export interface SearchHit {
   key: string
@@ -162,4 +170,22 @@ export interface CsdApi {
   /** Opens a Tailscale sign-in / approval link (login.tailscale.com only). */
   openTailscaleLink(url: string): Promise<void>
   onMobileChanged(cb: () => void): () => void
+
+  // Terminal access over SSH (setup is desktop only)
+  terminalStatus(): Promise<TerminalStatus>
+  /** Work out a change and return exactly what would run; nothing changes yet. */
+  terminalPrepare(action: TerminalAction): Promise<PreparedChange | { error: string }>
+  /** Run the change last returned by terminalPrepare. */
+  terminalApply(token: string): Promise<ActionResult>
+  terminalHistory(): Promise<TerminalLogEntry[]>
+  /** Accept one public key from a paired phone for 10 minutes (or stop). */
+  terminalListen(on: boolean): Promise<void>
+  terminalRejectKey(): Promise<void>
+  terminalDiagnostics(): Promise<string>
+  terminalOpenBackups(): Promise<void>
+  onTerminalChanged(cb: () => void): () => void
+  /** Where an SSH app connects, and whether terminal access is set up (the phone can read this). */
+  getTerminalAccess(): Promise<TerminalAccessInfo>
+  /** A local terminal in the session's folder (desktop only). */
+  openTerminalHere(key: string): Promise<LaunchResult>
 }

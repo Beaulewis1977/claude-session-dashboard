@@ -3,16 +3,27 @@
 
 import { useState, type ReactNode } from 'react'
 import { toast } from 'sonner'
-import { Lock, LogOut, Monitor, Moon, ShieldCheck, Smartphone, Sun } from 'lucide-react'
+import {
+  KeyRound,
+  Lock,
+  LogOut,
+  Monitor,
+  Moon,
+  Send,
+  ShieldCheck,
+  Smartphone,
+  Sun
+} from 'lucide-react'
 import type { AppSettings, TerminalPref } from '@shared/types'
 import type { MobileSafeSetting } from '@shared/mobile'
+import { parsePublicKey } from '@shared/terminal'
 import { formatDateTime } from '@shared/format'
 import { api } from '@/lib/api'
 import { useApp } from '@/lib/store'
 import { phone } from '@/lib/web-api'
 import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/checkbox'
-import { Input } from '@/components/ui/input'
+import { Input, Textarea } from '@/components/ui/input'
 import { Segmented } from '@/components/ui/segmented'
 import { useMobile } from './state'
 
@@ -221,6 +232,8 @@ export function SettingsTab() {
         </Line>
       </Card>
 
+      <SendKeyCard readOnly={readOnly} />
+
       <Card title="About">
         <Line
           label="Claude Session Dashboard"
@@ -262,5 +275,78 @@ export function SettingsTab() {
         )}
       </div>
     </div>
+  )
+}
+
+/**
+ * Terminal access: offer this phone's public SSH key to the PC. The PC only
+ * shows it (with its fingerprint) while its Keys step is waiting; nothing is
+ * added until it's allowed there.
+ */
+function SendKeyCard({ readOnly }: { readOnly: boolean }) {
+  const [key, setKey] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [sent, setSent] = useState<string | null>(null)
+  const parsed = key.trim() ? parsePublicKey(key) : null
+  const send = async (): Promise<void> => {
+    if (readOnly) {
+      toast('Read-only mode is on', { description: 'Change it on your PC.' })
+      return
+    }
+    setBusy(true)
+    try {
+      const r = await phone.sendSshKey(key)
+      if (r.ok) {
+        setSent(r.fingerprint ?? '')
+        setKey('')
+      } else toast.error('Not sent', { description: r.error })
+    } catch (err) {
+      toast.error('Not sent', { description: (err as Error).message })
+    } finally {
+      setBusy(false)
+    }
+  }
+  return (
+    <Card
+      title="Send SSH key to PC"
+      note="For terminal access. On the PC, open Settings → Phone → Terminal access → Keys and click “Get key from phone” first. Only the public key: it’s safe to share."
+    >
+      <div className="space-y-2.5 px-4 py-3">
+        {sent !== null ? (
+          <div className="flex items-start gap-2 text-[14px]">
+            <KeyRound className="mt-0.5 size-4 shrink-0 text-success" />
+            <span>
+              Sent. On your PC, check the fingerprint ends the same as in your SSH app, then click
+              Allow.
+              <span className="mt-1 block font-mono text-[11.5px] break-all text-muted-foreground">
+                {sent}
+              </span>
+            </span>
+          </div>
+        ) : (
+          <>
+            <Textarea
+              value={key}
+              onChange={(e) => setKey(e.target.value)}
+              placeholder="ssh-ed25519 AAAA… (copy it from your SSH app)"
+              rows={3}
+              className="font-mono text-[13px]"
+              aria-label="Public SSH key"
+            />
+            {parsed && !parsed.ok && (
+              <div className="text-[12.5px] text-destructive">{parsed.error}</div>
+            )}
+            <Button
+              variant="primary"
+              className="h-11 w-full"
+              disabled={!parsed?.ok || busy}
+              onClick={() => void send()}
+            >
+              <Send /> Send to PC
+            </Button>
+          </>
+        )}
+      </div>
+    </Card>
   )
 }

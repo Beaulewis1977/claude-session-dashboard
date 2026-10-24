@@ -29,7 +29,7 @@ import { DeviceRegistry, type MobileFile } from './devices'
 import { firewallRuleExists } from './firewall'
 import { allowedHosts, bindAddress, lanAddresses, LOOPBACK } from './network'
 import { RemoteLauncher, type RemoteLaunchDeps } from './remote-launch'
-import { MobileServer, type WebAssets } from './server'
+import { MobileServer, type ServerDeps, type WebAssets } from './server'
 import type { TailscaleClient } from './tailscale'
 
 export interface KeyBox {
@@ -55,6 +55,8 @@ export interface MobileServiceDeps {
   fixtures: boolean
   /** Claude Code for Windows (absolute path), if found. */
   claudePath(): Promise<string | undefined>
+  /** Terminal access: a phone offers its public SSH key (shown on the PC only). */
+  proposeKey?: ServerDeps['proposeKey']
 }
 
 export class MobileService extends EventEmitter<{ changed: [] }> {
@@ -93,7 +95,8 @@ export class MobileService extends EventEmitter<{ changed: [] }> {
         appVersion: deps.appVersion
       }),
       hosts: () => this.hosts(),
-      changed: () => this.changed()
+      changed: () => this.changed(),
+      proposeKey: deps.proposeKey
     })
   }
 

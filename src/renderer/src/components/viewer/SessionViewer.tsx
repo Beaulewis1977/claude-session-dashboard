@@ -476,7 +476,7 @@ export function SessionViewer({
       <div
         ref={scrollRef}
         onScroll={onScroll}
-        className="min-h-0 flex-1 overflow-y-auto"
+        className={cn('min-h-0 flex-1 overflow-y-auto', findOpen && '[--tool-copy-top:3.5rem]')}
         tabIndex={-1}
       >
         <Header

@@ -5,7 +5,7 @@ import { chromium, type Browser, type BrowserContext, type Locator, type Page } 
 import { createServer, type ViteDevServer } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
-import type { ChatMessage, ContentBlock } from '../src/shared/types'
+import type { ChatMessage, ContentBlock, SessionSummary } from '../src/shared/types'
 
 // This is a browser integration test inside the normal Vitest run. It renders
 // production components and CSS; only the host app and session data are fixtures.
@@ -91,6 +91,50 @@ fixtures.phone = [
     ]
   }
 ]
+fixtures.find = [
+  user('user-find', 'Please copy this sentence.'),
+  assistant([
+    { type: 'text', text: 'A real copy match.\n\n```js\nconst copy_value = true\n```' },
+    {
+      type: 'tool_use',
+      id: 'tool-find',
+      name: 'Bash',
+      label: 'Bash: printf payload',
+      input: { command: "printf 'copy input payload'" },
+      result: { text: 'copy output payload', isError: false }
+    },
+    {
+      type: 'tool_result',
+      toolUseId: 'orphan-find',
+      result: { text: 'copy orphan output', isError: false }
+    }
+  ])
+]
+const session: SessionSummary = {
+  key: 'browser:session',
+  sessionId: 'session',
+  sourceId: 'browser',
+  sourceLabel: 'Windows',
+  env: 'windows',
+  filePath: 'C:\\fixture\\session.jsonl',
+  originalPath: 'C:\\fixture\\session.jsonl',
+  availability: 'live',
+  projectDir: 'fixture',
+  projectName: 'Fixture',
+  cwd: 'C:\\fixture',
+  messageCount: 2,
+  userMessageCount: 1,
+  assistantMessageCount: 1,
+  toolCallCount: 1,
+  malformedLines: 0,
+  sizeBytes: 100,
+  models: [],
+  meta: {},
+  title: 'Browser fixture',
+  titleSource: 'name',
+  source: 'terminal-windows',
+  sourceReason: 'Browser fixture'
+}
 const groupPlainText: Record<string, string> = {
   tool: 'Bash: echo hello\n\necho hello\n\nhello',
   thinking: 'Consider the result',
@@ -102,23 +146,39 @@ import React from 'react'
 import { createRoot } from 'react-dom/client'
 import { Toaster, toast } from 'sonner'
 import { Transcript } from '/src/renderer/src/components/viewer/Transcript.tsx'
+import { SessionViewer } from '/src/renderer/src/components/viewer/SessionViewer.tsx'
+import { SessionScreen } from '/src/renderer/src/mobile/SessionScreen.tsx'
+import { useApp } from '/src/renderer/src/lib/store.ts'
 import { TooltipProvider } from '/src/renderer/src/components/ui/tooltip.tsx'
 import { writeClipboard } from '/src/renderer/src/lib/clipboard.ts'
 import '/src/renderer/src/styles.css'
 const fixtures = ${JSON.stringify(fixtures)}
 const fixture = new URLSearchParams(location.search).get('fixture') || 'short'
-window.csd = { copyText: writeClipboard }
+const screen = new URLSearchParams(location.search).get('screen') || 'transcript'
+const session = ${JSON.stringify(session)}
+window.csd = {
+  copyText: writeClipboard,
+  getSession: async () => ({ summary: session, messages: fixtures[fixture] }),
+  getSessionUsage: async () => null,
+  onUsageChanged: () => () => {}
+}
+useApp.setState({ sessions: [session] })
 window.branches = []
 window.dismissToasts = () => toast.dismiss()
 // A scroll container like the app's, so sticky action rows behave as on a phone.
 createRoot(document.getElementById('root')).render(
   React.createElement(TooltipProvider, null,
-    React.createElement('div', { id: 'scroller', style: { height: '100vh', overflowY: 'auto' } },
-      React.createElement(Transcript, {
-        messages: fixtures[fixture], findQuery: '', className: 'px-3',
-        onBranch: (id, mode) => window.branches.push({ id, mode })
-      })
-    ),
+    screen === 'mobile'
+      ? React.createElement(SessionScreen, { session })
+      : screen === 'desktop'
+        ? React.createElement('div', { style: { height: '100vh' } },
+            React.createElement(SessionViewer, { session, allTags: [] }))
+        : React.createElement('div', { id: 'scroller', style: { height: '100vh', overflowY: 'auto' } },
+            React.createElement(Transcript, {
+              messages: fixtures[fixture], findQuery: '', className: 'px-3',
+              onBranch: (id, mode) => window.branches.push({ id, mode })
+            })
+          ),
     React.createElement(Toaster, { position: 'bottom-center' })
   )
 )
@@ -191,7 +251,8 @@ async function openFixture(
   fixture: string,
   width = 390,
   clipboard: 'native' | 'fallback' | 'failure' = 'native',
-  touch = true
+  touch = true,
+  screen: 'transcript' | 'mobile' | 'desktop' = 'transcript'
 ): Promise<{ context: BrowserContext; page: Page }> {
   const context = await browser!.newContext({
     viewport: { width, height: 844 },
@@ -216,7 +277,7 @@ async function openFixture(
       ${clipboard === 'failure' ? 'document.execCommand = () => false' : ''}
     `)
   }
-  await page.goto(`${origin}/?fixture=${fixture}`)
+  await page.goto(`${origin}/?fixture=${fixture}&screen=${screen}`)
   await page.getByRole('button', { name: 'Copy message', exact: true }).first().waitFor()
   // Wait for the real Tailwind touch variant, rather than racing stylesheet load.
   expect(await page.evaluate("matchMedia('(hover: none)').matches")).toBe(touch)
@@ -552,6 +613,127 @@ async function copyAndRead(page: Page, button: Locator): Promise<string> {
   await page.locator('[data-sonner-toast]').first().waitFor({ state: 'detached' })
   return text.replace(/\r\n/g, '\n')
 }
+
+describe('session Find with production screens', { timeout: 30_000 }, () => {
+  for (const screen of ['mobile', 'desktop'] as const) {
+    for (const touch of [true, false]) {
+      it(`${screen}: finds content rather than visible or hidden copy controls (${touch ? 'touch' : 'mouse'})`, async ({
+        skip
+      }) => {
+        if (!browser) skip(unavailableReason)
+        const { context, page } = await openFixture(
+          'find',
+          screen === 'mobile' ? 390 : 1024,
+          'native',
+          touch,
+          screen
+        )
+        try {
+          expect(await page.evaluate("'highlights' in CSS")).toBe(true)
+          await page.getByRole('button', { name: 'Find in session', exact: true }).click()
+          await page.getByRole('textbox', { name: 'Find in session', exact: true }).fill('copy')
+          await expect.poll(() => page.getByText(/^\d+ of \d+$/).textContent()).toBe('1 of 6')
+
+          // Both layouts exist in the real tool group. Find must skip the
+          // hidden row as well as the active controls and code-block buttons.
+          const controls = await page
+            .locator('[data-message-actions]')
+            .evaluateAll((elements) =>
+              elements.map((el) => el.ownerDocument.defaultView!.getComputedStyle(el).display)
+            )
+          expect(controls).toContain('none')
+          expect(controls.filter((display) => display !== 'none').length).toBeGreaterThan(0)
+          expect(await page.locator('button[aria-label="Copy input"]').count()).toBe(1)
+          expect(await page.locator('button[aria-label="Copy output"]').count()).toBe(2)
+          expect(await page.locator('.code-block button[aria-label="Copy"]').count()).toBe(2)
+
+          const matches = await page.evaluate<
+            { text: string; content: string | null; inControl: boolean }[]
+          >(`Array.from(CSS.highlights.get('find') || [], range => ({
+            text: range.toString(),
+            content: range.startContainer.parentElement.closest('p, pre')?.textContent.trim() ?? null,
+            inControl: !!range.startContainer.parentElement.closest('button, [data-message-actions]')
+          }))`)
+          expect(matches).toEqual(
+            [
+              'Please copy this sentence.',
+              'A real copy match.',
+              'const copy_value = true',
+              "printf 'copy input payload'",
+              'copy output payload',
+              'copy orphan output'
+            ].map((content) => ({ text: 'copy', content, inControl: false }))
+          )
+          expect(await page.evaluate("CSS.highlights.get('find-current').size")).toBe(1)
+
+          await page.getByRole('button', { name: 'Close find', exact: true }).click()
+          await expect
+            .poll(() =>
+              page.evaluate("CSS.highlights.has('find') || CSS.highlights.has('find-current')")
+            )
+            .toBe(false)
+        } finally {
+          await context.close()
+        }
+      })
+    }
+
+    for (const query of ['', 'output line 100']) {
+      it(`${screen}: keeps Copy output tappable midway through long output with Find ${query ? 'searching' : 'open and empty'}`, async ({
+        skip
+      }) => {
+        if (!browser) skip(unavailableReason)
+        const { context, page } = await openFixture(
+          'phone',
+          screen === 'mobile' ? 390 : 1024,
+          'native',
+          true,
+          screen
+        )
+        try {
+          await page.getByRole('button', { name: /Bash/ }).first().tap()
+          await page.getByRole('button', { name: /^Show all/ }).tap()
+          await page.getByRole('button', { name: 'Find in session', exact: true }).click()
+          const findInput = page.getByRole('textbox', { name: 'Find in session', exact: true })
+          if (query) {
+            await findInput.fill(query)
+            await expect.poll(() => page.getByText(/^\d+ of \d+$/).textContent()).toBe('1 of 1')
+          }
+          const output = page.locator('pre', { hasText: 'output line 200' })
+          expect((await output.boundingBox())!.height).toBeGreaterThan(page.viewportSize()!.height)
+          await output.evaluate((el) => {
+            let scroller = el.parentElement!
+            const view = el.ownerDocument.defaultView!
+            while (view.getComputedStyle(scroller).overflowY !== 'auto') {
+              if (!scroller.parentElement)
+                throw new Error('No production transcript scroll container')
+              scroller = scroller.parentElement
+            }
+            const box = scroller.getBoundingClientRect()
+            const result = el.getBoundingClientRect()
+            scroller.scrollTop += result.top + result.height / 2 - box.top - box.height / 2
+          })
+          const copy = page.getByRole('button', { name: 'Copy output', exact: true })
+          await expectTappable(page, copy, `${screen} Copy output with Find open`)
+          const findBounds = (await findInput.locator('xpath=../..').boundingBox())!
+          const copyBounds = (await copy.boundingBox())!
+          expect(copyBounds.y, 'Copy output clears the Find bar').toBeGreaterThanOrEqual(
+            findBounds.y + findBounds.height
+          )
+
+          // Closing Find must release the reserved top space immediately,
+          // including when its query has always been empty.
+          await page.getByRole('button', { name: 'Close find', exact: true }).click()
+          await expectTappable(page, copy, `${screen} Copy output after closing Find`)
+          const closedBounds = (await copy.boundingBox())!
+          expect(copyBounds.y - closedBounds.y).toBeGreaterThanOrEqual(48)
+        } finally {
+          await context.close()
+        }
+      })
+    }
+  }
+})
 
 describe('touch copy buttons are visible and tappable', { timeout: 30_000 }, () => {
   for (const width of [320, 390]) {

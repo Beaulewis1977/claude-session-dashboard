@@ -21,6 +21,7 @@ function CopyButton({
   return (
     <button
       type="button"
+      data-find-skip
       aria-label={label}
       className={cn(
         'inline-flex h-6 items-center gap-1 rounded-md px-1.5 text-2xs text-muted-foreground transition-colors hover:bg-hover hover:text-foreground',

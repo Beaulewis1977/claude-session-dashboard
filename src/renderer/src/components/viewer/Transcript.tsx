@@ -91,6 +91,7 @@ function MessageActions({
   return (
     <div
       data-message-actions
+      data-find-skip
       className={cn(
         'z-10 flex h-6 w-max items-center rounded-full border border-border bg-popover text-2xs font-medium shadow-sm transition-opacity duration-100',
         layout === 'inline' && 'ml-auto opacity-90 touch:hidden',

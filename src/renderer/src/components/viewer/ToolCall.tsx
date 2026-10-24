@@ -219,7 +219,10 @@ function CopyRow({ input, output }: { input?: () => string; output?: ToolResult 
   const hasOutput = !!output?.text
   if (!input && !hasOutput) return null
   return (
-    <div className="-mt-0.5 flex justify-end gap-1 touch:sticky touch:top-0 touch:z-[4] touch:mt-0 touch:-mr-1 touch:-ml-[22px] touch:flex-wrap touch:gap-x-1 touch:gap-y-0 touch:bg-background touch:py-1">
+    <div
+      data-find-skip
+      className="-mt-0.5 flex justify-end gap-1 touch:sticky touch:top-[var(--tool-copy-top,0px)] touch:z-[4] touch:mt-0 touch:-mr-1 touch:-ml-[22px] touch:flex-wrap touch:gap-x-1 touch:gap-y-0 touch:bg-background touch:py-1"
+    >
       {input && <CopyButton label="Copy input" getText={input} className={touchCopy} />}
       {hasOutput && (
         <CopyButton

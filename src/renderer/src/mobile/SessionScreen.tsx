@@ -218,7 +218,13 @@ export function SessionScreen({ session }: { session: SessionSummary }) {
         </DropdownMenu>
       </header>
 
-      <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+      <div
+        ref={scrollRef}
+        className={cn(
+          'min-h-0 flex-1 overflow-y-auto overscroll-contain',
+          findOpen && '[--tool-copy-top:3.5rem]'
+        )}
+      >
         <div className="border-b border-border px-4 pt-4 pb-4">
           <EditableTitle
             key={session.meta.name ?? ''}

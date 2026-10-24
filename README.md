@@ -4,7 +4,8 @@ A Windows desktop app that collects every Claude Code session from Windows and W
 can read each session as a conversation, give it your own name, description and tags, keep it
 forever in an archive, and resume, fork or branch it in a terminal with its full context. It also
 shows your plan limits and token usage, and has a phone companion so you can do the same from your
-phone. Everything stays on your PC.
+phone, plus guided setup for a real terminal on your PC from your phone (SSH over Tailscale).
+Everything stays on your PC and your own private network.
 
 ![The main screen: session list, filters and a session open in the viewer](docs/main.png)
 
@@ -13,6 +14,7 @@ phone. Everything stays on your PC.
     <td><img src="docs/mobile/sessions.png" width="200" alt="Phone: session list" /></td>
     <td><img src="docs/mobile/session.png" width="200" alt="Phone: a session as chat bubbles" /></td>
     <td><img src="docs/mobile/resumed.png" width="200" alt="Phone: a session started on the PC with Remote Control" /></td>
+    <td><img src="docs/terminal/phone-terminal-sheet.png" width="200" alt="Phone: Open terminal here, with an ssh link and command" /></td>
   </tr>
 </table>
 
@@ -42,6 +44,9 @@ phone. Everything stays on your PC.
   environment, source, tag, date range and hidden sessions.
 - **Readable transcripts:** chat bubbles, Markdown, highlighted code, and tool calls and thinking
   blocks collapsed until you click them. Find-in-session and **Export to Markdown**.
+- **Copy anything:** Copy buttons on every message, code block and tool call (the full input and
+  output, even when the view is shortened), plus **Copy whole conversation** as Markdown. Text can be
+  selected and copied normally too, on the PC and on your phone.
 - **A permanent archive.** Every session file is copied to the app's data folder, so it survives
   Claude Code's `cleanupPeriodDays` cleanup. Sessions whose original is gone get an "archived only"
   badge.
@@ -94,10 +99,28 @@ phone. Everything stays on your PC.
 ### Terminal access (SSH)
 
 - **A real terminal on your PC from your phone**, through Windows' own OpenSSH Server, over
-  Tailscale only. A wizard sets it up step by step and shows every change before it runs.
+  Tailscale only. A wizard sets it up step by step and shows every change before it runs; each
+  change can be undone, and **Turn off terminal access** undoes them all.
 - **Open terminal here** on every session and project: on the PC it opens a terminal in that folder;
   on the phone it gives an `ssh://` link and a copyable `ssh` command that lands in the folder (for
   PowerShell or WSL).
+- **Keys made easy:** paste your SSH app's public key, or send it from the dashboard on your phone
+  (**Send SSH key to PC**) and approve it on the PC after comparing fingerprints. Then turn password
+  login off with one click (backed up, with Undo).
+- Works with any SSH app: the wizard links Termius (free plan) on iPhone and Android, and the free
+  a-Shell (iPhone) and ConnectBot (Android), and shows the PC's host-key fingerprints to check on
+  first connect.
+
+### Guided setup and help
+
+- **Every connection has a setup wizard with live checks** (✓ / ✗ at each step): **Connect your
+  phone** (Tailscale or home Wi-Fi, pairing by QR code, Remote Control check) and **Terminal
+  access** (OpenSSH, firewall, shell, keys, phone app, test).
+- **Troubleshooting** panels list the common fixes, re-run every check and copy diagnostics with no
+  secrets in them.
+- **Copy AI help prompt:** paste it into Claude or another AI assistant to get help with a
+  connection. It points the assistant at [`docs/AI-SETUP-GUIDE.md`](docs/AI-SETUP-GUIDE.md), which
+  tells it to start with read-only checks, ask you before any change, and never ask for secrets.
 
 ## Install
 

@@ -224,7 +224,7 @@ export function firewallAddScript(opts: {
     {
       Name: SSH_RULE_NAME,
       DisplayName: SSH_RULE_DISPLAY,
-      Description: 'Added by Claude Session Dashboard (Settings → Phone → Terminal access).',
+      Description: 'Added by Claude Session Dashboard (Settings → Terminal access (SSH)).',
       Port: String(port),
       Remote: TAILSCALE_RANGES,
       Program: opts.program,

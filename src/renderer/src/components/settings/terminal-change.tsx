@@ -113,7 +113,7 @@ export function useChange(onDone?: () => void): {
             <div className="flex items-start gap-2 text-xs text-muted-foreground">
               <ShieldCheck className="mt-px size-3.5 shrink-0 text-success" />
               Windows will ask for administrator rights next. Every change is logged and can be
-              undone in Settings → Phone → Terminal access.
+              undone in Settings → Terminal access (SSH).
             </div>
           )}
         </div>

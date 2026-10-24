@@ -1,4 +1,4 @@
-// Terminal access (Settings → Phone → Terminal access): set up Windows'
+// Terminal access (Settings → Terminal access (SSH)): set up Windows'
 // OpenSSH Server so a phone can open a real terminal on this PC over
 // Tailscale, and undo it again.
 //
@@ -799,7 +799,7 @@ export class TerminalService extends EventEmitter<{ changed: [] }> {
       return {
         ok: false,
         error:
-          'Your PC isn’t waiting for a key. On the PC, open Settings → Phone → Terminal access → Keys and click “Get key from phone”.'
+          'Your PC isn’t waiting for a key. On the PC, open Settings → Terminal access (SSH) → Keys and click “Get key from phone”.'
       }
     const k = parsePublicKey(text)
     if (!k.ok) return { ok: false, error: k.error }

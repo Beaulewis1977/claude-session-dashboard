@@ -7,11 +7,11 @@ own diagnostics.
 
 There are three connections. Find out which one the person is stuck on:
 
-| Connection                | What it does                                                                  | Set up in the app                                                |
-| ------------------------- | ----------------------------------------------------------------------------- | ---------------------------------------------------------------- |
-| **Phone companion**       | The dashboard in the phone's browser (read sessions, usage, resume on the PC) | Settings → Phone → **Connect your phone…**                       |
-| **Remote Control**        | Continue a resumed session in the Claude app / claude.ai/code                 | Same wizard, last step                                           |
-| **Terminal access (SSH)** | A real terminal on the PC from an SSH app (Termius, ConnectBot, …)            | Settings → Phone → Terminal access → **Set up terminal access…** |
+| Connection                | What it does                                                                  | Set up in the app                                              |
+| ------------------------- | ----------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| **Phone companion**       | The dashboard in the phone's browser (read sessions, usage, resume on the PC) | Settings → Phone → **Connect your phone…**                     |
+| **Remote Control**        | Continue a resumed session in the Claude app / claude.ai/code                 | Same wizard, last step                                         |
+| **Terminal access (SSH)** | A real terminal on the PC from an SSH app (Termius, ConnectBot, …)            | Settings → Terminal access (SSH) → **Set up terminal access…** |
 
 All three run over the person's own **Tailscale** network (home Wi-Fi is an alternative for the
 companion only).

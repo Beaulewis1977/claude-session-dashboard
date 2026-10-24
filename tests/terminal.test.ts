@@ -464,6 +464,25 @@ describe('terminal access service', () => {
     expect('token' in p && (await svc.apply(p.token)).ok).toBe(false)
   })
 
+  it('offers no new change while one is still running', async () => {
+    let finish: () => void = () => undefined
+    svc = make({
+      run: async (s) => {
+        await new Promise<void>((r) => (finish = r))
+        return pc.run(s)
+      }
+    })
+    const p = await svc.prepare({ kind: 'install' })
+    const running = 'token' in p ? svc.apply(p.token) : Promise.resolve({ ok: false })
+    await new Promise((r) => setTimeout(r, 10))
+    expect(await svc.prepare({ kind: 'firewall-add' })).toEqual({
+      error: 'The previous change is still finishing. Try again in a moment.'
+    })
+    finish()
+    expect((await running).ok).toBe(true)
+    expect('token' in (await svc.prepare({ kind: 'firewall-add' }))).toBe(true)
+  })
+
   it('is not ready (phone buttons hidden) until sshd runs, the rule is in, and Tailscale is up', async () => {
     const hidden = async (): Promise<boolean> =>
       !canOpenTerminal(await svc.phoneInfo(), { cwd: 'C:\\x' })

@@ -137,7 +137,9 @@ export function TerminalWizard({
     const recentLogin =
       st.lastLogin?.tailscale && Date.parse(st.lastLogin.at) > openedAt - 15 * 60_000
     const info = connectionInfo(st)
-    const isBusy = (k: string): boolean => busy === k
+    // One change at a time: every change button waits while one runs.
+    const isBusy = (_k: string): boolean => busy !== null
+    const running = (k: string): boolean => busy === k
 
     return [
       {
@@ -182,7 +184,7 @@ export function TerminalWizard({
         id: 'sshd',
         title: 'OpenSSH Server',
         check:
-          isBusy('install') || isBusy('service-on')
+          running('install') || running('service-on')
             ? 'wait'
             : sshOk
               ? 'ok'

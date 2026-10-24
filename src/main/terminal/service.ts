@@ -646,6 +646,9 @@ export class TerminalService extends EventEmitter<{ changed: [] }> {
   async prepare(a: TerminalAction): Promise<PreparedChange | { error: string }> {
     if (!this.deps.supported && !this.deps.simulated)
       return { error: 'Terminal access can only be set up on Windows.' }
+    // One change at a time: the last one may still be finishing as administrator.
+    if (this.busy)
+      return { error: 'The previous change is still finishing. Try again in a moment.' }
     if (a.kind === 'key-pending') {
       if (!this.pending) return { error: 'No key is waiting.' }
       a = { kind: 'key-add', key: this.pending.line }

@@ -93,7 +93,19 @@ const api: CsdApi = {
   tailscaleInstall: () => ipcRenderer.invoke('mobile:tailscaleInstall'),
   tailscaleLogin: () => ipcRenderer.invoke('mobile:tailscaleLogin'),
   openTailscaleLink: (url) => ipcRenderer.invoke('mobile:openLink', url),
-  onMobileChanged: (cb) => on('mobile:changed', cb)
+  onMobileChanged: (cb) => on('mobile:changed', cb),
+
+  terminalStatus: () => ipcRenderer.invoke('terminal:status'),
+  terminalPrepare: (action) => ipcRenderer.invoke('terminal:prepare', action),
+  terminalApply: (token) => ipcRenderer.invoke('terminal:apply', token),
+  terminalHistory: () => ipcRenderer.invoke('terminal:history'),
+  terminalListen: (on) => ipcRenderer.invoke('terminal:listen', on),
+  terminalRejectKey: () => ipcRenderer.invoke('terminal:rejectKey'),
+  terminalDiagnostics: () => ipcRenderer.invoke('terminal:diagnostics'),
+  terminalOpenBackups: () => ipcRenderer.invoke('terminal:openBackups'),
+  onTerminalChanged: (cb) => on('terminal:changed', cb),
+  getTerminalAccess: () => ipcRenderer.invoke('terminal:phoneInfo'),
+  openTerminalHere: (key) => ipcRenderer.invoke('terminal:openHere', key)
 }
 
 contextBridge.exposeInMainWorld('csd', api)

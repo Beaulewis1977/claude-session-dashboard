@@ -33,6 +33,17 @@ import type { MobileFile } from './mobile/devices'
 import { MobileService, webAppFile } from './mobile/service'
 import { fakeTailscale, TailscaleClient } from './mobile/tailscale'
 import { webAssets } from './mobile/web-assets'
+import { registerTerminalIpc } from './ipc-terminal'
+import { fakePc } from './terminal/fake'
+import { realProbe, realRunner } from './terminal/host'
+import {
+  emptyTerminalFile,
+  sshUserName,
+  TerminalService,
+  type TerminalFile
+} from './terminal/service'
+import { fileExists } from './core/which'
+import { readFile } from 'node:fs/promises'
 import {
   fixturesLayout,
   prepareFixtures,
@@ -432,9 +443,38 @@ async function main(): Promise<void> {
     keys: encryptor,
     appVersion: app.getVersion(),
     fixtures: FIXTURES,
-    claudePath: async () => (await platform.launchTools()).claude
+    claudePath: async () => (await platform.launchTools()).claude,
+    proposeKey: (device, key) => terminal.proposeKey(device, key)
   })
   registerMobileIpc({ mobile, store: mobileStore, fixtures: FIXTURES })
+
+  // Terminal access: Windows' OpenSSH Server over Tailscale (see terminal/).
+  const terminalStore = new JsonStore<TerminalFile>(
+    join(paths.dataDir, 'terminal.json'),
+    paths.dataDir,
+    emptyTerminalFile
+  )
+  await terminalStore.load()
+  const fakeSsh = FIXTURES
+    ? fakePc({
+        config: await readFile(join(fixturesLayout(appRoot).fixturesDir, 'ssh', 'sshd_config')),
+        installed: false
+      })
+    : undefined
+  const terminal = new TerminalService({
+    store: terminalStore,
+    dataDir: paths.dataDir,
+    supported: process.platform === 'win32' && !FIXTURES,
+    simulated: FIXTURES,
+    run: fakeSsh?.run ?? realRunner(join(paths.dataDir, 'terminal-work')),
+    probe: fakeSsh?.probe ?? realProbe,
+    tailscale: () => mobile.refreshTailscale(),
+    exists: fileExists,
+    user: FIXTURES ? 'beau' : sshUserName()
+  })
+  registerTerminalIpc({ terminal, launcher, dataDir: paths.dataDir })
+  // Phones show or hide "Open terminal here" from this.
+  terminal.on('changed', () => mobile.push('policy'))
   sessions.on('changed', () => mobile.push('sessions'))
   usage.on('changed', () => mobile.push('usage'))
   limits.on('changed', () => mobile.push('limits'))
@@ -476,6 +516,7 @@ async function main(): Promise<void> {
     void (async () => {
       await mobile.shutdown().catch(() => undefined)
       await mobileStore.flush().catch(() => undefined)
+      await terminalStore.flush().catch(() => undefined)
       await watcher.close().catch(() => undefined)
       await sessions.idle().catch(() => undefined)
       await usage.idle().catch(() => undefined)

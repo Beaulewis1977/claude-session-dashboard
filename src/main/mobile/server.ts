@@ -36,6 +36,15 @@ export interface ServerDeps {
   hosts(): Set<string>
   /** Devices or connections changed (for the desktop's settings screen). */
   changed(): void
+  /**
+   * Terminal access: a phone offers its public SSH key. It's only shown on
+   * the PC, which must be waiting for one; nothing is added until the user
+   * allows it there.
+   */
+  proposeKey?(
+    deviceName: string,
+    key: unknown
+  ): Promise<{ ok: boolean; error?: string; fingerprint?: string }>
   now?: () => number
 }
 
@@ -521,6 +530,29 @@ export class MobileServer {
       }
       case '/api/launch': {
         const r = await this.deps.launcher.launch(d, await readJson(req))
+        this.deps.changed()
+        this.json(req, res, 200, r)
+        return
+      }
+      case '/api/ssh-key': {
+        const body = (await readJson(req)) as { key?: unknown }
+        if (!this.deps.registry.isActive(d.id))
+          throw new HttpError(401, 'This phone is not paired (or was revoked). Pair it again.')
+        if (this.deps.flags().readOnly)
+          throw new HttpError(403, 'Read-only mode is on. Change it on the PC.')
+        if (!this.writeLimiter.take(d.id))
+          throw new HttpError(429, 'Too many changes. Wait a minute.')
+        if (!this.deps.proposeKey) throw new HttpError(404, 'Not available')
+        const r = await this.deps.proposeKey(d.name, body.key)
+        this.deps.registry.log({
+          action: 'ssh-key',
+          deviceId: d.id,
+          device: d.name,
+          detail: r.ok
+            ? `Sent SSH key ${r.fingerprint} to the PC (waits for Allow there)`
+            : `SSH key refused: ${r.error}`,
+          ok: r.ok
+        })
         this.deps.changed()
         this.json(req, res, 200, r)
         return

@@ -284,7 +284,19 @@ export const webApi: CsdApi = {
   tailscaleInstall: onPc('Tailscale setup'),
   tailscaleLogin: onPc('Tailscale setup'),
   openTailscaleLink: onPc('Tailscale setup'),
-  onMobileChanged: () => () => undefined
+  onMobileChanged: () => () => undefined,
+
+  terminalStatus: onPc('Terminal access setup'),
+  terminalPrepare: onPc('Terminal access setup'),
+  terminalApply: onPc('Terminal access setup'),
+  terminalHistory: onPc('The terminal access log'),
+  terminalListen: onPc('Terminal access setup'),
+  terminalRejectKey: onPc('Terminal access setup'),
+  terminalDiagnostics: onPc('Terminal access setup'),
+  terminalOpenBackups: onPc('Opening folders'),
+  onTerminalChanged: () => () => undefined,
+  getTerminalAccess: () => rpc('getTerminalAccess'),
+  openTerminalHere: onPc('Opening a terminal on the PC')
 }
 
 /** What only the phone app needs: pairing, its own device, and launches. */
@@ -307,6 +319,9 @@ export const phone = {
   previewLaunch: (req: RemoteLaunchRequest): Promise<RemoteLaunchPreview> =>
     request('/api/launch/preview', req),
   launch: (req: RemoteLaunchRequest): Promise<RemoteLaunchResult> => request('/api/launch', req),
+  /** Offer this phone's public SSH key to the PC (shown there; added only if allowed there). */
+  sendSshKey: (key: string): Promise<{ ok: boolean; error?: string; fingerprint?: string }> =>
+    request('/api/ssh-key', { key }),
   connect,
   /** Live-update notices from the PC (e.g. 'settings'). */
   on: (channel: Channel, cb: () => void): (() => void) => subscribe(channel, cb),

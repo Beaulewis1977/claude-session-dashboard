@@ -467,3 +467,99 @@ function build(input: LaunchInput): Omit<LaunchCommand, 'commandLine'> {
     }
   }
 }
+
+// ---------------------------------------------------------------------------
+// "Open terminal here": a plain shell in a session's folder, no Claude.
+
+export interface ShellInput {
+  env: EnvKind
+  cwd: string
+  distro?: string
+  terminal: TerminalPref
+  tools: LaunchTools
+}
+
+/** Why `terminal` can't be given this folder safely for a plain shell (PowerShell is used instead). */
+function shellFolderReason(input: ShellInput): string | undefined {
+  const { terminal, env, cwd, tools } = input
+  if (terminal === 'wt' && /[;%]/.test(cwd)) return WT_FOLDER_REASON
+  if (terminal === 'wt' && env === 'wsl' && /[;%]/.test(tools.wsl)) return TOOL_PATH_REASON
+  if (terminal === 'cmd' && env === 'wsl' && /[%!]/.test(cwd + tools.wsl)) return CMD_FOLDER_REASON
+  if (terminal === 'cmd' && env === 'windows' && /^[\\/]{2}/.test(cwd)) return CMD_UNC_REASON
+  return undefined
+}
+
+export function buildShellCommand(input: ShellInput): LaunchCommand {
+  const problem = cwdProblem(input.env, input.cwd)
+  if (problem) throw new Error(problem)
+  const reason = shellFolderReason(input)
+  if (reason) input = { ...input, terminal: 'powershell' }
+  const cmd = buildShell(input)
+  return {
+    ...cmd,
+    claudeCommand: '',
+    claudeArgs: [],
+    terminal: input.terminal,
+    ...(reason ? { terminalReason: reason } : {}),
+    commandLine: shownCommand(cmd)
+  }
+}
+
+function buildShell(
+  input: ShellInput
+): Pick<LaunchCommand, 'command' | 'args' | 'verbatim' | 'spawnCwd'> {
+  const { tools, cwd } = input
+  if (input.env === 'wsl') {
+    const distro = input.distro ?? ''
+    if (!isValidDistroName(distro)) throw new Error(`Invalid WSL distro name: ${distro}`)
+    const wsl = checkedTool(tools.wsl, 'wsl.exe')
+    switch (input.terminal) {
+      case 'wt':
+        return {
+          command: checkedTool(tools.wt, 'Windows Terminal'),
+          args: [wsl, '-d', distro, '--cd', cwd],
+          verbatim: false
+        }
+      case 'powershell':
+        return {
+          command: checkedTool(tools.powershell, 'PowerShell'),
+          args: [
+            '-NoExit',
+            '-Command',
+            `& ${psQuote(wsl)} -d ${psQuote(distro)} --cd ${psQuote(cwd)}`
+          ],
+          verbatim: false
+        }
+      case 'cmd':
+        return {
+          command: checkedTool(tools.cmd, 'cmd.exe'),
+          args: ['/s', '/k', `""${wsl}" -d ${distro} --cd "${cwd}""`],
+          verbatim: true
+        }
+    }
+  }
+  switch (input.terminal) {
+    case 'wt':
+      // Windows Terminal's default profile, started in the folder.
+      return {
+        command: checkedTool(tools.wt, 'Windows Terminal'),
+        args: ['-d', cwd],
+        verbatim: false
+      }
+    case 'powershell':
+      return {
+        command: checkedTool(tools.powershell, 'PowerShell'),
+        args: ['-NoExit', '-Command', `Set-Location -LiteralPath ${psQuote(cwd)}`],
+        verbatim: false,
+        spawnCwd: cwd
+      }
+    case 'cmd':
+      // cmd starts in the folder, so the folder's name never reaches its parser.
+      return {
+        command: checkedTool(tools.cmd, 'cmd.exe'),
+        args: ['/k'],
+        verbatim: true,
+        spawnCwd: cwd
+      }
+  }
+}

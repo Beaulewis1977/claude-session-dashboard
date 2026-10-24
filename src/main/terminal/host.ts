@@ -17,6 +17,8 @@ export interface RunOutcome {
   ok: boolean
   cancelled?: boolean
   error?: string
+  /** It took too long: it may still be running, so whether it changed anything is unknown. */
+  unknown?: boolean
   /** Each part's result (`ok`, `error` and whatever the part reported). */
   parts: Record<string, unknown>[]
 }
@@ -31,6 +33,8 @@ export interface ProbeResult {
   oursRule: boolean
   defaultRule?: { enabled: boolean }
   shell?: string
+  /** HKLM\SOFTWARE\OpenSSH\DefaultShellCommandOption, if someone set it. */
+  shellOption?: string
   admin: boolean
   tsAlias?: string
   defaultDistro?: string
@@ -49,6 +53,8 @@ const PS_FLAGS = ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass']
 
 /** Windows' command-line limit is 32,767 characters; stay well under it. */
 export const MAX_ENCODED = 30_000
+/** How long to wait for an elevated script (it may be installing a Windows feature). */
+const ELEVATED_WAIT_MS = 60 * 60_000
 
 const ELEVATE = [
   "$ErrorActionPreference = 'Stop'",
@@ -62,7 +68,7 @@ function run(
   args: string[],
   env: NodeJS.ProcessEnv,
   timeoutMs: number
-): Promise<{ code: number; stdout: string; stderr: string }> {
+): Promise<{ code: number; stdout: string; stderr: string; timedOut: boolean }> {
   return new Promise((resolve) => {
     execFile(
       powershellExe(),
@@ -70,7 +76,8 @@ function run(
       { windowsHide: true, timeout: timeoutMs, env, maxBuffer: 8 * 1024 * 1024 },
       (err, stdout, stderr) => {
         const code = err ? (typeof err.code === 'number' ? err.code : -1) : 0
-        resolve({ code, stdout: String(stdout), stderr: String(stderr) })
+        const timedOut = !!err && (err as { killed?: boolean }).killed === true
+        resolve({ code, stdout: String(stdout), stderr: String(stderr), timedOut })
       }
     )
   })
@@ -85,6 +92,8 @@ export function realRunner(workDir: string): ScriptRunner {
       return { ok: false, error: 'The change is too large to run.', parts: [] }
     const { mkdir } = await import('node:fs/promises')
     await mkdir(workDir, { recursive: true })
+    // An elevated script can't be stopped from here (it isn't our process), so
+    // wait long; if even that runs out, the result is unknown, not "failed".
     const r = s.elevate
       ? await run(
           ['-NoProfile', '-NonInteractive', '-Command', ELEVATE],
@@ -95,7 +104,7 @@ export function realRunner(workDir: string): ScriptRunner {
               ' '
             )
           },
-          s.timeoutMs
+          Math.max(s.timeoutMs, ELEVATED_WAIT_MS)
         )
       : await run([...PS_FLAGS, '-EncodedCommand', encoded], process.env, s.timeoutMs)
     let parts: Record<string, unknown>[] = []
@@ -109,6 +118,14 @@ export function realRunner(workDir: string): ScriptRunner {
     } finally {
       await unlink(resultFile).catch(() => undefined)
     }
+    if (r.timedOut && !parts.length)
+      return {
+        ok: false,
+        unknown: true,
+        error:
+          'It took too long to answer and may still be running as administrator. Check again in a minute: the wizard reads the PC again.',
+        parts
+      }
     if (r.code === 1223)
       return {
         ok: false,
@@ -140,6 +157,7 @@ $o.oursRule = [bool](Get-NetFirewallRule -Name 'CSD-SSH-Tailscale' -ErrorAction 
 $d = Get-NetFirewallRule -Name 'OpenSSH-Server-In-TCP' -ErrorAction SilentlyContinue
 if ($d) { $o.defaultRule = @{ enabled = ([string]$d.Enabled -eq 'True') } }
 $o.shell = (Get-ItemProperty -Path 'HKLM:\\SOFTWARE\\OpenSSH' -Name DefaultShell -ErrorAction SilentlyContinue).DefaultShell
+$o.shellOption = (Get-ItemProperty -Path 'HKLM:\\SOFTWARE\\OpenSSH' -Name DefaultShellCommandOption -ErrorAction SilentlyContinue).DefaultShellCommandOption
 $o.admin = [bool]((& (Join-Path $env:SystemRoot 'System32\\whoami.exe') /groups /fo csv /nh) -match 'S-1-5-32-544')
 $o.tsAlias = [string](Get-NetAdapter -ErrorAction SilentlyContinue | Where-Object { $_.InterfaceDescription -like 'Tailscale*' } | Select-Object -First 1).Name
 $lx = 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Lxss'
@@ -183,6 +201,7 @@ export function parseProbe(text: string): ProbeResult {
         ? { enabled: (j.defaultRule as { enabled?: unknown }).enabled === true }
         : undefined,
     shell: str(j.shell),
+    shellOption: str(j.shellOption),
     admin: j.admin === true,
     tsAlias: str(j.tsAlias),
     defaultDistro: str(j.defaultDistro),

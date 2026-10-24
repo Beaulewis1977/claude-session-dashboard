@@ -45,6 +45,7 @@ import {
   sshUserName,
   startTypeFor,
   TerminalService,
+  type TerminalDeps,
   type TerminalFile
 } from '../src/main/terminal/service'
 import { FIXTURES, TOOLS } from './helpers'
@@ -104,6 +105,18 @@ describe('commands that land in a folder over SSH', () => {
         { env: 'wsl' as const, cwd: '/home/x/a b', distro: 'Ubuntu' }
       ])
         expect(remoteCommand(t, shell).command).not.toContain('"')
+  })
+
+  it('refuses folders Windows would mangle on the way to the shell', () => {
+    expect(
+      remoteCommand({ env: 'wsl', cwd: '/home/beau/a"b', distro: 'Ubuntu' }, PWSH).command
+    ).toBeUndefined()
+    expect(
+      remoteCommand({ env: 'wsl', cwd: '/home/beau/a\\b', distro: 'Ubuntu' }, WSL).command
+    ).toBeUndefined()
+    expect(
+      remoteCommand({ env: 'wsl', cwd: '/x', distro: 'bad name' }, PWSH).command
+    ).toBeUndefined()
   })
 
   it('refuses control characters and missing folders', () => {
@@ -325,10 +338,15 @@ describe('the firewall rule', () => {
   })
 
   it('refuses odd adapter names and program paths', () => {
-    const odd = firewallAddScript({ program: 'C:\\x\\sshd.exe', interfaceAlias: "x'; Remove-Item" })
-    expect(odd.parts[0].params.Interface).toBeNull()
-    expect(() => firewallAddScript({ program: 'sshd.exe' })).toThrow()
-    expect(() => firewallAddScript({ program: 'C:\\x\\sshd.exe', port: 0 })).toThrow()
+    // Never a rule without the adapter: other networks can use 100.64.0.0/10 too.
+    expect(() =>
+      firewallAddScript({ program: 'C:\\x\\sshd.exe', interfaceAlias: "x'; Remove-Item" })
+    ).toThrow(/adapter/)
+    expect(() => firewallAddScript({ program: 'C:\\x\\sshd.exe', interfaceAlias: '' })).toThrow()
+    expect(() => firewallAddScript({ program: 'sshd.exe', interfaceAlias: 'Tailscale' })).toThrow()
+    expect(() =>
+      firewallAddScript({ program: 'C:\\x\\sshd.exe', interfaceAlias: 'Tailscale', port: 0 })
+    ).toThrow()
   })
 
   it('passes inputs as base64 data, never as script text', () => {
@@ -390,7 +408,7 @@ describe('terminal access service', () => {
   let tsUp = true
   let config: Buffer
 
-  const make = (): TerminalService =>
+  const make = (over: Partial<TerminalDeps> = {}): TerminalService =>
     new TerminalService({
       store,
       dataDir: dir,
@@ -410,7 +428,8 @@ describe('terminal access service', () => {
         ProgramFiles: 'C:\\Program Files',
         ProgramData: 'C:\\ProgramData',
         USERPROFILE: 'C:\\Users\\beau'
-      }
+      },
+      ...over
     })
 
   /** Prepare and confirm a change, as the dialog's OK button does. */
@@ -449,13 +468,22 @@ describe('terminal access service', () => {
       !canOpenTerminal(await svc.phoneInfo(), { cwd: 'C:\\x' })
     expect(await hidden()).toBe(true)
     expect((await run({ kind: 'install' })).ok).toBe(true)
-    expect((await run({ kind: 'service-on' })).ok).toBe(true)
+    // sshd never starts while something outside Tailscale could reach it.
+    expect((await run({ kind: 'service-on' })).error).toMatch(/Tailscale first/)
+    expect((await run({ kind: 'firewall-add' })).ok).toBe(true)
+    expect((await run({ kind: 'service-on' })).error).toMatch(/Tailscale first/)
+    expect((await run({ kind: 'default-rule-disable' })).ok).toBe(true)
     expect(await hidden()).toBe(true)
     const notReady = await svc.phoneInfo()
     expect(notReady.host).toBeUndefined()
     expect(notReady.user).toBeUndefined()
-    expect((await run({ kind: 'firewall-add' })).ok).toBe(true)
+    expect((await run({ kind: 'service-on' })).ok).toBe(true)
     expect(await hidden()).toBe(false)
+    // Windows' "any address" rule back on (by hand): not ready, buttons hidden.
+    pc.state.defaultRule = { enabled: true }
+    expect((await svc.status()).ready).toBe(false)
+    pc.state.defaultRule = { enabled: false }
+    await svc.status()
     expect(await svc.phoneInfo()).toMatchObject({
       ready: true,
       host: 'ryzen-desktop.tail1234.ts.net',
@@ -534,7 +562,8 @@ describe('terminal access service', () => {
     expect('token' in p && p.script).toContain(
       'C:\\ProgramData\\ssh\\administrators_authorized_keys'
     )
-    expect('token' in p && p.script).toContain('*S-1-5-32-544:F')
+    expect('token' in p && p.script).toContain("'S-1-5-32-544', 'S-1-5-18'")
+    expect('token' in p && p.script).toContain('SetAccessRuleProtection($true, $false)')
     expect('token' in p && (await svc.apply(p.token)).ok).toBe(true)
     expect(store.value.keys[0]).toMatchObject({
       fingerprint: KEY_FP,
@@ -565,9 +594,9 @@ describe('terminal access service', () => {
 
   it('turns everything off in one run, undoing only what the wizard changed', async () => {
     await run({ kind: 'install' })
-    await run({ kind: 'service-on' })
     await run({ kind: 'firewall-add' })
     await run({ kind: 'default-rule-disable' })
+    expect((await run({ kind: 'service-on' })).ok).toBe(true)
     await run({ kind: 'shell-set', shell: 'pwsh' })
     await run({ kind: 'key-add', key: KEY })
     await run({ kind: 'password-off' })
@@ -611,10 +640,84 @@ describe('terminal access service', () => {
   it('puts the service back as it was when the wizard didn’t install OpenSSH', async () => {
     pc = fakePc({ config, installed: true })
     svc = make()
-    await run({ kind: 'service-on' })
+    await run({ kind: 'firewall-add' })
+    await run({ kind: 'default-rule-disable' })
+    expect((await run({ kind: 'service-on' })).ok).toBe(true)
     await run({ kind: 'turn-off', uninstall: true, removeKeys: false })
     expect(pc.state.sshdService).toEqual({ status: 'Stopped', startType: 'Manual' })
     expect(pc.state.sshdExe).toBe(true)
+  })
+
+  it('Undo leaves sshd running if it was running before', async () => {
+    pc = fakePc({ config, installed: true })
+    pc.state.sshdService = { status: 'Running', startType: 'Manual' }
+    svc = make()
+    await run({ kind: 'firewall-add' })
+    await run({ kind: 'default-rule-disable' })
+    await run({ kind: 'service-on' })
+    expect(pc.state.sshdService).toEqual({ status: 'Running', startType: 'Automatic' })
+    expect((await run({ kind: 'service-undo' })).ok).toBe(true)
+    expect(pc.state.sshdService).toEqual({ status: 'Running', startType: 'Manual' })
+  })
+
+  it('never takes ownership of a key that was already in the file', async () => {
+    await run({ kind: 'install' })
+    pc.state.keys.push(KEY.replace('iphone-15', 'added-by-me'))
+    const r = await run({ kind: 'key-add', key: KEY })
+    expect(r.ok).toBe(true)
+    expect(store.value.keys).toHaveLength(0)
+    expect(svc.history()[0].detail).toMatch(/already in the file/)
+    // So Turn off with "remove keys" leaves it alone.
+    expect(pc.state.keys).toHaveLength(1)
+  })
+
+  it('refuses the firewall rule without the Tailscale adapter', async () => {
+    pc.state.tsAlias = undefined
+    expect((await run({ kind: 'firewall-add' })).error).toMatch(/adapter/)
+    expect(pc.ran).toHaveLength(0)
+  })
+
+  it('won’t switch shells over a DefaultShellCommandOption it doesn’t manage', async () => {
+    pc.state.shellOption = '-Command'
+    expect((await run({ kind: 'shell-set', shell: 'wsl' })).error).toMatch(/CommandOption/)
+  })
+
+  it('forgets the undo records when Windows’ prompt is declined', async () => {
+    svc = make({
+      run: async () => ({ ok: false, cancelled: true, error: 'declined', parts: [] })
+    })
+    expect((await run({ kind: 'firewall-add' })).cancelled).toBe(true)
+    expect(store.value.firewallRule).toBeUndefined()
+    expect(svc.history()[0]).toMatchObject({ ok: false })
+    expect(svc.history()[0].detail).toMatch(/declined/)
+    // An answer that never came (timeout) keeps them: it may still have run.
+    svc = make({
+      run: async () => ({ ok: false, unknown: true, error: 'slow', parts: [] })
+    })
+    await run({ kind: 'firewall-add' })
+    expect(store.value.firewallRule).toBe(true)
+  })
+
+  it('records an sshd_config change even if sshd then fails to restart', async () => {
+    await run({ kind: 'install' })
+    const real = pc.run
+    svc = make({
+      run: async (s) => {
+        const r = await real(s)
+        r.parts[0] = { ...r.parts[0], restartError: 'service hung' }
+        return r
+      }
+    })
+    expect((await run({ kind: 'password-off' })).ok).toBe(true)
+    expect(store.value.sshdConfig).toBeDefined()
+    expect(svc.history()[0].detail).toMatch(/didn’t restart: service hung/)
+  })
+
+  it('shows the exact sshd_config lines that change', async () => {
+    await run({ kind: 'install' })
+    const p = await svc.prepare({ kind: 'password-off' })
+    expect('token' in p && p.summary).toContain('+ PasswordAuthentication no')
+    expect('token' in p && p.summary).toMatch(/Line \d+:/)
   })
 
   it('logs every change, including declined or failed ones', async () => {

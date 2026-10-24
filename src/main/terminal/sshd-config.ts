@@ -56,3 +56,22 @@ export function setPasswordAuth(text: string, value: 'yes' | 'no'): string {
   }
   return ls.join(eol)
 }
+
+/**
+ * What changes between two versions, for the confirmation: the lines that
+ * differ ("- old" / "+ new"), after the first line number, with the common
+ * start and end left out.
+ */
+export function lineDiff(before: string, after: string): string {
+  const a = before.split(/\r?\n/)
+  const b = after.split(/\r?\n/)
+  let i = 0
+  while (i < a.length && i < b.length && a[i] === b[i]) i++
+  let j = 0
+  while (j < a.length - i && j < b.length - i && a[a.length - 1 - j] === b[b.length - 1 - j]) j++
+  const lines = [
+    ...a.slice(i, a.length - j).map((l) => `- ${l}`),
+    ...b.slice(i, b.length - j).map((l) => `+ ${l}`)
+  ]
+  return lines.length ? [`Line ${i + 1}:`, ...lines].join('\n') : '(no change)'
+}

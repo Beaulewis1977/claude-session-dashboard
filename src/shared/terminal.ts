@@ -225,6 +225,13 @@ export function remoteCommand(
   const cwd = target.cwd
   if (!cwd) return { note: 'No folder is recorded for this session.' }
   if (CONTROL_RE.test(cwd)) return { note: "This folder's name can't be typed safely." }
+  // Windows' command line would take `"` (and `\` before it) apart on the way to the shell.
+  if (cwd.includes('"') || (target.env === 'wsl' && cwd.includes('\\')))
+    return {
+      note: "This folder's name contains \" or \\, which can't be passed through SSH safely."
+    }
+  if (target.distro !== undefined && !/^[A-Za-z0-9._-]{1,64}$/.test(target.distro))
+    return { note: "This WSL distro's name can't be passed through SSH safely." }
   const wslInto = (distro: string | undefined, path: string, q: (s: string) => string): string =>
     distro ? `wsl.exe -d ${q(distro)} --cd ${q(path)}` : `wsl.exe --cd ${q(path)}`
 

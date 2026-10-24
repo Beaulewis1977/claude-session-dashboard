@@ -56,7 +56,7 @@ export function fakePc(
           return { ok: false, error: 'Cannot find any service with service name sshd.' }
         state.sshdService =
           typeof q.StartType === 'string'
-            ? { status: 'Stopped', startType: q.StartType }
+            ? { status: q.Running ? 'Running' : 'Stopped', startType: q.StartType }
             : { status: 'Running', startType: 'Automatic' }
         return { ok: true }
       case 'firewall':
@@ -80,7 +80,7 @@ export function fakePc(
             at: new Date().toISOString(),
             message: `sshd: Accepted publickey for beau from 100.101.102.103 port 50122 ssh2: ED25519 ${fp}`
           })
-          return { ok: true, already }
+          return { ok: true, already, appended: !already }
         }
         const before = state.keys.length
         state.keys = state.keys.filter((k) => k.trim() !== line)
@@ -93,7 +93,7 @@ export function fakePc(
             error: 'sshd_config changed since it was read, so nothing was changed. Try again.'
           }
         state.config = Buffer.from(String(q.Content), 'base64')
-        return { ok: true }
+        return { ok: true, written: true }
       }
       default:
         return { ok: false, error: `Unknown part ${name}` }

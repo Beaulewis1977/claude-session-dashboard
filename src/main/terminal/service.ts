@@ -50,10 +50,11 @@ import {
   sshdExe,
   START_TYPES,
   uninstallScript,
+  validAdapterName,
   type BuiltScript,
   type StartType
 } from './scripts'
-import { passwordAuthSetting, setPasswordAuth } from './sshd-config'
+import { lineDiff, passwordAuthSetting, setPasswordAuth } from './sshd-config'
 
 export interface StoredKey {
   fingerprint: string
@@ -138,11 +139,16 @@ export function startTypeFor(raw: string | undefined): StartType {
   return (START_TYPES as readonly string[]).includes(raw ?? '') ? (raw as StartType) : 'Manual'
 }
 
+/** Sees a part's result (also a failed one); may return a note for the log. */
+type Commit = (out: Record<string, unknown>) => string | void
+
 interface Plan {
   script: BuiltScript
   okLabel: string
-  /** Recorded when the matching part succeeds (same order as script.parts). */
-  commit: ((out: Record<string, unknown>) => void)[]
+  /** One per part, same order as script.parts. */
+  commit: Commit[]
+  /** Records what undo needs, before the part runs. */
+  before: (() => void)[]
   log: string[]
 }
 
@@ -267,7 +273,8 @@ export class TerminalService extends EventEmitter<{ changed: [] }> {
       lastLogin: logins[0],
       eventLogReadable: p.eventsOk,
       tailscale: { ...ts, interfaceAlias: p.tsAlias },
-      ready: running && p.oursRule && !!ts.loggedIn && !!ts.dnsName,
+      // Not while Windows' "any address" rule could let other networks reach SSH.
+      ready: running && p.oursRule && !p.defaultRule?.enabled && !!ts.loggedIn && !!ts.dnsName,
       changes: {
         installedByApp: !!f.installedByApp,
         service: f.service,
@@ -317,12 +324,18 @@ export class TerminalService extends EventEmitter<{ changed: [] }> {
     const f = this.file
     const at = new Date(this.now()).toISOString()
     const root = systemRoot(this.env)
+    // `before` records what's needed to undo a change *before* it runs (undoing a
+    // change that then failed only puts back what was already there). `commit`
+    // sees every part's result, also a failed one, and records what the script
+    // says it actually did.
     const single = (
       script: BuiltScript,
       okLabel: string,
       log: string,
-      commit: (out: Record<string, unknown>) => void = () => undefined
-    ): Plan => ({ script, okLabel, commit: [commit], log: [log] })
+      commit: Commit = () => undefined,
+      before: () => void = () => undefined
+    ): Plan => ({ script, okLabel, commit: [commit], before: [before], log: [log] })
+    const ok = (out: Record<string, unknown>): boolean => out.ok !== false
 
     switch (a.kind) {
       case 'install':
@@ -333,31 +346,54 @@ export class TerminalService extends EventEmitter<{ changed: [] }> {
       case 'uninstall':
         if (!f.installedByApp)
           return { error: 'The wizard didn’t install OpenSSH Server, so it won’t remove it.' }
-        return single(uninstallScript(), 'Uninstall', 'Uninstalled OpenSSH Server', () =>
-          this.deps.store.update((x) => {
-            x.installedByApp = undefined
-            x.service = undefined
-          })
-        )
+        return single(uninstallScript(), 'Uninstall', 'Uninstalled OpenSSH Server', (out) => {
+          if (ok(out))
+            this.deps.store.update((x) => {
+              x.installedByApp = undefined
+              x.service = undefined
+            })
+        })
       case 'service-on': {
         if (!p.sshdService) return { error: 'Install OpenSSH Server first.' }
+        // Never listen while SSH could be reached from outside Tailscale.
+        if (!p.oursRule || p.defaultRule?.enabled)
+          return {
+            error:
+              'Limit SSH to Tailscale first (the Firewall step): add the Tailscale-only rule and turn off Windows’ “any address” rule. Then start sshd.'
+          }
         const prev = { prevStartType: p.sshdService.startType, prevStatus: p.sshdService.status }
-        return single(serviceOnScript(), 'Start', 'Started sshd and set it to Automatic', () =>
-          this.deps.store.update((x) => (x.service ??= prev))
+        return single(
+          serviceOnScript(),
+          'Start',
+          'Started sshd and set it to Automatic',
+          undefined,
+          () => this.deps.store.update((x) => (x.service ??= prev))
         )
       }
       case 'service-undo': {
         if (!f.service) return { error: 'The wizard didn’t change the sshd service.' }
         const t = startTypeFor(f.service.prevStartType)
-        return single(serviceSetScript(t, 'undo'), 'Stop', `Stopped sshd and set it to ${t}`, () =>
-          this.deps.store.update((x) => (x.service = undefined))
+        const running = f.service.prevStatus === 'Running' && t !== 'Disabled'
+        return single(
+          serviceSetScript(t, running, 'undo'),
+          'Put it back',
+          `Put sshd back to ${t}${running ? ', running' : ', stopped'}`,
+          (out) => {
+            if (ok(out)) this.deps.store.update((x) => (x.service = undefined))
+          }
         )
       }
       case 'firewall-add':
+        if (!validAdapterName(p.tsAlias))
+          return {
+            error:
+              'Tailscale’s network adapter wasn’t found on this PC, so the rule can’t be limited to it. Make sure Tailscale is installed and connected, then try again.'
+          }
         return single(
           firewallAddScript({ program: sshdExe(root), interfaceAlias: p.tsAlias }),
           'Add rule',
           'Added the Tailscale-only SSH firewall rule',
+          undefined,
           () => this.deps.store.update((x) => (x.firewallRule = true))
         )
       case 'firewall-remove':
@@ -365,7 +401,9 @@ export class TerminalService extends EventEmitter<{ changed: [] }> {
           firewallRemoveScript(),
           'Remove rule',
           'Removed the Tailscale-only SSH firewall rule',
-          () => this.deps.store.update((x) => (x.firewallRule = undefined))
+          (out) => {
+            if (ok(out)) this.deps.store.update((x) => (x.firewallRule = undefined))
+          }
         )
       case 'default-rule-disable':
         if (!p.defaultRule) return { error: 'Windows’ default SSH rule isn’t there.' }
@@ -374,6 +412,7 @@ export class TerminalService extends EventEmitter<{ changed: [] }> {
           defaultRuleScript(false),
           'Turn off rule',
           'Turned off Windows’ default “any address” SSH rule',
+          undefined,
           () => this.deps.store.update((x) => (x.defaultRuleDisabled = true))
         )
       case 'default-rule-restore':
@@ -382,11 +421,17 @@ export class TerminalService extends EventEmitter<{ changed: [] }> {
           defaultRuleScript(true),
           'Turn on rule',
           'Turned Windows’ default SSH rule back on',
-          () => this.deps.store.update((x) => (x.defaultRuleDisabled = undefined))
+          (out) => {
+            if (ok(out)) this.deps.store.update((x) => (x.defaultRuleDisabled = undefined))
+          }
         )
       case 'shell-set': {
         const opt = (await this.shellOptions()).find((o) => o.kind === a.shell)
         if (!opt?.available) return { error: 'That shell isn’t installed on this PC.' }
+        if (p.shellOption)
+          return {
+            error: `HKLM\\SOFTWARE\\OpenSSH\\DefaultShellCommandOption is set (“${p.shellOption}”), which another shell may not understand. The wizard doesn’t change it: remove it by hand first if you want to switch shells.`
+          }
         if (p.shell?.toLowerCase() === opt.path.toLowerCase())
           return { error: `${opt.label} is already the SSH shell.` }
         // Keep the value from before the wizard's first change, so Undo goes all the way back.
@@ -395,6 +440,7 @@ export class TerminalService extends EventEmitter<{ changed: [] }> {
           shellSetScript(opt.path, opt.label, p.shell),
           `Use ${opt.label}`,
           `Set the SSH shell to ${opt.label} (${opt.path})`,
+          undefined,
           () => this.deps.store.update((x) => (x.shell = { prevValue, value: opt.path }))
         )
       }
@@ -404,7 +450,9 @@ export class TerminalService extends EventEmitter<{ changed: [] }> {
           shellRestoreScript(f.shell.prevValue),
           'Put it back',
           `Put the SSH shell back to ${f.shell.prevValue ?? 'cmd.exe (not set)'}`,
-          () => this.deps.store.update((x) => (x.shell = undefined))
+          (out) => {
+            if (ok(out)) this.deps.store.update((x) => (x.shell = undefined))
+          }
         )
       case 'key-add': {
         const k = parsePublicKey(a.key)
@@ -417,17 +465,22 @@ export class TerminalService extends EventEmitter<{ changed: [] }> {
           keyAddScript({ file, line: k.line, blob: k.base64, admin: p.admin, fingerprint }),
           'Add key',
           `Added SSH key ${fingerprint}${k.comment ? ` (${k.comment})` : ''} to ${file}`,
-          () =>
-            this.deps.store.update((x) => {
-              x.keys.push({
-                fingerprint,
-                comment: k.comment,
-                line: k.line,
-                file,
-                admin: p.admin,
-                addedAt: at
+          (out) => {
+            // Only a line the script appended is the wizard's to remove later.
+            if (out.appended)
+              this.deps.store.update((x) => {
+                x.keys.push({
+                  fingerprint,
+                  comment: k.comment,
+                  line: k.line,
+                  file,
+                  admin: p.admin,
+                  addedAt: at
+                })
               })
-            })
+            else if (out.already)
+              return 'it was already in the file, so it stays yours: Undo won’t remove it'
+          }
         )
       }
       case 'key-remove': {
@@ -442,10 +495,12 @@ export class TerminalService extends EventEmitter<{ changed: [] }> {
           }),
           'Remove key',
           `Removed SSH key ${k.fingerprint} from ${k.file}`,
-          () =>
-            this.deps.store.update(
-              (x) => (x.keys = x.keys.filter((y) => y.fingerprint !== k.fingerprint))
-            )
+          (out) => {
+            if (ok(out))
+              this.deps.store.update(
+                (x) => (x.keys = x.keys.filter((y) => y.fingerprint !== k.fingerprint))
+              )
+          }
         )
       }
       case 'password-off': {
@@ -464,16 +519,19 @@ export class TerminalService extends EventEmitter<{ changed: [] }> {
         const plan = single(
           configWriteScript({
             title: 'Turn off password login?',
-            summary: `Changes one line in C:\\ProgramData\\ssh\\sshd_config to “PasswordAuthentication no”, so only your SSH keys can log in, and restarts sshd. The current file is saved first to ${backupFile}; Undo puts it back exactly.${keyLogin ? '' : '\n\nNo key login has been seen yet. If your key doesn’t work, you can’t log in from the phone until you undo this here.'}`,
+            summary: `Sets “PasswordAuthentication no” in C:\\ProgramData\\ssh\\sshd_config, so only your SSH keys can log in, checks it with sshd -t and restarts sshd. The current file is saved first to ${backupFile}; Undo puts it back exactly.\n\nThe change:\n${lineDiff(text, content.toString('utf8'))}${keyLogin ? '' : '\n\nNo key login has been seen yet. If your key doesn’t work, you can’t log in from the phone until you undo this here.'}`,
             content,
             expect: sha256(p.config)
           }),
           'Turn off password login',
           `Turned off password login (backup: ${backupFile})`,
-          () =>
-            this.deps.store.update(
-              (x) => (x.sshdConfig = { backupFile, writtenSha256: sha256(content), at })
-            )
+          (out) => {
+            if (out.written)
+              this.deps.store.update(
+                (x) => (x.sshdConfig = { backupFile, writtenSha256: sha256(content), at })
+              )
+            if (out.restartError) return `but sshd didn’t restart: ${String(out.restartError)}`
+          }
         )
         // The backup is written (never over another file) before anything runs.
         await assertRealAppDataWrite(backupFile, this.deps.dataDir)
@@ -498,13 +556,16 @@ export class TerminalService extends EventEmitter<{ changed: [] }> {
         return single(
           configWriteScript({
             title: 'Put sshd_config back?',
-            summary: `Restores C:\\ProgramData\\ssh\\sshd_config from the backup made before the wizard changed it (${c.backupFile}), and restarts sshd. Password login works again.`,
+            summary: `Restores C:\\ProgramData\\ssh\\sshd_config from the backup made before the wizard changed it (${c.backupFile}), and restarts sshd. Password login works again.\n\nThe change:\n${lineDiff(p.config.toString('utf8'), original.toString('utf8'))}`,
             content: original,
             expect: c.writtenSha256
           }),
           'Put it back',
           `Restored sshd_config from ${c.backupFile}`,
-          () => this.deps.store.update((x) => (x.sshdConfig = undefined))
+          (out) => {
+            if (out.written) this.deps.store.update((x) => (x.sshdConfig = undefined))
+            if (out.restartError) return `but sshd didn’t restart: ${String(out.restartError)}`
+          }
         )
       }
       case 'key-pending':
@@ -540,9 +601,14 @@ export class TerminalService extends EventEmitter<{ changed: [] }> {
     if (p.sshdService && (f.installedByApp || f.service)) {
       const t: StartType = f.installedByApp ? 'Disabled' : startTypeFor(f.service?.prevStartType)
       plans.push({
-        script: serviceSetScript(t, 'turn-off'),
+        script: serviceSetScript(t, false, 'turn-off'),
         okLabel: '',
-        commit: [() => this.deps.store.update((x) => (x.service = undefined))],
+        commit: [
+          (out) => {
+            if (out.ok !== false) this.deps.store.update((x) => (x.service = undefined))
+          }
+        ],
+        before: [() => undefined],
         log: [`Stopped sshd and set it to ${t}`]
       })
     }
@@ -566,6 +632,7 @@ export class TerminalService extends EventEmitter<{ changed: [] }> {
       ),
       okLabel: 'Turn off',
       commit: plans.flatMap((x) => x.commit),
+      before: plans.flatMap((x) => x.before),
       log: plans.flatMap((x) => x.log)
     }
   }
@@ -615,19 +682,22 @@ export class TerminalService extends EventEmitter<{ changed: [] }> {
     const { action: a, plan } = prep
     const s = plan.script
     try {
+      // Undo information first: a change that fails halfway can still be undone.
+      const { log: _log, ...saved } = structuredClone(this.file)
+      plan.before.forEach((b) => b())
       const out = await this.deps.run(s)
-      // Record each part that worked, even if a later one failed.
+      if (!out.parts.length && !out.unknown)
+        // Nothing ran (declined, or it never started): forget what `before` recorded.
+        this.deps.store.update((x) => {
+          for (const k of Object.keys(x) as (keyof TerminalFile)[]) if (k !== 'log') delete x[k]
+          Object.assign(x, saved)
+        })
+      // Every part's result is recorded, also after an earlier one failed.
       out.parts.forEach((part, i) => {
-        if (part.ok !== false) {
-          plan.commit[i]?.(part)
-          this.log(a.kind, plan.log[i] ?? s.title, true)
-        } else {
-          this.log(
-            a.kind,
-            `${plan.log[i] ?? s.title}: failed (${String(part.error ?? 'unknown error')})`,
-            false
-          )
-        }
+        const note = plan.commit[i]?.(part)
+        const what = `${plan.log[i] ?? s.title}${note ? `, ${note}` : ''}`
+        if (part.ok !== false) this.log(a.kind, what, true)
+        else this.log(a.kind, `${what}: failed (${String(part.error ?? 'unknown error')})`, false)
       })
       if (!out.parts.length)
         this.log(

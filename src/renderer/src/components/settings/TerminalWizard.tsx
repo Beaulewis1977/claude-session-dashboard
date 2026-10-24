@@ -131,6 +131,8 @@ export function TerminalWizard({
     if (!st) return []
     const ts = st.tailscale
     const sshOk = st.sshd.running && /^automatic/i.test(st.sshd.startType ?? '')
+    // Only Tailscale can reach SSH: our rule is in, Windows' "any address" rule is off.
+    const limited = st.firewall.ours && !st.firewall.defaultRule.enabled
     const keyLogin = st.lastLogin?.method === 'publickey' && st.lastLogin.tailscale
     const recentLogin =
       st.lastLogin?.tailscale && Date.parse(st.lastLogin.at) > openedAt - 15 * 60_000
@@ -219,9 +221,15 @@ export function TerminalWizard({
                   Installed, but {st.sshd.running ? 'not set to start with Windows' : 'not running'}{' '}
                   (start type {st.sshd.startType ?? 'unknown'}).
                 </Status>
+                {!limited && (
+                  <Status c="todo">
+                    First limit SSH to Tailscale in the next step (Firewall). sshd is only started
+                    once nothing outside Tailscale can reach it.
+                  </Status>
+                )}
                 <Button
                   variant="primary"
-                  disabled={isBusy('service-on')}
+                  disabled={!limited || isBusy('service-on')}
                   onClick={() => void change({ kind: 'service-on' })}
                 >
                   <Play className="fill-current" /> Start and set to Automatic…
@@ -231,7 +239,7 @@ export function TerminalWizard({
             <div className="flex flex-wrap gap-1">
               {st.changes.service && (
                 <Undo onClick={() => void change({ kind: 'service-undo' })}>
-                  {`Undo: stop sshd, back to ${st.changes.service.prevStartType || 'Manual'}`}
+                  {`Undo: back to ${st.changes.service.prevStartType || 'Manual'}${st.changes.service.prevStatus === 'Running' ? ', running' : ', stopped'}`}
                 </Undo>
               )}
               {st.changes.installedByApp && (
@@ -256,9 +264,9 @@ export function TerminalWizard({
           <div className="space-y-3">
             <p className="text-[13px] text-muted-foreground">
               One Windows Firewall rule lets only sshd, only on port 22, only from Tailscale
-              addresses (100.64.0.0/10 and fd7a:115c:a1e0::/48)
-              {ts.interfaceAlias ? `, only on the “${ts.interfaceAlias}” adapter` : ''} reach it.
-              Nothing is opened on your router, and Tailscale Funnel is never used.
+              addresses (100.64.0.0/10 and fd7a:115c:a1e0::/48) , only on the “
+              {ts.interfaceAlias ?? 'Tailscale'}” network adapter reach it. Nothing is opened on
+              your router, and Tailscale Funnel is never used.
             </p>
             {st.firewall.ours ? (
               <Status c="ok">The Tailscale-only rule is in place.</Status>
@@ -291,6 +299,15 @@ export function TerminalWizard({
               ) : (
                 <Status c="ok">Windows’ “any address” SSH rule is off.</Status>
               ))}
+            {limited && st.sshd.installed && !sshOk && (
+              <Button
+                variant="primary"
+                disabled={isBusy('service-on')}
+                onClick={() => void change({ kind: 'service-on' })}
+              >
+                <Play className="fill-current" /> Now start sshd and set it to Automatic…
+              </Button>
+            )}
             <div className="flex flex-wrap gap-1">
               {st.changes.firewallRule && (
                 <Undo onClick={() => void change({ kind: 'firewall-remove' })}>

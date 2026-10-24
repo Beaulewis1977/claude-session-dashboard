@@ -96,6 +96,16 @@ export function TerminalAccessBlock() {
           </div>
         </div>
       </div>
+      {st.sshd.running && (st.firewall.defaultRule.enabled || !st.firewall.ours) && (
+        <div className="mt-3 flex items-start gap-2 rounded-lg border border-warning/30 bg-warning-soft px-3 py-2 text-xs">
+          <CircleAlert className="mt-px size-3.5 shrink-0 text-warning" />
+          <div className="min-w-0 flex-1">
+            sshd is running and SSH isn’t limited to Tailscale: Windows’ “any address” rule is on
+            {st.firewall.ours ? '' : ' and the Tailscale-only rule is missing'}. Open the setup’s
+            Firewall step to fix it.
+          </div>
+        </div>
+      )}
       {!st.supported && !st.simulated && (
         <div className="mt-3 text-xs text-muted-foreground">Available in the Windows app.</div>
       )}

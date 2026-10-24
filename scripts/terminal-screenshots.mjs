@@ -1,4 +1,4 @@
-/* global window, document */
+/* global window */
 // Terminal access, end to end in fixtures mode (a stand-in PC: nothing real
 // is installed or changed): walks the desktop wizard, then pairs a
 // phone-sized browser and opens "Open terminal here" and "Send SSH key".
@@ -77,12 +77,12 @@ await shot('wizard-tailscale')
 await step('OpenSSH Server')
 await shot('wizard-sshd')
 await change('Install for me…', 'Install', 'confirm-install')
-await change('Start and set to Automatic…', 'Start')
 
 await step('Firewall: Tailscale only')
 await change('Add the Tailscale-only rule…', 'Add rule', 'confirm-firewall')
 await shot('wizard-firewall-default-rule')
 await change('Turn off the “any address” rule…', 'Turn off rule')
+await change('Now start sshd and set it to Automatic…', 'Start')
 await shot('wizard-firewall')
 
 await step('Default shell')

@@ -37,7 +37,6 @@ export interface BuiltScript {
   timeoutMs: number
 }
 
-const ICACLS = '"$env:SystemRoot\\System32\\icacls.exe"'
 const SSHD = '"$env:SystemRoot\\System32\\OpenSSH\\sshd.exe"'
 const REG = "'HKLM:\\SOFTWARE\\OpenSSH'"
 
@@ -54,8 +53,8 @@ if ($cap) { Remove-WindowsCapability -Online -Name $cap.Name | Out-Null }`
 const SERVICE_ON = `Set-Service -Name sshd -StartupType Automatic
 Start-Service -Name sshd`
 
-const SERVICE_SET = `Stop-Service -Name sshd -ErrorAction SilentlyContinue
-Set-Service -Name sshd -StartupType $q.StartType`
+const SERVICE_SET = `Set-Service -Name sshd -StartupType $q.StartType
+if ($q.Running) { Start-Service -Name sshd } else { Stop-Service -Name sshd -ErrorAction SilentlyContinue }`
 
 const FIREWALL_ADD = `Get-NetFirewallRule -Name $q.Name -ErrorAction SilentlyContinue | Remove-NetFirewallRule
 $rule = @{
@@ -63,7 +62,8 @@ $rule = @{
   Direction = 'Inbound'; Action = 'Allow'; Protocol = 'TCP'; LocalPort = $q.Port
   RemoteAddress = [string[]]$q.Remote; Program = $q.Program; Profile = 'Any'
 }
-if ($q.Interface) { $rule.InterfaceAlias = $q.Interface }
+if (-not (Get-NetAdapter -Name $q.Interface -ErrorAction SilentlyContinue)) { throw "The network adapter '$($q.Interface)' isn't there." }
+$rule.InterfaceAlias = $q.Interface
 New-NetFirewallRule @rule | Out-Null`
 
 const FIREWALL_REMOVE = `Get-NetFirewallRule -Name $q.Name -ErrorAction SilentlyContinue | Remove-NetFirewallRule`
@@ -84,11 +84,18 @@ $have = @($text -split "\`r?\`n" | Where-Object { $_.Contains(' ' + $q.Blob) }).
 if (-not $have) {
   $sep = if ($text.Length -gt 0 -and -not $text.EndsWith("\`n")) { "\`r\`n" } else { '' }
   [IO.File]::AppendAllText($q.File, $sep + $q.Line + "\`r\`n", $enc)
+  $out.appended = $true
 }
 $out.already = $have
 if ($q.Admin) {
-  & ${ICACLS} $q.File /inheritance:r /grant '*S-1-5-32-544:F' /grant '*S-1-5-18:F' | Out-Null
-  if ($LASTEXITCODE -ne 0) { throw "icacls failed ($LASTEXITCODE)" }
+  # Exactly what OpenSSH requires: SYSTEM and Administrators, full control, nothing inherited or extra.
+  $acl = Get-Acl -LiteralPath $q.File
+  $acl.SetAccessRuleProtection($true, $false)
+  foreach ($r in @($acl.GetAccessRules($true, $false, [Security.Principal.SecurityIdentifier]))) { [void]$acl.RemoveAccessRuleSpecific($r) }
+  foreach ($sid in 'S-1-5-32-544', 'S-1-5-18') {
+    $acl.AddAccessRule((New-Object Security.AccessControl.FileSystemAccessRule((New-Object Security.Principal.SecurityIdentifier $sid), 'FullControl', 'Allow')))
+  }
+  Set-Acl -LiteralPath $q.File -AclObject $acl
 }`
 
 const KEY_REMOVE = `$enc = New-Object System.Text.UTF8Encoding $false
@@ -112,7 +119,9 @@ $code = $LASTEXITCODE
 Remove-Item -LiteralPath $tmp -Force
 if ($code -ne 0) { throw "sshd rejected the new settings: $check" }
 [IO.File]::WriteAllBytes($cfg, $new)
-if ((Get-Service -Name sshd).Status -eq 'Running') { Restart-Service -Name sshd }`
+$out.written = $true
+# The file is changed now: a failed restart is reported, not treated as "nothing changed".
+try { if ((Get-Service -Name sshd).Status -eq 'Running') { Restart-Service -Name sshd } } catch { $out.restartError = $_.Exception.Message }`
 
 // ---------------------------------------------------------------- builders
 
@@ -158,14 +167,23 @@ export function serviceOnScript(): BuiltScript {
   )
 }
 
-export function serviceSetScript(startType: StartType, why: string): BuiltScript {
+/** Put the sshd service to a start type, running or stopped (Undo, Turn off). */
+export function serviceSetScript(startType: StartType, running: boolean, why: string): BuiltScript {
   if (!START_TYPES.includes(startType)) throw new Error(`Bad start type: ${startType}`)
+  if (running && startType === 'Disabled') throw new Error("A disabled service can't run.")
+  const what = running
+    ? `Sets the sshd service's start type back to ${startType} and leaves it running, as it was.`
+    : `Stops the sshd service and sets its start type to ${startType}.`
   return one(
-    why === 'undo' ? 'Undo: stop OpenSSH Server?' : 'Stop OpenSSH Server?',
-    `Stops the sshd service and sets its start type to ${startType}.`,
+    why === 'undo'
+      ? 'Undo: put the OpenSSH Server service back?'
+      : running
+        ? 'Put the OpenSSH Server service back?'
+        : 'Stop OpenSSH Server?',
+    what,
     'service',
     SERVICE_SET,
-    { StartType: startType }
+    { StartType: startType, Running: running }
   )
 }
 
@@ -173,23 +191,27 @@ export function sshdExe(systemRoot: string): string {
   return win32.join(systemRoot, 'System32', 'OpenSSH', 'sshd.exe')
 }
 
+/** Adapter names are free text; only what Windows itself allows in one is accepted. */
+export function validAdapterName(name: string | undefined): name is string {
+  return !!name && /^[\p{L}\p{N} ._()#-]{1,64}$/u.test(name)
+}
+
 export function firewallAddScript(opts: {
   program: string
-  interfaceAlias?: string
+  interfaceAlias: string
   port?: number
 }): BuiltScript {
   const port = opts.port ?? 22
   if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error(`Bad port: ${port}`)
   if (!isAbsoluteWindowsPath(opts.program) || /["\r\n]/.test(opts.program))
     throw new Error(`Bad program path: ${opts.program}`)
-  // Adapter names are free text; keep only what Windows itself allows in one.
-  const iface =
-    opts.interfaceAlias && /^[\p{L}\p{N} ._()#-]{1,64}$/u.test(opts.interfaceAlias)
-      ? opts.interfaceAlias
-      : undefined
+  // Without the adapter, another network using 100.64.0.0/10 (carrier NAT) could reach SSH.
+  if (!validAdapterName(opts.interfaceAlias))
+    throw new Error('The Tailscale network adapter wasn’t found, so no rule was added.')
+  const iface = opts.interfaceAlias
   return one(
     'Allow SSH from Tailscale only?',
-    `Adds one inbound Windows Firewall rule, “${SSH_RULE_DISPLAY}”: only sshd.exe, only TCP port ${port}, only from Tailscale addresses (${TAILSCALE_RANGES.join(', ')})${iface ? `, only on the “${iface}” network adapter` : ''}. Undo removes just this rule.`,
+    `Adds one inbound Windows Firewall rule, “${SSH_RULE_DISPLAY}”: only sshd.exe, only TCP port ${port}, only from Tailscale addresses (${TAILSCALE_RANGES.join(', ')}), only on the “${iface}” network adapter. Undo removes just this rule.`,
     'firewall',
     FIREWALL_ADD,
     {
@@ -199,7 +221,7 @@ export function firewallAddScript(opts: {
       Port: String(port),
       Remote: TAILSCALE_RANGES,
       Program: opts.program,
-      Interface: iface ?? null
+      Interface: iface
     }
   )
 }
@@ -371,7 +393,7 @@ export function shownText(s: BuiltScript): string {
       .filter(([, v]) => v !== null && v !== undefined)
       .map(([k, v]) => {
         const val = Array.isArray(v) ? v.join(', ') : String(v)
-        return `$q.${k} = ${k === 'Content' ? '(the new sshd_config, shown above)' : val.length > 90 ? `${val.slice(0, 60)}…${val.slice(-20)}` : val}`
+        return `$q.${k} = ${k === 'Content' ? '(the new sshd_config: the changed lines are listed above)' : val.length > 90 ? `${val.slice(0, 60)}…${val.slice(-20)}` : val}`
       })
     return [`# ${p.name}`, ...inputs, p.body].join('\n')
   })

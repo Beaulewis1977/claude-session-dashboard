@@ -4,7 +4,7 @@
 
 **A real terminal on your PC from your phone.**
 
-- **Terminal access (SSH over Tailscale):** Settings → Phone → Terminal access sets up Windows' own
+- **Terminal access (SSH over Tailscale):** Settings → Terminal access (SSH) sets up Windows' own
   OpenSSH Server step by step, with a live check at every step: install, a firewall rule limited to
   Tailscale (Windows' "any address" rule turned off with your OK), the default shell (PowerShell 7,
   Windows PowerShell or WSL), your phone's key, the phone app, and a test.

@@ -1,19 +1,24 @@
 import { memo, useLayoutEffect, useMemo, useRef, useState, type ReactElement } from 'react'
 import {
   Brain,
+  Check,
   ChevronDown,
   Copy,
+  Ellipsis,
+  FileCode,
   GitBranchPlus,
   Image as ImageIcon,
   Layers,
   SquareTerminal,
+  Type,
   Undo2
 } from 'lucide-react'
 import type { ChatMessage, ContentBlock } from '@shared/types'
 import { blockId, blocksMatching, dayLabel, groupTurns, turnTime } from '@/lib/transcript'
 import { formatTime } from '@shared/format'
 import { cn } from '@/lib/utils'
-import { api } from '@/lib/api'
+import { copyText } from '@/lib/actions'
+import { blocksToMarkdown, blocksToPlainText } from '@/lib/copy'
 import { Markdown } from './Markdown'
 import { ErrorBoundary, RenderFailed } from '../ErrorBoundary'
 import { Collapsible, OrphanResult, ToolCall } from './ToolCall'
@@ -26,73 +31,170 @@ import {
   ContextMenuSeparator,
   ContextMenuTrigger
 } from '../ui/context-menu'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger
+} from '../ui/dropdown-menu'
 import { Tooltip } from '../ui/tooltip'
 
 export type OnBranch = (messageId: string, mode: 'include' | 'before') => void
 
 // ---------------------------------------------------------------------------
-// Branch from here: a hover button and a right-click menu on each message.
+// Message actions: Copy and a ⋯ menu on each message (shown on hover on a
+// desktop, always on a phone), plus a right-click menu for the mouse.
 
-function messageText(msgs: ChatMessage[]): string {
-  return msgs
-    .flatMap((m) => m.blocks)
-    .map((b) => (b.type === 'text' ? b.text : ''))
-    .filter(Boolean)
-    .join('\n\n')
-}
+/** No hover on this device (a phone or tablet): hover-only controls stay visible. */
+const noHover = (): boolean =>
+  typeof matchMedia === 'function' && matchMedia('(hover: none)').matches
 
-function BranchButton({ onClick, side }: { onClick: () => void; side: 'left' | 'right' }) {
+function MessageActions({
+  id,
+  blocks,
+  side,
+  onBranch,
+  canBranchBefore
+}: {
+  id: string
+  blocks: ContentBlock[]
+  side: 'left' | 'right'
+  onBranch?: OnBranch
+  canBranchBefore?: boolean
+}) {
+  const [copied, setCopied] = useState(false)
+  const [menuOpen, setMenuOpen] = useState(false)
+  const copyMarkdown = (): Promise<boolean> => copyText(blocksToMarkdown(blocks))
+  const copyPlain = (): void => void copyText(blocksToPlainText(blocks))
+  const btn =
+    'inline-flex h-6 items-center gap-1 rounded-full px-1.5 text-muted-foreground hover:bg-hover hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring'
   return (
-    <Tooltip content="Branch from here: continue in a new session from this message">
+    <div
+      className={cn(
+        'absolute -top-3 z-10 flex h-6 items-center rounded-full border border-border bg-popover text-2xs font-medium shadow-sm transition-opacity duration-100',
+        'opacity-0 group-hover/msg:opacity-100 focus-within:opacity-100 touch:opacity-90',
+        menuOpen && 'opacity-100',
+        side === 'left' ? 'left-3' : 'right-3'
+      )}
+    >
       <button
         type="button"
-        aria-label="Branch from here"
-        onClick={onClick}
-        className={cn(
-          'absolute -top-3 z-10 inline-flex h-6 items-center gap-1 rounded-full border border-border bg-popover px-2 text-2xs font-medium text-muted-foreground opacity-0 shadow-sm transition-opacity duration-100 group-hover/msg:opacity-100 hover:text-foreground focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-ring',
-          side === 'left' ? 'left-3' : 'right-3'
-        )}
+        aria-label="Copy message"
+        className={btn}
+        onClick={() =>
+          void copyMarkdown().then((ok) => {
+            if (!ok) return
+            setCopied(true)
+            setTimeout(() => setCopied(false), 1200)
+          })
+        }
       >
-        <GitBranchPlus className="size-3" /> Branch
+        {copied ? <Check className="size-3" /> : <Copy className="size-3" />}
+        {copied ? 'Copied' : 'Copy'}
       </button>
-    </Tooltip>
+      {onBranch && (
+        <Tooltip content="Branch from here: continue in a new session from this message">
+          <button
+            type="button"
+            aria-label="Branch from here"
+            onClick={() => onBranch(id, 'include')}
+            className={cn(btn, 'touch:hidden')}
+          >
+            <GitBranchPlus className="size-3" /> Branch
+          </button>
+        </Tooltip>
+      )}
+      <DropdownMenu onOpenChange={setMenuOpen}>
+        <DropdownMenuTrigger asChild>
+          <button type="button" aria-label="More message actions" className={btn}>
+            <Ellipsis className="size-3.5" />
+          </button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align={side === 'left' ? 'start' : 'end'} className="w-60">
+          <DropdownMenuItem onSelect={copyPlain}>
+            <Type /> Copy as plain text
+          </DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => void copyMarkdown()}>
+            <FileCode /> Copy as Markdown
+          </DropdownMenuItem>
+          {onBranch && (
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onSelect={() => onBranch(id, 'include')}>
+                <GitBranchPlus /> Branch from here
+              </DropdownMenuItem>
+              {canBranchBefore && (
+                <DropdownMenuItem onSelect={() => onBranch(id, 'before')}>
+                  <Undo2 /> Branch from before this message
+                </DropdownMenuItem>
+              )}
+            </>
+          )}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
   )
 }
 
+/**
+ * Right-click menu for the mouse. Touch and pen never open it: Radix's context
+ * menu turns a long-press into its own menu and cancels the native one, which
+ * is what stopped long-press text selection on phones. There, the same items
+ * live in the ⋯ button.
+ */
 function MessageMenu({
   id,
-  msgs,
+  blocks,
   onBranch,
   canBranchBefore,
   children
 }: {
   id: string
-  msgs: ChatMessage[]
+  blocks: ContentBlock[]
   onBranch?: OnBranch
   canBranchBefore?: boolean
   children: ReactElement
 }) {
-  if (!onBranch) return children
+  const [touch, setTouch] = useState(noHover)
   const copy = (): void => {
     const selected = window.getSelection()?.toString()
-    void api.copyText(selected || messageText(msgs))
+    void copyText(selected || blocksToMarkdown(blocks))
   }
   return (
     <ContextMenu>
-      <ContextMenuTrigger asChild>{children}</ContextMenuTrigger>
+      <ContextMenuTrigger
+        asChild
+        disabled={touch}
+        // Radix sets -webkit-touch-callout: none on the trigger; keep the native callout.
+        style={{ WebkitTouchCallout: 'default' }}
+        onPointerDown={(e) => setTouch(e.pointerType !== 'mouse')}
+      >
+        {children}
+      </ContextMenuTrigger>
       <ContextMenuContent>
-        <ContextMenuItem onSelect={() => onBranch(id, 'include')}>
-          <GitBranchPlus /> Branch from here
-        </ContextMenuItem>
-        {canBranchBefore && (
-          <ContextMenuItem onSelect={() => onBranch(id, 'before')}>
-            <Undo2 /> Branch from before this message
-          </ContextMenuItem>
-        )}
-        <ContextMenuSeparator />
         <ContextMenuItem onSelect={copy}>
           <Copy /> Copy
         </ContextMenuItem>
+        <ContextMenuItem onSelect={() => void copyText(blocksToPlainText(blocks))}>
+          <Type /> Copy as plain text
+        </ContextMenuItem>
+        <ContextMenuItem onSelect={() => void copyText(blocksToMarkdown(blocks))}>
+          <FileCode /> Copy as Markdown
+        </ContextMenuItem>
+        {onBranch && (
+          <>
+            <ContextMenuSeparator />
+            <ContextMenuItem onSelect={() => onBranch(id, 'include')}>
+              <GitBranchPlus /> Branch from here
+            </ContextMenuItem>
+            {canBranchBefore && (
+              <ContextMenuItem onSelect={() => onBranch(id, 'before')}>
+                <Undo2 /> Branch from before this message
+              </ContextMenuItem>
+            )}
+          </>
+        )}
       </ContextMenuContent>
     </ContextMenu>
   )
@@ -153,9 +255,15 @@ function UserBubble({ msg, onBranch }: { msg: ChatMessage; onBranch?: OnBranch }
         <span className="font-medium text-muted-foreground">You</span>
         {msg.timestamp && <span>{formatTime(msg.timestamp)}</span>}
       </div>
-      <MessageMenu id={msg.id} msgs={[msg]} onBranch={onBranch} canBranchBefore>
-        <div className="group/msg relative max-w-[82%] rounded-2xl rounded-tr-md border border-user-bubble-border bg-user-bubble px-4 py-2.5 shadow-xs">
-          {onBranch && <BranchButton side="left" onClick={() => onBranch(msg.id, 'include')} />}
+      <MessageMenu id={msg.id} blocks={msg.blocks} onBranch={onBranch} canBranchBefore>
+        <div className="group/msg relative max-w-[82%] rounded-2xl rounded-tr-md border border-user-bubble-border bg-user-bubble px-4 py-2.5 shadow-xs touch:pt-4">
+          <MessageActions
+            id={msg.id}
+            blocks={msg.blocks}
+            side="left"
+            onBranch={onBranch}
+            canBranchBefore
+          />
           <div ref={ref} className={cn(!expanded && 'max-h-[340px] overflow-hidden')}>
             {msg.blocks.map((b, i) =>
               b.type === 'text' ? (
@@ -235,19 +343,23 @@ function AssistantTurn({
             const head = g[0]
             // Branching at a group means: up to the last message in it.
             const at = g[g.length - 1].m
-            const groupMsgs = [...new Set(g.map((x) => x.m))]
+            // Copy takes what this bubble shows, not the whole message it came from.
+            const groupBlocks = g.map((x) => x.b)
             if (head.b.type === 'text') {
               return (
                 <MessageMenu
                   key={`${head.m.id}:${head.i}`}
                   id={at.id}
-                  msgs={groupMsgs}
+                  blocks={groupBlocks}
                   onBranch={onBranch}
                 >
-                  <div className="group/msg relative w-fit max-w-full rounded-2xl rounded-tl-md border border-assistant-bubble-border bg-assistant-bubble px-4 py-2.5 shadow-xs">
-                    {onBranch && (
-                      <BranchButton side="right" onClick={() => onBranch(at.id, 'include')} />
-                    )}
+                  <div className="group/msg relative w-fit max-w-full rounded-2xl rounded-tl-md border border-assistant-bubble-border bg-assistant-bubble px-4 py-2.5 shadow-xs touch:pt-4">
+                    <MessageActions
+                      id={at.id}
+                      blocks={groupBlocks}
+                      side="right"
+                      onBranch={onBranch}
+                    />
                     <Markdown text={head.b.text} />
                   </div>
                 </MessageMenu>
@@ -257,7 +369,7 @@ function AssistantTurn({
               <MessageMenu
                 key={`${head.m.id}:${head.i}`}
                 id={at.id}
-                msgs={groupMsgs}
+                blocks={groupBlocks}
                 onBranch={onBranch}
               >
                 <div className="max-w-full overflow-hidden rounded-xl border border-border bg-background/50 p-1">
@@ -423,7 +535,9 @@ export const Transcript = memo(function Transcript({
     )
   }
   return (
-    <div className={cn('mx-auto max-w-[860px] space-y-5 px-8 pt-6 pb-24', className)}>
+    // The whole conversation is selectable, so a selection can start anywhere in
+    // it and run across messages; buttons inside stay unselectable (styles.css).
+    <div className={cn('selectable mx-auto max-w-[860px] space-y-5 px-8 pt-6 pb-24', className)}>
       {turns.map((t) => {
         const ts = turnTime(t)
         const showDay = dayStarts.has(t.id) && ts

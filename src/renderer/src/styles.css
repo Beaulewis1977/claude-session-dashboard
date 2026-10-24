@@ -4,6 +4,8 @@
 @import '@fontsource-variable/jetbrains-mono';
 
 @custom-variant dark (&:where(.dark, .dark *));
+/* Devices without hover (phones, tablets): show controls that are hover-only elsewhere. */
+@custom-variant touch (@media (hover: none));
 
 /* ------------------------------------------------------------------ tokens */
 
@@ -272,6 +274,18 @@
   .selectable * {
     user-select: text;
     cursor: auto;
+  }
+  /* Long-press on a phone opens the native text selection. */
+  .selectable {
+    -webkit-touch-callout: default;
+  }
+  /* Controls inside selectable content (copy buttons, expanders, menus) stay unselectable. */
+  .selectable button,
+  .selectable button *,
+  .selectable [role='button'],
+  .selectable [role='button'] * {
+    user-select: none;
+    cursor: default;
   }
   button {
     cursor: default;

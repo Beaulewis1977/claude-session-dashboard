@@ -5,27 +5,38 @@ import remarkBreaks from 'remark-breaks'
 import rehypeHighlight from 'rehype-highlight'
 import { Check, Copy } from 'lucide-react'
 import { api } from '@/lib/api'
+import { copyText } from '@/lib/actions'
 import { cn } from '@/lib/utils'
 
-function CopyButton({ getText, className }: { getText: () => string; className?: string }) {
+function CopyButton({
+  getText,
+  label = 'Copy',
+  className
+}: {
+  getText: () => string
+  label?: string
+  className?: string
+}) {
   const [copied, setCopied] = useState(false)
   return (
     <button
       type="button"
-      aria-label="Copy"
+      aria-label={label}
       className={cn(
         'inline-flex h-6 items-center gap-1 rounded-md px-1.5 text-2xs text-muted-foreground transition-colors hover:bg-hover hover:text-foreground',
         className
       )}
       onClick={(e) => {
         e.stopPropagation()
-        void api.copyText(getText())
-        setCopied(true)
-        setTimeout(() => setCopied(false), 1200)
+        void copyText(getText()).then((ok) => {
+          if (!ok) return
+          setCopied(true)
+          setTimeout(() => setCopied(false), 1200)
+        })
       }}
     >
       {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
-      {copied ? 'Copied' : 'Copy'}
+      {copied ? 'Copied' : label}
     </button>
   )
 }
@@ -51,7 +62,7 @@ export function CodeBlock({
         <span className="font-mono text-2xs text-subtle-foreground">{language || 'text'}</span>
         <CopyButton
           getText={() => ref.current?.innerText ?? ''}
-          className="opacity-0 group-hover/code:opacity-100 focus:opacity-100"
+          className="opacity-0 group-hover/code:opacity-100 focus:opacity-100 touch:opacity-100"
         />
       </div>
       <pre

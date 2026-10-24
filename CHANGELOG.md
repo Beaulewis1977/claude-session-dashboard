@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.2.0 (October 23, 2026)
+
+- Add Copy buttons for messages, code blocks, full tool input/output and whole conversations, with a
+  clipboard fallback.
+- Fix text selection on desktop and phones while preserving mouse context menus and branch actions.
+- Make mobile Copy actions visible and easy to tap, including in long messages and tool output, and
+  keep tool-copy buttons clear of Find.
+
 ## 1.1.0 (October 23, 2026)
 
 **Use it from your phone.**

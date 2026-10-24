@@ -9,8 +9,13 @@ import type { ContentBlock, ToolResult } from '@shared/types'
 import { blockToMarkdown } from '@shared/markdown'
 
 type ToolUse = Extract<ContentBlock, { type: 'tool_use' }>
+type Definitions = Map<string, string>
 
-function inline(node: Nodes): string {
+function withUrl(text: string, url = ''): string {
+  return text && url && text !== url ? `${text} (${url})` : text || url
+}
+
+function inline(node: Nodes, definitions: Definitions): string {
   switch (node.type) {
     case 'text':
     case 'inlineCode':
@@ -19,36 +24,40 @@ function inline(node: Nodes): string {
     case 'break':
       return '\n'
     case 'image':
-      return node.alt ?? ''
-    case 'link': {
-      const text = node.children.map(inline).join('')
-      return text && text !== node.url && !node.url.startsWith('mailto:')
-        ? `${text} (${node.url})`
-        : text || node.url
+      return withUrl(node.alt ?? '', node.url)
+    case 'imageReference':
+      return withUrl(node.alt ?? '', definitions.get(node.identifier))
+    case 'link':
+    case 'linkReference': {
+      const text = node.children.map((child) => inline(child, definitions)).join('')
+      const url = node.type === 'link' ? node.url : definitions.get(node.identifier)
+      return url?.startsWith('mailto:') ? text || url : withUrl(text, url)
     }
     case 'footnoteReference':
       return `[${node.label ?? node.identifier}]`
     default:
-      return 'children' in node ? node.children.map((c) => inline(c as Nodes)).join('') : ''
+      return 'children' in node
+        ? node.children.map((c) => inline(c as Nodes, definitions)).join('')
+        : ''
   }
 }
 
-function blocks(nodes: Nodes[], indent = ''): string {
+function blocks(nodes: Nodes[], indent: string, definitions: Definitions): string {
   return nodes
-    .map((n) => block(n, indent))
+    .map((n) => block(n, indent, definitions))
     .filter((s) => s !== '')
     .join('\n\n')
 }
 
-function block(node: Nodes, indent: string): string {
+function block(node: Nodes, indent: string, definitions: Definitions): string {
   switch (node.type) {
     case 'root':
     case 'blockquote':
     case 'footnoteDefinition':
-      return blocks(node.children, indent)
+      return blocks(node.children, indent, definitions)
     case 'paragraph':
     case 'heading':
-      return indentLines(inline(node), indent)
+      return indentLines(inline(node, definitions), indent)
     case 'code':
       return indentLines(node.value, indent)
     case 'html':
@@ -61,20 +70,23 @@ function block(node: Nodes, indent: string): string {
         .map((item, i) => {
           const marker = node.ordered ? `${(node.start ?? 1) + i}. ` : '- '
           const check = item.checked === true ? '[x] ' : item.checked === false ? '[ ] ' : ''
+          const contentIndent = ' '.repeat(marker.length)
           const body = item.children
-            .map((c) => block(c, ' '.repeat(marker.length)))
+            .map((c) => block(c, contentIndent, definitions))
             .filter(Boolean)
             .join(node.spread || item.spread ? '\n\n' : '\n')
-          return indentLines(marker + check + body.trimStart(), indent)
+          // Remove only indentation we inserted; source code may itself start with spaces.
+          const firstLine = body.startsWith(contentIndent) ? body.slice(contentIndent.length) : body
+          return indentLines(marker + check + firstLine, indent)
         })
         .join(node.spread ? '\n\n' : '\n')
     case 'table':
       return node.children
-        .map((row) => row.children.map((cell) => inline(cell)).join('\t'))
+        .map((row) => row.children.map((cell) => inline(cell, definitions)).join('\t'))
         .map((line) => indent + line)
         .join('\n')
     default:
-      return indentLines(inline(node), indent)
+      return indentLines(inline(node, definitions), indent)
   }
 }
 
@@ -96,22 +108,22 @@ export function markdownToPlainText(markdown: string): string {
       extensions: [gfm()],
       mdastExtensions: [gfmFromMarkdown()]
     })
-    return block(tree, '')
-      .replace(/\n{3,}/g, '\n\n')
-      .trim()
+    const definitions: Definitions = new Map()
+    const collect = (node: Nodes): void => {
+      if (node.type === 'definition' && !definitions.has(node.identifier))
+        definitions.set(node.identifier, node.url)
+      if ('children' in node) node.children.forEach((child) => collect(child as Nodes))
+    }
+    collect(tree)
+    return block(tree, '', definitions)
   } catch {
-    return markdown.trim()
+    return markdown
   }
 }
 
 /** One message (or a group of blocks shown as one bubble) as Markdown. */
 export function blocksToMarkdown(list: ContentBlock[]): string {
-  return list
-    .map(blockToMarkdown)
-    .filter(Boolean)
-    .join('\n\n')
-    .replace(/\n{3,}/g, '\n\n')
-    .trim()
+  return list.map(blockToMarkdown).filter(Boolean).join('\n\n')
 }
 
 /** One message (or a group of blocks shown as one bubble) as plain text. */
@@ -135,7 +147,6 @@ export function blocksToPlainText(list: ContentBlock[]): string {
     })
     .filter(Boolean)
     .join('\n\n')
-    .trim()
 }
 
 /** A tool call's input as the text it was given: the command, the file content, the prompt, or JSON. */

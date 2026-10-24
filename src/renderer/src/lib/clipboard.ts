@@ -4,7 +4,8 @@
 
 /**
  * Copies with a hidden textarea. Runs synchronously so it still counts as
- * part of the tap that asked for it. Returns false if the browser refused.
+ * part of the tap that asked for it. Requires the copy event to accept the
+ * requested text; execCommand can return true without actually copying it.
  */
 export function copyWithTextarea(text: string, doc: Document = document): boolean {
   const ta = doc.createElement('textarea')
@@ -13,26 +14,61 @@ export function copyWithTextarea(text: string, doc: Document = document): boolea
   // 16px stops iOS zooming in; off-screen so nothing flashes.
   ta.style.cssText =
     'position:fixed;top:0;left:-9999px;width:1px;height:1px;opacity:0;font-size:16px;'
-  const active = doc.activeElement as HTMLElement | null
+  const active = doc.activeElement as HTMLInputElement | HTMLTextAreaElement | null
+  const inputSelection =
+    active && typeof active.selectionStart === 'number' && typeof active.selectionEnd === 'number'
+      ? {
+          start: active.selectionStart,
+          end: active.selectionEnd,
+          direction: active.selectionDirection ?? undefined,
+          scrollLeft: active.scrollLeft,
+          scrollTop: active.scrollTop
+        }
+      : null
   const selection = doc.getSelection()
   const ranges: Range[] = []
-  if (selection) for (let i = 0; i < selection.rangeCount; i++) ranges.push(selection.getRangeAt(i))
-  doc.body.appendChild(ta)
+  if (selection)
+    for (let i = 0; i < selection.rangeCount; i++) ranges.push(selection.getRangeAt(i).cloneRange())
+  // Radix menus and dialogs trap focus inside their content. Keep the temporary
+  // textarea there so selecting it is allowed while the menu is still open.
+  const scope = active?.closest('[role="menu"], [role="dialog"], [role="alertdialog"]')
+  ;(scope ?? doc.body).appendChild(ta)
+  let delivered = false
+  const onCopy = (event: ClipboardEvent): void => {
+    if (!event.clipboardData) return
+    try {
+      event.clipboardData.setData('text/plain', text)
+      if (event.clipboardData.getData('text/plain') !== text) return
+      event.preventDefault()
+      delivered = event.defaultPrevented
+    } catch {
+      // A refused payload must not be reported as a successful copy.
+    }
+  }
+  doc.addEventListener('copy', onCopy, true)
   let ok: boolean
   try {
     ta.focus({ preventScroll: true })
     ta.select()
     ta.setSelectionRange(0, text.length)
-    ok = doc.execCommand('copy')
+    ok = doc.execCommand('copy') && delivered
   } catch {
     ok = false
   } finally {
+    doc.removeEventListener('copy', onCopy, true)
     ta.remove()
+    // Focusing an input can clear the DOM selection, so restore focus first.
+    active?.focus?.({ preventScroll: true })
     if (selection) {
       selection.removeAllRanges()
       for (const r of ranges) selection.addRange(r)
     }
-    active?.focus?.({ preventScroll: true })
+    // Restoring DOM ranges can reset a focused input's selection in Chromium.
+    if (active && inputSelection) {
+      active.setSelectionRange(inputSelection.start, inputSelection.end, inputSelection.direction)
+      active.scrollLeft = inputSelection.scrollLeft
+      active.scrollTop = inputSelection.scrollTop
+    }
   }
   return ok
 }

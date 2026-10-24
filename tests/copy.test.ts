@@ -63,6 +63,60 @@ describe('markdownToPlainText', () => {
     expect(markdownToPlainText('- [x] done\n- [ ] todo')).toBe('- [x] done\n- [ ] todo')
     expect(markdownToPlainText('see https://example.com')).toBe('see https://example.com')
   })
+
+  it('preserves code indentation, blank lines and multiline string contents', () => {
+    const code = '\n  message = """first\n\n\nlast"""\n  print(message)\n\n'
+    expect(markdownToPlainText(`\`\`\`python\n${code}\n\`\`\``)).toBe(code)
+  })
+
+  it('preserves code indentation when a list starts with a code block', () => {
+    expect(markdownToPlainText('- ```python\n    print("indented")\n  ```')).toBe(
+      '-   print("indented")'
+    )
+  })
+
+  it.each([
+    ['[read][guide]\n\n[guide]: https://example.com/docs', 'read (https://example.com/docs)'],
+    ['[read][]\n\n[read]: https://example.com/docs', 'read (https://example.com/docs)'],
+    ['[read]\n\n[read]: https://example.com/docs', 'read (https://example.com/docs)'],
+    ['[**read**][GUIDE]\n\n[guide]: https://example.com/docs', 'read (https://example.com/docs)'],
+    ['[email][contact]\n\n[contact]: mailto:a@example.com', 'email'],
+    ['[missing][guide]', '[missing][guide]']
+  ])('resolves reference links like inline links: %s', (markdown, expected) => {
+    expect(markdownToPlainText(markdown)).toBe(expected)
+  })
+
+  it.each([
+    ['![diagram](https://example.com/diagram.png)', 'diagram (https://example.com/diagram.png)'],
+    ['![](https://example.com/diagram.png)', 'https://example.com/diagram.png'],
+    [
+      '![diagram][fig]\n\n[fig]: https://example.com/diagram.png',
+      'diagram (https://example.com/diagram.png)'
+    ],
+    [
+      '![diagram][]\n\n[diagram]: https://example.com/diagram.png',
+      'diagram (https://example.com/diagram.png)'
+    ],
+    [
+      '![diagram]\n\n[diagram]: https://example.com/diagram.png',
+      'diagram (https://example.com/diagram.png)'
+    ],
+    ['![][fig]\n\n[fig]: https://example.com/diagram.png', 'https://example.com/diagram.png'],
+    ['![missing][fig]', '![missing][fig]']
+  ])('includes image alt text and available URLs: %s', (markdown, expected) => {
+    expect(markdownToPlainText(markdown)).toBe(expected)
+  })
+
+  it('uses the first definition and omits definition text from the copied result', () => {
+    expect(
+      markdownToPlainText('[read][some  guide]\n\n[Some Guide]: /first\n[some guide]: /second')
+    ).toBe('read (/first)')
+  })
+
+  it('returns empty text for empty content', () => {
+    expect(markdownToPlainText('')).toBe('')
+    expect(markdownToPlainText('```\n```')).toBe('')
+  })
 })
 
 describe('copying a message', () => {
@@ -93,6 +147,31 @@ describe('copying a message', () => {
     expect(first).toBeDefined()
     expect(blocksToPlainText(user.blocks).length).toBeGreaterThan(0)
     expect(blocksToMarkdown(user.blocks)).toContain((first as { text: string }).text.trim())
+  })
+
+  it('preserves original Markdown whitespace within and around blocks', () => {
+    const source = '\n\n  ```python\n  text = """first\n\n\nlast"""\n  ```\n\n'
+    expect(blocksToMarkdown([{ type: 'text', text: source }])).toBe(source)
+    expect(
+      blocksToMarkdown([
+        { type: 'text', text: source },
+        { type: 'text', text: 'next' }
+      ])
+    ).toBe(`${source}\n\nnext`)
+  })
+
+  it('preserves tool output whitespace when copying a message as plain text', () => {
+    const output = '\n  first\n\n\nlast\n\n'
+    expect(
+      blocksToPlainText([
+        { type: 'tool_result', toolUseId: 'result', result: { text: output, isError: false } }
+      ])
+    ).toBe(output)
+  })
+
+  it('returns empty text for an empty message', () => {
+    expect(blocksToMarkdown([])).toBe('')
+    expect(blocksToPlainText([])).toBe('')
   })
 })
 

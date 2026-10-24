@@ -5,9 +5,14 @@ import type { ContentBlock, SessionDetail, ToolResult } from './types'
 
 function fence(text: string, lang = ''): string {
   // Use a fence longer than any backtick run inside the text.
-  const longest = Math.max(2, ...(text.match(/`+/g) ?? []).map((m) => m.length))
+  let longest = 2
+  let run = 0
+  for (const char of text) {
+    run = char === '`' ? run + 1 : 0
+    if (run > longest) longest = run
+  }
   const f = '`'.repeat(longest + 1)
-  return `${f}${lang}\n${text.replace(/\n+$/, '')}\n${f}`
+  return `${f}${lang}\n${text}\n${f}`
 }
 
 function escapeHtml(s: string): string {
@@ -102,10 +107,6 @@ export function sessionToMarkdown(detail: SessionDetail): string {
         ''
       )
   }
-  return (
-    lines
-      .join('\n')
-      .replace(/\n{3,}/g, '\n\n')
-      .trimEnd() + '\n'
-  )
+  // Only the separators above are generated; source blocks retain their exact whitespace.
+  return lines.join('\n')
 }

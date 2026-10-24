@@ -54,12 +54,14 @@ function MessageActions({
   id,
   blocks,
   side,
+  inline = false,
   onBranch,
   canBranchBefore
 }: {
   id: string
   blocks: ContentBlock[]
   side: 'left' | 'right'
+  inline?: boolean
   onBranch?: OnBranch
   canBranchBefore?: boolean
 }) {
@@ -72,10 +74,12 @@ function MessageActions({
   return (
     <div
       className={cn(
-        'absolute -top-3 z-10 flex h-6 items-center rounded-full border border-border bg-popover text-2xs font-medium shadow-sm transition-opacity duration-100',
-        'opacity-0 group-hover/msg:opacity-100 focus-within:opacity-100 touch:opacity-90',
+        'z-10 flex h-6 w-max items-center rounded-full border border-border bg-popover text-2xs font-medium shadow-sm transition-opacity duration-100',
+        inline
+          ? 'ml-auto opacity-90'
+          : 'absolute -top-3 opacity-0 group-hover/msg:opacity-100 focus-within:opacity-100 touch:opacity-90',
         menuOpen && 'opacity-100',
-        side === 'left' ? 'left-3' : 'right-3'
+        !inline && (side === 'left' ? 'left-3' : 'right-3')
       )}
     >
       <button
@@ -251,7 +255,7 @@ function UserBubble({ msg, onBranch }: { msg: ChatMessage; onBranch?: OnBranch }
   }, [msg])
   return (
     <div className="flex flex-col items-end">
-      <div className="mb-1 flex items-center gap-2 pr-1 text-2xs text-subtle-foreground">
+      <div className="mb-3 flex items-center gap-2 pr-1 text-2xs text-subtle-foreground">
         <span className="font-medium text-muted-foreground">You</span>
         {msg.timestamp && <span>{formatTime(msg.timestamp)}</span>}
       </div>
@@ -260,7 +264,7 @@ function UserBubble({ msg, onBranch }: { msg: ChatMessage; onBranch?: OnBranch }
           <MessageActions
             id={msg.id}
             blocks={msg.blocks}
-            side="left"
+            side="right"
             onBranch={onBranch}
             canBranchBefore
           />
@@ -331,7 +335,7 @@ function AssistantTurn({
     <div className="flex gap-3">
       <ClaudeMark className="mt-0.5 size-6 shrink-0" />
       <div className="min-w-0 flex-1">
-        <div className="mb-1 flex items-center gap-2 text-2xs text-subtle-foreground">
+        <div className="mb-3 flex items-center gap-2 text-2xs text-subtle-foreground">
           <span className="font-medium text-muted-foreground">Claude</span>
           {first.timestamp && <span>{formatTime(first.timestamp)}</span>}
           {model && (
@@ -357,7 +361,7 @@ function AssistantTurn({
                     <MessageActions
                       id={at.id}
                       blocks={groupBlocks}
-                      side="right"
+                      side="left"
                       onBranch={onBranch}
                     />
                     <Markdown text={head.b.text} />
@@ -373,6 +377,13 @@ function AssistantTurn({
                 onBranch={onBranch}
               >
                 <div className="max-w-full overflow-hidden rounded-xl border border-border bg-background/50 p-1">
+                  <MessageActions
+                    id={at.id}
+                    blocks={groupBlocks}
+                    side="right"
+                    inline
+                    onBranch={onBranch}
+                  />
                   {g.map(({ m, b, i }) => {
                     const id = blockId(m, b, i)
                     if (b.type === 'tool_use')

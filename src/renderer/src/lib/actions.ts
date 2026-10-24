@@ -88,7 +88,7 @@ export async function copyText(text: string, message = 'Copied ✓'): Promise<bo
     toast(message, { duration: 1500 })
     return true
   } catch (err) {
-    toast.error("Couldn't copy", { description: (err as Error).message })
+    toast.error("Couldn't copy, select the text manually", { description: (err as Error).message })
     return false
   }
 }

@@ -4,6 +4,7 @@ import {
   Archive,
   ArrowDownToLine,
   ChevronLeft,
+  ClipboardCopy,
   Copy,
   Ellipsis,
   Eye,
@@ -23,6 +24,7 @@ import type { SessionDetail, SessionSummary } from '@shared/types'
 import { formatDateTime } from '@shared/format'
 import { api } from '@/lib/api'
 import {
+  copyConversation,
   copySessionId,
   exportMarkdown,
   toggleHidden,
@@ -50,7 +52,17 @@ import { useFind } from '@/components/viewer/useFind'
 import { LaunchSheet, type LaunchTarget } from './LaunchSheet'
 import { useMobile } from './state'
 
-/** Swipe right from the left edge to go back (like iOS). */
+/** True while the user has text selected (e.g. dragging a selection handle). */
+const selecting = (): boolean => {
+  const sel = window.getSelection()
+  return !!sel && !sel.isCollapsed
+}
+
+/**
+ * Swipe right from the left edge to go back (like iOS). It never calls
+ * preventDefault, and steps aside while text is selected, so dragging a
+ * selection handle near the edge doesn't turn into a swipe.
+ */
 function useEdgeSwipeBack(onBack: () => void): {
   onTouchStart: (e: React.TouchEvent) => void
   onTouchMove: (e: React.TouchEvent) => void
@@ -63,13 +75,13 @@ function useEdgeSwipeBack(onBack: () => void): {
     offset,
     onTouchStart: (e) => {
       const t = e.touches[0]
-      start.current = t.clientX < 28 ? { x: t.clientX, y: t.clientY } : null
+      start.current = t.clientX < 28 && !selecting() ? { x: t.clientX, y: t.clientY } : null
     },
     onTouchMove: (e) => {
       const st = start.current
       if (!st) return
       const t = e.touches[0]
-      if (Math.abs(t.clientY - st.y) > Math.abs(t.clientX - st.x)) {
+      if (Math.abs(t.clientY - st.y) > Math.abs(t.clientX - st.x) || selecting()) {
         start.current = null
         setOffset(0)
         return
@@ -190,6 +202,12 @@ export function SessionScreen({ session }: { session: SessionSummary }) {
               {session.meta.hidden ? 'Unhide session' : 'Hide session'}
             </DropdownMenuItem>
             <DropdownMenuSeparator />
+            <DropdownMenuItem
+              disabled={!detail}
+              onSelect={() => detail && copyConversation(detail, session)}
+            >
+              <ClipboardCopy /> Copy whole conversation
+            </DropdownMenuItem>
             <DropdownMenuItem onSelect={() => void exportMarkdown(session.key)}>
               <FileDown /> Export to Markdown
             </DropdownMenuItem>

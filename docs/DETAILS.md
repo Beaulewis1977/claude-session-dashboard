@@ -255,6 +255,11 @@ be undone, alone or all together with **Turn off terminal access**.
 | Keys         | One line added to `administrators_authorized_keys` (admins, with the ACL OpenSSH requires) or `~\.ssh\authorized_keys` | Only that line is removed                                                                          |
 | Password     | `PasswordAuthentication no` in `sshd_config` (checked with `sshd -t` first; sshd restarted)                            | The backup in `terminal-backups\` is written back, only if the file is still what the wizard wrote |
 
+Note: Tailscale's own Windows firewall rule (`Tailscale-In`) allows anything addressed to this PC's
+Tailscale IP, since Tailscale filters that traffic itself. So WSL and other VMs on this PC can also
+reach SSH at that address. Devices on your LAN can't: Windows doesn't forward between network
+adapters, and SSH on the LAN address stays blocked.
+
 Keys you added yourself, and anything else in `sshd_config`, are never touched. Changing
 `sshd_config` is refused if the file changed between showing the script and running it.
 

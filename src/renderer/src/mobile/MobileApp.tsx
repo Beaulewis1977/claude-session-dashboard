@@ -23,6 +23,7 @@ import { useMobile } from './state'
 function useBootstrap(paired: boolean): void {
   const set = useApp((s) => s.set)
   const setMe = useMobile((s) => s.setMe)
+  const setTerminal = useMobile((s) => s.setTerminal)
   useEffect(() => {
     if (!paired) return
     let cancelled = false
@@ -54,12 +55,19 @@ function useBootstrap(paired: boolean): void {
     })
     const load = boot.load
     const notLoaded = (): boolean => !useApp.getState().loaded
-    const reloadMe = (): void =>
+    const reloadMe = (): void => {
       void phone
         .me()
         .then(setMe)
         .catch(() => undefined)
+      // Terminal access (SSH) may have been set up or turned off on the PC.
+      void api
+        .getTerminalAccess()
+        .then(setTerminal)
+        .catch(() => undefined)
+    }
     load()
+    reloadMe()
     phone.connect()
     const offs = [
       api.onSessionsChanged((p) => set({ sessions: p.sessions, sources: p.sources, scan: p.scan })),
@@ -82,7 +90,7 @@ function useBootstrap(paired: boolean): void {
       boot.cancel()
       offs.forEach((off) => off())
     }
-  }, [paired, set, setMe])
+  }, [paired, set, setMe, setTerminal])
 }
 
 const TABS = [

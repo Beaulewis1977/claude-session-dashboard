@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { toast } from 'sonner'
-import { ListFilter, Search, SearchX, X } from 'lucide-react'
+import { FolderOpen, ListFilter, Search, SearchX, SquareTerminal, X } from 'lucide-react'
 import { api } from '@/lib/api'
-import { toggleHidden, togglePinned } from '@/lib/actions'
+import { projectSessionKey, toggleHidden, togglePinned } from '@/lib/actions'
 import {
   clearedFilters,
   EMPTY_FILTERS,
@@ -21,6 +21,8 @@ import { Button } from '@/components/ui/button'
 import { Sheet, SheetContent } from '@/components/ui/sheet'
 import { SessionCard } from './SessionCard'
 import { useMobile } from './state'
+import { TerminalSheet } from './TerminalSheet'
+import { canOpenTerminal } from '@shared/terminal'
 
 function useConnection(): ReturnType<typeof phone.connection> {
   const [c, setC] = useState(phone.connection)
@@ -241,6 +243,11 @@ export function SessionsTab() {
   const [query, setQuery] = useSearch()
   const [filterOpen, setFilterOpen] = useState(false)
   const conn = useConnection()
+  const terminal = useMobile((s) => s.terminal)
+  const [terminalOpen, setTerminalOpen] = useState(false)
+  // Filtered to one project: its folder (from its latest session) for Open terminal here.
+  const projectKeyOf = filters.project ? projectSessionKey(filters.project) : undefined
+  const projectSession = projectKeyOf ? sessions.find((x) => x.key === projectKeyOf) : undefined
   const items = useMemo(
     () => visibleSessions(sessions, filters, sort, hits),
     [sessions, filters, sort, hits]
@@ -319,6 +326,22 @@ export function SessionsTab() {
             )}
           </Button>
         </div>
+        {projectSession && canOpenTerminal(terminal, projectSession) && (
+          <div className="mt-2.5 flex items-center gap-2 rounded-xl border border-border bg-background px-3 py-1.5">
+            <FolderOpen className="size-4 shrink-0 text-subtle-foreground" />
+            <span className="min-w-0 flex-1 truncate text-[13px] font-medium">
+              {projectSession.projectName}
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8"
+              onClick={() => setTerminalOpen(true)}
+            >
+              <SquareTerminal /> Open terminal here
+            </Button>
+          </div>
+        )}
       </header>
       <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain pt-3">
         {!loaded ? (
@@ -356,6 +379,14 @@ export function SessionsTab() {
         )}
       </div>
       <FilterSheet open={filterOpen} onClose={() => setFilterOpen(false)} />
+      {terminalOpen && projectSession && canOpenTerminal(terminal, projectSession) && (
+        <TerminalSheet
+          info={terminal}
+          target={projectSession}
+          title={projectSession.projectName}
+          onClose={() => setTerminalOpen(false)}
+        />
+      )}
     </div>
   )
 }

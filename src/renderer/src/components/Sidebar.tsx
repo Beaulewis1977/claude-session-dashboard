@@ -15,6 +15,7 @@ import {
 } from 'lucide-react'
 import { facets, tagColor, type Facet, type Filters, type Visibility } from '@/lib/filters'
 import { useApp } from '@/lib/store'
+import { openTerminalHere, projectSessionKey } from '@/lib/actions'
 import { cn, MOD } from '@/lib/utils'
 import { Tooltip } from './ui/tooltip'
 import { SOURCE_ICON } from '@/lib/source-icons'
@@ -202,17 +203,33 @@ export function Sidebar() {
 
         {f.project.length > 0 && (
           <Section title="Projects">
-            {projects.map((p: Facet) => (
-              <Item
-                key={p.key}
-                active={filters.project === p.key}
-                icon={<Folder />}
-                label={p.label}
-                count={p.count}
-                title={p.detail}
-                onClick={() => toggle('project', p.key)}
-              />
-            ))}
+            {projects.map((p: Facet) => {
+              const key = projectSessionKey(p.key)
+              return (
+                <div key={p.key} className="group/project relative">
+                  <Item
+                    active={filters.project === p.key}
+                    icon={<Folder />}
+                    label={p.label}
+                    count={p.count}
+                    title={p.detail}
+                    onClick={() => toggle('project', p.key)}
+                  />
+                  {key && (
+                    <Tooltip content="Open terminal here" side="right">
+                      <button
+                        type="button"
+                        aria-label={`Open terminal in ${p.label}`}
+                        onClick={() => void openTerminalHere(key)}
+                        className="absolute top-0.5 right-1 hidden size-6 items-center justify-center rounded bg-chrome text-muted-foreground group-hover/project:flex hover:bg-hover hover:text-foreground focus-visible:flex [&_svg]:size-3.5"
+                      >
+                        <SquareTerminal />
+                      </button>
+                    </Tooltip>
+                  )}
+                </div>
+              )
+            })}
             {f.project.length > PROJECT_LIMIT && (
               <button
                 type="button"

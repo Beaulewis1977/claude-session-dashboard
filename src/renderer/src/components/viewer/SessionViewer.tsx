@@ -25,6 +25,7 @@ import {
   Plus,
   Search,
   SquareTerminal,
+  Terminal,
   WifiOff
 } from 'lucide-react'
 import type { SessionDetail, SessionSummary } from '@shared/types'
@@ -39,6 +40,7 @@ import {
   openBranch,
   openNewSession,
   openResume,
+  openTerminalHere,
   showFile,
   toggleHidden,
   togglePinned,
@@ -199,6 +201,12 @@ function Header({
               <DropdownMenuContent className="w-64">
                 <DropdownMenuItem onSelect={() => openNewSession(session.key)}>
                   <Plus /> New session in this folder…
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  disabled={session.availability === 'imported' || !session.cwd}
+                  onSelect={() => void openTerminalHere(session.key)}
+                >
+                  <Terminal /> Open terminal here
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem

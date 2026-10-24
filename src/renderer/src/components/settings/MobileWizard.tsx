@@ -1,14 +1,11 @@
 // "Connect your phone": a step-by-step setup with a live check (✓ / ✗ / Fix)
 // at every step. Tailscale is the main route; home Wi-Fi is the other one.
 
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import {
   Apple,
   Check,
-  CircleCheck,
-  CircleDashed,
-  CircleX,
   ClipboardCopy,
   Download,
   ExternalLink,
@@ -40,90 +37,7 @@ import { cn } from '@/lib/utils'
 import { QrCode } from '../QrCode'
 import { Button } from '../ui/button'
 import { Dialog, DialogContent, DialogHeader } from '../ui/dialog'
-
-type Check = 'ok' | 'fail' | 'wait' | 'todo'
-
-interface Step {
-  id: string
-  title: string
-  check: Check
-  render: () => ReactNode
-}
-
-function Mark({ c }: { c: Check }) {
-  if (c === 'ok')
-    return <CircleCheck className="size-4.5 shrink-0 text-success" aria-label="Done" />
-  if (c === 'fail')
-    return <CircleX className="size-4.5 shrink-0 text-destructive" aria-label="Needs fixing" />
-  if (c === 'wait')
-    return (
-      <Loader2
-        className="size-4.5 shrink-0 animate-spin text-muted-foreground"
-        aria-label="Checking"
-      />
-    )
-  return (
-    <CircleDashed className="size-4.5 shrink-0 text-subtle-foreground" aria-label="Not done yet" />
-  )
-}
-
-function Status({ c, children }: { c: Check; children: ReactNode }) {
-  return (
-    <div
-      className={cn(
-        'flex items-start gap-2 rounded-lg border px-3 py-2.5 text-[13px]',
-        c === 'ok' && 'border-success/25 bg-success/5',
-        c === 'fail' && 'border-destructive/25 bg-destructive/5',
-        (c === 'wait' || c === 'todo') && 'border-border bg-secondary/60'
-      )}
-    >
-      <Mark c={c} />
-      <div className="min-w-0 flex-1 leading-relaxed">{children}</div>
-    </div>
-  )
-}
-
-function Steps({ items }: { items: string[] }) {
-  return (
-    <ol className="space-y-2">
-      {items.map((t, i) => (
-        <li key={i} className="flex items-start gap-2.5 text-[13px] leading-relaxed">
-          <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-accent-soft text-[11px] font-semibold text-primary">
-            {i + 1}
-          </span>
-          <span>{t}</span>
-        </li>
-      ))}
-    </ol>
-  )
-}
-
-/** A simple drawn phone with an app on it, for the "on your phone" steps. */
-function PhonePicture({ children }: { children: ReactNode }) {
-  return (
-    <div className="flex h-[150px] w-[78px] shrink-0 flex-col items-center rounded-[18px] border-[3px] border-foreground/80 bg-background p-1.5 shadow-sm">
-      <div className="mb-1.5 h-1 w-6 rounded-full bg-foreground/30" />
-      <div className="flex w-full flex-1 flex-col items-center justify-center gap-1.5 rounded-xl bg-secondary text-center text-[9px] leading-tight text-muted-foreground">
-        {children}
-      </div>
-    </div>
-  )
-}
-
-function Countdown({ until }: { until: string }) {
-  const [left, setLeft] = useState(() => Date.parse(until) - Date.now())
-  useEffect(() => {
-    const t = window.setInterval(() => setLeft(Date.parse(until) - Date.now()), 1000)
-    return () => window.clearInterval(t)
-  }, [until])
-  if (left <= 0) return <>expired</>
-  const s = Math.ceil(left / 1000)
-  return (
-    <>
-      {Math.floor(s / 60)}:{String(s % 60).padStart(2, '0')}
-    </>
-  )
-}
+import { Countdown, Mark, PhonePicture, Status, Steps, type Step } from './wizard-parts'
 
 function useClaudeCheck(): [ClaudeCheck | null, () => void, boolean] {
   const [c, setC] = useState<ClaudeCheck | null>(null)

@@ -4,8 +4,8 @@
 // and the implied-capacity history.
 
 import { EventEmitter } from 'node:events'
-import { readdir, readFile, stat } from 'node:fs/promises'
-import { join } from 'node:path'
+import { readdir, readFile, stat, unlink } from 'node:fs/promises'
+import { basename, join } from 'node:path'
 import { clockOffset, now } from '@shared/clock'
 import { fiveHourBlocks } from '@shared/usage/aggregate'
 import {
@@ -22,7 +22,8 @@ import {
   impliedCapacity,
   type CapacityWeights,
   type LimitsState,
-  type Plan
+  type Plan,
+  weeklyBuckets
 } from '@shared/usage/limits'
 import type { ModelPrice } from '@shared/usage/pricing'
 import {
@@ -43,6 +44,7 @@ import { paceAdvice, paceOf, type PaceSettings } from '@shared/usage/pace'
 import type { WindowKind } from '@shared/usage/limits'
 import type { JsonStore } from '../core/json-store'
 import { appendNdjson, readNdjson } from '../core/ndjson'
+import { assertBridgeWrite } from '../core/safe-paths'
 import { envPaths, type BridgeFile, type BridgeInstaller } from './bridge'
 import type { SessionService } from './sessions'
 import type { UsageService } from './usage'
@@ -61,6 +63,25 @@ export interface LimitsSettings {
 
 const STALE_MS = 60 * 60_000
 const isUnc = (p: string): boolean => /^[\\/]{2}/.test(p)
+
+/** A temp file the bridge script left in live/: `.tmp.<pid>.<name>.json`. */
+const ORPHAN_RE = /^\.tmp\.\d+\.(.+\.json)$/
+/** Younger temp files may still be in use by a running bridge script. */
+const ORPHAN_MIN_AGE_MS = 2 * 60_000
+
+export interface SalvageResult {
+  /** Readings added to the limit history. */
+  imported: number
+  /** Readings with limits already in the history, unchanged repeats, or latest.json copies. */
+  repeats: number
+  /** Temp files deleted (imported, repeats, empty or without limits). */
+  deleted: number
+  /** Temp files left in place because they couldn't be read or parsed. */
+  failed: number
+  /** Time range of the imported readings, epoch ms. */
+  from?: number
+  to?: number
+}
 
 export class LimitsService extends EventEmitter<{ changed: [] }> {
   private history: BridgeReading[] = []
@@ -89,11 +110,113 @@ export class LimitsService extends EventEmitter<{ changed: [] }> {
   }
 
   async start(): Promise<void> {
-    for (const r of await readNdjson<BridgeReading>(this.historyFile)) {
-      if (r && typeof r.ts === 'number' && typeof r.source === 'string') this.add(r)
-    }
+    const loaded = (await readNdjson<BridgeReading>(this.historyFile)).filter(
+      (r) => r && typeof r.ts === 'number' && typeof r.source === 'string'
+    )
+    // Salvaged readings are appended after newer ones, so the file isn't in order.
+    for (const r of loaded.sort((a, b) => a.ts - b.ts)) this.add(r)
+    const salvaged = await this.salvageOrphans().catch((err) => {
+      console.warn('could not salvage bridge temp files', err)
+      return undefined
+    })
+    if (salvaged && (salvaged.imported || salvaged.deleted || salvaged.failed))
+      console.info('bridge temp files salvaged', salvaged)
     await this.scan()
     this.timer = setInterval(() => void this.scan(), 5000)
+  }
+
+  /**
+   * The Windows bridge script used to fail to replace a session's saved
+   * payload, so every update after the first stayed behind as
+   * `.tmp.<pid>.<name>.json` in live/, with the real limit data in it. Import
+   * the readings with limits into the history (dedupe by session + time) and
+   * delete the temp files that were imported, were repeats, or had no limits.
+   * Files that can't be read or parsed are left alone. Only the app's own
+   * temp files in the bridge folder are ever deleted.
+   */
+  async salvageOrphans(): Promise<SalvageResult> {
+    const res: SalvageResult = { imported: 0, repeats: 0, deleted: 0, failed: 0 }
+    const done: string[] = []
+    const found: { file: string; r: BridgeReading }[] = []
+    for (const src of this.sessions.sources) {
+      if (src.status !== 'ok') continue
+      const p = envPaths(src)
+      if (!p) continue
+      const live = join(p.bridgeDir, 'live')
+      let names: string[]
+      try {
+        names = await readdir(live)
+      } catch {
+        continue
+      }
+      for (const n of names) {
+        const m = ORPHAN_RE.exec(n)
+        if (!m) continue
+        const file = join(live, n)
+        let text: string
+        let mtimeMs: number
+        try {
+          mtimeMs = (await stat(file)).mtimeMs
+          if (Date.now() - mtimeMs < ORPHAN_MIN_AGE_MS) continue
+          text = await readFile(file, 'utf8')
+        } catch {
+          res.failed++
+          continue
+        }
+        if (!text.trim()) {
+          done.push(file)
+          continue
+        }
+        const r = parseBridgePayload(text, {
+          ts: Math.round(mtimeMs + clockOffset()),
+          source: src.id
+        })
+        if (!r) res.failed++
+        else if (!r.fiveHour && !r.sevenDay) done.push(file)
+        // latest.json is a copy of a session's payload, written a moment later.
+        else if (m[1] === 'latest.json' && r.sessionId) {
+          res.repeats++
+          done.push(file)
+        } else found.push({ file, r })
+      }
+    }
+    const seen = new Set(this.history.map((r) => `${r.sessionId ?? ''}|${r.ts}`))
+    const prev = new Map<string, BridgeReading>()
+    const fresh: BridgeReading[] = []
+    for (const { file, r } of found.sort((a, b) => a.r.ts - b.r.ts)) {
+      done.push(file)
+      const k = `${r.sessionId ?? ''}|${r.ts}`
+      const last = prev.get(r.sessionId ?? '')
+      prev.set(r.sessionId ?? '', r)
+      if (seen.has(k) || sameLimits(last, r)) {
+        res.repeats++
+        continue
+      }
+      seen.add(k)
+      fresh.push(r)
+    }
+    if (fresh.length) {
+      // Saved first: a temp file is only deleted once its reading is in the history.
+      await appendNdjson(this.historyFile, fresh, this.dataDir)
+      for (const r of fresh) this.add(r)
+      this.history.sort((a, b) => a.ts - b.ts)
+      for (const list of this.bySession.values()) list.sort((a, b) => a.ts - b.ts)
+      res.imported = fresh.length
+      res.from = fresh[0].ts
+      res.to = fresh[fresh.length - 1].ts
+    }
+    for (const file of done) {
+      if (!ORPHAN_RE.test(basename(file))) continue
+      try {
+        assertBridgeWrite(file)
+        await unlink(file)
+        res.deleted++
+      } catch {
+        // Gone already, or not ours to delete.
+      }
+    }
+    if (fresh.length) this.emit('changed')
+    return res
   }
 
   stop(): void {
@@ -138,8 +261,11 @@ export class LimitsService extends EventEmitter<{ changed: [] }> {
     return undefined
   }
 
-  /** Check every Claude home's live folder for new payloads. */
-  async scan(): Promise<void> {
+  /** When the bridge folders were last checked. */
+  lastScanAt: number | undefined
+
+  /** Check every Claude home's live folder for new payloads (`full`: re-read every file). */
+  async scan(full = false): Promise<void> {
     if (this.scanning) return
     this.scanning = true
     const fresh: BridgeReading[] = []
@@ -158,7 +284,7 @@ export class LimitsService extends EventEmitter<{ changed: [] }> {
         }
         const known = this.latestByFile.get(latest)
         const fullEvery = isUnc(live) ? 5 * 60_000 : 60_000
-        const due = (this.lastFullScan.get(live) ?? 0) + fullEvery < Date.now()
+        const due = full || (this.lastFullScan.get(live) ?? 0) + fullEvery < Date.now()
         if (known === st.mtimeMs && !due) continue
         this.latestByFile.set(latest, st.mtimeMs)
         // latest.json is a copy of the newest session file; read session files
@@ -198,6 +324,7 @@ export class LimitsService extends EventEmitter<{ changed: [] }> {
       }
     } finally {
       this.scanning = false
+      this.lastScanAt = Date.now()
     }
     if (!fresh.length) return
     fresh.sort((a, b) => a.ts - b.ts)
@@ -367,6 +494,9 @@ export class LimitsService extends EventEmitter<{ changed: [] }> {
       fiveHour: five,
       sevenDay: week,
       lastReadingAt,
+      lastLimitAt: lastLimitReading?.ts,
+      weeklyBuckets: weeklyBuckets(readings, t),
+      lastScanAt: this.lastScanAt === undefined ? undefined : this.lastScanAt + clockOffset(),
       stale: !lastLimitReading || t - lastLimitReading.ts > STALE_MS,
       envs,
       block,

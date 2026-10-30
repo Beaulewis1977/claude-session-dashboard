@@ -55,6 +55,8 @@ export interface UsageIpcDeps {
   installer: BridgeInstaller
   sessions: SessionService
   platform: Platform
+  /** Re-detect the sources and restart watching them. */
+  rescanSources?: () => Promise<void>
   billingOf?: (key: string) => string
   sourceOf?: (key: string) => string
   /** Called after the bridge was enabled or disabled. */
@@ -100,6 +102,14 @@ export function registerUsageIpc(deps: UsageIpcDeps): void {
     return src
   }
   handle('limits:state', () => deps.limits.state())
+  handle('limits:rescan', async () => {
+    await deps.rescanSources?.()
+    await deps.installer.refreshScripts(deps.sessions.sources)
+    await deps.limits.salvageOrphans().catch((err) => console.warn('salvage failed', err))
+    await deps.limits.scan(true)
+    deps.limits.emit('changed')
+    return deps.limits.state()
+  })
   handle('limits:compareHealth', (_e, kind, a, b) => {
     // Incomplete dates (e.g. while typing) compare nothing rather than a made-up range.
     const ra = compareRange(a)

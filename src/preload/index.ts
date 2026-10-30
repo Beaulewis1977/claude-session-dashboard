@@ -48,6 +48,7 @@ const api: CsdApi = {
   compareTrends: (a, b) => ipcRenderer.invoke('usage:compare', a, b),
 
   getLimits: () => ipcRenderer.invoke('limits:state'),
+  rescanLimits: () => ipcRenderer.invoke('limits:rescan'),
   compareHealth: (kind, a, b) => ipcRenderer.invoke('limits:compareHealth', kind, a, b),
   onLimitsChanged: (cb) => on('limits:changed', cb),
   planBridge: (id, action) => ipcRenderer.invoke('bridge:plan', id, action),

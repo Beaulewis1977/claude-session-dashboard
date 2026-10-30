@@ -215,6 +215,43 @@ export class BridgeInstaller {
     return this.store.value.installs[sourceId]
   }
 
+  /** The bundled bridge script for an environment, with that system's line endings. */
+  private async bundledScript(env: SourceInfo['env']): Promise<{ name: string; text: string }> {
+    const name = env === 'windows' ? 'statusline.ps1' : 'statusline.sh'
+    const text = await readFile(join(this.host.scriptsDir, name), 'utf8')
+    return {
+      name,
+      text: env === 'windows' ? text.replace(/\r?\n/g, '\r\n') : text.replace(/\r\n/g, '\n')
+    }
+  }
+
+  /**
+   * Bring installed bridge scripts up to date with the ones bundled with this
+   * version of the app (a fixed script would otherwise only arrive on a
+   * reinstall). Only the app's own script file in the bridge folder is
+   * rewritten, and only where settings.json still runs the bridge; settings.json
+   * itself is never touched. Returns the ids of the sources that were updated.
+   */
+  async refreshScripts(sources: SourceInfo[]): Promise<string[]> {
+    const updated: string[] = []
+    for (const src of sources) {
+      if (src.status !== 'ok' || !this.record(src.id)) continue
+      const p = envPaths(src)
+      if (!p) continue
+      try {
+        if (!isBridgeCommand(commandOf(await readText(p.settingsPath)))) continue
+        const { name, text } = await this.bundledScript(p.env)
+        const target = join(p.bridgeDir, 'bin', name)
+        if ((await readText(target)) === text) continue
+        await writeBridgeFile(target, text)
+        updated.push(src.id)
+      } catch (err) {
+        console.warn('could not update the bridge script', p.bridgeDir, err)
+      }
+    }
+    return updated
+  }
+
   async describe(src: SourceInfo, lastReceivedAt?: number): Promise<BridgeEnv | undefined> {
     const p = envPaths(src)
     if (!p) return undefined
@@ -365,10 +402,7 @@ export class BridgeInstaller {
 
     if (action === 'install') {
       // 2. The bridge script and the chained command (outside .claude).
-      const scriptName = p.env === 'windows' ? 'statusline.ps1' : 'statusline.sh'
-      let script = await readFile(join(this.host.scriptsDir, scriptName), 'utf8')
-      script =
-        p.env === 'windows' ? script.replace(/\r?\n/g, '\r\n') : script.replace(/\r\n/g, '\n')
+      const { name: scriptName, text: script } = await this.bundledScript(p.env)
       await writeBridgeFile(join(p.bridgeDir, 'bin', scriptName), script)
       const previous = commandOf(before)
       if (p.env === 'windows') {

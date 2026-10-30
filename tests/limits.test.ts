@@ -1,6 +1,6 @@
 import { DEFAULT_HEALTH } from '@shared/usage/health'
 import { DEFAULT_PACE } from '@shared/usage/pace'
-import { cp, mkdtemp, rm } from 'node:fs/promises'
+import { cp, mkdir, mkdtemp, readdir, readFile, rm, utimes, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -10,12 +10,21 @@ import {
   crossedThresholds,
   DEFAULT_WEIGHTS,
   detectCapacityChange,
+  freshnessOf,
   gauge,
+  gaugeSummary,
   impliedCapacity,
+  lastKnown,
+  LIVE_SOURCES_NOTE,
   projectWindow,
+  REFRESH_HINT,
+  weeklyBuckets,
   weightedTokens,
-  type CapacityPoint
+  whyNoLiveReading,
+  type CapacityPoint,
+  type LimitsState
 } from '@shared/usage/limits'
+import { parseBridgePayload } from '@shared/usage/bridge'
 import { DEFAULT_PRICES } from '@shared/usage/pricing'
 import type { UsageRecord } from '@shared/usage/types'
 import {
@@ -26,7 +35,7 @@ import {
   seedFixtureUsage
 } from '../src/main/fixtures'
 import { createFixturesPlatform } from '../src/main/platform'
-import { BridgeInstaller, createBridgeStore } from '../src/main/services/bridge'
+import { BridgeInstaller, createBridgeStore, envPaths } from '../src/main/services/bridge'
 import { LimitsService } from '../src/main/services/limits'
 import { SessionService } from '../src/main/services/sessions'
 import { appPaths, createMetadataStore, createSettingsStore } from '../src/main/services/store'
@@ -168,8 +177,78 @@ describe('gauges and projections', () => {
       T0 + 6 * H,
       DEFAULT_WEIGHTS
     )!
-    expect(later).toMatchObject({ pct: 0, expired: true })
+    expect(later).toMatchObject({ pct: 0, lastPct: 30, expired: true })
     expect(gauge([], [], 'five_hour', T0, DEFAULT_WEIGHTS)).toBeUndefined()
+  })
+
+  it('tells fresh, aging and stale readings apart, and never shows a reset window as 0%', () => {
+    const resets = T0 + 5 * H
+    const g = (t: number) =>
+      gauge([reading(T0 + H, 30, resets)], [], 'five_hour', t, DEFAULT_WEIGHTS)!
+    expect(freshnessOf(g(T0 + H + 30 * 60_000), T0 + H + 30 * 60_000)).toBe('fresh')
+    expect(freshnessOf(g(T0 + 3 * H), T0 + 3 * H)).toBe('aging')
+    expect(freshnessOf(g(T0 + 6 * H), T0 + 6 * H)).toBe('stale')
+    expect(gaugeSummary('5-hour', g(T0 + H), T0 + H)).toBe('5-hour: 30%')
+    expect(gaugeSummary('5-hour', g(T0 + 3 * H), T0 + 3 * H)).toBe('5-hour: 30% · updated 2h ago')
+    // The last known value, with the day it was read, instead of a made-up 0%.
+    const day = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' }).format(
+      T0 + H
+    )
+    const later = T0 + 3 * 86_400_000
+    expect(lastKnown(g(later), later)).toBe(`30% as of ${day}`)
+    expect(gaugeSummary('5-hour', g(later), later)).toBe(
+      `5-hour: no recent reading (30% as of ${day})`
+    )
+    expect(gaugeSummary('Week', undefined, later)).toBe('Week: no data')
+  })
+
+  it('says why there is no current reading', () => {
+    const resets = T0 + 5 * H
+    const env = { installed: true } as LimitsState['envs'][number]
+    const base = { hasBridgeData: true, envs: [env], lastLimitAt: T0 + H, lastReadingAt: T0 + H }
+    const stale = gauge([reading(T0 + H, 30, resets)], [], 'five_hour', T0 + 6 * H, DEFAULT_WEIGHTS)
+    const fresh = gauge([reading(T0 + H, 30, resets)], [], 'five_hour', T0 + 2 * H, DEFAULT_WEIGHTS)
+    expect(whyNoLiveReading({ ...base, fiveHour: fresh }, T0 + 2 * H)).toBeUndefined()
+    const why = whyNoLiveReading({ ...base, fiveHour: stale }, T0 + 6 * H, 'five_hour')!
+    expect(why).toMatch(/^No reading since .+, before this window started./)
+    expect(why).toContain(LIVE_SOURCES_NOTE)
+    expect(why).toContain(REFRESH_HINT)
+    // The bridge ran later, but the payloads had no limits.
+    expect(
+      whyNoLiveReading({ ...base, lastReadingAt: T0 + 5 * H, fiveHour: stale }, T0 + 6 * H)
+    ).toContain('without limit data')
+    expect(whyNoLiveReading({ ...base, lastLimitAt: undefined }, T0)).toMatch(
+      /^No reading with limits has arrived yet/
+    )
+    expect(whyNoLiveReading({ ...base, hasBridgeData: false, envs: [] }, T0)).toMatch(
+      /aren't turned on/
+    )
+  })
+
+  it('keeps any per-model weekly window next to the all-models one', () => {
+    const r = parseBridgePayload(
+      JSON.stringify({
+        rate_limits: {
+          seven_day: { used_percentage: 7, resets_at: 1793656800 },
+          seven_day_opus: { used_percentage: 5, resets_at: 1793656800 },
+          seven_day_bogus: 'x'
+        }
+      }),
+      { ts: 1793400000000, source: 'windows' }
+    )!
+    expect(r.sevenDay?.pct).toBe(7)
+    expect(r.weeklyBy).toEqual({ seven_day_opus: { pct: 5, resetsAt: 1793656800000 } })
+    expect(weeklyBuckets([r], 1793400000000)).toEqual([
+      {
+        key: 'seven_day_opus',
+        label: 'Opus only',
+        pct: 5,
+        resetsAt: 1793656800000,
+        updatedAt: 1793400000000
+      }
+    ])
+    // Today's payloads have only the documented windows.
+    expect(weeklyBuckets([{ ...r, weeklyBy: undefined }], 0)).toEqual([])
   })
 
   it('finds alert thresholds crossed by a new reading', () => {
@@ -190,6 +269,57 @@ afterEach(async () => {
   setClockOffset(0)
   await rm(root, { recursive: true, force: true, maxRetries: 5 })
 })
+
+/** The fixture sources with the bridge installed for Windows and WSL (beau). */
+async function fixtureLimits() {
+  await cp(FIXTURES, join(root, 'fixtures'), { recursive: true })
+  await prepareFixtures(root)
+  const layout = fixturesLayout(root)
+  const platform = createFixturesPlatform(layout.fixturesDir, layout.sourcesDir)
+  const paths = appPaths(layout.dataDir)
+  const metadata = createMetadataStore(paths)
+  const settings = createSettingsStore(paths)
+  await metadata.load()
+  await settings.load()
+  const sessions = new SessionService(platform, paths, metadata, settings)
+  await sessions.start()
+  await sessions.idle()
+  const usage = new UsageService(sessions, usagePaths(paths.dataDir, paths.archiveDir), () => ({
+    weekStart: 'monday',
+    prices: DEFAULT_PRICES
+  }))
+  const store = createBridgeStore(paths.dataDir)
+  await store.load()
+  const installer = new BridgeInstaller(store, {
+    dataDir: paths.dataDir,
+    scriptsDir: join(__dirname, '..', 'resources', 'bridge'),
+    gitBash: async () => undefined
+  })
+  await seedFixtureBridge(paths.dataDir, sessions, installer)
+  const limits = new LimitsService(
+    sessions,
+    usage,
+    installer,
+    store,
+    join(paths.dataDir, 'limits-history.ndjson'),
+    paths.dataDir,
+    () => ({
+      plan: 'max5',
+      alertsEnabled: false,
+      alertThresholds: [75, 90],
+      weights: DEFAULT_WEIGHTS,
+      prices: DEFAULT_PRICES,
+      health: DEFAULT_HEALTH,
+      planHistory: [],
+      pace: DEFAULT_PACE,
+      elsewhere: []
+    }),
+    () => undefined
+  )
+  await limits.start()
+  limits.stop()
+  return { limits, installer, sessions, usage, paths }
+}
 
 describe('LimitsService (fixtures)', () => {
   it('shows live gauges, detects the October limit cut and enables the bridge', async () => {
@@ -279,5 +409,85 @@ describe('LimitsService (fixtures)', () => {
     expect(notes).toEqual([]) // nothing over 75% right now
     await sessions.idle()
     await usage.idle()
+  })
+
+  // Regression: statusline.ps1 left every update after a session's first one
+  // behind as .tmp.<pid>.<name>.json (the first payload has no limits), so the
+  // gauges froze. The app now imports those once and cleans them up.
+  it('salvages readings from the bridge temp files and deletes only what it handled', async () => {
+    const { limits, installer, sessions, paths } = await fixtureLimits()
+    const win = sessions.source('windows')!
+    const live = join(envPaths(win)!.bridgeDir, 'live')
+    await mkdir(live, { recursive: true })
+    const payload = (sid: string, pct: number, extra: object = {}) =>
+      JSON.stringify({
+        session_id: sid,
+        rate_limits: {
+          five_hour: { used_percentage: pct, resets_at: FIXTURES_NOW / 1000 + 3600 },
+          seven_day: { used_percentage: 7, resets_at: FIXTURES_NOW / 1000 + 86_400 }
+        },
+        ...extra
+      })
+    const real = Date.now()
+    const put = async (name: string, text: string, agoMs: number) => {
+      const f = join(live, name)
+      await writeFile(f, text)
+      const t = new Date(real - agoMs)
+      await utimes(f, t, t)
+    }
+    await put('.tmp.100.sess-a.json', payload('sess-a', 10), 3 * H)
+    await put('.tmp.100.latest.json', payload('sess-a', 10), 3 * H - 5) // copy of the one above
+    await put('.tmp.101.sess-a.json', payload('sess-a', 10), 2 * H) // unchanged repeat
+    await put('.tmp.102.sess-a.json', payload('sess-a', 12), 1 * H)
+    await put('.tmp.103.sess-b.json', '{"session_id":"sess-b","cost":{"total_cost_usd":0}}', H)
+    await put('.tmp.104.sess-c.json', '', H)
+    await put('.tmp.105.sess-d.json', '{"session_id": "sess-d", "rate_lim', H) // torn: left alone
+    await put('.tmp.106.sess-e.json', payload('sess-e', 3), 10_000) // may still be in use
+    await put('notes.json', '{}', H) // not a temp file
+
+    const before = limits.readings().length
+    const res = await limits.salvageOrphans()
+    expect(res).toMatchObject({ imported: 2, repeats: 2, deleted: 6, failed: 1 })
+    expect(res.to! - res.from!).toBe(2 * H)
+    expect((await readdir(live)).sort()).toEqual(
+      expect.arrayContaining(['.tmp.105.sess-d.json', '.tmp.106.sess-e.json', 'notes.json'])
+    )
+    expect((await readdir(live)).filter((n) => n.startsWith('.tmp.'))).toHaveLength(2)
+    const added = limits.readings().filter((r) => r.sessionId === 'sess-a')
+    expect(added.map((r) => r.fiveHour?.pct)).toEqual([10, 12])
+    expect(limits.readings().length).toBe(before + 2)
+
+    // Running again (every start does) changes nothing.
+    expect(await limits.salvageOrphans()).toMatchObject({ imported: 0, deleted: 0, failed: 1 })
+
+    // Saved in the history: a fresh start loads them, in order.
+    const again = new LimitsService(
+      sessions,
+      limits['usage'],
+      installer,
+      createBridgeStore(paths.dataDir),
+      join(paths.dataDir, 'limits-history.ndjson'),
+      paths.dataDir,
+      limits['settings'],
+      () => undefined
+    )
+    await again.start()
+    again.stop()
+    const ts = again.readings().map((r) => r.ts)
+    expect(ts).toEqual([...ts].sort((a, b) => a - b))
+    expect(again.readings().filter((r) => r.sessionId === 'sess-a')).toHaveLength(2)
+  })
+
+  it('brings an installed bridge script up to date, and nothing else', async () => {
+    const { installer, sessions } = await fixtureLimits()
+    const script = join(envPaths(sessions.source('windows')!)!.bridgeDir, 'bin', 'statusline.ps1')
+    const current = await readFile(script, 'utf8')
+    await writeFile(script, '# an older bridge script')
+    expect(await installer.refreshScripts(sessions.sources)).toEqual(['windows'])
+    expect(await readFile(script, 'utf8')).toBe(current)
+    expect(await installer.refreshScripts(sessions.sources)).toEqual([])
+    // Not installed for root: no script is written there.
+    const root = envPaths(sessions.source('wsl-Ubuntu-root')!)!
+    await expect(readFile(join(root.bridgeDir, 'bin', 'statusline.sh'))).rejects.toThrow()
   })
 })

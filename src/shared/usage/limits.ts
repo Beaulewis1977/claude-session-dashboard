@@ -3,6 +3,7 @@
 
 import type { BridgeReading, LimitWindow } from './bridge'
 import type { EnvKind } from '../types'
+import { ago } from '../format'
 import type { LimitHit, UsageBlock, UsageRecord } from './types'
 import type { HealthReport, WindowSplit } from './health'
 import type { PaceAdvice, PaceState } from './pace'
@@ -96,6 +97,8 @@ export interface GaugeState {
   updatedAt: number
   /** The window has already reset since the reading. */
   expired: boolean
+  /** The % at the time of the reading (`pct` is 0 once the window has reset). */
+  lastPct: number
   /** Tokens used in the window so far, from the session logs. */
   tokens: number
   weighted: number
@@ -195,6 +198,7 @@ export function gauge(
   return {
     kind,
     pct: expired ? 0 : w.pct,
+    lastPct: w.pct,
     resetsAt: w.resetsAt,
     windowStart,
     updatedAt: latest.ts,
@@ -399,6 +403,12 @@ export interface LimitsState {
   fiveHour?: GaugeState
   sevenDay?: GaugeState
   lastReadingAt?: number
+  /** The newest reading that had limit data. */
+  lastLimitAt?: number
+  /** When the bridge folders were last checked. */
+  lastScanAt?: number
+  /** Extra weekly windows, if Claude Code reports any (e.g. one model only), from the newest reading. */
+  weeklyBuckets?: WeeklyBucket[]
   /** The newest reading is old: Claude Code hasn't run for a while. */
   stale: boolean
   envs: BridgeEnv[]
@@ -423,4 +433,103 @@ export interface LimitsState {
   split7d?: WindowSplit
   /** Readings found in /usage output in old transcripts. */
   backfilled?: number
+}
+
+// ------------------------------------------------------------- freshness
+
+/** A reading older than this is shown in amber. */
+export const AGING_MS = 60 * 60_000
+
+/**
+ * fresh: under an hour old. aging: older than that, still in its window.
+ * stale: the window has reset since the reading, so its % says nothing about now.
+ */
+export type Freshness = 'fresh' | 'aging' | 'stale'
+
+export function freshnessOf(g: Pick<GaugeState, 'updatedAt' | 'expired'>, now: number): Freshness {
+  if (g.expired) return 'stale'
+  return now - g.updatedAt > AGING_MS ? 'aging' : 'fresh'
+}
+
+/** Which Claude clients run the status line (and so feed live limits). */
+export const LIVE_SOURCES_NOTE = 'Live limits update from Claude Code in the terminal.'
+export const REFRESH_HINT = 'Send one message in Claude Code to refresh.'
+
+const dayFmt = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' })
+const clockFmt = new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' })
+
+/** "2:47 PM" for today, "Oct 23" for another day. */
+export function asOf(ts: number, now: number): string {
+  return new Date(ts).toDateString() === new Date(now).toDateString()
+    ? clockFmt.format(ts)
+    : dayFmt.format(ts)
+}
+
+/** "5% as of Oct 23": the last known value of a window whose reading is stale. */
+export function lastKnown(g: Pick<GaugeState, 'lastPct' | 'updatedAt'>, now: number): string {
+  return `${Math.round(g.lastPct)}% as of ${asOf(g.updatedAt, now)}`
+}
+
+/** One line per window for tooltips: "5-hour: 23%", or why there's no current reading. */
+export function gaugeSummary(label: string, g: GaugeState | undefined, now: number): string {
+  if (!g) return `${label}: no data`
+  const f = freshnessOf(g, now)
+  if (f === 'stale') return `${label}: no recent reading (${lastKnown(g, now)})`
+  return `${label}: ${Math.round(g.pct)}%${f === 'aging' ? ` · updated ${ago(g.updatedAt, now)}` : ''}`
+}
+
+/**
+ * Why a window has no current live reading, in plain words, or undefined if it
+ * has one. `kind` picks the window; without it, the newest of the two counts.
+ */
+export function whyNoLiveReading(
+  l: Pick<
+    LimitsState,
+    'hasBridgeData' | 'envs' | 'lastLimitAt' | 'lastReadingAt' | 'fiveHour' | 'sevenDay'
+  >,
+  now: number,
+  kind?: WindowKind
+): string | undefined {
+  const gauges = kind ? [kind === 'five_hour' ? l.fiveHour : l.sevenDay] : [l.fiveHour, l.sevenDay]
+  if (gauges.some((g) => g && !g.expired)) return undefined
+  if (!l.hasBridgeData && !l.envs.some((e) => e.installed))
+    return "Live limits aren't turned on, so there are no readings yet."
+  if (!l.lastLimitAt)
+    return `No reading with limits has arrived yet. ${LIVE_SOURCES_NOTE} ${REFRESH_HINT}`
+  const ranSince =
+    l.lastReadingAt !== undefined && l.lastReadingAt - l.lastLimitAt > AGING_MS
+      ? ` Claude Code last ran the status line at ${asOf(l.lastReadingAt, now)}, but without limit data (that only comes after Claude's first reply in a session).`
+      : ''
+  return `No reading since ${asOf(l.lastLimitAt, now)}, before this window started.${ranSince} ${LIVE_SOURCES_NOTE} ${REFRESH_HINT}`
+}
+
+export interface WeeklyBucket {
+  /** The payload key, e.g. "seven_day_opus". */
+  key: string
+  /** e.g. "Opus only". */
+  label: string
+  pct: number
+  resetsAt?: number
+  updatedAt: number
+}
+
+/** Extra weekly windows from the newest reading that has any. */
+export function weeklyBuckets(readings: BridgeReading[], now: number): WeeklyBucket[] {
+  for (let i = readings.length - 1; i >= 0; i--) {
+    const r = readings[i]
+    if (!r.weeklyBy) continue
+    return Object.entries(r.weeklyBy)
+      .filter(([, w]) => !w.resetsAt || w.resetsAt > now)
+      .map(([key, w]) => ({
+        key,
+        label: `${key
+          .replace(/^seven_day_/, '')
+          .replace(/_/g, ' ')
+          .replace(/^./, (c) => c.toUpperCase())} only`,
+        pct: w.pct,
+        resetsAt: w.resetsAt,
+        updatedAt: r.ts
+      }))
+  }
+  return []
 }

@@ -21,7 +21,13 @@ export interface BridgeReading {
   version?: string
   cwd?: string
   fiveHour?: LimitWindow
+  /** The weekly window across all models (`seven_day`). */
   sevenDay?: LimitWindow
+  /**
+   * Any other weekly windows, keyed by their payload name (e.g. "seven_day_opus").
+   * Claude Code documents only `seven_day` today; this keeps a per-model one if it appears.
+   */
+  weeklyBy?: Record<string, LimitWindow>
   /** Session cost as estimated by Claude Code (`cost.total_cost_usd`). */
   costUsd?: number
   contextPct?: number
@@ -96,6 +102,11 @@ export function parseBridgePayload(
   if (rl) {
     r.fiveHour = limitWindow(rl.five_hour)
     r.sevenDay = limitWindow(rl.seven_day)
+    for (const [k, v] of Object.entries(rl)) {
+      if (!/^seven_day_[a-z0-9_]+$/i.test(k)) continue
+      const w = limitWindow(v)
+      if (w) (r.weeklyBy ??= {})[k] = w
+    }
   }
   const cost = finite(obj(o.cost)?.total_cost_usd)
   if (cost !== undefined && cost >= 0) r.costUsd = cost

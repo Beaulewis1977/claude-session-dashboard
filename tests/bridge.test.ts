@@ -415,3 +415,42 @@ describe('statusline.sh', () => {
     expect((Date.now() - t) / 5).toBeLessThan(process.platform === 'win32' ? 1500 : 250)
   })
 })
+
+// ---------------------------------------------------- the PowerShell script
+
+describe.runIf(process.platform === 'win32')('statusline.ps1', () => {
+  const payload = (pct: number) =>
+    JSON.stringify({
+      session_id: 'sess-1',
+      model: { id: 'claude-opus-5-5', display_name: 'Opus' },
+      rate_limits: {
+        five_hour: { used_percentage: pct, resets_at: 1738425600 },
+        seven_day: { used_percentage: 41.2, resets_at: 1738857600 }
+      }
+    })
+  const run = (dir: string, input: string) =>
+    execFileSync(
+      'powershell.exe',
+      [
+        '-NoProfile',
+        '-NonInteractive',
+        '-ExecutionPolicy',
+        'Bypass',
+        '-File',
+        join(SCRIPTS, 'statusline.ps1')
+      ],
+      { input, env: { ...process.env, CSD_BRIDGE_DIR: dir }, encoding: 'utf8' }
+    )
+
+  // Regression: File.Replace got "" for its backup path, so every update after
+  // a session's first payload failed and left a .tmp file with the real data.
+  it('replaces the saved payload on every update and leaves no temp files', async () => {
+    const dir = join(root, 'b')
+    run(dir, '{"session_id":"sess-1"}')
+    run(dir, payload(10))
+    run(dir, payload(23.5))
+    expect((await readFile(join(dir, 'live', 'sess-1.json'), 'utf8')).trim()).toBe(payload(23.5))
+    expect((await readFile(join(dir, 'live', 'latest.json'), 'utf8')).trim()).toBe(payload(23.5))
+    expect((await readdir(join(dir, 'live'))).sort()).toEqual(['latest.json', 'sess-1.json'])
+  }, 30_000)
+})

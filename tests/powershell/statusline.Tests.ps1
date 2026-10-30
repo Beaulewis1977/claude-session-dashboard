@@ -23,6 +23,14 @@ Describe 'statusline.ps1' {
     (Get-ChildItem (Join-Path $dir 'live')).Name | Sort-Object | Should -Be @('latest.json', 'sess-1.json')
   }
 
+  It 'replaces the saved files on later updates and leaves no temp files' {
+    Invoke-Bridge $dir '{"session_id":"sess-1"}' | Out-Null
+    Invoke-Bridge $dir $payload | Out-Null
+    (Get-Content (Join-Path $dir 'live\latest.json') -Raw).Trim() | Should -Be $payload
+    (Get-Content (Join-Path $dir 'live\sess-1.json') -Raw).Trim() | Should -Be $payload
+    (Get-ChildItem -Force (Join-Path $dir 'live')).Name | Sort-Object | Should -Be @('latest.json', 'sess-1.json')
+  }
+
   It 'works without rate_limits and never fails' {
     Invoke-Bridge $dir '{"model":{"display_name":"Sonnet"}}' | Should -Be 'Sonnet'
     Invoke-Bridge $dir 'not json' | Should -Be 'Claude'

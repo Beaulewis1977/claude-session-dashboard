@@ -20,6 +20,7 @@ import {
   Plus,
   Sparkles,
   TrendingDown,
+  TriangleAlert,
   X
 } from 'lucide-react'
 import { toast } from 'sonner'
@@ -33,10 +34,11 @@ import {
   type WindowSplit
 } from '@shared/usage/health'
 import type { CostParts } from '@shared/usage/pricing'
-import type { LimitsState } from '@shared/usage/limits'
+import { whyNoLiveReading, type LimitsState } from '@shared/usage/limits'
 import { formatDateTime, formatTokens } from '@shared/format'
 import { now } from '@shared/clock'
 import { api } from '@/lib/api'
+import { useNow } from '@/lib/meter-hooks'
 import { useApp } from '@/lib/store'
 import { cn } from '@/lib/utils'
 import { TOKEN_META } from '@/lib/usage-colors'
@@ -505,6 +507,7 @@ export function LimitHealthCard({
   const [kind, setKind] = useState<Kind>('five_hour')
   const [compare, setCompare] = useState(false)
   const report = kind === 'five_hour' ? limits?.health5h : limits?.health7d
+  const t = useNow()
   if (!limits) {
     return (
       <Card className="p-5">
@@ -537,6 +540,15 @@ export function LimitHealthCard({
           </>
         }
       />
+      {limits.hasBridgeData && whyNoLiveReading(limits, t, kind) && (
+        <div className="mt-3 flex items-start gap-2 rounded-lg bg-warning-soft px-3 py-2 text-xs text-[var(--gauge-warn-text)]">
+          <TriangleAlert className="mt-px size-3.5 shrink-0" />
+          <span>
+            <span className="font-medium">The current window isn't scored yet.</span>{' '}
+            {whyNoLiveReading(limits, t, kind)}
+          </span>
+        </div>
+      )}
       {report ? (
         <>
           <div className="mt-4 flex flex-wrap items-start justify-between gap-3">
@@ -589,8 +601,8 @@ export function LimitHealthCard({
           {compare && <CompareBox kind={kind} report={report} />}
         </>
       ) : (
-        <div className="py-8 text-center text-sm text-muted-foreground">
-          Enable live limits to score your windows.
+        <div className="px-6 py-8 text-center text-sm leading-relaxed text-muted-foreground">
+          {whyNoLiveReading(limits, t, kind) ?? 'No windows to score yet.'}
         </div>
       )}
     </Card>
@@ -607,12 +619,23 @@ const SOURCE_SHADES = [
   'var(--tok-cache-read)'
 ]
 
-function SplitRow({ title, split }: { title: string; split?: WindowSplit }) {
+function SplitRow({
+  title,
+  split,
+  reason
+}: {
+  title: string
+  split?: WindowSplit
+  /** Why there's no split for this window. */
+  reason?: string
+}) {
   if (!split) {
     return (
       <div>
         <div className="text-xs font-medium">{title}</div>
-        <div className="mt-1 text-xs text-muted-foreground">No live reading for this window.</div>
+        <div className="mt-1 text-xs leading-relaxed text-muted-foreground">
+          {reason ?? 'No usage from this computer in this window yet.'}
+        </div>
       </div>
     )
   }
@@ -674,7 +697,8 @@ function SplitRow({ title, split }: { title: string; split?: WindowSplit }) {
 }
 
 export function WhereItWent({ limits }: { limits: LimitsState | null }) {
-  if (!limits?.hasBridgeData) return null
+  const t = useNow()
+  if (!limits) return null
   const est = limits.split5h?.estimated || limits.split7d?.estimated
   return (
     <Card className="p-5">
@@ -684,8 +708,16 @@ export function WhereItWent({ limits }: { limits: LimitsState | null }) {
         info={`Local usage is split by each source's share of the API-equivalent cost. "Elsewhere" is the part of the % your local logs don't explain: claude.ai, the mobile or desktop apps, cloud sessions or another computer.${est ? ' It is estimated from your baseline $ per 1%, so a smaller limit would also show up here.' : ' Without a baseline, only rises while nothing ran here count.'}`}
       />
       <div className="mt-4 space-y-4">
-        <SplitRow title="5-hour window" split={limits.split5h} />
-        <SplitRow title="This week" split={limits.split7d} />
+        <SplitRow
+          title="5-hour window"
+          split={limits.split5h}
+          reason={whyNoLiveReading(limits, t, 'five_hour')}
+        />
+        <SplitRow
+          title="This week · all models"
+          split={limits.split7d}
+          reason={whyNoLiveReading(limits, t, 'seven_day')}
+        />
       </div>
     </Card>
   )

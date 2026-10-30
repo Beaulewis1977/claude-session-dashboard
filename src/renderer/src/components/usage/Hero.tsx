@@ -1,6 +1,16 @@
-import { CalendarClock, Gauge, KeyRound, PlugZap, TrendingDown } from 'lucide-react'
+import { CalendarClock, Gauge, KeyRound, PlugZap, TrendingDown, TriangleAlert } from 'lucide-react'
 import { ago, formatDuration, formatInt, formatTokens, formatUsd } from '@shared/format'
-import { PLAN_LABEL, type GaugeState, type LimitsState } from '@shared/usage/limits'
+import {
+  freshnessOf,
+  lastKnown,
+  LIVE_SOURCES_NOTE,
+  PLAN_LABEL,
+  REFRESH_HINT,
+  whyNoLiveReading,
+  type Freshness,
+  type GaugeState,
+  type LimitsState
+} from '@shared/usage/limits'
 import type { CreditsState } from '@shared/usage/credits'
 import { PACE_LABEL, type PaceAdvice, type PaceState } from '@shared/usage/pace'
 import { cn } from '@/lib/utils'
@@ -126,11 +136,11 @@ export function LimitCard({
 }) {
   const t = useNow()
   const g = kind === 'five_hour' ? limits?.fiveHour : limits?.sevenDay
-  const title = kind === 'five_hour' ? '5-hour window' : 'This week'
+  const title = kind === 'five_hour' ? '5-hour window' : 'This week · all models'
   const info =
     kind === 'five_hour'
-      ? 'The same percentage Claude Code shows in /usage, captured by the status line bridge. Tokens come from your session logs.'
-      : 'Your weekly limit, as Claude Code reports it. The week resets at a fixed time, shown below.'
+      ? `The same percentage Claude Code shows in /usage, captured by the status line bridge. Tokens come from your session logs. ${LIVE_SOURCES_NOTE}`
+      : `Your weekly limit across all models (Claude Code's seven_day window), as Claude Code reports it. The week resets at a fixed time, shown below. ${LIVE_SOURCES_NOTE}`
 
   if (!limits) {
     return (
@@ -186,35 +196,63 @@ export function LimitCard({
     )
   }
 
+  const freshness = freshnessOf(g, t)
+  // The window has reset since the newest reading: its % says nothing about now.
+  if (freshness === 'stale') {
+    const b = kind === 'five_hour' ? limits.block : undefined
+    return (
+      <Card className="p-5">
+        <CardHeader
+          title={title}
+          info={info}
+          right={<UpdatedLabel ts={g.updatedAt} t={t} freshness={freshness} />}
+        />
+        <div className="mt-4 flex items-center gap-5">
+          <RingGauge pct={undefined} dim>
+            <div className="px-4 text-center text-[13px] leading-tight font-medium text-muted-foreground">
+              No recent reading
+            </div>
+          </RingGauge>
+          <div className="min-w-0 flex-1 space-y-2 text-xs text-muted-foreground">
+            <div>
+              <div className="text-2xs font-medium tracking-wide text-subtle-foreground uppercase">
+                Last known
+              </div>
+              <div className="text-[15px] font-semibold text-foreground tabular-nums">
+                {lastKnown(g, t)}
+              </div>
+            </div>
+            {b && (
+              <div>
+                {formatTokens(b.total)} tokens in your logs this block · ends {when(b.end, t)}
+              </div>
+            )}
+            <p className="leading-relaxed">{whyNoLiveReading(limits, t, kind)}</p>
+          </div>
+        </div>
+        {kind === 'seven_day' && <WeeklyBuckets limits={limits} t={t} />}
+      </Card>
+    )
+  }
+
   const pace = paceText(g, t)
   const paceState = kind === 'five_hour' ? limits.pace5h : limits.pace7d
   const level = levelOf(g.pct)
-  const stale = t - g.updatedAt > 60 * 60_000
+  const stale = freshness === 'aging'
   return (
     <Card className="p-5">
       <CardHeader
         title={title}
         info={info}
-        right={
-          <span
-            className="text-[11px] text-subtle-foreground"
-            title={new Date(g.updatedAt).toLocaleString()}
-          >
-            Updated {ago(g.updatedAt, t)}
-          </span>
-        }
+        right={<UpdatedLabel ts={g.updatedAt} t={t} freshness={freshness} />}
       />
       <div className="mt-4 flex items-center gap-5">
-        <RingGauge pct={g.pct} target={g.expired ? undefined : paceState?.target}>
+        <RingGauge pct={g.pct} target={paceState?.target}>
           <div className="text-[34px] leading-none font-semibold tracking-[-0.03em] tabular-nums">
             <CountUp value={g.pct} format={(n) => `${Math.round(n)}%`} />
           </div>
           <div className="mt-1.5 text-[11px] text-muted-foreground">
-            {g.expired
-              ? 'Reset since'
-              : g.resetsAt
-                ? `Resets in ${formatDuration(g.resetsAt - t)}`
-                : 'used'}
+            {g.resetsAt ? `Resets in ${formatDuration(g.resetsAt - t)}` : 'used'}
           </div>
         </RingGauge>
         <div className="min-w-0 flex-1 space-y-2.5">
@@ -250,7 +288,7 @@ export function LimitCard({
           )}
         </div>
       </div>
-      {!g.expired && <PaceLine g={g} pace={paceState} t={t} />}
+      <PaceLine g={g} pace={paceState} t={t} />
       <div
         className={cn(
           'mt-2 text-xs',
@@ -264,19 +302,79 @@ export function LimitCard({
               : undefined
         }
       >
-        {g.expired ? 'This window has reset. Open Claude Code to refresh.' : pace.text}
+        {pace.text}
       </div>
-      {!g.expired && paceState && (
+      {paceState && (
         <div className="mt-1.5">
           <PaceChip pace={paceState} />
         </div>
       )}
-      {stale && !g.expired && (
-        <div className="mt-1 text-[11px] text-subtle-foreground">
-          Last updated {ago(g.updatedAt, t)} — open Claude Code to refresh
+      {stale && (
+        <div className="mt-1 text-[11px] font-medium text-[var(--gauge-warn-text)]">
+          Last updated {ago(g.updatedAt, t)}. {REFRESH_HINT}
         </div>
       )}
+      {kind === 'seven_day' && <WeeklyBuckets limits={limits} t={t} />}
     </Card>
+  )
+}
+
+/** "Updated 5 min ago": amber after an hour, a "Stale" chip once the window has reset. */
+export function UpdatedLabel({
+  ts,
+  t,
+  freshness
+}: {
+  ts: number
+  t: number
+  freshness: Freshness
+}) {
+  const full = new Date(ts).toLocaleString()
+  if (freshness === 'stale') {
+    return (
+      <span
+        className="inline-flex items-center gap-1 rounded-full bg-warning-soft px-1.5 py-px text-[10.5px] font-medium text-[var(--gauge-warn-text)]"
+        title={`Newest reading: ${full}`}
+      >
+        <TriangleAlert className="size-3" /> Stale · {ago(ts, t)}
+      </span>
+    )
+  }
+  return (
+    <span
+      className={cn(
+        'text-[11px]',
+        freshness === 'aging'
+          ? 'font-medium text-[var(--gauge-warn-text)]'
+          : 'text-subtle-foreground'
+      )}
+      title={full}
+    >
+      Updated {ago(ts, t)}
+    </span>
+  )
+}
+
+/** Extra weekly windows (e.g. one model only), if Claude Code reports any. */
+function WeeklyBuckets({ limits, t }: { limits: LimitsState; t: number }) {
+  const list = limits.weeklyBuckets ?? []
+  if (!list.length) return null
+  return (
+    <div className="mt-3 space-y-1 border-t border-border pt-2.5 text-xs">
+      {list.map((b) => (
+        <div key={b.key} className="flex items-baseline justify-between gap-3">
+          <span className="text-muted-foreground">This week · {b.label}</span>
+          <span className="font-medium tabular-nums">
+            {Math.round(b.pct)}%
+            {b.resetsAt && (
+              <span className="ml-1.5 font-normal text-subtle-foreground">
+                resets {when(b.resetsAt, t)}
+              </span>
+            )}
+          </span>
+        </div>
+      ))}
+    </div>
   )
 }
 

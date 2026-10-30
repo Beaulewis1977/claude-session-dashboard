@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react'
 import { X } from 'lucide-react'
 import { setClockOffset } from '@shared/clock'
-import { formatDuration, formatUsd } from '@shared/format'
+import { ago, formatDuration, formatUsd } from '@shared/format'
 import { DEFAULT_SETTINGS } from '@shared/types'
+import { freshnessOf, gaugeSummary, lastKnown, type GaugeState } from '@shared/usage/limits'
+import { cn } from '@/lib/utils'
 import { api } from '@/lib/api'
 import { useLiveData } from '@/lib/live'
 import { useNow } from '@/lib/meter-hooks'
@@ -35,28 +37,40 @@ function MiniMeterBody() {
   const remaining = credits?.summaries.reduce((a, s) => a + s.remaining, 0) ?? 0
   const hasCredits = !!credits?.summaries.some((s) => s.granted > 0)
 
-  const gauge = (
-    label: string,
-    g: typeof limits extends null ? never : NonNullable<typeof limits>['fiveHour']
-  ) => (
-    <div className="flex items-center gap-2.5">
-      <RingGauge pct={g ? (g.expired ? 0 : g.pct) : undefined} dim={!g} size={58} stroke={6}>
-        <span className="text-[14px] font-semibold tabular-nums">
-          {g ? `${Math.round(g.expired ? 0 : g.pct)}%` : '–'}
-        </span>
-      </RingGauge>
-      <div className="min-w-0 text-[11px] leading-tight">
-        <div className="font-medium">{label}</div>
-        <div className="text-muted-foreground">
-          {g?.resetsAt && !g.expired
-            ? `in ${formatDuration(g.resetsAt - t)}`
-            : g
-              ? 'reset'
-              : 'no data'}
+  const gauge = (label: string, g: GaugeState | undefined) => {
+    const f = g && freshnessOf(g, t)
+    // A window that reset since its reading shows "–" and the last known value.
+    const live = g && f !== 'stale' ? g : undefined
+    return (
+      <div className="flex items-center gap-2.5" title={gaugeSummary(label, g, t)}>
+        <RingGauge pct={live?.pct} dim={!live} size={58} stroke={6}>
+          <span className="text-[14px] font-semibold tabular-nums">
+            {live ? `${Math.round(live.pct)}%` : '–'}
+          </span>
+        </RingGauge>
+        <div className="min-w-0 text-[11px] leading-tight">
+          <div className="font-medium">{label}</div>
+          <div
+            className={cn(
+              f && f !== 'fresh'
+                ? 'font-medium text-[var(--gauge-warn-text)]'
+                : 'text-muted-foreground'
+            )}
+          >
+            {!g
+              ? 'no data'
+              : f === 'stale'
+                ? lastKnown(g, t)
+                : f === 'aging'
+                  ? `updated ${ago(g.updatedAt, t)}`
+                  : g.resetsAt
+                    ? `in ${formatDuration(g.resetsAt - t)}`
+                    : 'used'}
+          </div>
         </div>
       </div>
-    </div>
-  )
+    )
+  }
 
   return (
     <div className="drag flex h-full flex-col justify-center gap-2 border border-border bg-background px-3.5 py-3 select-none">

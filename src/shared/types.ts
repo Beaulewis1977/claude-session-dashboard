@@ -284,6 +284,8 @@ export interface ScanState {
   phase: 'idle' | 'scanning' | 'ready'
   done: number
   total: number
+  /** When the last full scan of the sources finished (epoch ms). */
+  finishedAt?: number
 }
 
 export interface AppInfo {

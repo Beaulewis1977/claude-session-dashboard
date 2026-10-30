@@ -1,5 +1,28 @@
 # Changelog
 
+## Unreleased
+
+**Live limits that don't go stale without telling you.**
+
+- **Fix: live limits froze on Windows.** The Windows status line bridge failed every update after
+  a session's first one (PowerShell passed an empty backup path to `File.Replace`), so the gauges
+  kept the last reading that had limits and showed 0% once that window reset. The fixed script is
+  installed over the old one automatically at startup (only the app's own script file; Claude's
+  `settings.json` isn't touched).
+- **Readings recovered:** the limit data the old script left behind in `.tmp.*` files is imported
+  into the limit history once, and those temp files are removed. Files that can't be read are left
+  alone.
+- **Stale readings are labeled, never shown as 0%:** once a window has reset since the newest
+  reading, the gauges say "No recent reading", show the last known value ("5% as of Oct 23") and
+  why there's no newer one. "Updated … ago" turns amber after an hour. The same on the tray icon,
+  mini meter, title bar gauges and the phone. Limit health and "Where your limits went" explain
+  missing data too.
+- **Fix: WSL sessions missing until a manual rescan.** Sources were detected only at startup, so a
+  distro that wasn't running yet (or stopped for a moment) stayed out of the list. Unreadable
+  sources are now re-checked every two minutes and come back on their own.
+- **Rescan now** in the Usage view, with the time of the last scan. The weekly gauge is labeled
+  "all models", and any per-model weekly window Claude Code may report is shown under it.
+
 ## 1.3.0 (October 24, 2026)
 
 **A real terminal on your PC from your phone.**

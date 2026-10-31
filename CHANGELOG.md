@@ -10,11 +10,14 @@
   Default, Low, Medium, High, Extra high, Max (what `claude --effort` accepts). Saved in the app's
   metadata, never in Claude's files.
 - **Defaults:** Settings → Resume sets the default for every session; **Project default** next to
-  the pickers sets one for a project. Order: the session, then its project, then Settings. Default
-  adds no flag at all.
+  the pickers sets one for a project (it changes only what the session sets, and keeps the
+  project's other value). Order: the session, then its project, then Settings. Default adds no flag
+  at all. WSL projects are told apart by distro and by case (`/home/me/App` and `/home/me/app` are
+  different projects); Windows folders ignore case.
 - **Every launch uses it:** Resume, Fork, Branch and New session, for Windows and WSL, with Remote
-  Control, from a phone and on API credits, plus **Copy resume command**. A branch keeps its
-  parent's choice. Model names are checked so nothing in them can reach a shell.
+  Control, from a phone and on API credits, plus **Copy resume command**. A branch or a fork made
+  from the app keeps its parent's choice for later resumes too. Model names are checked so nothing
+  in them can reach a shell.
 - **Shown where you launch:** a small badge on each session ("Opus · High"), on the Resume button
   ("Resume · Opus · High"), and on the phone (session cards, the session screen, the launch sheet;
   the phone can also change a session's choice and the defaults).

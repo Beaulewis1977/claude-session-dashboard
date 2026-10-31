@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.3.1 (October 31, 2026)
 
 **Live limits that don't go stale without telling you.**
 
@@ -20,6 +20,10 @@
 - **Fix: WSL sessions missing until a manual rescan.** Sources were detected only at startup, so a
   distro that wasn't running yet (or stopped for a moment) stayed out of the list. Unreadable
   sources are now re-checked every two minutes and come back on their own.
+- **Safety:** temp files are deleted only after their readings are saved to the history file, and
+  only in that Claude home's own `.claude-session-dashboard/live` folder (links and junctions are
+  followed and checked first). An installed bridge script is upgraded only if it's one the app
+  shipped or wrote; a script you changed is left alone.
 - **Rescan now** in the Usage view, with the time of the last scan. The weekly gauge is labeled
   "all models", and any per-model weekly window Claude Code may report is shown under it.
 

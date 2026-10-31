@@ -5,7 +5,16 @@ import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it, vi } from 'vitest'
 import type { CreditsState } from '@shared/usage/credits'
-import { pick, pickedVisible } from '@/lib/multi-select'
+import {
+  extend,
+  moveFocus,
+  pickedVisible,
+  rangeClick,
+  selectAll,
+  toggleClick,
+  toggleFocused,
+  type Picked
+} from '@/lib/multi-select'
 import { CreditsHeroCard } from '@/components/usage/Hero'
 import { TooltipProvider } from '@/components/ui/tooltip'
 
@@ -20,29 +29,67 @@ vi.hoisted(() => {
 
 describe('multi-selection', () => {
   const keys = ['a', 'b', 'c', 'd', 'e']
+  const plain = (key: string | null): Picked => ({ selectedKey: key, anchorKey: key, checked: [] })
 
   it('Ctrl+click adds the selected session and the clicked one, and removes again', () => {
-    let p = pick(keys, { selectedKey: 'b', checked: [] }, 'd', 'toggle')
-    expect(p).toEqual({ selectedKey: 'd', checked: ['b', 'd'] })
-    p = pick(keys, p, 'e', 'toggle')
+    let p = toggleClick(keys, plain('b'), 'd')
+    expect(p).toEqual({ selectedKey: 'd', anchorKey: 'd', checked: ['b', 'd'] })
+    p = toggleClick(keys, p, 'e')
     expect(p.checked).toEqual(['b', 'd', 'e'])
-    p = pick(keys, p, 'd', 'toggle')
-    expect(p).toEqual({ selectedKey: 'e', checked: ['b', 'e'] })
-    // Down to one: a plain selection again.
-    p = pick(keys, p, 'b', 'toggle')
-    expect(p).toEqual({ selectedKey: 'e', checked: [] })
+    p = toggleClick(keys, p, 'd')
+    expect(p.checked).toEqual(['b', 'e'])
   })
 
-  it('Shift+click picks the range from the selected session, in list order', () => {
-    expect(pick(keys, { selectedKey: 'd', checked: [] }, 'b', 'range')).toEqual({
-      selectedKey: 'd',
+  it('Shift+click picks the range from the anchor to the clicked session', () => {
+    expect(rangeClick(keys, plain('d'), 'b')).toEqual({
+      selectedKey: 'b',
+      anchorKey: 'd',
       checked: ['b', 'c', 'd']
     })
-    // Nothing selected (or not in the list): just the clicked one.
-    expect(pick(keys, { selectedKey: 'zz', checked: [] }, 'b', 'range')).toEqual({
+    // No anchor in the list: just the clicked one.
+    expect(rangeClick(keys, plain('zz'), 'b')).toEqual(plain('b'))
+  })
+
+  it('Space picks and unpicks the focused session', () => {
+    let p = toggleFocused(keys, plain('b'))
+    expect(p.checked).toEqual(['b'])
+    p = moveFocus(keys, p, 1)
+    p = moveFocus(keys, p, 1)
+    expect(p).toMatchObject({ selectedKey: 'd', checked: ['b'] })
+    p = toggleFocused(keys, p)
+    expect(p.checked).toEqual(['b', 'd'])
+    p = toggleFocused(keys, p)
+    expect(p.checked).toEqual(['b'])
+  })
+
+  it('Ctrl+↑/↓ keeps the current selection as a pick while the focus moves', () => {
+    expect(moveFocus(keys, plain('c'), -1)).toEqual({
       selectedKey: 'b',
-      checked: []
+      anchorKey: 'c',
+      checked: ['c']
     })
+    // It stops at the ends.
+    expect(moveFocus(keys, plain('e'), 1).selectedKey).toBe('e')
+  })
+
+  it('Shift+↑/↓ extends the range from the anchor, and shrinks it going back', () => {
+    let p = extend(keys, plain('b'), 1)
+    expect(p).toEqual({ selectedKey: 'c', anchorKey: 'b', checked: ['b', 'c'] })
+    p = extend(keys, p, 1)
+    expect(p.checked).toEqual(['b', 'c', 'd'])
+    p = extend(keys, p, -1)
+    p = extend(keys, p, -1)
+    p = extend(keys, p, -1)
+    expect(p).toEqual({ selectedKey: 'a', anchorKey: 'b', checked: ['a', 'b'] })
+  })
+
+  it('Ctrl+A picks every visible session', () => {
+    expect(selectAll(keys, plain('c'))).toEqual({
+      selectedKey: 'c',
+      anchorKey: 'a',
+      checked: keys
+    })
+    expect(selectAll([], plain(null))).toEqual(plain(null))
   })
 
   it('only counts picked sessions that are still in the list', () => {
@@ -110,14 +157,22 @@ describe('API credits card', () => {
   it('renders without a <button> inside a <button>', () => {
     const html = render()
     expect(html).toContain('API credits')
-    // The info tip is a button; the clickable card itself is not a <button>.
-    expect(html).toContain('aria-label="More information"')
     expect(html.startsWith('<button')).toBe(false)
     expect(buttonDepth(html)).toBe(1)
   })
 
-  it('keeps the card usable from the keyboard', () => {
+  it('is a plain container with two separate native buttons: the action and the info tip', () => {
     const html = render()
-    expect(html).toMatch(/^<div[^>]*role="button"[^>]*tabindex="0"/)
+    // The card itself: no button role, not focusable.
+    const card = /^<div[^>]*>/.exec(html)![0]
+    expect(card).not.toMatch(/role=|tabindex=/)
+    expect(html).not.toContain('role="button"')
+    // Both are real buttons, reachable on their own by keyboard and screen readers.
+    const buttons = [...html.matchAll(/<button\b[^>]*>/g)].map((m) => m[0])
+    expect(buttons).toHaveLength(2)
+    expect(buttons[0]).toContain('aria-label="Open API credits details"')
+    expect(buttons[0]).toContain('type="button"')
+    expect(buttons[1]).toContain('aria-label="More information"')
+    expect(buttons.some((b) => /tabindex="-1"/.test(b))).toBe(false)
   })
 })

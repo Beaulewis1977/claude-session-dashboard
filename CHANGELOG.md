@@ -1,8 +1,10 @@
 # Changelog
 
-## Unreleased
+## 1.4.0 (October 31, 2026)
 
-**Pick the model and effort for each session.**
+**Session names from Claude Code, and the model and effort for each session.**
+
+### Model and effort per session
 
 - **Model and effort per session:** "Launch with" under the session's title, and the same pickers in
   the Resume / Fork / Branch dialog. Model: Default, the aliases (Fable, Opus, Sonnet, Haiku), models
@@ -25,7 +27,7 @@
   API credits: add a key and the amount you have" line with a button to Settings → Accounts & API
   credits.
 
-**Session names come from Claude Code.**
+### Session names from Claude Code
 
 - **Names from `/rename`:** a session renamed in Claude Code (Windows or WSL) shows that name in
   the list, the viewer, search and on the phone, and updates live when you rename it again. The
@@ -37,7 +39,7 @@
 - **Use name from Claude Code:** clears your dashboard name for a session (viewer ⋯ menu, the new
   right-click menu on list rows, the phone's menu). Pick several sessions to do it in bulk ("Use
   Claude Code names").
-- **Pick several sessions (desktop):** Ctrl+click and Shift+click, or from the keyboard: Space
+- **Keyboard multi-select (desktop):** Ctrl+click and Shift+click, or from the keyboard: Space
   picks the focused session, Shift+↑/↓ extends a range, Ctrl+↑/↓ moves without changing the picks,
   Ctrl+A picks the whole list, Esc clears. Plain ↑/↓ work as before.
 - **A rename's time is the time of its `/rename`:** new messages never make an old name look newer,
@@ -47,9 +49,14 @@
 - **Your names stay:** on the first run of this version, names you set in the dashboard keep
   winning over names already in Claude's files; only a later rename in Claude Code replaces them.
   Names are only read from Claude's files, never written to them.
-- **Fix:** React warned about a button inside a button on the API credits card. Clickable usage
-  cards are now plain containers with a real button for their action, separate from the info
-  button, so keyboard and screen readers reach each one.
+
+### Accessibility
+
+- **Clickable usage cards:** the API credits card had a button inside a button (React warned about
+  it). Clickable cards are now plain containers with a real button for their action, separate from
+  the info button, so keyboard and screen-reader users reach each one on its own.
+- **Model and effort pickers** work fully from the keyboard (Enter opens a picker and picks an item
+  without starting the session), and every picker has a label that says its current value.
 
 ## 1.3.1 (October 31, 2026)
 

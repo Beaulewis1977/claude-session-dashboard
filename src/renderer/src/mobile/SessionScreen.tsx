@@ -267,7 +267,7 @@ export function SessionScreen({ session }: { session: SessionSummary }) {
       >
         <div className="border-b border-border px-4 pt-4 pb-4">
           <EditableTitle
-            key={`${session.titleSource}:${session.title}`}
+            key={session.key}
             session={session}
             onSave={(name) => write(() => updateMeta(session.key, { name }))}
             focusNonce={0}
@@ -278,7 +278,7 @@ export function SessionScreen({ session }: { session: SessionSummary }) {
           />
           <div className="mt-1.5">
             <DescriptionEditor
-              key={session.meta.description ?? ''}
+              key={session.key}
               session={session}
               onSave={(description) => write(() => updateMeta(session.key, { description }))}
               focusNonce={0}

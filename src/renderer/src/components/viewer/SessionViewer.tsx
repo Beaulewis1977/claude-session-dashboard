@@ -146,7 +146,7 @@ function Header({
         <div className="flex items-start gap-4">
           <div className="min-w-0 flex-1">
             <EditableTitle
-              key={`${session.titleSource}:${session.title}`}
+              key={session.key}
               session={session}
               onSave={(name) => void updateMeta(session.key, { name })}
               focusNonce={nonce('name')}
@@ -253,7 +253,7 @@ function Header({
 
         <div className="mt-2">
           <DescriptionEditor
-            key={session.meta.description ?? ''}
+            key={session.key}
             session={session}
             onSave={(description) => void updateMeta(session.key, { description })}
             focusNonce={nonce('description')}

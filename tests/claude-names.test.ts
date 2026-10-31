@@ -70,24 +70,123 @@ describe('parsing names given in Claude Code', () => {
     expect(a.claudeNameAt).toBe('2026-10-31T10:01:00.000Z')
   })
 
-  it('times a rename by the entry after it, else the entry before it', () => {
-    // The name line comes first in the file, before any timestamp.
-    const first = analyze([
+  it('times a rename by its /rename command, even when the name comes first in the file', () => {
+    // As in a real file: the name entry is written before the command entry.
+    const a = analyze([
       line({ type: 'custom-title', customTitle: 'early', sessionId: SID }),
+      prompt('unrelated', '2026-10-31T08:00:00.000Z'),
+      ...rename('early', '2026-10-31T09:00:00.000Z').slice(2),
+      prompt('later', '2026-10-31T10:00:00.000Z')
+    ])
+    expect(a.claudeName).toBe('early')
+    expect(a.claudeNameAt).toBe('2026-10-31T09:00:00.000Z')
+  })
+
+  it('times a name without a /rename command by the entry before it, never one after', () => {
+    const lines = [
+      prompt('hi', '2026-10-31T09:00:00.000Z'),
+      line({ type: 'custom-title', customTitle: 'no command', sessionId: SID })
+    ]
+    expect(analyze(lines).claudeNameAt).toBe('2026-10-31T09:00:00.000Z')
+    // More messages later don't move it.
+    const more = analyze([...lines, prompt('next', '2026-10-31T11:00:00.000Z')])
+    expect(more.claudeName).toBe('no command')
+    expect(more.claudeNameAt).toBe('2026-10-31T09:00:00.000Z')
+    // Nothing before it: no time (so a dashboard name keeps winning).
+    const first = analyze([
+      line({ type: 'custom-title', customTitle: 'first line', sessionId: SID }),
       prompt('hi', '2026-10-31T09:00:00.000Z')
     ])
-    expect(first.claudeNameAt).toBe('2026-10-31T09:00:00.000Z')
-    // A rename at the very end of the file.
-    const last = analyze([
-      prompt('hi', '2026-10-31T09:00:00.000Z'),
-      line({ type: 'custom-title', customTitle: 'late', sessionId: SID })
-    ])
-    expect(last.claudeName).toBe('late')
-    expect(last.claudeNameAt).toBe('2026-10-31T09:00:00.000Z')
-    // No timestamps at all: the name, but no time.
+    expect(first.claudeNameAt).toBeUndefined()
     const none = analyze([line({ type: 'custom-title', customTitle: 'timeless' })])
     expect(none.claudeName).toBe('timeless')
     expect(none.claudeNameAt).toBeUndefined()
+  })
+
+  it('an old name stays old when messages are added after a dashboard rename', () => {
+    const lines = [
+      prompt('hi', '2026-10-31T10:00:00.000Z'),
+      line({ type: 'custom-title', customTitle: 'Old title', sessionId: SID })
+    ]
+    const mine = { name: 'Mine', nameAt: '2026-10-31T10:30:00.000Z' }
+    const title = (l: string[]) => {
+      const a = analyze(l)
+      return computeTitle(mine, { name: a.claudeName, at: a.claudeNameAt }, undefined, 'hi')
+    }
+    expect(title(lines).title).toBe('Mine')
+    // A normal message at 11:00, then the file is read again.
+    expect(title([...lines, prompt('more', '2026-10-31T11:00:00.000Z')])).toEqual({
+      title: 'Mine',
+      titleSource: 'name'
+    })
+  })
+
+  it('an explicit /rename to an earlier name is a new rename', () => {
+    // Claude Code name "Old" at 10:00, dashboard "Mine" at 11:00, /rename Old at 12:00.
+    const a = analyze([
+      prompt('hi', '2026-10-31T09:59:00.000Z'),
+      ...rename('Old', '2026-10-31T10:00:00.000Z'),
+      prompt('more', '2026-10-31T11:30:00.000Z'),
+      ...rename('Old', '2026-10-31T12:00:00.000Z')
+    ])
+    expect(a.claudeName).toBe('Old')
+    expect(a.claudeNameAt).toBe('2026-10-31T12:00:00.000Z')
+    expect(
+      computeTitle(
+        { name: 'Mine', nameAt: '2026-10-31T11:00:00.000Z' },
+        { name: a.claudeName, at: a.claudeNameAt },
+        undefined,
+        'hi'
+      )
+    ).toEqual({ title: 'Old', titleSource: 'claude-name' })
+  })
+
+  it('reads /rename without a name from what Claude Code says it picked', () => {
+    const at = '2026-10-31T10:00:00.000Z'
+    const a = analyze([
+      prompt('hi', '2026-10-31T09:00:00.000Z'),
+      line({ type: 'custom-title', customTitle: 'auto-picked', sessionId: SID }),
+      line({
+        type: 'system',
+        subtype: 'local_command',
+        content: '<command-name>/rename</command-name>\n<command-args></command-args>',
+        timestamp: at,
+        sessionId: SID
+      }),
+      line({
+        type: 'system',
+        subtype: 'local_command',
+        content: '<local-command-stdout>Session renamed to: auto-picked</local-command-stdout>',
+        commandRun: { command: 'rename', args: '' },
+        timestamp: at,
+        sessionId: SID
+      })
+    ])
+    expect(a.claudeName).toBe('auto-picked')
+    expect(a.claudeNameAt).toBe(at)
+  })
+
+  it("doesn't take a rename from text that only mentions one", () => {
+    const a = analyze([
+      prompt('hi', '2026-10-31T09:00:00.000Z'),
+      line({ type: 'custom-title', customTitle: 'quoted', sessionId: SID }),
+      prompt(
+        'Session renamed to: quoted <command-name>/rename</command-name>',
+        '2026-10-31T12:00:00.000Z'
+      ),
+      line({
+        type: 'api-request-blob',
+        timestamp: '2026-10-31T13:00:00.000Z',
+        message: {
+          role: 'user',
+          content: '<local-command-stdout>Session renamed to: quoted</local-command-stdout>'
+        }
+      }),
+      // A /rename command for a name that was never set (no name entry).
+      ...rename('never set', '2026-10-31T14:00:00.000Z').slice(2)
+    ])
+    expect(a.claudeName).toBe('quoted')
+    expect(a.claudeNameAt).toBe('2026-10-31T09:00:00.000Z')
   })
 
   it('skips malformed lines and bad values', () => {
@@ -131,7 +230,7 @@ describe('parsing names given in Claude Code', () => {
       prompt('y', '2026-10-31T09:05:00.000Z')
     ])
     expect(rc.claudeName).toBe('phone session')
-    expect(rc.claudeNameAt).toBe('2026-10-31T09:05:00.000Z')
+    expect(rc.claudeNameAt).toBe('2026-10-31T09:00:00.000Z')
   })
 
   it("ignores a name copied from another session's file", () => {

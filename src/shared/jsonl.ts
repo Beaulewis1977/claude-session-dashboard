@@ -196,32 +196,81 @@ export function cleanName(v: unknown): string | undefined {
 }
 
 /**
- * The latest value of one kind of name entry, and when it last changed.
+ * The latest value of one kind of name entry, and when it was set.
  *
  * Claude Code writes `custom-title` / `agent-name` entries without a timestamp,
- * and writes them again (same value) every so often. So a name's time is the
- * time of the first entry after the change that has one: `/rename` writes the
- * name, then the `/rename` command entry with the exact time. A name at the
- * very end of a file gets the time of the entry before it.
+ * and writes them again (same value) every so often. `/rename` writes the name
+ * and then its own command entry, which has the exact time. So:
+ *
+ * - A name entry with a matching `/rename` command takes that command's time.
+ *   An explicit `/rename` to the current name is a new rename too.
+ * - A changed name without a command takes the time of the entry just before
+ *   it. That never changes when more is added to the file, so new messages
+ *   can't make an old name look newer.
+ * - The same name written again without a command is not a rename.
  */
 class NameTrack {
   value?: string
   at?: string
-  private pending = false
+  private seen = new Set<string>()
+  /** A `/rename` command whose name entry hasn't come yet. */
+  private pending?: { name: string; at: string }
 
-  set(name: string, ts: string | undefined, lastTs: string | undefined): void {
-    if (name === this.value) return
-    this.value = name
-    this.at = ts ?? lastTs
-    this.pending = !ts
+  /** A name entry. `before` is the time of the last entry before it. */
+  entry(name: string, before: string | undefined): void {
+    if (this.pending?.name === name) {
+      this.value = name
+      this.at = this.pending.at
+      this.pending = undefined
+    } else if (name !== this.value) {
+      this.value = name
+      this.at = before
+    }
+    this.seen.add(name)
   }
 
-  /** An entry with a timestamp came by. */
-  tick(ts: string): void {
-    if (!this.pending) return
-    this.at = ts
-    this.pending = false
+  /** A `/rename` command for `name`, at `at`. */
+  command(name: string, at: string): void {
+    if (this.seen.has(name)) {
+      this.value = name
+      this.at = at
+    } else {
+      // Its name entry comes later (or never, if the rename didn't happen).
+      this.pending = { name, at }
+    }
   }
+}
+
+const RENAMED_RE =
+  /^<local-command-stdout>\s*Session renamed to:\s*([\s\S]*?)\s*<\/local-command-stdout>$/
+
+/**
+ * The name a `/rename` command entry set, or undefined if the entry isn't one.
+ * Only Claude Code's own command entries count (a `system` local command, or a
+ * user entry that is only the command), never text that mentions a rename.
+ */
+export function renameCommandName(e: RawEvent): string | undefined {
+  const type = str(e.type)
+  if (type !== 'system' && type !== 'user') return undefined
+  const run = obj(e.commandRun)
+  if (run && run.command === 'rename') {
+    const args = cleanName(run.args)
+    if (args) return args
+  }
+  let text: string | undefined
+  if (type === 'system') text = str(e.content)
+  else if (e.isMeta !== true) text = textFromBlocks(contentOf(e))
+  const t = text?.trim()
+  if (!t) return undefined
+  // `/rename <name>`
+  if (t.startsWith('<command-')) {
+    const cmd = COMMAND_RE.exec(t)
+    if (cmd?.[1].trim() !== '/rename') return undefined
+    return cleanName(COMMAND_ARGS_RE.exec(t)?.[1])
+  }
+  // `/rename` without a name: Claude Code picks one and says which.
+  const out = RENAMED_RE.exec(t)
+  return out ? cleanName(out[1]) : undefined
 }
 
 const REMOTE_URL_RE = /^https:\/\/claude\.ai\/code\/session_[A-Za-z0-9]{8,64}$/
@@ -298,17 +347,25 @@ export function analyzeEvents(events: RawEvent[], opts: AnalyzeOptions = {}): Se
       const sid = str(e.sessionId)
       if (opts.sessionId && sid && sid !== opts.sessionId) continue
       const name = cleanName(type === 'custom-title' ? e.customTitle : e.agentName)
-      if (name) (type === 'custom-title' ? customTitle : agentName).set(name, ts, lastTs)
+      if (name) (type === 'custom-title' ? customTitle : agentName).entry(name, ts ?? lastTs)
       if (ts) lastTs = ts
       continue
+    }
+
+    // A `/rename` command of this session (not one copied into a branch).
+    const renamed = ts && !e.forkedFrom ? renameCommandName(e) : undefined
+    if (renamed) {
+      const sid = str(e.sessionId)
+      if (!(opts.sessionId && sid && sid !== opts.sessionId)) {
+        customTitle.command(renamed, ts!)
+        agentName.command(renamed, ts!)
+      }
     }
 
     if (ts) {
       const t = Date.parse(ts)
       if (t < minT) minT = t
       if (t > maxT) maxT = t
-      customTitle.tick(ts)
-      agentName.tick(ts)
       lastTs = ts
     }
     if (!a.sessionId) a.sessionId = str(e.sessionId) ?? str(e.session_id)

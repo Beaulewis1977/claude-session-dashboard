@@ -403,7 +403,9 @@ export function computeLive(inp: LiveInputs): LiveSession[] {
     const f = p.file
     const key = keyOf(p.sourceId, f.sessionId)
     const t = inp.transcript(key)
-    const h = hooks.get(key)
+    // Hook events from before this process started belong to an earlier run
+    // of the session (say, the SessionEnd of the run that was resumed).
+    const h = currentRun(hooks.get(key), f.startedAt)
     const lastSeenAt = Math.max(
       t?.lastActivityAt ?? 0,
       h?.last ?? 0,
@@ -484,6 +486,23 @@ export function computeLive(inp: LiveInputs): LiveSession[] {
   }
 
   return [...out.values()].sort(liveOrder)
+}
+
+/** Clock slack between the process start and its first hook events. */
+const RUN_SLACK_MS = 2000
+
+/** Only what happened in the process's own run (started at `startedAt`). */
+function currentRun<T extends { signal?: Signal; last: number; ended?: number }>(
+  h: T | undefined,
+  startedAt: number | undefined
+): T | undefined {
+  if (!h || !startedAt) return h
+  const from = startedAt - RUN_SLACK_MS
+  return {
+    ...h,
+    signal: h.signal && h.signal.ts >= from ? h.signal : undefined,
+    ended: h.ended !== undefined && h.ended >= from ? h.ended : undefined
+  }
 }
 
 function withActivity(

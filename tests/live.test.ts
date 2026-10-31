@@ -315,6 +315,38 @@ describe('session state', () => {
     expect(r).toMatchObject({ state: 'exited', detail: 'Ended (clear)' })
   })
 
+  it('an end (or any event) from before a resumed run never marks the new process', () => {
+    // Ended an hour ago with alerts on; alerts turned off; resumed 5 minutes ago.
+    const resumed = proc(
+      {},
+      { startedAt: NOW - 5 * min, status: 'idle', statusUpdatedAt: NOW - min }
+    )
+    const old = [
+      ev('SessionEnd', 60 * min, { reason: 'prompt_input_exit' }),
+      ev('Notification', 61 * min, { notificationType: 'permission_prompt' })
+    ]
+    expect(run({ procs: [resumed], events: old })[0]).toMatchObject({
+      state: 'idle',
+      basis: 'status'
+    })
+    // Without a live status, the old events don't count either.
+    const noStatus = proc(
+      {},
+      {
+        startedAt: NOW - 5 * min,
+        status: undefined,
+        statusUpdatedAt: undefined,
+        updatedAt: undefined
+      }
+    )
+    expect(run({ procs: [noStatus], events: old })[0]).toMatchObject({
+      state: 'idle',
+      basis: 'activity'
+    })
+    // An end in this run still counts.
+    expect(run({ procs: [resumed], events: [ev('SessionEnd', 30_000)] })[0].state).toBe('exited')
+  })
+
   it('keeps an unverifiable process only while there is recent news', () => {
     expect(run({ procs: [proc({ alive: undefined })] })[0]).toMatchObject({
       state: 'working',

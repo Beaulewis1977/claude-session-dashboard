@@ -20,7 +20,8 @@ import {
   type LiveSession,
   type LiveSnapshot,
   type ProcInput,
-  type RunningFile
+  type RunningFile,
+  EXITED_KEEP_MS
 } from '@shared/live'
 import {
   alertVerdict,
@@ -49,6 +50,8 @@ const isUnc = (p: string): boolean => /^[\\/]{2}/.test(p)
 
 export interface ProcCheck {
   check(items: ProcQuery[]): Promise<Alive[]>
+  /** Stops any helper process. */
+  dispose?(): void
 }
 
 export interface LiveDeps {
@@ -58,11 +61,19 @@ export interface LiveDeps {
   settings: () => LiveAlertSettings
   /** Desktop notification. */
   notify: (alert: Alert, title: string) => void
-  /** Web Push to phones that turned it on; returns how many got it. */
-  push: (kind: AlertKind, ref: string) => Promise<number>
+  /**
+   * Web Push to phones that turned it on; returns how many got it. Each phone
+   * gets its own reference (`refFor(deviceId)`).
+   */
+  push: (kind: AlertKind, refFor: (deviceId: string) => string) => Promise<number>
   /** Host path of a WSL source's distro root (for /proc). */
   distroRoot: (sourceId: string) => string | undefined
+  /** Monotonic milliseconds, for intervals (the wall clock can jump back). */
+  mono?: () => number
 }
+
+/** How long a push reference can be opened. */
+export const REF_TTL_MS = 24 * 60 * 60_000
 
 interface Cached<T> {
   mtimeMs: number
@@ -100,14 +111,18 @@ export class LiveService extends EventEmitter<{ changed: [] }> {
   private prev: Map<string, LiveSession> | undefined
   private lastJson = ''
   private hookEnvs: HookEnv[] = []
-  private hookEnvsAt = 0
+  private hookEnvsAt: number | undefined
   private lastShown = new Map<string, number>()
-  private refs = new Map<string, { key: string; at: number }>()
-  private lastPrune = 0
+  private refs = new Map<string, { key: string; deviceId: string; at: number }>()
+  /** Sessions whose running file disappeared after the app saw them running. */
+  private tombstones = new Map<string, { input: Omit<ProcInput, 'alive'>; goneAt: number }>()
+  private lastPrune: number | undefined
   private at = 0
+  private readonly mono: () => number
 
   constructor(private readonly deps: LiveDeps) {
     super()
+    this.mono = deps.mono ?? (() => performance.now())
   }
 
   start(): void {
@@ -118,6 +133,7 @@ export class LiveService extends EventEmitter<{ changed: [] }> {
   stop(): void {
     if (this.timer) clearInterval(this.timer)
     this.timer = undefined
+    this.deps.procs.dispose?.()
   }
 
   snapshot(): LiveSnapshot {
@@ -126,13 +142,20 @@ export class LiveService extends EventEmitter<{ changed: [] }> {
 
   /** Re-read the hook bridge state (after enabling or disabling it). */
   async refreshHooks(): Promise<void> {
-    this.hookEnvsAt = 0
+    this.hookEnvsAt = undefined
     await this.poll(true)
   }
 
-  /** The session an alert's opaque reference points at (a tapped phone notification). */
-  resolveRef(ref: unknown): string | null {
-    return typeof ref === 'string' ? (this.refs.get(ref)?.key ?? null) : null
+  /**
+   * The session a tapped push alert points at. A reference works once, only
+   * for the phone it was sent to, and only for a day.
+   */
+  resolveRef(deviceId: string, ref: unknown): string | null {
+    if (typeof ref !== 'string') return null
+    const r = this.refs.get(ref)
+    if (!r || r.deviceId !== deviceId) return null
+    this.refs.delete(ref)
+    return now() - r.at <= REF_TTL_MS ? r.key : null
   }
 
   async poll(force = false): Promise<void> {
@@ -149,13 +172,15 @@ export class LiveService extends EventEmitter<{ changed: [] }> {
 
   private async pollNow(force: boolean): Promise<void> {
     const t = now()
+    const m = this.mono()
     const dirs = this.deps.sessions.sources.map(sourceDirs).filter((d): d is SourceDirs => !!d)
     const idlePrompts = new Set<string>()
     for (const d of dirs) {
       const every = isUnc(d.sessionsDir) ? POLL_UNC_MS : POLL_MS
-      if (!force && t - (this.lastRead.get(d.src.id) ?? 0) < every - 200) continue
-      this.lastRead.set(d.src.id, t)
-      await this.readRunning(d)
+      const last = this.lastRead.get(d.src.id)
+      if (!force && last !== undefined && m - last < every - 200) continue
+      this.lastRead.set(d.src.id, m)
+      await this.readRunning(d, t)
       for (const k of await this.readEvents(d)) idlePrompts.add(k)
     }
     const known = new Set(dirs.map((d) => d.src.id))
@@ -200,12 +225,19 @@ export class LiveService extends EventEmitter<{ changed: [] }> {
     const ids = new Set(procs.map((p) => p.id))
     for (const id of this.wasAlive) if (!ids.has(id)) this.wasAlive.delete(id)
     for (const id of this.goneAt.keys()) if (!ids.has(id)) this.goneAt.delete(id)
+    // Running files that disappeared: Exited from when they went, for a while.
+    for (const [id, tomb] of this.tombstones) {
+      if (t - tomb.goneAt > EXITED_KEEP_MS || ids.has(id) || !known.has(tomb.input.sourceId))
+        this.tombstones.delete(id)
+      else inputs.push({ ...tomb.input, alive: false, goneAt: tomb.goneAt })
+    }
 
     const events = [...this.events.values()]
       .map((c) => c.value)
       .filter((e): e is HookEvent => !!e && known.has(e.source) && t - e.ts < EVENT_RELEVANT_MS)
 
-    if (force || t - this.hookEnvsAt > 30_000) await this.describeHooks(events)
+    if (force || this.hookEnvsAt === undefined || m - this.hookEnvsAt > 30_000)
+      await this.describeHooks(events)
     const hooksOn = new Set(this.hookEnvs.filter((h) => h.installed).map((h) => h.sourceId))
 
     const next = computeLive({
@@ -239,8 +271,8 @@ export class LiveService extends EventEmitter<{ changed: [] }> {
       this.lastJson = json
       this.emit('changed')
     }
-    if (t - this.lastPrune > 60 * 60_000) {
-      this.lastPrune = t
+    if (this.lastPrune === undefined || m - this.lastPrune > 60 * 60_000) {
+      this.lastPrune = m
       void this.prune(dirs).catch((err: unknown) => console.warn('event prune failed', err))
     }
   }
@@ -255,15 +287,17 @@ export class LiveService extends EventEmitter<{ changed: [] }> {
       if (d) out.push(d)
     }
     this.hookEnvs = out
-    this.hookEnvsAt = now()
+    this.hookEnvsAt = this.mono()
   }
 
-  private async readRunning(d: SourceDirs): Promise<void> {
+  private async readRunning(d: SourceDirs, t: number): Promise<void> {
     const prefix = `${d.src.id}|`
     let names: string[]
     try {
       names = (await readdir(d.sessionsDir)).filter((n) => RUNNING_FILE_RE.test(n))
-    } catch {
+    } catch (err) {
+      // Can't be listed right now (a WSL share, say): keep what was read before.
+      if ((err as NodeJS.ErrnoException).code !== 'ENOENT') return
       names = []
     }
     const seen = new Set<string>()
@@ -282,8 +316,26 @@ export class LiveService extends EventEmitter<{ changed: [] }> {
         // Being rewritten right now: read it next time.
       }
     }
-    for (const k of this.running.keys())
-      if (k.startsWith(prefix) && !seen.has(k)) this.running.delete(k)
+    for (const [k, c] of this.running) {
+      if (!k.startsWith(prefix) || seen.has(k)) continue
+      this.running.delete(k)
+      // Claude Code removed the file (it does on exit): if the app saw the
+      // session running, it stays as Exited for a while (bounded).
+      const f = c.value
+      const id = f && `${d.src.id}|${f.pid}|${f.sessionId}`
+      if (!f || !id || !this.wasAlive.has(id)) continue
+      this.tombstones.set(id, {
+        input: {
+          sourceId: d.src.id,
+          env: d.src.env,
+          distro: d.src.distro,
+          file: f,
+          mtime: Math.round(c.mtimeMs + clockOffset())
+        },
+        goneAt: this.goneAt.get(id) ?? t
+      })
+      if (this.tombstones.size > 200) this.tombstones.delete(this.tombstones.keys().next().value!)
+    }
   }
 
   /** Read new or changed event files; returns sessions that just got an idle reminder. */
@@ -352,16 +404,17 @@ export class LiveService extends EventEmitter<{ changed: [] }> {
         }
       }
       if (v.phone) {
-        const ref = this.newRef(a.key, t)
-        void this.deps.push(a.kind, ref).catch((err: unknown) => console.warn('push failed', err))
+        void this.deps
+          .push(a.kind, (deviceId) => this.newRef(a.key, deviceId, t))
+          .catch((err: unknown) => console.warn('push failed', err))
       }
     }
   }
 
-  /** A random reference for a push; only the PC knows which session it means. */
-  private newRef(key: string, t: number): string {
+  /** A random reference for one phone's push; only the PC knows which session it means. */
+  private newRef(key: string, deviceId: string, t: number): string {
     const ref = randomBytes(12).toString('base64url')
-    this.refs.set(ref, { key, at: t })
+    this.refs.set(ref, { key, deviceId, at: t })
     if (this.refs.size > 500) {
       const oldest = [...this.refs.entries()].sort((a, b) => a[1].at - b[1].at).slice(0, 100)
       for (const [r] of oldest) this.refs.delete(r)

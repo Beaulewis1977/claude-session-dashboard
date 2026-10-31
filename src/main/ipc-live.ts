@@ -29,7 +29,6 @@ export function registerLiveIpc(deps: LiveIpcDeps): void {
     v === 'uninstall' ? 'uninstall' : 'install'
 
   handle('live:state', () => live.snapshot())
-  handle('live:resolveRef', (_e, ref) => live.resolveRef(ref))
   handle('hooks:plan', (_e, id, a) => hooks.plan(source(id), action(a)))
   handle('hooks:apply', async (_e, id, a, token) => {
     const res = await hooks.apply(source(id), action(a), String(token))

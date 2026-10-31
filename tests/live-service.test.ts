@@ -8,7 +8,8 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { DEFAULT_LIVE_ALERTS } from '@shared/live-alerts'
 import type { SessionSummary, SourceInfo } from '@shared/types'
 import { createHooksStore, HooksInstaller } from '../src/main/services/hooks'
-import { LiveService } from '../src/main/services/live'
+import { LiveService, REF_TTL_MS } from '../src/main/services/live'
+import { setClockOffset } from '@shared/clock'
 import type { SessionService } from '../src/main/services/sessions'
 
 let root: string
@@ -52,18 +53,21 @@ async function setup(alive: Set<number>) {
   await store.load()
   const hooks = new HooksInstaller(store, { dataDir, scriptsDir: '', readScript: async () => '' })
   const notified: string[] = []
-  const pushed: { kind: string; ref: string }[] = []
+  // Two phones with push on: each gets its own reference.
+  const pushed: { kind: string; refs: Record<string, string> }[] = []
+  let mono = 0
   const live = new LiveService({
     sessions,
     hooks,
     procs: { check: async (items) => items.map((q) => alive.has(q.pid)) },
     settings: () => ({ ...DEFAULT_LIVE_ALERTS, minWorkSec: 0 }),
     notify: (a, title) => notified.push(`${a.kind}:${title}`),
-    push: async (kind, ref) => {
-      pushed.push({ kind, ref })
+    push: async (kind, refFor) => {
+      pushed.push({ kind, refs: { phoneA: refFor('phoneA'), phoneB: refFor('phoneB') } })
       return 1
     },
-    distroRoot: () => undefined
+    distroRoot: () => undefined,
+    mono: () => mono
   })
   const running = (pid: number, status: string, extra: object = {}) =>
     writeFile(
@@ -79,7 +83,10 @@ async function setup(alive: Set<number>) {
         ...extra
       })
     )
-  return { home, claude, live, running, notified, pushed, summary }
+  const tick = (ms: number) => {
+    mono += ms
+  }
+  return { home, claude, live, running, notified, pushed, summary, tick }
 }
 
 describe('LiveService', () => {
@@ -127,11 +134,17 @@ describe('LiveService', () => {
     expect(t.notified).toEqual(['approval:Checkout flow'])
     expect(t.pushed).toHaveLength(1)
     expect(t.pushed[0].kind).toBe('approval')
-    // The push reference means nothing outside the PC; the PC resolves it.
-    expect(t.pushed[0].ref).toMatch(/^[A-Za-z0-9_-]{16}$/)
-    expect(t.pushed[0].ref).not.toContain(SID.slice(0, 8))
-    expect(t.live.resolveRef(t.pushed[0].ref)).toBe(`windows:${SID}`)
-    expect(t.live.resolveRef('nope')).toBeNull()
+    // References mean nothing outside the PC, differ per phone, work only
+    // for their own phone, and only once.
+    const { phoneA, phoneB } = t.pushed[0].refs
+    expect(phoneA).toMatch(/^[A-Za-z0-9_-]{16}$/)
+    expect(phoneA).not.toBe(phoneB)
+    expect(phoneA).not.toContain(SID.slice(0, 8))
+    expect(t.live.resolveRef('phoneB', phoneA)).toBeNull()
+    expect(t.live.resolveRef('phoneA', phoneA)).toBe(`windows:${SID}`)
+    expect(t.live.resolveRef('phoneA', phoneA)).toBeNull()
+    expect(t.live.resolveRef('phoneB', phoneB)).toBe(`windows:${SID}`)
+    expect(t.live.resolveRef('phoneA', 'nope')).toBeNull()
 
     // Still waiting: no second alert.
     await t.live.poll(true)
@@ -173,5 +186,58 @@ describe('LiveService', () => {
     for (let i = 0; i < 50 && (await readdir(events)).length > 2; i++)
       await new Promise((r) => setTimeout(r, 20))
     expect((await readdir(events)).sort()).toEqual([`${SID}.SessionStart.json`, 'notes.txt'])
+  })
+
+  it('a running file that disappears leaves the session Exited for a while', async () => {
+    const t = await setup(new Set([4242]))
+    await t.running(4242, 'idle')
+    await t.live.poll(true)
+    expect(t.live.snapshot().sessions[0].state).toBe('idle')
+    // Claude Code removes its file on exit (alerts off: no SessionEnd event).
+    await rm(join(t.claude, 'sessions', '4242.json'))
+    await t.live.poll(true)
+    await t.live.poll(true)
+    expect(t.live.snapshot().sessions).toMatchObject([{ sessionId: SID, state: 'exited' }])
+    // A file never seen running leaves nothing behind.
+    await t.running(5555, 'idle', { sessionId: 'b7a1c2d3-e4f5-4a6b-8c7d-9e0f1a2b3c4d' })
+    await rm(join(t.claude, 'sessions', '5555.json'))
+    await t.live.poll(true)
+    expect(t.live.snapshot().sessions).toHaveLength(1)
+  })
+
+  it('keeps reading after the wall clock jumps back (intervals use a monotonic clock)', async () => {
+    const t = await setup(new Set([4242]))
+    await t.running(4242, 'busy')
+    await t.live.poll()
+    expect(t.live.snapshot().sessions[0].state).toBe('working')
+    setClockOffset(-2 * 60 * 60_000)
+    try {
+      await t.running(4242, 'idle')
+      t.tick(2500)
+      await t.live.poll()
+      expect(t.live.snapshot().sessions[0].state).toBe('idle')
+      // Not due yet: the source isn't read again.
+      await t.running(4242, 'busy')
+      t.tick(500)
+      await t.live.poll()
+      expect(t.live.snapshot().sessions[0].state).toBe('idle')
+    } finally {
+      setClockOffset(0)
+    }
+  })
+
+  it('a push reference expires after a day', async () => {
+    const t = await setup(new Set([4242]))
+    await t.running(4242, 'busy')
+    await t.live.poll(true)
+    await t.running(4242, 'waiting')
+    await t.live.poll(true)
+    const ref = t.pushed[0].refs.phoneA
+    setClockOffset(REF_TTL_MS + 60_000)
+    try {
+      expect(t.live.resolveRef('phoneA', ref)).toBeNull()
+    } finally {
+      setClockOffset(0)
+    }
   })
 })

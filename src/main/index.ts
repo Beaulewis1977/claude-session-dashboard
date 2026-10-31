@@ -473,7 +473,9 @@ async function main(): Promise<void> {
     appVersion: app.getVersion(),
     fixtures: FIXTURES,
     claudePath: async () => (await platform.launchTools()).claude,
-    proposeKey: (device, key) => terminal.proposeKey(device, key)
+    proposeKey: (device, key) => terminal.proposeKey(device, key),
+    // Running now is created below; this runs only for a phone's request.
+    resolveLiveRef: (deviceId, ref) => live.resolveRef(deviceId, ref)
   })
   registerMobileIpc({ mobile, store: mobileStore, fixtures: FIXTURES })
 
@@ -547,7 +549,7 @@ async function main(): Promise<void> {
       n.on('click', () => showLive(alert.key))
       n.show()
     },
-    push: (kind, ref) => mobile.webPush({ kind, ref })
+    push: (kind, refFor) => mobile.webPush({ kind, ref: refFor })
   })
   registerLiveIpc({ live, hooks, sessions, fixtures: FIXTURES })
   live.on('changed', () => mobile.push('live'))

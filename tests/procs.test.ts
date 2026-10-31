@@ -44,23 +44,45 @@ describe('process checks', () => {
     return { c: new ProcChecker(deps), calls }
   }
 
-  it('Windows: running, gone, reused, unknown; start times looked up once', async () => {
+  it('Windows: running, gone, reused; no start time to compare means can’t tell', async () => {
     const { c, calls } = checker()
     const q = [
       { env: 'windows' as const, pid: 100, procStart: '134379458977253280' },
       { env: 'windows' as const, pid: 200, procStart: '134379458977253280' },
       { env: 'windows' as const, pid: 999, procStart: '1' },
-      { env: 'windows' as const, pid: 300 },
+      { env: 'windows' as const, pid: 300, procStart: '1' },
       { env: 'windows' as const, pid: 100 }
     ]
-    expect(await c.check(q)).toEqual([true, false, false, undefined, true])
+    expect(await c.check(q)).toEqual([true, false, false, undefined, undefined])
+    // Looked up again on every check (never cached).
     expect(await c.check(q.slice(0, 2))).toEqual([true, false])
-    expect(calls).toEqual([[100, 200]])
+    expect(calls).toEqual([
+      [100, 200],
+      [100, 200]
+    ])
   })
 
-  it('a failed start-time lookup still trusts the PID', async () => {
-    const { c } = checker({ windowsStartTimes: async () => undefined })
-    expect(await c.check([{ env: 'windows', pid: 100, procStart: '5' }])).toEqual([true])
+  it('a PID reused between two checks, with no gap seen, is caught', async () => {
+    let start = '134379458977253282'
+    const { c } = checker({ windowsStartTimes: async () => new Map([[100, start]]) })
+    const q = [{ env: 'windows' as const, pid: 100, procStart: '134379458977253282' }]
+    expect(await c.check(q)).toEqual([true])
+    // The session exited and another program got PID 100 before the next poll.
+    start = '134379999999999999'
+    expect(await c.check(q)).toEqual([false])
+  })
+
+  it('a failed or partial start-time lookup means can’t tell, never running', async () => {
+    const failed = checker({ windowsStartTimes: async () => undefined }).c
+    expect(await failed.check([{ env: 'windows', pid: 100, procStart: '5' }])).toEqual([undefined])
+    const thrown = checker({ windowsStartTimes: async () => Promise.reject(new Error('x')) }).c
+    expect(await thrown.check([{ env: 'windows', pid: 100, procStart: '5' }])).toEqual([undefined])
+    // Running, but its start time can't be read (an elevated process).
+    const hidden = checker({ windowsStartTimes: async () => new Map([[100, '?']]) }).c
+    expect(await hidden.check([{ env: 'windows', pid: 100, procStart: '5' }])).toEqual([undefined])
+    // Not in the answer: gone between the two checks.
+    const vanished = checker({ windowsStartTimes: async () => new Map() }).c
+    expect(await vanished.check([{ env: 'windows', pid: 100, procStart: '5' }])).toEqual([false])
   })
 
   it('WSL: through the distro’s /proc', async () => {
@@ -71,8 +93,10 @@ describe('process checks', () => {
         { env: 'wsl', distroRoot: '\\\\wsl.localhost\\Ubuntu', pid: 42038, procStart: '5' },
         { env: 'wsl', distroRoot: '\\\\wsl.localhost\\Ubuntu', pid: 7 },
         { env: 'wsl', distroRoot: '\\\\wsl.localhost\\stopped', pid: 7 },
-        { env: 'wsl', pid: 7 }
+        { env: 'wsl', pid: 7 },
+        // Running, but no start time recorded to tell whose: can't tell.
+        { env: 'wsl', distroRoot: '\\\\wsl.localhost\\Ubuntu', pid: 42038 }
       ])
-    ).toEqual([true, false, false, undefined, undefined])
+    ).toEqual([true, false, false, undefined, undefined, undefined])
   })
 })

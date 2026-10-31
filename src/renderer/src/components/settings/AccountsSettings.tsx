@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { projectKeyLabel } from '@shared/project-key'
 import { toast } from 'sonner'
 import {
   Building2,
@@ -400,7 +401,7 @@ export function AccountsSettings({
           {Object.entries(settings.projectBilling).map(([project, b]) => (
             <div key={project} className="flex items-center gap-2 py-0.5">
               <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-muted-foreground">
-                {project}
+                {projectKeyLabel(project)}
               </span>
               <span>
                 {b === 'subscription'

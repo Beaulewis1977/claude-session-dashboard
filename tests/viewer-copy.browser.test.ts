@@ -208,7 +208,15 @@ beforeAll(async () => {
   server = await createServer({
     configFile: false,
     root,
+    // Its own dependency cache: each browser test file runs its own Vite server,
+    // and the default cache (node_modules/.vite) is also the dev server's.
+    cacheDir: resolve(root, 'node_modules/.vite-viewer-copy-browser'),
     logLevel: 'error',
+    // Find and pre-bundle every dependency of the renderer when the server
+    // starts. The test page is a virtual module Vite can't scan, so without this
+    // a fresh cache (after npm install) discovers them while a page loads and
+    // answers its requests with "504 Outdated Optimize Dep".
+    optimizeDeps: { entries: ['src/renderer/src/**/*.tsx'] },
     resolve: {
       alias: {
         '@': resolve(root, 'src/renderer/src'),
@@ -234,13 +242,23 @@ beforeAll(async () => {
         }
       }
     ],
-    server: { host: '127.0.0.1', port: 0 }
+    // No file watching or hot reload: a file changed in the repo while the tests
+    // run (an edit, git, the formatter) would otherwise reload or restyle the
+    // page in the middle of a test.
+    server: { host: '127.0.0.1', port: 0, watch: null, hmr: false }
   })
   await server.listen()
   const address = server.httpServer?.address()
   if (!address || typeof address === 'string') throw new Error('Vite did not bind a local port')
   origin = `http://127.0.0.1:${address.port}`
-}, 30_000)
+  // Warm up every screen: Vite builds (and on a fresh cache, discovers and
+  // pre-bundles) the modules on the first load, which could otherwise reload
+  // a page in the middle of a test.
+  for (const screen of ['transcript', 'mobile', 'desktop'] as const) {
+    const { context } = await openFixture('copy', 390, 'native', true, screen, 60_000)
+    await context.close()
+  }
+}, 120_000)
 
 afterAll(async () => {
   await browser?.close()
@@ -252,7 +270,8 @@ async function openFixture(
   width = 390,
   clipboard: 'native' | 'fallback' | 'failure' = 'native',
   touch = true,
-  screen: 'transcript' | 'mobile' | 'desktop' = 'transcript'
+  screen: 'transcript' | 'mobile' | 'desktop' = 'transcript',
+  loadTimeout = 15_000
 ): Promise<{ context: BrowserContext; page: Page }> {
   const context = await browser!.newContext({
     viewport: { width, height: 844 },
@@ -261,8 +280,8 @@ async function openFixture(
     permissions: ['clipboard-read', 'clipboard-write']
   })
   const page = await context.newPage()
-  page.setDefaultTimeout(5_000)
-  page.setDefaultNavigationTimeout(10_000)
+  page.setDefaultTimeout(loadTimeout)
+  page.setDefaultNavigationTimeout(loadTimeout)
   if (clipboard !== 'native') {
     await page.addInitScript(`
       window.savedClipboard = navigator.clipboard
@@ -279,6 +298,7 @@ async function openFixture(
   }
   await page.goto(`${origin}/?fixture=${fixture}&screen=${screen}`)
   await page.getByRole('button', { name: 'Copy message', exact: true }).first().waitFor()
+  page.setDefaultTimeout(5_000)
   // Wait for the real Tailwind touch variant, rather than racing stylesheet load.
   expect(await page.evaluate("matchMedia('(hover: none)').matches")).toBe(touch)
   return { context, page }
@@ -317,9 +337,9 @@ describe('viewer copy in a real phone-size browser', { timeout: 20_000 }, () => 
       if (!browser) skip(unavailableReason)
       const { context, page } = await openFixture('short', width, 'native', touch)
       try {
-        expect(await page.getByRole('button', { name: 'Copy message', exact: true }).count()).toBe(
-          2
-        )
+        await expect
+          .poll(() => page.getByRole('button', { name: 'Copy message', exact: true }).count())
+          .toBe(2)
         await expectInViewport(page)
         if (touch) {
           for (const [index, label] of ['You', 'Claude'].entries()) {
@@ -338,12 +358,9 @@ describe('viewer copy in a real phone-size browser', { timeout: 20_000 }, () => 
           .getByRole('button', { name: 'More message actions', exact: true })
           .all()) {
           await menu.click()
-          expect(await page.getByRole('menuitem', { name: 'Copy as plain text' }).isVisible()).toBe(
-            true
-          )
-          expect(
-            await page.getByRole('menuitem', { name: 'Branch from here', exact: true }).isVisible()
-          ).toBe(true)
+          // The menu opens on the next frame: wait for it rather than racing it.
+          await page.getByRole('menuitem', { name: 'Copy as plain text' }).waitFor()
+          await page.getByRole('menuitem', { name: 'Branch from here', exact: true }).waitFor()
           await page.keyboard.press('Escape')
         }
       } finally {
@@ -358,25 +375,21 @@ describe('viewer copy in a real phone-size browser', { timeout: 20_000 }, () => 
       const { context, page } = await openFixture(fixture)
       try {
         const menus = page.getByRole('button', { name: 'More message actions', exact: true })
-        expect(await menus.count()).toBe(2)
+        await expect.poll(() => menus.count()).toBe(2)
         await expectInViewport(page)
         await capturePreview(page, fixture)
         await menus.nth(1).click()
-        expect(await page.getByRole('menuitem', { name: 'Copy as plain text' }).isVisible()).toBe(
-          true
-        )
-        expect(await page.getByRole('menuitem', { name: 'Copy as Markdown' }).isVisible()).toBe(
-          true
-        )
+        await page.getByRole('menuitem', { name: 'Copy as plain text' }).waitFor()
+        await page.getByRole('menuitem', { name: 'Copy as Markdown' }).waitFor()
         await page.getByRole('menuitem', { name: 'Copy as plain text' }).click()
         await page.getByText('Copied ✓', { exact: true }).waitFor()
         const copied = await page.evaluate<string>('navigator.clipboard.readText()')
         expect(copied.replace(/\r\n/g, '\n')).toBe(groupPlainText[fixture])
         await menus.nth(1).click()
         await page.getByRole('menuitem', { name: 'Branch from here', exact: true }).click()
-        expect(await page.evaluate('window.branches')).toEqual([
-          { id: 'assistant-message', mode: 'include' }
-        ])
+        await expect
+          .poll(() => page.evaluate('window.branches'))
+          .toEqual([{ id: 'assistant-message', mode: 'include' }])
       } finally {
         await context.close()
       }
@@ -643,9 +656,11 @@ describe('session Find with production screens', { timeout: 30_000 }, () => {
             )
           expect(controls).toContain('none')
           expect(controls.filter((display) => display !== 'none').length).toBeGreaterThan(0)
-          expect(await page.locator('button[aria-label="Copy input"]').count()).toBe(1)
-          expect(await page.locator('button[aria-label="Copy output"]').count()).toBe(2)
-          expect(await page.locator('.code-block button[aria-label="Copy"]').count()).toBe(2)
+          await expect.poll(() => page.locator('button[aria-label="Copy input"]').count()).toBe(1)
+          await expect.poll(() => page.locator('button[aria-label="Copy output"]').count()).toBe(2)
+          await expect
+            .poll(() => page.locator('.code-block button[aria-label="Copy"]').count())
+            .toBe(2)
 
           const matches = await page.evaluate<
             { text: string; content: string | null; inControl: boolean }[]
@@ -743,7 +758,7 @@ describe('touch copy buttons are visible and tappable', { timeout: 30_000 }, () 
       try {
         const copies = page.getByRole('button', { name: 'Copy message', exact: true })
         // You · Claude · You · Claude (long) · You · Claude (tool group).
-        expect(await copies.count()).toBe(6)
+        await expect.poll(() => copies.count()).toBe(6)
         const bubbles = ['.bg-user-bubble', '.bg-assistant-bubble']
 
         // One-word messages: the row fits inside the bubble and the screen.

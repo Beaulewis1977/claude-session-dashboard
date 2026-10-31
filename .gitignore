@@ -11,3 +11,9 @@ Thumbs.db
 !.vscode/extensions.json
 .idea/
 *.tsbuildinfo
+
+# Local helper script and review notes (kept on this machine, not part of the app)
+dev.ps1
+docs/PR*_REVIEW*.md
+docs/REVIEW_*.md
+docs/SECURITY_REVIEW.md

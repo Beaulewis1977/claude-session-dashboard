@@ -15,6 +15,7 @@ import {
 } from '@shared/usage/health'
 import { sanitizePace } from '@shared/usage/pace'
 import { cleanEffortChoice, cleanModelChoice, sanitizeProjectModels } from '@shared/model-choice'
+import { normalizeProjectKey } from '@shared/project-key'
 import type {
   AppInfo,
   AppSettings,
@@ -219,7 +220,9 @@ export function registerIpc(deps: IpcDeps): void {
         const next: Record<string, string> = {}
         for (const [k, v] of Object.entries(p.projectBilling).slice(0, 500)) {
           const b = billingValue(v)
-          if (b && k.length < 1000) next[k.toLowerCase()] = b
+          // Legacy WSL keys (bare paths) are kept until they can be migrated.
+          const key = normalizeProjectKey(k, true)
+          if (b && key) next[key] = b
         }
         s.projectBilling = next
       }

@@ -10,6 +10,12 @@
 
 import type { SessionSummary } from './types'
 import { modelLabel as pricedModelLabel } from './usage/pricing'
+import {
+  normalizeProjectKey,
+  projectDefaultKey,
+  projectKeyLabel,
+  type ProjectRef
+} from './project-key'
 
 /** The levels `claude --effort` accepts (v2.1.316). */
 export const EFFORT_LEVELS = ['low', 'medium', 'high', 'xhigh', 'max'] as const
@@ -82,43 +88,9 @@ export interface ModelSettings {
   projectModels: Record<string, ProjectModelDefault>
 }
 
-/** Which project a session belongs to: its folder, in its environment. */
-export interface ProjectRef {
-  env?: 'windows' | 'wsl'
-  distro?: string
-  cwd?: string
-}
-
-const WSL_KEY = /^wsl:([^:]+):(\/.*)$/
-
-/**
- * Key for a project's defaults. Windows folders are lower-cased (Windows
- * ignores case in paths). WSL folders are "wsl:<distro>:<path>" with the case
- * kept: Linux paths are case-sensitive, and each distro has its own files, so
- * /home/me/App and /home/me/app, or the same path in two distros, are
- * different projects. Undefined when the session has no folder (or a WSL
- * session no distro).
- */
-export function projectModelKey(p: ProjectRef | undefined): string | undefined {
-  if (!p?.cwd) return undefined
-  if (p.env === 'wsl') return p.distro ? `wsl:${p.distro}:${p.cwd}` : undefined
-  return p.cwd.toLowerCase()
-}
-
-/** A stored key in its current form, or undefined for one that can't be placed. */
-function normalizeProjectKey(k: string): string | undefined {
-  if (k.startsWith('wsl:')) return WSL_KEY.test(k) ? k : undefined
-  // A bare Linux path (the first form of these keys, never released) doesn't
-  // say which distro it meant: dropped rather than applied to all of them.
-  if (k.startsWith('/')) return undefined
-  return k.toLowerCase()
-}
-
-/** "WSL: Ubuntu · /home/me/app", or the Windows folder, for Settings. */
-export function projectKeyLabel(k: string): string {
-  const m = WSL_KEY.exec(k)
-  return m ? `WSL: ${m[1]} · ${m[2]}` : k
-}
+/** Same keys as the billing defaults (see project-key.ts). */
+export const projectModelKey = projectDefaultKey
+export { projectKeyLabel, type ProjectRef }
 
 /** Validate per-project defaults from a settings file or the renderer. */
 export function sanitizeProjectModels(v: unknown): Record<string, ProjectModelDefault> {

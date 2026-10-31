@@ -1,4 +1,4 @@
-import { execFileSync, spawnSync } from 'node:child_process'
+import { execFileSync } from 'node:child_process'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -31,6 +31,9 @@ import {
   type AskRunner,
   type RunResult
 } from '../src/main/services/ask'
+import { localShell, shellPath } from './helpers'
+
+const BASH = localShell('bash')
 
 const H = 3_600_000
 const T0 = Date.parse('2026-09-01T10:00:00Z')
@@ -383,41 +386,48 @@ describe('Ask Claude: subscription only, and nothing extra sent', () => {
     expect(WSL_ENV_ALLOWLIST).not.toMatch(/ANTHROPIC_/)
   })
 
-  it.skipIf(spawnSync('bash', ['--version']).status !== 0)(
-    'the WSL snippet really drops a hostile environment (run in bash)',
-    () => {
-      const out = execFileSync('bash', ['-c', `${WSL_ENV_ALLOWLIST} env`], {
-        encoding: 'utf8',
-        env: {
-          PATH: process.env.PATH,
-          HOME: '/home/beau',
-          LANG: 'en_US.UTF-8 with spaces',
-          CLAUDE_CODE_OAUTH_TOKEN: 'subscription-token',
-          ANTHROPIC_CUSTOM_HEADERS: 'Authorization: Bearer other',
-          ANTHROPIC_API_KEY: 'sk-ant-api',
-          CLAUDE_CODE_USE_VERTEX: '1',
-          CLAUDE_CODE_GATEWAY_TOKEN: 'g'
-        }
-      })
-      const names = out
+  // A local bash: on Windows Git for Windows' (bash on PATH there may be the WSL launcher).
+  it.runIf(!!BASH)('the WSL snippet really drops a hostile environment (run in bash)', () => {
+    const run = (script: string, env: NodeJS.ProcessEnv) =>
+      execFileSync(BASH!, ['-c', script], { encoding: 'utf8', env })
         .trim()
         .split('\n')
+        .filter(Boolean)
         .map((l) => l.split('=')[0])
-      // Only allowlisted names (bash may add SHELL/TERM itself, both allowed).
-      expect(names.filter((n) => !ASK_ENV_ALLOW.includes(n))).toEqual([])
-      expect(names).toEqual(
-        expect.arrayContaining(['CLAUDE_CODE_OAUTH_TOKEN', 'HOME', 'LANG', 'PATH'])
-      )
-      for (const bad of [
-        'ANTHROPIC_CUSTOM_HEADERS',
-        'ANTHROPIC_API_KEY',
-        'CLAUDE_CODE_USE_VERTEX',
-        'CLAUDE_CODE_GATEWAY_TOKEN'
-      ])
-        expect(names).not.toContain(bad)
-      expect(out).toContain('LANG=en_US.UTF-8 with spaces')
-    }
-  )
+    // What the shell itself adds even to an empty environment (MSYS adds
+    // MSYSTEM and the like on Windows): not something the snippet let through.
+    const own = run('exec env -i "$(command -v env)"', { PATH: shellPath(BASH!) })
+    const out = execFileSync(BASH!, ['-c', `${WSL_ENV_ALLOWLIST} env`], {
+      encoding: 'utf8',
+      env: {
+        PATH: shellPath(BASH!),
+        HOME: '/home/beau',
+        LANG: 'en_US.UTF-8 with spaces',
+        CLAUDE_CODE_OAUTH_TOKEN: 'subscription-token',
+        ANTHROPIC_CUSTOM_HEADERS: 'Authorization: Bearer other',
+        ANTHROPIC_API_KEY: 'sk-ant-api',
+        CLAUDE_CODE_USE_VERTEX: '1',
+        CLAUDE_CODE_GATEWAY_TOKEN: 'g'
+      }
+    })
+    const names = out
+      .trim()
+      .split('\n')
+      .map((l) => l.split('=')[0])
+    // Only allowlisted names (bash may add SHELL/TERM itself, both allowed).
+    expect(names.filter((n) => !ASK_ENV_ALLOW.includes(n) && !own.includes(n))).toEqual([])
+    expect(names).toEqual(
+      expect.arrayContaining(['CLAUDE_CODE_OAUTH_TOKEN', 'HOME', 'LANG', 'PATH'])
+    )
+    for (const bad of [
+      'ANTHROPIC_CUSTOM_HEADERS',
+      'ANTHROPIC_API_KEY',
+      'CLAUDE_CODE_USE_VERTEX',
+      'CLAUDE_CODE_GATEWAY_TOKEN'
+    ])
+      expect(names).not.toContain(bad)
+    expect(out).toContain('LANG=en_US.UTF-8 with spaces')
+  })
 })
 
 describe('Ask Claude service: billing check and cancelling', () => {

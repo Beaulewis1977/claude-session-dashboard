@@ -17,6 +17,7 @@ import {
 import type { LaunchPreview, TerminalPref } from '@shared/types'
 import { api } from '@/lib/api'
 import { showNewSession } from '@/lib/actions'
+import { launchesOnEnter } from '@/lib/dialog-keys'
 import { useApp, type BranchTarget } from '@/lib/store'
 import { cn } from '@/lib/utils'
 import { Button } from './ui/button'
@@ -290,10 +291,7 @@ function ResumeDialogBody({
         // A new branch takes focus (its rename box), so don't send focus back.
         onCloseAutoFocus={branchAt ? (e) => e.preventDefault() : undefined}
         onKeyDown={(e) => {
-          if (
-            e.key === 'Enter' &&
-            (e.ctrlKey || e.metaKey || (e.target as HTMLElement).tagName !== 'BUTTON')
-          ) {
+          if (e.key === 'Enter' && launchesOnEnter(e)) {
             e.preventDefault()
             void launch()
           }

@@ -31,6 +31,7 @@ import { BillingPicker } from './BillingPicker'
 import { BranchPointCard } from './viewer/Branches'
 import { SessionModelControls } from './ModelPicker'
 import { choiceLabel } from '@shared/model-choice'
+import { projectDefault, projectDefaultKey, withProjectDefault } from '@shared/project-key'
 
 export const SKIP_WARNING = 'Claude will not ask before running commands or deleting files.'
 
@@ -113,13 +114,13 @@ function ResumeDialogBody({
   const [launching, setLaunching] = useState(false)
   const [copied, setCopied] = useState(false)
   const accounts = useApp((s) => s.credits?.accounts) ?? []
-  const projectKey = (session?.cwd ?? '').toLowerCase()
+  // Same project keys as the model defaults: WSL by distro and exact path.
+  const projectKey = projectDefaultKey(session)
+  const projectBillingNow = projectDefault(settings.projectBilling, session)
   const [billing, setBilling] = useState(() =>
-    validBilling(settings.projectBilling[projectKey] ?? settings.defaultBilling, accounts)
+    validBilling(projectBillingNow ?? settings.defaultBilling, accounts)
   )
-  const [rememberProject, setRememberProject] = useState(
-    () => settings.projectBilling[projectKey] !== undefined
-  )
+  const [rememberProject, setRememberProject] = useState(() => projectBillingNow !== undefined)
   // Remote Control runs only on the subscription: turning one on turns the other off.
   const [remoteControl, setRemoteControlState] = useState(
     () => settings.remoteControlDefault && billing === 'subscription'
@@ -214,13 +215,10 @@ function ResumeDialogBody({
       remoteControl
     })
     // Per-project default ("always use API credits for this project").
-    const current = settings.projectBilling[projectKey]
-    if (projectKey && rememberProject && current !== billing) {
-      const projectBilling = { ...settings.projectBilling, [projectKey]: billing }
-      void api.updateSettings({ projectBilling }).then((st) => set({ settings: st }))
-    } else if (projectKey && !rememberProject && current !== undefined) {
-      const projectBilling = { ...settings.projectBilling }
-      delete projectBilling[projectKey]
+    const current = projectDefault(settings.projectBilling, session)
+    const want = rememberProject ? billing : undefined
+    if (session && projectKey && current !== want) {
+      const projectBilling = withProjectDefault(settings.projectBilling, session, want, sessions)
       void api.updateSettings({ projectBilling }).then((st) => set({ settings: st }))
     }
     setLaunching(false)

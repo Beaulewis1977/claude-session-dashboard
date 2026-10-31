@@ -75,6 +75,7 @@ import {
   DEFAULT_CHOICE,
   sanitizeProjectModels
 } from '@shared/model-choice'
+import { migrateLegacyKeys } from '@shared/project-key'
 
 // Windows looks for a program in the current folder before PATH. The app
 // starts programs by absolute path anyway; this documented opt-out also covers
@@ -496,6 +497,19 @@ async function main(): Promise<void> {
   // Phones show or hide "Open terminal here" from this.
   terminal.on('changed', () => mobile.push('policy'))
   sessions.on('changed', () => mobile.push('sessions'))
+  // Billing defaults from 1.4.0 and older keyed WSL projects by path alone:
+  // move them to "wsl:<distro>:<path>" once their sessions are known.
+  const migrateBillingKeys = (): void => {
+    const before = settings.value.projectBilling
+    const next = migrateLegacyKeys(before, sessions.list())
+    if (next === before) return
+    settings.update((s) => {
+      s.projectBilling = next
+    })
+    void settings.flush().catch(() => undefined)
+    mobile.push('settings')
+  }
+  sessions.on('changed', migrateBillingKeys)
   usage.on('changed', () => mobile.push('usage'))
   limits.on('changed', () => mobile.push('limits'))
   accounts.on('changed', () => mobile.push('credits'))
@@ -520,6 +534,7 @@ async function main(): Promise<void> {
 
   void sessions
     .start()
+    .then(() => migrateBillingKeys())
     .then(() => watcher.restart())
     // A fixed bridge script only reaches an existing install this way.
     .then(() =>

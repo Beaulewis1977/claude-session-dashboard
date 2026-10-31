@@ -29,6 +29,11 @@ import { NO_CWD_SEARCH } from './core/launch'
 import { callHandler, setAppPage } from './ipc-guard'
 import { JsonStore } from './core/json-store'
 import { registerMobileIpc } from './ipc-mobile'
+import { registerLiveIpc } from './ipc-live'
+import { realProcChecker } from './core/procs'
+import { createHooksStore, HooksInstaller } from './services/hooks'
+import { LiveService } from './services/live'
+import { desktopText } from '@shared/live-alerts'
 import type { MobileFile } from './mobile/devices'
 import { MobileService, webAppFile } from './mobile/service'
 import { fakeTailscale, TailscaleClient } from './mobile/tailscale'
@@ -48,6 +53,8 @@ import {
   fixturesLayout,
   prepareFixtures,
   seedFixtureBridge,
+  seedFixtureLive,
+  fixtureProcChecker,
   seedFixtureAccounts,
   seedFixtureData,
   seedFixtureUsage
@@ -76,6 +83,7 @@ import {
   sanitizeProjectModels
 } from '@shared/model-choice'
 import { migrateLegacyKeys } from '@shared/project-key'
+import { sanitizeLiveAlerts } from '@shared/live-alerts'
 
 // Windows looks for a program in the current folder before PATH. The app
 // starts programs by absolute path anyway; this documented opt-out also covers
@@ -244,6 +252,7 @@ async function main(): Promise<void> {
     s.defaultModel = cleanModelChoice(s.defaultModel) ?? DEFAULT_CHOICE
     s.defaultEffort = cleanEffortChoice(s.defaultEffort) ?? DEFAULT_CHOICE
     s.projectModels = sanitizeProjectModels(s.projectModels)
+    s.liveAlerts = sanitizeLiveAlerts(s.liveAlerts)
   })
   if (FIXTURES) {
     await seedFixtureData(appRoot, paths.archiveDir, metadata)
@@ -512,6 +521,36 @@ async function main(): Promise<void> {
   sessions.on('changed', migrateBillingKeys)
   usage.on('changed', () => mobile.push('usage'))
   limits.on('changed', () => mobile.push('limits'))
+
+  // Running now and session alerts (the opt-in hook bridge, see services/hooks.ts).
+  const hooksStore = createHooksStore(paths.dataDir)
+  await hooksStore.load()
+  const hooks = new HooksInstaller(hooksStore, {
+    dataDir: paths.dataDir,
+    scriptsDir: join(appRoot, 'resources', 'bridge'),
+    readScript: (p) => readFile(p, 'utf8')
+  })
+  const live = new LiveService({
+    sessions,
+    hooks,
+    procs: FIXTURES ? fixtureProcChecker() : realProcChecker(),
+    settings: () => sanitizeLiveAlerts(settings.value.liveAlerts),
+    distroRoot: (id) => sessions.source(id)?.distroRoot,
+    notify: (alert, title) => {
+      if (!Notification.isSupported()) return
+      const t = desktopText(alert, title)
+      const n = new Notification({
+        title: t.title,
+        body: t.body,
+        icon: join(appRoot, 'resources', 'icon.png')
+      })
+      n.on('click', () => showLive(alert.key))
+      n.show()
+    },
+    push: (kind, ref) => mobile.webPush({ kind, ref })
+  })
+  registerLiveIpc({ live, hooks, sessions, fixtures: FIXTURES })
+  live.on('changed', () => mobile.push('live'))
   accounts.on('changed', () => mobile.push('credits'))
 
   nativeTheme.themeSource = settings.value.theme
@@ -540,12 +579,15 @@ async function main(): Promise<void> {
     .then(() =>
       installer
         .refreshScripts(sessions.sources)
+        .then(() => hooks.refreshScripts(sessions.sources))
         .catch((err: unknown) => console.warn('could not refresh bridge scripts', err))
     )
     .then(() => Promise.all([usage.start(), limits.start()]))
     .then(() => accounts.startAutoRefresh())
     .then(async () => {
       if (FIXTURES) await seedFixtureBridge(paths.dataDir, sessions, installer)
+      if (FIXTURES) await seedFixtureLive(paths.dataDir, sessions, hooks)
+      live.start()
     })
     .then(() => mobile.autoStart())
 
@@ -562,6 +604,8 @@ async function main(): Promise<void> {
       await sessions.idle().catch(() => undefined)
       await usage.idle().catch(() => undefined)
       limits.stop()
+      live.stop()
+      await hooksStore.flush().catch(() => undefined)
       accounts.stop()
       await accountsStore.flush().catch(() => undefined)
       await bridgeStore.flush().catch(() => undefined)
@@ -630,6 +674,16 @@ async function main(): Promise<void> {
 
     if (process.env.ELECTRON_RENDERER_URL) void win.loadURL(process.env.ELECTRON_RENDERER_URL)
     else void win.loadFile(RENDERER_INDEX)
+  }
+
+  /** A session alert was clicked: show the window on that session. */
+  function showLive(key: string): void {
+    const w = mainWindow
+    if (!w || w.isDestroyed()) return
+    if (w.isMinimized()) w.restore()
+    w.show()
+    w.focus()
+    w.webContents.send('app:showLive', key)
   }
 
   function showUsage(): void {

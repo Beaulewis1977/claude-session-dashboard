@@ -303,7 +303,45 @@ export const webApi: CsdApi = {
   terminalOpenBackups: onPc('Opening folders'),
   onTerminalChanged: () => () => undefined,
   getTerminalAccess: () => rpc('getTerminalAccess'),
-  openTerminalHere: onPc('Opening a terminal on the PC')
+  openTerminalHere: onPc('Opening a terminal on the PC'),
+
+  getLive: () => rpc('getLive'),
+  onLiveChanged: (cb) => subscribe('live', cb),
+  // A tapped push alert arrives through phone.onOpenLive instead.
+  onShowLive: () => () => undefined,
+  resolveLiveRef: (ref) => rpc('resolveLiveRef', ref),
+  focusTerminal: onPc('Focusing a terminal'),
+  planHooks: onPc('Session alerts setup'),
+  applyHooks: onPc('Session alerts setup'),
+  mobilePushOff: onPc('Phone settings'),
+  mobilePushTest: onPc('Phone settings')
+}
+
+function pushSupported(): boolean {
+  return (
+    window.isSecureContext &&
+    'serviceWorker' in navigator &&
+    'PushManager' in window &&
+    'Notification' in window
+  )
+}
+
+function base64UrlBytes(s: string): Uint8Array<ArrayBuffer> {
+  const bin = atob(
+    s
+      .replace(/-/g, '+')
+      .replace(/_/g, '/')
+      .padEnd(Math.ceil(s.length / 4) * 4, '=')
+  )
+  const out = new Uint8Array(bin.length)
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i)
+  return out
+}
+
+function sameKey(a: ArrayBuffer | null | undefined, b: Uint8Array): boolean {
+  if (!a || a.byteLength !== b.length) return false
+  const x = new Uint8Array(a)
+  return x.every((v, i) => v === b[i])
 }
 
 /** What only the phone app needs: pairing, its own device, and launches. */
@@ -330,6 +368,97 @@ export const phone = {
   sendSshKey: (key: string): Promise<{ ok: boolean; error?: string; fingerprint?: string }> =>
     request('/api/ssh-key', { key }),
   connect,
+
+  // Push alerts (opt-in per phone). The PC sends only the kind of alert and
+  // an opaque reference; details load from the PC when the alert is tapped.
+
+  /** This browser can do Web Push at all (iOS: only when added to the home screen). */
+  pushSupported,
+  async pushState(): Promise<'on' | 'off' | 'denied' | 'unsupported'> {
+    if (!pushSupported()) return 'unsupported'
+    if (Notification.permission === 'denied') return 'denied'
+    const reg = await navigator.serviceWorker.getRegistration()
+    const sub = await reg?.pushManager.getSubscription()
+    return sub && Notification.permission === 'granted' ? 'on' : 'off'
+  },
+  /** Call from a tap: asks for permission, subscribes, and hands the subscription to the PC. */
+  async enablePush(): Promise<{ ok: boolean; error?: string }> {
+    if (!pushSupported()) {
+      const ios = /iPhone|iPad|iPod/.test(navigator.userAgent)
+      const standalone =
+        window.matchMedia?.('(display-mode: standalone)').matches ||
+        (navigator as Navigator & { standalone?: boolean }).standalone === true
+      return {
+        ok: false,
+        error:
+          ios && !standalone
+            ? 'On iPhone and iPad, push alerts only work after adding this app to the Home Screen (Share → Add to Home Screen). Open it from there and try again.'
+            : "This browser can't receive push alerts here."
+      }
+    }
+    try {
+      const permission = await Notification.requestPermission()
+      if (permission !== 'granted')
+        return {
+          ok: false,
+          error:
+            permission === 'denied'
+              ? 'Notifications are blocked for this site. Allow them in the browser settings, then try again.'
+              : 'Notifications were not allowed.'
+        }
+      const reg = await navigator.serviceWorker.ready
+      const { publicKey } = await request<{ publicKey: string }>('/api/push/key', {})
+      const key = base64UrlBytes(publicKey)
+      let sub = await reg.pushManager.getSubscription()
+      // A subscription made for another key (e.g. the PC made new keys) must be replaced.
+      if (sub && !sameKey(sub.options.applicationServerKey, key)) {
+        await sub.unsubscribe()
+        sub = null
+      }
+      sub ??= await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: key
+      })
+      await request('/api/push/subscribe', { subscription: sub.toJSON() })
+      return { ok: true }
+    } catch (err) {
+      return { ok: false, error: (err as Error).message }
+    }
+  },
+  async disablePush(): Promise<void> {
+    await request('/api/push/unsubscribe', {}).catch(() => undefined)
+    if (!pushSupported()) return
+    const reg = await navigator.serviceWorker.getRegistration()
+    await (await reg?.pushManager.getSubscription())?.unsubscribe()
+  },
+  /** Ask the PC for a test push to this phone. Resolves with how many were sent (0 or 1). */
+  testPush: async (): Promise<number> =>
+    (await request<{ sent: number }>('/api/push/test', {})).sent,
+  /**
+   * A push alert was tapped: `ref` names the session (resolved on the PC), or
+   * is undefined for an alert without one. Also fires once for a `#live=…`
+   * address the app was opened with.
+   */
+  onOpenLive(cb: (ref: string | undefined) => void): () => void {
+    const fromHash = (): void => {
+      const m = /^#live(?:=([A-Za-z0-9_-]{8,64}))?$/.exec(location.hash)
+      if (!m) return
+      history.replaceState(null, '', location.pathname + location.search)
+      cb(m[1])
+    }
+    fromHash()
+    const onMessage = (e: MessageEvent): void => {
+      const d = e.data as { type?: unknown; ref?: unknown } | undefined
+      if (d?.type !== 'csd-open-live') return
+      cb(typeof d.ref === 'string' && /^[A-Za-z0-9_-]{8,64}$/.test(d.ref) ? d.ref : undefined)
+    }
+    navigator.serviceWorker?.addEventListener('message', onMessage)
+    window.addEventListener('hashchange', fromHash)
+    return () => {
+      navigator.serviceWorker?.removeEventListener('message', onMessage)
+      window.removeEventListener('hashchange', fromHash)
+    }
+  },
   /** Live-update notices from the PC (e.g. 'settings'). */
   on: (channel: Channel, cb: () => void): (() => void) => subscribe(channel, cb),
   onToast(cb: (t: { title: string; body?: string }) => void): () => void {

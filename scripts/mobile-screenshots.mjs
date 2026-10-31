@@ -76,6 +76,13 @@ for (const theme of ['dark', 'light']) {
   await page.waitForTimeout(600)
   await shot(`sessions${s}`)
 
+  // Running now.
+  await page.getByRole('button', { name: /Running/ }).first().click()
+  await page.waitForSelector('text=Needs approval')
+  await shot(`running${s}`)
+  await page.getByRole('button', { name: 'Sessions' }).first().click()
+  await page.waitForTimeout(400)
+
   // A session, read in chat bubbles.
   await page.locator('button', { hasText: 'Safari login loop' }).first().click()
   await page.waitForSelector('text=Resume on PC')

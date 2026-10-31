@@ -69,6 +69,13 @@ for (const theme of ['dark', 'light']) {
   await selectByTitle('Safari login loop')
   await shot(`main${suffix}`)
 
+  // Running now (the fixtures' sample running sessions).
+  await win.locator('nav button', { hasText: 'Running now' }).first().click()
+  await win.waitForSelector('text=Needs you')
+  await shot(`running-now${suffix}`)
+  await win.locator('nav button', { hasText: 'All sessions' }).first().click()
+  await win.waitForSelector('[role="option"]')
+
   // Expanded tool calls.
   await selectByTitle('Cursor-based pagination')
   const tools = win.locator('button[aria-expanded="false"]', { hasText: 'Edit' })

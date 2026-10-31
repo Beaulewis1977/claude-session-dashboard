@@ -30,6 +30,19 @@ Describe 'csd-hook.ps1' {
     (Get-Content (Join-Path $dir 'events\s1.Stop.json') -Raw) | Should -Match '"n":2'
   }
 
+  It 'reads only top-level fields, never the same names nested in tool input' {
+    $p = '{"tool_input":{"session_id":"evil","hook_event_name":"Stop"},"session_id":"real-1","hook_event_name":"PermissionRequest"}'
+    Invoke-Hook $dir $p | Should -BeNullOrEmpty
+    (Get-ChildItem (Join-Path $dir 'events')).Name | Should -Be @('real-1.PermissionRequest.json')
+  }
+
+  It 'ignores a top-level array and oversized input' {
+    Invoke-Hook $dir '[{"session_id":"a","hook_event_name":"Stop"}]' | Should -BeNullOrEmpty
+    $big = '{"session_id":"big","hook_event_name":"Stop","m":"' + ('x' * 1100000) + '"}'
+    Invoke-Hook $dir $big | Should -BeNullOrEmpty
+    Test-Path (Join-Path $dir 'events') | Should -BeFalse
+  }
+
   It 'ignores unsafe or incomplete input and always exits 0' {
     Invoke-Hook $dir '' | Should -BeNullOrEmpty
     Invoke-Hook $dir '{"session_id":"../../evil","hook_event_name":"Stop"}' | Should -BeNullOrEmpty

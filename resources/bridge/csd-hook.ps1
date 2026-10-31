@@ -14,12 +14,13 @@ try {
   $raw = [Console]::In.ReadToEnd()
   if (-not $raw -or $raw.Length -gt 1048576) { exit 0 }
 
-  # Only the two fields that name the file; both must be plain identifiers.
-  $sid = ''
-  $ev = ''
-  if ($raw -match '"session_id"\s*:\s*"([A-Za-z0-9_-]{1,128})"') { $sid = $Matches[1] }
-  if ($raw -match '"hook_event_name"\s*:\s*"([A-Za-z]{1,40})"') { $ev = $Matches[1] }
-  if (-not $sid -or -not $ev) { exit 0 }
+  # The two fields that name the file, from the top level of the JSON only
+  # (the same names inside tool input never count). Both must be plain names.
+  $j = $raw | ConvertFrom-Json
+  if (-not ($j -is [System.Management.Automation.PSCustomObject])) { exit 0 }
+  $sid = [string]$j.session_id
+  $ev = [string]$j.hook_event_name
+  if ($sid -cnotmatch '^[A-Za-z0-9_-]{1,128}$' -or $ev -cnotmatch '^[A-Za-z]{1,40}$') { exit 0 }
 
   $dir = if ($env:CSD_BRIDGE_DIR) { $env:CSD_BRIDGE_DIR } else { Join-Path $HOME '.claude-session-dashboard' }
   $events = Join-Path $dir 'events'

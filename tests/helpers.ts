@@ -1,5 +1,6 @@
-import { readFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { spawnSync } from 'node:child_process'
+import { existsSync, readFileSync } from 'node:fs'
+import { delimiter, dirname, join } from 'node:path'
 import type { LaunchTools } from '../src/main/core/launch'
 
 export const FIXTURES = join(__dirname, '..', 'fixtures')
@@ -57,4 +58,38 @@ export function read(path: string): string {
 
 export function line(obj: unknown): string {
   return JSON.stringify(obj)
+}
+
+/**
+ * A local POSIX shell for the script tests, or undefined (the test is then
+ * skipped). On Windows `sh` usually isn't on PATH, and `bash` there is often
+ * System32\bash.exe, the WSL launcher, which runs the command inside a distro
+ * instead. So Git for Windows' own shell is used; elsewhere, the one on PATH.
+ */
+export function localShell(name: 'sh' | 'bash'): string | undefined {
+  if (process.platform !== 'win32') {
+    return spawnSync(name, ['-c', 'true']).status === 0 ? name : undefined
+  }
+  const roots = [
+    process.env.ProgramFiles ?? 'C:\\Program Files',
+    process.env['ProgramFiles(x86)'] ?? 'C:\\Program Files (x86)',
+    process.env.LOCALAPPDATA && join(process.env.LOCALAPPDATA, 'Programs')
+  ].filter((r): r is string => !!r)
+  const gitBash = process.env.CLAUDE_CODE_GIT_BASH_PATH
+  const candidates = [
+    // usr\bin first: bin\*.exe are wrappers that add MSYSTEM and friends.
+    ...(gitBash ? [join(gitBash, '..', '..', 'usr', 'bin', `${name}.exe`)] : []),
+    ...roots.flatMap((r) => [
+      join(r, 'Git', 'usr', 'bin', `${name}.exe`),
+      join(r, 'Git', 'bin', `${name}.exe`)
+    ])
+  ]
+  return candidates.find((c) => existsSync(c))
+}
+
+/** PATH for running a script with `shell`: its own folder first (MSYS needs it for cat, mv, env). */
+export function shellPath(shell: string): string {
+  return process.platform === 'win32'
+    ? `${dirname(shell)}${delimiter}${process.env.PATH ?? ''}`
+    : (process.env.PATH ?? '')
 }

@@ -12,6 +12,7 @@ import {
   UnsafeWriteError
 } from '../src/main/core/safe-paths'
 import { BridgeInstaller, createBridgeStore, envPaths } from '../src/main/services/bridge'
+import { localShell, shellPath } from './helpers'
 
 const SCRIPTS = join(__dirname, '..', 'resources', 'bridge')
 
@@ -355,7 +356,10 @@ describe('status line installer', () => {
 
 // ------------------------------------------------------------ the sh script
 
-describe('statusline.sh', () => {
+// Git for Windows' sh on Windows (sh isn't on PATH there); skipped without one.
+const SH = localShell('sh')
+
+describe.runIf(!!SH)('statusline.sh', () => {
   const payload = JSON.stringify({
     session_id: 'sess-1',
     model: { id: 'claude-opus-5-5', display_name: 'Opus' },
@@ -370,9 +374,9 @@ describe('statusline.sh', () => {
     }
   })
   const run = (dir: string, input: string) =>
-    execFileSync('sh', [join(SCRIPTS, 'statusline.sh')], {
+    execFileSync(SH!, [join(SCRIPTS, 'statusline.sh')], {
       input,
-      env: { ...process.env, CSD_BRIDGE_DIR: dir },
+      env: { ...process.env, PATH: shellPath(SH!), CSD_BRIDGE_DIR: dir },
       encoding: 'utf8'
     })
 

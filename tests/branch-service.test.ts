@@ -216,7 +216,7 @@ describe('Branch from here (fixtures)', () => {
   })
 
   it('names and links a fork launched from the app when it appears', async () => {
-    const { sessions, lineage } = await setup()
+    const { sessions, lineage, launcher } = await setup()
     const parent = sessions.list().find((s) => s.sessionId === SAFARI)!
     lineage.expectFork(parent)
     const forkId = '5c5c5c5c-5c5c-4c5c-8c5c-5c5c5c5c5c5c'
@@ -229,6 +229,11 @@ describe('Branch from here (fixtures)', () => {
     expect(fork.title).toBe('Safari login loop — branch')
     expect(fork.meta.branch).toMatchObject({ parentKey: parent.key, via: 'fork' })
     expect(fork.lineage).toMatchObject({ parentKey: parent.key, via: 'fork' })
+    // The parent's own model / effort (fixtures: opus, high) stay with the fork,
+    // so resuming it later uses them too.
+    expect(fork.meta).toMatchObject({ model: 'opus', effort: 'high' })
+    const later = await launcher.preview({ key: fork.key, fork: false, skipPermissions: false })
+    expect(later.claudeCommand).toBe(`claude --model opus --effort high --resume ${forkId}`)
   })
 })
 

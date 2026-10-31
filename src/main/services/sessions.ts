@@ -523,13 +523,22 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
    * Record a branch made from the app (in the app's metadata only) and give it
    * a default name if it has none.
    */
-  recordBranch(sessionId: string, branch: BranchRecord, name?: string): void {
+  recordBranch(
+    sessionId: string,
+    branch: BranchRecord,
+    name?: string,
+    /** The parent's own model / effort choice, kept by the branch. */
+    inherit: Pick<SessionMeta, 'model' | 'effort'> = {}
+  ): void {
+    const kept = cleanMetaPatch(inherit)
     this.metadata.update((d) => {
       const prev = d.sessions[sessionId] ?? {}
       d.sessions[sessionId] = {
         ...prev,
         branch,
         ...(name && !prev.name ? { name, nameAt: new Date().toISOString() } : {}),
+        ...(kept.model && !prev.model ? { model: kept.model } : {}),
+        ...(kept.effort && !prev.effort ? { effort: kept.effort } : {}),
         updatedAt: new Date().toISOString()
       }
     })

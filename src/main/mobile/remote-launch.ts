@@ -140,7 +140,8 @@ export class RemoteLauncher {
       terminal: p.terminal,
       remoteControlName: p.remoteControlName,
       confirmOnPc: st.confirmOnPc,
-      willRestore: p.willRestore
+      willRestore: p.willRestore,
+      modelChoice: p.modelChoice
     }
   }
 

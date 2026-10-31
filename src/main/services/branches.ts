@@ -123,7 +123,8 @@ export class BranchService {
         ...(plan.snapped !== 'none' ? { snapped: plan.snapped } : {}),
         createdAt: new Date().toISOString()
       },
-      name
+      name,
+      { model: s.meta.model, effort: s.meta.effort }
     )
     return this.sessions.get(created.key) ?? created
   }

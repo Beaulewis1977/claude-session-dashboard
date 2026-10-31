@@ -14,6 +14,7 @@ import {
 } from './usage/health'
 import { DEFAULT_PACE, type PaceSettings } from './usage/pace'
 import type { SourceHints, SourceLabel } from './source-label'
+import type { EffortChoice, ProjectModelDefault, ResolvedModel } from './model-choice'
 
 export type EnvKind = 'windows' | 'wsl'
 
@@ -63,6 +64,10 @@ export interface SessionMeta {
   pinned?: boolean
   /** Last launched from the app with Remote Control on (from the desktop or a paired phone). */
   remote?: RemoteTag
+  /** Model for launches (`--model`): an alias or ID, "default" for none; unset = the project / Settings default. */
+  model?: string
+  /** Effort for launches (`--effort`); unset = the project / Settings default. */
+  effort?: EffortChoice
   updatedAt?: string
 }
 
@@ -265,6 +270,12 @@ export interface AppSettings {
   askTimeoutSec: number
   /** Turn Remote Control on for Resume / Fork / Branch by default. */
   remoteControlDefault: boolean
+  /** Model for launches unless a session or project has its own ("default" = Claude Code's). */
+  defaultModel: string
+  /** Effort level for launches unless a session or project has its own. */
+  defaultEffort: EffortChoice
+  /** Per-project model / effort defaults, keyed by lower-cased cwd. */
+  projectModels: Record<string, ProjectModelDefault>
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -289,7 +300,10 @@ export const DEFAULT_SETTINGS: AppSettings = {
   elsewhere: [],
   askSkipPreview: false,
   askTimeoutSec: 180,
-  remoteControlDefault: false
+  remoteControlDefault: false,
+  defaultModel: 'default',
+  defaultEffort: 'default',
+  projectModels: {}
 }
 
 export interface ScanState {
@@ -386,6 +400,8 @@ export interface LaunchPreview {
   launchError?: string
   /** The Remote Control session name, when Remote Control is on and a name is left after cleaning. */
   remoteControlName?: string
+  /** The model and effort the launch uses, and where they come from. */
+  modelChoice?: ResolvedModel
 }
 
 export interface LaunchResult {

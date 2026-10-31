@@ -6,7 +6,9 @@
       "tags": [
         "bug",
         "auth"
-      ]
+      ],
+      "model": "opus",
+      "effort": "high"
     },
     "e9a1b2c3-d4e5-4f60-8172-839405a6b7c8": {
       "tags": [

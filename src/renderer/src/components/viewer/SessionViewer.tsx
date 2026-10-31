@@ -65,6 +65,9 @@ import { Tooltip } from '@/components/ui/tooltip'
 import { EnvBadge } from '../EnvBadge'
 import { BillingBadge } from '../BillingPicker'
 import { RemoteBadge } from '../RemoteBadge'
+import { SessionModelControls } from '../ModelPicker'
+import { useModelChoice } from '@/lib/model-choice'
+import { choiceLabel } from '@shared/model-choice'
 import { SessionUsageStrip } from './SessionUsage'
 import { DescriptionEditor, EditableTitle, TagEditor, TitleSourceLine } from './MetaEditors'
 import { FindBar } from './FindBar'
@@ -139,6 +142,7 @@ function Header({
     session.lastActivityAt &&
     new Date(session.startedAt).toDateString() === new Date(session.lastActivityAt).toDateString()
   const useClaude = canUseClaudeName(session)
+  const choice = choiceLabel(useModelChoice(session))
 
   return (
     <div className="border-b border-border px-8 pt-5 pb-4">
@@ -160,13 +164,17 @@ function Header({
               </Badge>
             ) : (
               <>
-                <Tooltip content="Resume in a terminal" shortcut={`${MOD}+Enter`}>
+                <Tooltip
+                  content={choice ? `Resume in a terminal with ${choice}` : 'Resume in a terminal'}
+                  shortcut={`${MOD}+Enter`}
+                >
                   <Button
                     variant="primary"
                     size="md"
                     onClick={() => openResume(session.key, false)}
                   >
                     <Play className="fill-current" /> Resume
+                    {choice && <span className="font-normal opacity-85">· {choice}</span>}
                   </Button>
                 </Tooltip>
                 <Tooltip
@@ -325,6 +333,13 @@ function Header({
             {session.version ? ` · Claude Code ${session.version}` : ''}
           </span>
         </div>
+
+        {session.availability !== 'imported' && (
+          <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1.5">
+            <span className="text-xs font-medium text-muted-foreground">Launch with</span>
+            <SessionModelControls session={session} />
+          </div>
+        )}
 
         <SessionUsageStrip sessionKey={session.key} version={session.sizeBytes} />
 

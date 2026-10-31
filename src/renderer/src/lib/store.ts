@@ -58,6 +58,8 @@ interface State {
   credits: CreditsState | null
 
   view: 'sessions' | 'settings' | 'usage'
+  /** Settings section to scroll to when Settings opens (e.g. 'accounts'). */
+  settingsSection: string | null
   selectedKey: string | null
   /** Sessions picked with Ctrl/Shift+click for a bulk action (includes the selected one). */
   checked: string[]
@@ -99,6 +101,7 @@ export const useApp = create<State>((set) => ({
   credits: null,
 
   view: 'sessions',
+  settingsSection: null,
   selectedKey: null,
   checked: [],
   anchorKey: null,

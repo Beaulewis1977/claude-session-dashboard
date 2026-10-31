@@ -18,6 +18,8 @@ import { cn } from '@/lib/utils'
 import { EnvDot } from '../EnvBadge'
 import { BillingBadge } from '../BillingPicker'
 import { RemoteBadge } from '../RemoteBadge'
+import { ModelChoiceBadge } from '../ModelPicker'
+import { useModelChoice } from '@/lib/model-choice'
 
 export const ROW_HEIGHT = 104
 
@@ -70,6 +72,7 @@ export const SessionRow = memo(function SessionRow({
   const p = preview(s)
   const tags = s.meta.tags ?? []
   const indent = Math.min(depth, 3) * 14
+  const choice = useModelChoice(s)
   return (
     <div
       role="option"
@@ -165,6 +168,7 @@ export const SessionRow = memo(function SessionRow({
             </span>
           )}
           <RemoteBadge session={s} compact />
+          {s.availability !== 'imported' && <ModelChoiceBadge choice={choice} compact />}
           <SourceBadge source={s.source} reason={s.sourceReason} compact />
           <BillingBadge billing={s.billing} compact />
           {hit &&

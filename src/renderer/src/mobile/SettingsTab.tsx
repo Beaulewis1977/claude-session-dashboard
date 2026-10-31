@@ -26,6 +26,7 @@ import { Switch } from '@/components/ui/checkbox'
 import { Input, Textarea } from '@/components/ui/input'
 import { Segmented } from '@/components/ui/segmented'
 import { useMobile } from './state'
+import { DefaultModelPickers } from '@/components/ModelPicker'
 
 function Card({ title, note, children }: { title: string; note?: ReactNode; children: ReactNode }) {
   return (
@@ -177,6 +178,19 @@ export function SettingsTab() {
             aria-label="Remote Control by default on the PC"
           />
         </Line>
+        <div className="px-4 py-2.5">
+          <div className="text-[15px]">Model and effort</div>
+          <div className="mt-0.5 mb-2 text-[12px] leading-snug text-muted-foreground">
+            For sessions without their own choice (or a project default). Default lets Claude Code
+            decide.
+          </div>
+          <DefaultModelPickers
+            model={settings.defaultModel}
+            effort={settings.defaultEffort}
+            onModel={(defaultModel) => void update({ defaultModel })}
+            onEffort={(defaultEffort) => void update({ defaultEffort })}
+          />
+        </div>
       </Card>
 
       <Card

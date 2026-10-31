@@ -10,6 +10,7 @@ import {
   Play,
   ShieldCheck,
   Smartphone,
+  Sparkles,
   SquareTerminal,
   TriangleAlert
 } from 'lucide-react'
@@ -17,6 +18,7 @@ import type { RemoteLaunchPreview, RemoteLaunchRequest, RemoteLaunchResult } fro
 import { CLAUDE_CODE_WEB_URL } from '@shared/mobile'
 import type { SessionSummary, TerminalPref } from '@shared/types'
 import { now } from '@shared/clock'
+import { effortLabel, modelLabel } from '@shared/model-choice'
 import { freshRemoteUrl } from '@/lib/remote'
 import { useApp } from '@/lib/store'
 import { phone } from '@/lib/web-api'
@@ -188,6 +190,27 @@ export function LaunchSheet({
                       <span className="text-muted-foreground">
                         {' '}
                         as “{preview.remoteControlName}”
+                      </span>
+                    )}
+                  </span>
+                </li>
+                <li className="flex items-start gap-2.5">
+                  <Sparkles className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+                  <span>
+                    {preview.modelChoice?.model ? (
+                      <b>{modelLabel(preview.modelChoice.model)}</b>
+                    ) : (
+                      'Claude Code’s default model'
+                    )}
+                    {preview.modelChoice?.effort && (
+                      <> · {effortLabel(preview.modelChoice.effort)} effort</>
+                    )}
+                    {preview.modelChoice?.model && (
+                      <span className="mt-0.5 block truncate font-mono text-[11.5px] text-muted-foreground">
+                        --model {preview.modelChoice.model}
+                        {preview.modelChoice.effort
+                          ? ` --effort ${preview.modelChoice.effort}`
+                          : ''}
                       </span>
                     )}
                   </span>

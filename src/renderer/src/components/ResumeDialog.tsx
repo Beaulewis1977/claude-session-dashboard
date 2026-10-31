@@ -28,6 +28,8 @@ import { Tooltip } from './ui/tooltip'
 import { validBilling } from '@/lib/billing'
 import { BillingPicker } from './BillingPicker'
 import { BranchPointCard } from './viewer/Branches'
+import { SessionModelControls } from './ModelPicker'
+import { choiceLabel } from '@shared/model-choice'
 
 export const SKIP_WARNING = 'Claude will not ask before running commands or deleting files.'
 
@@ -174,11 +176,18 @@ function ResumeDialogBody({
     session?.availability,
     billingAccountId,
     newSession,
-    remoteControl
+    remoteControl,
+    // The model / effort pickers save right away; the command follows them.
+    session?.meta.model,
+    session?.meta.effort,
+    settings.defaultModel,
+    settings.defaultEffort,
+    settings.projectModels
   ])
 
   const close = (): void => set({ resume: null })
   if (!session) return null
+  const choice = preview?.modelChoice ? choiceLabel(preview.modelChoice) : ''
   const fork = resume.fork
   const branchBlocked = !!branchAt && (!preview?.branch || !!preview.branchError)
   const blocked =
@@ -477,6 +486,22 @@ function ResumeDialogBody({
             </div>
           </div>
 
+          <div>
+            <div className="mb-1.5 flex items-center gap-1.5 text-xs font-medium">
+              Model and effort
+              <Tooltip
+                content="Saved for this session. Default uses the project's default, then Settings, then Claude Code's own (no flag). An effort level set with CLAUDE_CODE_EFFORT_LEVEL wins over --effort."
+                side="right"
+              >
+                <Info
+                  className="size-3.5 text-subtle-foreground"
+                  aria-label="About model and effort"
+                />
+              </Tooltip>
+            </div>
+            <SessionModelControls session={session} />
+          </div>
+
           <RemoteControlOption
             checked={remoteControl}
             onChange={setRemoteControl}
@@ -561,6 +586,7 @@ function ResumeDialogBody({
               <Play className="fill-current" />
             )}
             {branchAt ? 'Branch' : newSession ? 'Start' : fork ? 'Fork' : 'Resume'}
+            {choice && <span className="font-normal opacity-85">· {choice}</span>}
             <Kbd className="ml-1 border-white/25 bg-white/15 text-primary-foreground">↵</Kbd>
           </Button>
         </DialogFooter>

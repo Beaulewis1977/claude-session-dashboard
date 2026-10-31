@@ -59,6 +59,9 @@ import { SessionUsageStrip } from '@/components/viewer/SessionUsage'
 import { Transcript, type OnBranch } from '@/components/viewer/Transcript'
 import { useFind } from '@/components/viewer/useFind'
 import { LaunchSheet, type LaunchTarget } from './LaunchSheet'
+import { SessionModelControls } from '@/components/ModelPicker'
+import { useModelChoice } from '@/lib/model-choice'
+import { choiceLabel } from '@shared/model-choice'
 import { TerminalSheet } from './TerminalSheet'
 import { canOpenTerminal } from '@shared/terminal'
 import { useMobile } from './state'
@@ -159,6 +162,7 @@ export function SessionScreen({ session }: { session: SessionSummary }) {
   const messages = useMemo(() => detail?.messages ?? [], [detail])
   const find = useFind(contentRef, scrollRef, findOpen ? findQuery : '', detail)
   const viewOnly = session.availability === 'imported'
+  const choice = choiceLabel(useModelChoice(session))
   const onBranch = useCallback<OnBranch>(
     (id, mode) => setLaunch({ kind: 'branch', at: id, mode }),
     []
@@ -326,6 +330,14 @@ export function SessionScreen({ session }: { session: SessionSummary }) {
               {formatDateTime(session.startedAt)} → {formatDateTime(session.lastActivityAt)}
             </div>
           </div>
+          {!viewOnly && (
+            <div className="mt-3">
+              <div className="mb-1.5 text-[12.5px] font-medium text-muted-foreground">
+                Launch with
+              </div>
+              <SessionModelControls session={session} write={write} disabled={readOnly} />
+            </div>
+          )}
           <SessionUsageStrip sessionKey={session.key} version={session.sizeBytes} />
           <div className="mt-3">
             <TagEditor
@@ -405,6 +417,7 @@ export function SessionScreen({ session }: { session: SessionSummary }) {
               onClick={() => setLaunch({ kind: 'resume' })}
             >
               <Play className="fill-current" /> Resume on PC
+              {choice && <span className="truncate font-normal opacity-85">· {choice}</span>}
             </Button>
             <Button
               variant="outline"

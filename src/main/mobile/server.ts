@@ -56,7 +56,11 @@ export interface ServerDeps {
     unsubscribe(deviceId: string): void
     /** A test push to this phone only; how many were sent. */
     test(deviceId: string): Promise<number>
+    /** Does the PC hold this phone's subscription, for this endpoint? */
+    state(deviceId: string, endpoint: unknown): { on: boolean; matches: boolean }
   }
+  /** The session a tapped push alert means: only for the phone it was sent to, once. */
+  resolveLiveRef?(deviceId: string, ref: unknown): string | null
   now?: () => number
 }
 
@@ -573,15 +577,20 @@ export class MobileServer {
       case '/api/push/key':
       case '/api/push/subscribe':
       case '/api/push/unsubscribe':
-      case '/api/push/test': {
+      case '/api/push/test':
+      case '/api/push/check': {
         // Allowed in read-only mode: push alerts change nothing on the PC.
         const push = this.deps.push
         if (!push) throw new HttpError(404, 'Not available')
-        const body = (await readJson(req)) as { subscription?: unknown }
+        const body = (await readJson(req)) as { subscription?: unknown; endpoint?: unknown }
         if (!this.deps.registry.isActive(d.id))
           throw new HttpError(401, 'This phone is not paired (or was revoked). Pair it again.')
         if (path === '/api/push/key') {
           this.json(req, res, 200, { publicKey: push.publicKey() })
+          return
+        }
+        if (path === '/api/push/check') {
+          this.json(req, res, 200, push.state(d.id, body.endpoint))
           return
         }
         if (!this.writeLimiter.take(d.id))
@@ -598,6 +607,14 @@ export class MobileServer {
         } else {
           this.json(req, res, 200, { sent: await push.test(d.id) })
         }
+        return
+      }
+      case '/api/live/resolve': {
+        const body = (await readJson(req)) as { ref?: unknown }
+        if (!this.deps.registry.isActive(d.id))
+          throw new HttpError(401, 'This phone is not paired (or was revoked). Pair it again.')
+        const key = this.deps.resolveLiveRef?.(d.id, body.ref) ?? null
+        this.json(req, res, 200, { key })
         return
       }
       case '/api/unpair': {

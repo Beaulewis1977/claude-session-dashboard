@@ -390,6 +390,12 @@ function SessionAlertsCard({
         reloadPush()
         toast('Push alerts off for this phone')
       }
+    } catch (err) {
+      // The PC must confirm, or it would keep sending: push stays on.
+      toast.error("Couldn't turn push alerts off", {
+        description: `Your PC didn't confirm (${(err as Error).message}). Push stays on; try again when your PC can be reached.`
+      })
+      reloadPush()
     } finally {
       setBusy(false)
     }
@@ -408,12 +414,20 @@ function SessionAlertsCard({
               ? /iPhone|iPad|iPod/.test(navigator.userAgent)
                 ? 'Add this app to your Home Screen first, then open it from there.'
                 : "This browser can't receive push alerts."
-              : 'Even when this app is closed.'
+              : push === 'unknown'
+                ? "Can't reach your PC to check right now."
+                : 'Even when this app is closed.'
         }
       >
         <Switch
           checked={push === 'on'}
-          disabled={busy || push === null || push === 'denied' || push === 'unsupported'}
+          disabled={
+            busy ||
+            push === null ||
+            push === 'denied' ||
+            push === 'unsupported' ||
+            push === 'unknown'
+          }
           onCheckedChange={(v) => void togglePush(v)}
           aria-label="Push alerts on this phone"
         />

@@ -65,6 +65,8 @@ export interface MobileServiceDeps {
   claudePath(): Promise<string | undefined>
   /** Terminal access: a phone offers its public SSH key (shown on the PC only). */
   proposeKey?: ServerDeps['proposeKey']
+  /** Which session a tapped push alert means (Running now; per phone, once). */
+  resolveLiveRef?: (deviceId: string, ref: unknown) => string | null
   /** For tests: how a push is posted (default: HTTPS to the push service). */
   pushPost?: PushPost
 }
@@ -111,8 +113,16 @@ export class MobileService extends EventEmitter<{ changed: [] }> {
         publicKey: () => this.pushPublicKey(),
         subscribe: (id, sub) => this.subscribePush(id, sub),
         unsubscribe: (id) => this.pushOff(id, 'phone'),
-        test: (id) => this.webPush({ kind: 'test' }, id)
-      }
+        test: (id) => this.webPush({ kind: 'test' }, id),
+        state: (id, endpoint) => {
+          const d = this.registry.pushTargets().find((x) => x.id === id)
+          return {
+            on: !!d,
+            matches: !!d && typeof endpoint === 'string' && d.push!.endpoint === endpoint
+          }
+        }
+      },
+      resolveLiveRef: (id, ref) => deps.resolveLiveRef?.(id, ref) ?? null
     })
   }
 
@@ -566,11 +576,15 @@ export class MobileService extends EventEmitter<{ changed: [] }> {
 
   /**
    * Send a push alert to every paired phone with push on (or one). The
+   * reference may be a function, to make one per phone (see LiveService). The
    * message is only `{v, kind, ref}` (see webpush.ts). Only while phone access
    * is on: turning it off stops push too. In fixtures mode nothing is sent.
    * Returns how many phones it was sent to.
    */
-  async webPush(notice: { kind: PushKind; ref?: string }, deviceId?: string): Promise<number> {
+  async webPush(
+    notice: { kind: PushKind; ref?: string | ((deviceId: string) => string) },
+    deviceId?: string
+  ): Promise<number> {
     if (!this.settings.enabled) return 0
     const targets = this.registry.pushTargets().filter((d) => !deviceId || d.id === deviceId)
     if (!targets.length) return 0
@@ -587,7 +601,16 @@ export class MobileService extends EventEmitter<{ changed: [] }> {
     const results = await Promise.all(
       targets.map(async (d) => ({
         d,
-        r: await sendPush(d.push!, notice, vapid, { post: this.deps.pushPost })
+        // Each phone gets its own reference (it only works for that phone).
+        r: await sendPush(
+          d.push!,
+          {
+            kind: notice.kind,
+            ref: typeof notice.ref === 'function' ? notice.ref(d.id) : notice.ref
+          },
+          vapid,
+          { post: this.deps.pushPost }
+        )
       }))
     )
     let sent = 0

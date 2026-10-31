@@ -309,7 +309,6 @@ export const webApi: CsdApi = {
   onLiveChanged: (cb) => subscribe('live', cb),
   // A tapped push alert arrives through phone.onOpenLive instead.
   onShowLive: () => () => undefined,
-  resolveLiveRef: (ref) => rpc('resolveLiveRef', ref),
   focusTerminal: onPc('Focusing a terminal'),
   planHooks: onPc('Session alerts setup'),
   applyHooks: onPc('Session alerts setup'),
@@ -374,12 +373,26 @@ export const phone = {
 
   /** This browser can do Web Push at all (iOS: only when added to the home screen). */
   pushSupported,
-  async pushState(): Promise<'on' | 'off' | 'denied' | 'unsupported'> {
+  /**
+   * 'on' only when this browser has a subscription AND the PC holds that same
+   * one for this phone (it may have dropped it, or registering may have
+   * failed): otherwise 'off', so turning it on registers again. 'unknown':
+   * the PC can't be reached to check.
+   */
+  async pushState(): Promise<'on' | 'off' | 'denied' | 'unsupported' | 'unknown'> {
     if (!pushSupported()) return 'unsupported'
     if (Notification.permission === 'denied') return 'denied'
     const reg = await navigator.serviceWorker.getRegistration()
     const sub = await reg?.pushManager.getSubscription()
-    return sub && Notification.permission === 'granted' ? 'on' : 'off'
+    if (!sub || Notification.permission !== 'granted') return 'off'
+    try {
+      const pc = await request<{ on: boolean; matches: boolean }>('/api/push/check', {
+        endpoint: sub.endpoint
+      })
+      return pc.on && pc.matches ? 'on' : 'off'
+    } catch {
+      return 'unknown'
+    }
   },
   /** Call from a tap: asks for permission, subscribes, and hands the subscription to the PC. */
   async enablePush(): Promise<{ ok: boolean; error?: string }> {
@@ -425,12 +438,19 @@ export const phone = {
       return { ok: false, error: (err as Error).message }
     }
   },
+  /**
+   * Off only once the PC says so: if it can't be reached, this throws and push
+   * stays on (the PC would keep sending), so the phone never claims it's off.
+   */
   async disablePush(): Promise<void> {
-    await request('/api/push/unsubscribe', {}).catch(() => undefined)
+    await request('/api/push/unsubscribe', {})
     if (!pushSupported()) return
     const reg = await navigator.serviceWorker.getRegistration()
     await (await reg?.pushManager.getSubscription())?.unsubscribe()
   },
+  /** Which session a tapped push alert means: works once, for this phone only. */
+  resolveLiveRef: async (ref: string): Promise<string | null> =>
+    (await request<{ key: string | null }>('/api/live/resolve', { ref })).key,
   /** Ask the PC for a test push to this phone. Resolves with how many were sent (0 or 1). */
   testPush: async (): Promise<number> =>
     (await request<{ sent: number }>('/api/push/test', {})).sent,

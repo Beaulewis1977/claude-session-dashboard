@@ -199,8 +199,6 @@ export interface CsdApi {
   onLiveChanged(cb: () => void): () => void
   /** A session alert was clicked on the desktop: show this session. */
   onShowLive(cb: (key: string) => void): () => void
-  /** The session a tapped push alert points at (its opaque reference), or null. */
-  resolveLiveRef(ref: string): Promise<string | null>
   /** Bring the session's terminal window (and tab) forward (desktop only). */
   focusTerminal(key: string): Promise<FocusResult>
   /** The exact settings.json change for turning session alerts on or off (desktop only). */

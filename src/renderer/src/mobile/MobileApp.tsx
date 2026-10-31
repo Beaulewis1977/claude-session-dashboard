@@ -19,6 +19,7 @@ import { SessionsTab } from './SessionsTab'
 import { SessionScreen } from './SessionScreen'
 import { SettingsTab } from './SettingsTab'
 import { RunningTab } from './RunningTab'
+import { useOpenLive } from './open-live'
 import { bootstrap } from './bootstrap'
 import { useMobile } from './state'
 
@@ -111,21 +112,8 @@ export function MobileApp() {
   useLiveData(useApp((s) => s.info !== null) && paired)
   useLiveSessions(useApp((s) => s.info !== null) && paired)
   const live = useLiveCounts()
-  // A tapped push alert: its session (resolved on the PC), else Running now.
-  useEffect(() => {
-    if (!paired) return
-    return phone.onOpenLive((ref) => {
-      useApp.getState().set({ view: 'running', selectedKey: null })
-      if (!ref) return
-      void api
-        .resolveLiveRef(ref)
-        .then((key) => {
-          if (key && useApp.getState().sessions.some((s) => s.key === key))
-            useApp.getState().set({ selectedKey: key })
-        })
-        .catch(() => undefined)
-    })
-  }, [paired])
+  // A tapped push alert: Running now, then its session once it can be shown.
+  useOpenLive(paired)
   const view = useApp((s) => s.view)
   const set = useApp((s) => s.set)
   const openKey = useApp((s) => s.selectedKey)

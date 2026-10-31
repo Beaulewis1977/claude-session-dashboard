@@ -154,15 +154,14 @@ export const RPC: Record<string, RpcMethod> = {
   // Terminal access: where the phone's SSH app connects (host, user, port,
   // shell), and whether it's set up. Never the setup itself.
   getTerminalAccess: { channel: 'terminal:phoneInfo', kind: 'read', args: none },
-  // Running now: the same list as the desktop's (no settings.json locations),
-  // and which session a tapped push alert means. Never the hook setup.
+  // Running now: the same list as the desktop's (no settings.json locations).
+  // Never the hook setup. (A tapped push alert is resolved by /api/live/resolve.)
   getLive: {
     channel: 'live:state',
     kind: 'read',
     args: none,
     result: (r) => phoneLive(r as LiveSnapshot)
   },
-  resolveLiveRef: { channel: 'live:resolveRef', kind: 'read', args: ([ref]) => [str(ref, 100)] },
   getCredits: {
     channel: 'credits:state',
     kind: 'read',

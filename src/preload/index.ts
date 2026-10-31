@@ -116,7 +116,6 @@ const api: CsdApi = {
     ipcRenderer.on('app:showLive', listener)
     return () => ipcRenderer.removeListener('app:showLive', listener)
   },
-  resolveLiveRef: (ref) => ipcRenderer.invoke('live:resolveRef', ref),
   focusTerminal: (key) => ipcRenderer.invoke('live:focus', key),
   planHooks: (id, action) => ipcRenderer.invoke('hooks:plan', id, action),
   applyHooks: (id, action, token) => ipcRenderer.invoke('hooks:apply', id, action, token),

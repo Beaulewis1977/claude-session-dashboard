@@ -27,7 +27,8 @@ import { turnPushOn, usePushState } from './push'
 function PushBanner() {
   const [state, reload] = usePushState()
   const [busy, setBusy] = useState(false)
-  if (state === null || state === 'on') return null
+  // On, or the PC can't be reached to check: nothing to offer.
+  if (state === null || state === 'on' || state === 'unknown') return null
   return (
     <div className="mx-3 mb-3 flex items-start gap-3 rounded-xl border border-info/30 bg-info/5 px-3.5 py-3">
       <BellRing className="mt-0.5 size-5 shrink-0 text-info" />

@@ -59,7 +59,14 @@ function phoneKeys(): { p256dh: string; auth: string } {
   }
 }
 
-async function setup(opts: { fixtures?: boolean; readOnly?: boolean; status?: number } = {}) {
+async function setup(
+  opts: {
+    fixtures?: boolean
+    readOnly?: boolean
+    status?: number
+    resolveLiveRef?: (deviceId: string, ref: unknown) => string | null
+  } = {}
+) {
   let settings: MobileSettings = { ...DEFAULT_MOBILE, port: 0, readOnly: !!opts.readOnly }
   const store = new JsonStore<MobileFile>(join(dir, 'mobile.json'), dir, () => ({
     version: 1,
@@ -98,7 +105,8 @@ async function setup(opts: { fixtures?: boolean; readOnly?: boolean; status?: nu
     appVersion: '1.0.0',
     fixtures: opts.fixtures ?? false,
     claudePath: async () => undefined,
-    pushPost
+    pushPost,
+    resolveLiveRef: opts.resolveLiveRef
   })
   await svc.start()
   const port = svc.server.address()!.port
@@ -239,6 +247,77 @@ describe('push alerts from the companion server', () => {
       expect(svc.activity()[0].detail).toContain('simulated')
     } finally {
       await svc.stop()
+    }
+  })
+
+  it('tells the phone whether the PC holds its subscription', async () => {
+    const { svc, port, token } = await setup()
+    try {
+      const endpoint = 'https://fcm.googleapis.com/fcm/send/abc'
+      const check = async (e: string) =>
+        JSON.parse((await req(port, '/api/push/check', token, { endpoint: e })).body)
+      expect(await check(endpoint)).toEqual({ on: false, matches: false })
+      await req(port, '/api/push/subscribe', token, {
+        subscription: { endpoint, keys: phoneKeys() }
+      })
+      expect(await check(endpoint)).toEqual({ on: true, matches: true })
+      // The browser has another subscription now: the phone registers again.
+      expect(await check('https://fcm.googleapis.com/fcm/send/other')).toEqual({
+        on: true,
+        matches: false
+      })
+      // Turned off on the PC: the phone must not claim it's on.
+      svc.pushOff(svc.registry.list()[0].id)
+      expect(await check(endpoint)).toEqual({ on: false, matches: false })
+      expect((await req(port, '/api/push/check', undefined, { endpoint })).status).toBe(401)
+    } finally {
+      await svc.server.stop()
+    }
+  })
+
+  it('resolves a tapped alert only for the phone it was sent to', async () => {
+    const seen: [string, unknown][] = []
+    const { svc, port, token } = await setup({
+      resolveLiveRef: (deviceId, ref) => {
+        seen.push([deviceId, ref])
+        return ref === 'good-ref-123' ? 'windows:abc' : null
+      }
+    })
+    try {
+      const res = await req(port, '/api/live/resolve', token, { ref: 'good-ref-123' })
+      expect(JSON.parse(res.body)).toEqual({ key: 'windows:abc' })
+      expect(JSON.parse((await req(port, '/api/live/resolve', token, { ref: 'x' })).body)).toEqual({
+        key: null
+      })
+      // The authenticated phone's own id goes along, never one the phone names.
+      expect(seen.map(([d]) => d)).toEqual([svc.registry.list()[0].id, svc.registry.list()[0].id])
+      expect(
+        (await req(port, '/api/live/resolve', undefined, { ref: 'good-ref-123' })).status
+      ).toBe(401)
+    } finally {
+      await svc.server.stop()
+    }
+  })
+
+  it('gives each phone its own reference', async () => {
+    const { svc, port, token, posts } = await setup()
+    try {
+      await req(port, '/api/push/subscribe', token, {
+        subscription: { endpoint: 'https://fcm.googleapis.com/fcm/send/abc', keys: phoneKeys() }
+      })
+      const asked: string[] = []
+      const sent = await svc.webPush({
+        kind: 'approval',
+        ref: (deviceId) => {
+          asked.push(deviceId)
+          return 'per-phone-ref-1'
+        }
+      })
+      expect(sent).toBe(1)
+      expect(asked).toEqual([svc.registry.list()[0].id])
+      expect(posts).toHaveLength(1)
+    } finally {
+      await svc.server.stop()
     }
   })
 })

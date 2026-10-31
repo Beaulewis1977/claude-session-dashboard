@@ -27,6 +27,8 @@ import { Input, Textarea } from '@/components/ui/input'
 import { Segmented } from '@/components/ui/segmented'
 import { useMobile } from './state'
 import { DefaultModelPickers } from '@/components/ModelPicker'
+import { sanitizeLiveAlerts, type LiveAlertSettings } from '@shared/live-alerts'
+import { turnPushOn, usePushState } from './push'
 
 function Card({ title, note, children }: { title: string; note?: ReactNode; children: ReactNode }) {
   return (
@@ -192,6 +194,8 @@ export function SettingsTab() {
           />
         </div>
       </Card>
+
+      <SessionAlertsCard update={update} />
 
       <Card
         title="Alerts"
@@ -361,6 +365,150 @@ function SendKeyCard({ readOnly }: { readOnly: boolean }) {
           </>
         )}
       </div>
+    </Card>
+  )
+}
+
+/** Running now alerts: push on this phone, and which events alert (shared with the PC). */
+function SessionAlertsCard({
+  update
+}: {
+  update: (patch: Pick<Partial<AppSettings>, MobileSafeSetting>) => Promise<void>
+}) {
+  const settings = useApp((s) => s.settings)
+  const a = sanitizeLiveAlerts(settings.liveAlerts)
+  const [push, reloadPush] = usePushState()
+  const [busy, setBusy] = useState(false)
+  const set = (patch: Partial<LiveAlertSettings>): void =>
+    void update({ liveAlerts: { ...a, ...patch } })
+  const togglePush = async (on: boolean): Promise<void> => {
+    setBusy(true)
+    try {
+      if (on) await turnPushOn(reloadPush)
+      else {
+        await phone.disablePush()
+        reloadPush()
+        toast('Push alerts off for this phone')
+      }
+    } finally {
+      setBusy(false)
+    }
+  }
+  return (
+    <Card
+      title="Session alerts"
+      note="Push alerts say only what happened (like “A session needs your approval”), never names, folders or text. Tapping one loads the details from your PC. Which events alert, and quiet hours, are shared with the PC."
+    >
+      <Line
+        label="Push alerts on this phone"
+        hint={
+          push === 'denied'
+            ? 'Blocked: allow notifications for this app in your phone settings.'
+            : push === 'unsupported'
+              ? /iPhone|iPad|iPod/.test(navigator.userAgent)
+                ? 'Add this app to your Home Screen first, then open it from there.'
+                : "This browser can't receive push alerts."
+              : 'Even when this app is closed.'
+        }
+      >
+        <Switch
+          checked={push === 'on'}
+          disabled={busy || push === null || push === 'denied' || push === 'unsupported'}
+          onCheckedChange={(v) => void togglePush(v)}
+          aria-label="Push alerts on this phone"
+        />
+      </Line>
+      {push === 'on' && (
+        <Line label="Test" hint="Sends a push to this phone now.">
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-9"
+            onClick={() =>
+              void phone
+                .testPush()
+                .then((n) =>
+                  n
+                    ? toast('Test push sent')
+                    : toast.error('No push was sent', {
+                        description: 'Turn push alerts off and on again.'
+                      })
+                )
+                .catch((err: Error) => toast.error("Couldn't send", { description: err.message }))
+            }
+          >
+            <Send /> Send test
+          </Button>
+        </Line>
+      )}
+      <Line label="Needs approval">
+        <Switch
+          checked={a.approval}
+          onCheckedChange={(v) => set({ approval: v })}
+          aria-label="Needs approval"
+        />
+      </Line>
+      <Line label="Finished">
+        <Switch
+          checked={a.finished}
+          onCheckedChange={(v) => set({ finished: v })}
+          aria-label="Finished"
+        />
+      </Line>
+      <Line label="Stopped with an error">
+        <Switch
+          checked={a.failed}
+          onCheckedChange={(v) => set({ failed: v })}
+          aria-label="Stopped with an error"
+        />
+      </Line>
+      <Line label="Send to phones" hint="Off: alerts only on the PC.">
+        <Switch
+          checked={a.phone}
+          onCheckedChange={(v) => set({ phone: v })}
+          aria-label="Send to phones"
+        />
+      </Line>
+      <Line
+        label="Quiet hours"
+        hint={
+          a.quiet.enabled
+            ? `${a.quiet.from} – ${a.quiet.to} (PC time)`
+            : 'No alerts in a time window.'
+        }
+      >
+        <Switch
+          checked={a.quiet.enabled}
+          onCheckedChange={(v) => set({ quiet: { ...a.quiet, enabled: v } })}
+          aria-label="Quiet hours"
+        />
+      </Line>
+      {a.quiet.enabled && (
+        <Line label="From – to">
+          <div className="flex items-center gap-1.5">
+            <Input
+              type="time"
+              defaultValue={a.quiet.from}
+              onBlur={(e) =>
+                /^\d\d:\d\d$/.test(e.target.value) &&
+                set({ quiet: { ...a.quiet, from: e.target.value } })
+              }
+              className="h-9 w-[104px] text-[15px]"
+              aria-label="Quiet from"
+            />
+            <Input
+              type="time"
+              defaultValue={a.quiet.to}
+              onBlur={(e) =>
+                /^\d\d:\d\d$/.test(e.target.value) &&
+                set({ quiet: { ...a.quiet, to: e.target.value } })
+              }
+              className="h-9 w-[104px] text-[15px]"
+              aria-label="Quiet until"
+            />
+          </div>
+        </Line>
+      )}
     </Card>
   )
 }

@@ -1,5 +1,5 @@
 import { SourceBadge } from '../SourceBadge'
-import { memo } from 'react'
+import { memo, type MouseEvent } from 'react'
 import {
   Archive,
   CornerDownRight,
@@ -33,6 +33,9 @@ function dateSpan(s: SessionSummary): string {
 
 function preview(s: SessionSummary): { text: string; muted: boolean } {
   if (s.meta.description) return { text: s.meta.description.split('\n')[0], muted: false }
+  // My dashboard name is the title: show what Claude Code calls it.
+  if (s.titleSource === 'name' && s.claudeName && s.claudeName !== s.title)
+    return { text: `Claude Code: ${s.claudeName}`, muted: true }
   if (s.titleSource !== 'first-prompt' && s.firstPrompt) return { text: s.firstPrompt, muted: true }
   if (s.titleSource !== 'summary' && s.summary) return { text: s.summary, muted: true }
   return { text: '', muted: true }
@@ -41,6 +44,8 @@ function preview(s: SessionSummary): { text: string; muted: boolean } {
 export const SessionRow = memo(function SessionRow({
   session: s,
   selected,
+  checked = false,
+  multi = false,
   hit,
   depth = 0,
   branches = 0,
@@ -49,12 +54,17 @@ export const SessionRow = memo(function SessionRow({
 }: {
   session: SessionSummary
   selected: boolean
+  /** Picked for a bulk action. */
+  checked?: boolean
+  /** Sessions are being picked: `selected` is then only the focused row. */
+  multi?: boolean
   hit?: SearchHit
   /** > 0: shown as a branch under the row above. */
   depth?: number
   /** Number of sessions branched from this one. */
   branches?: number
-  onSelect: (key: string) => void
+  /** Gets the mouse event, for Ctrl/Shift+click and right-click. */
+  onSelect: (key: string, e: MouseEvent) => void
   onOpen: (key: string) => void
 }) {
   const p = preview(s)
@@ -63,13 +73,15 @@ export const SessionRow = memo(function SessionRow({
   return (
     <div
       role="option"
-      aria-selected={selected}
+      aria-selected={multi ? checked : selected}
       id={`row-${s.key}`}
-      onMouseDown={() => onSelect(s.key)}
+      onMouseDown={(e) => onSelect(s.key, e)}
       onDoubleClick={() => onOpen(s.key)}
       className={cn(
         'group relative mx-2 flex h-[98px] flex-col justify-center gap-[3px] rounded-lg px-3 transition-colors duration-75',
-        selected ? 'bg-selected' : 'hover:bg-hover'
+        checked || (selected && !multi) ? 'bg-selected' : 'hover:bg-hover',
+        // The focused row while picking, when it isn't picked itself.
+        multi && selected && !checked && 'ring-1 ring-primary/50 ring-inset'
       )}
       style={indent ? { paddingLeft: 12 + indent } : undefined}
     >

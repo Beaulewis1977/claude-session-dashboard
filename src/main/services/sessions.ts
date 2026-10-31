@@ -45,7 +45,8 @@ type BaseSummary = Omit<
 // v3: both together, so neither kind of v2 cache is reused.
 // v4: the Remote Control link (remoteUrl) from `bridge_status` entries.
 // v5: statuses copied into a branch no longer count as the branch's own link.
-const CACHE_VERSION = 5
+// v6: the name given in Claude Code (custom-title / agent-name) and ai-title.
+const CACHE_VERSION = 6
 
 interface CacheFile {
   version: number
@@ -130,7 +131,7 @@ export function parseSessionText(
   src: Pick<SourceInfo, 'id' | 'label' | 'env' | 'distro'>
 ): { base: BaseSummary; searchText: string } {
   const { events, malformedLines } = parseJsonl(text)
-  const a = analyzeEvents(events)
+  const a = analyzeEvents(events, { sessionId: file.sessionId })
   return {
     searchText: a.searchText,
     base: {
@@ -149,6 +150,8 @@ export function parseSessionText(
       gitBranch: a.gitBranch,
       version: a.version,
       summary: a.summary,
+      claudeName: a.claudeName,
+      claudeNameAt: a.claudeNameAt,
       firstPrompt: a.firstPrompt,
       startedAt: a.startedAt,
       lastActivityAt: a.lastActivityAt,
@@ -240,7 +243,10 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
     const clean = cleanMetaPatch(patch)
     this.metadata.update((d) => {
       const prev = d.sessions[e.base.sessionId] ?? {}
-      const next: SessionMeta = { ...prev, ...clean, updatedAt: new Date().toISOString() }
+      const at = new Date().toISOString()
+      const next: SessionMeta = { ...prev, ...clean, updatedAt: at }
+      // When I named it here, to compare with a later rename in Claude Code.
+      if ('name' in clean) next.nameAt = clean.name ? at : undefined
       for (const k of Object.keys(next) as (keyof SessionMeta)[]) {
         const v = next[k]
         if (v === undefined || v === '' || v === false || (Array.isArray(v) && v.length === 0))
@@ -254,10 +260,42 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
   }
 
   async start(): Promise<void> {
+    this.backfillNameTimes()
     await this.loadCache()
     await this.rescan()
     this.cached.clear()
     await this.saveCache()
+  }
+
+  /**
+   * "Use name from Claude Code": clear my dashboard names, so the names given
+   * in Claude Code show. Sessions without a Claude Code name keep mine.
+   * Returns how many changed.
+   */
+  applyClaudeNames(keys: string[]): number {
+    let n = 0
+    for (const key of new Set(keys)) {
+      const e = this.entries.get(key)
+      if (!e?.base.claudeName || !this.metadata.value.sessions[e.base.sessionId]?.name) continue
+      this.updateMeta(key, { name: '' })
+      n++
+    }
+    return n
+  }
+
+  /**
+   * The first run that reads names from Claude Code: names I set in the
+   * dashboard before then get that time, so they keep winning over the names
+   * already in Claude's files, and only a later rename in Claude Code replaces
+   * them. Sessions I never named show their Claude Code name right away.
+   */
+  private backfillNameTimes(): void {
+    if (this.metadata.value.claudeNamesSince) return
+    const at = new Date().toISOString()
+    this.metadata.update((d) => {
+      for (const m of Object.values(d.sessions)) if (m.name?.trim() && !m.nameAt) m.nameAt = at
+      d.claudeNamesSince = at
+    })
   }
 
   // ------------------------------------------------------------ startup cache
@@ -447,7 +485,12 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
     const meta = this.metadata.value.sessions[base.sessionId] ?? {}
     const manual = meta.source?.by === 'manual' ? meta.source : undefined
     const det = manual ? undefined : this.detectSource(base)
-    const title = computeTitle(meta, base.summary, base.firstPrompt)
+    const title = computeTitle(
+      meta,
+      { name: base.claudeName, at: base.claudeNameAt },
+      base.summary,
+      base.firstPrompt
+    )
     // The dashboard's own Ask Claude runs: title them by the question.
     const asked = title.titleSource === 'first-prompt' ? askQuestionOf(base.firstPrompt) : undefined
     if (asked) title.title = `Ask Claude: ${asked}`
@@ -486,7 +529,7 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
       d.sessions[sessionId] = {
         ...prev,
         branch,
-        ...(name && !prev.name ? { name } : {}),
+        ...(name && !prev.name ? { name, nameAt: new Date().toISOString() } : {}),
         updatedAt: new Date().toISOString()
       }
     })
@@ -766,7 +809,7 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
     this.search.upsert({
       id: base.key,
       title: s.title,
-      name: s.meta.name ?? '',
+      name: [s.meta.name, base.claudeName].filter(Boolean).join(' '),
       description: s.meta.description ?? '',
       tags: (s.meta.tags ?? []).join(' '),
       project: `${base.projectName} ${base.cwd ?? ''} ${base.gitBranch ?? ''}`,

@@ -1,12 +1,24 @@
-import { useEffect, useRef } from 'react'
+import { useCallback, useEffect, useMemo, useRef, type KeyboardEvent, type MouseEvent } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { FolderSearch, SearchX } from 'lucide-react'
 import type { SessionSummary } from '@shared/types'
 import { useApp } from '@/lib/store'
 import { EMPTY_FILTERS } from '@/lib/filters'
+import {
+  extend,
+  moveFocus,
+  pickedVisible,
+  rangeClick,
+  selectAll,
+  toggleClick,
+  toggleFocused,
+  type Picked
+} from '@/lib/multi-select'
 import { Button } from '@/components/ui/button'
 import { ListToolbar } from './ListToolbar'
 import { ROW_HEIGHT, SessionRow } from './SessionRow'
+import { RowMenu } from './RowMenu'
+import { BulkBar } from './BulkBar'
 
 function EmptyList({ kind }: { kind: 'none' | 'filtered' | 'search' }) {
   const set = useApp((s) => s.set)
@@ -92,9 +104,71 @@ export function SessionList({
   const hits = useApp((s) => s.hits)
   const loaded = useApp((s) => s.loaded)
   const scan = useApp((s) => s.scan)
+  const checked = useApp((s) => s.checked)
   const select = useApp((s) => s.select)
   const requestFocus = useApp((s) => s.requestFocus)
   const parentRef = useRef<HTMLDivElement>(null)
+
+  const keys = useMemo(() => items.map((s) => s.key), [items])
+  const keysRef = useRef(keys)
+  useEffect(() => {
+    keysRef.current = keys
+  }, [keys])
+  const picked = useMemo(() => {
+    const visible = new Set(pickedVisible(keys, checked))
+    return items.filter((s) => visible.has(s.key))
+  }, [items, keys, checked])
+  const pickedKeys = useMemo(() => new Set(picked.map((s) => s.key)), [picked])
+
+  const current = (): Picked => {
+    const st = useApp.getState()
+    return { selectedKey: st.selectedKey, anchorKey: st.anchorKey, checked: st.checked }
+  }
+
+  // Click: select. Ctrl/⌘+click: add or remove. Shift+click: a range.
+  // Right-click keeps a multi-selection the row is part of (for the bulk menu).
+  const onSelect = useCallback(
+    (key: string, e: MouseEvent) => {
+      const st = useApp.getState()
+      if (e.button === 2) {
+        if (!st.checked.includes(key)) select(key)
+        return
+      }
+      if (e.button !== 0) return
+      if (e.ctrlKey || e.metaKey || e.shiftKey) {
+        e.preventDefault()
+        const cur = { selectedKey: st.selectedKey, anchorKey: st.anchorKey, checked: st.checked }
+        st.set(
+          e.shiftKey
+            ? rangeClick(keysRef.current, cur, key)
+            : toggleClick(keysRef.current, cur, key)
+        )
+        return
+      }
+      select(key)
+    },
+    [select]
+  )
+
+  // Keyboard picking while the list has the focus. Plain ↑/↓ (and j/k, Home,
+  // End) stay with the app's shortcuts and select one session.
+  const onKeyDown = (e: KeyboardEvent<HTMLDivElement>): void => {
+    if (e.target !== e.currentTarget || e.altKey) return
+    const mod = e.ctrlKey || e.metaKey
+    const k = e.key
+    let next: Picked | undefined
+    if (k === ' ' && !e.shiftKey) next = toggleFocused(keys, current())
+    else if ((k === 'ArrowDown' || k === 'ArrowUp') && (e.shiftKey || mod)) {
+      const delta = k === 'ArrowDown' ? 1 : -1
+      next = e.shiftKey ? extend(keys, current(), delta) : moveFocus(keys, current(), delta)
+    } else if (mod && !e.shiftKey && k.toLowerCase() === 'a') next = selectAll(keys, current())
+    else if (k === 'Escape' && checked.length) next = { ...current(), checked: [] }
+    if (!next) return
+    e.preventDefault()
+    e.stopPropagation()
+    useApp.getState().set(next)
+  }
+  const multi = picked.length > 0
 
   // eslint-disable-next-line react-hooks/incompatible-library
   const virtualizer = useVirtualizer({
@@ -118,6 +192,7 @@ export function SessionList({
   return (
     <div className="flex h-full min-h-0 flex-col bg-surface">
       <ListToolbar count={items.length} />
+      {picked.length > 1 && <BulkBar picked={picked} />}
       {scanning && scan.total > 0 && (
         <div className="h-0.5 shrink-0 bg-border">
           <div
@@ -131,8 +206,10 @@ export function SessionList({
         id="session-list"
         role="listbox"
         aria-label="Sessions"
+        aria-multiselectable
         aria-activedescendant={selectedKey ? `row-${selectedKey}` : undefined}
         tabIndex={0}
+        onKeyDown={onKeyDown}
         className="min-h-0 flex-1 overflow-y-auto outline-none"
       >
         {!loaded || (scanning && items.length === 0) ? (
@@ -144,27 +221,30 @@ export function SessionList({
             {virtualizer.getVirtualItems().map((v) => {
               const s = items[v.index]
               return (
-                <div
-                  key={s.key}
-                  style={{
-                    position: 'absolute',
-                    top: 0,
-                    left: 0,
-                    right: 0,
-                    height: v.size,
-                    transform: `translateY(${v.start}px)`
-                  }}
-                >
-                  <SessionRow
-                    session={s}
-                    selected={s.key === selectedKey}
-                    hit={hits?.get(s.key)}
-                    depth={depth?.get(s.key) ?? 0}
-                    branches={branchCounts?.get(s.key) ?? 0}
-                    onSelect={select}
-                    onOpen={() => requestFocus('name')}
-                  />
-                </div>
+                <RowMenu key={s.key} session={s} picked={pickedKeys.has(s.key) ? picked : []}>
+                  <div
+                    style={{
+                      position: 'absolute',
+                      top: 0,
+                      left: 0,
+                      right: 0,
+                      height: v.size,
+                      transform: `translateY(${v.start}px)`
+                    }}
+                  >
+                    <SessionRow
+                      session={s}
+                      selected={s.key === selectedKey}
+                      checked={pickedKeys.has(s.key)}
+                      multi={multi}
+                      hit={hits?.get(s.key)}
+                      depth={depth?.get(s.key) ?? 0}
+                      branches={branchCounts?.get(s.key) ?? 0}
+                      onSelect={onSelect}
+                      onOpen={() => requestFocus('name')}
+                    />
+                  </div>
+                </RowMenu>
               )
             })}
           </div>

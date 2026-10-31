@@ -158,6 +158,11 @@ export function registerIpc(deps: IpcDeps): void {
   handle('sessions:updateMeta', (_e, key, patch) =>
     sessions.updateMeta(str(key, 'key'), (patch ?? {}) as Partial<SessionMeta>)
   )
+  handle('sessions:applyClaudeNames', (_e, keys) =>
+    sessions.applyClaudeNames(
+      (Array.isArray(keys) ? keys : []).slice(0, 10_000).map((k) => str(k, 'key'))
+    )
+  )
   handle('sessions:rescan', () => rescan())
 
   handle('settings:get', () => publicSettings(settings.value))

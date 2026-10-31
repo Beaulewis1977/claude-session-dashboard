@@ -26,6 +26,9 @@ export function InfoTip({
       <button
         type="button"
         aria-label="More information"
+        // Inside a clickable card, a click on the tip shouldn't open the card.
+        onClick={(e) => e.stopPropagation()}
+        onKeyDown={(e) => e.stopPropagation()}
         className="inline-flex size-4 items-center justify-center rounded-full text-subtle-foreground transition-colors hover:text-muted-foreground"
       >
         <Info className="size-3.5" />
@@ -34,32 +37,48 @@ export function InfoTip({
   )
 }
 
+/**
+ * A card: always a plain container. A clickable card gets a real `<button>`
+ * for its action, stretched across the card *behind* the content, so the
+ * card's own buttons (info tips) and tooltips stay separate and reachable.
+ * Keyboard and screen readers use that button; a mouse click anywhere on the
+ * card (it bubbles up from the button too) runs the action once.
+ */
 export function Card({
   className,
   children,
   onClick,
+  label,
   active
 }: {
   className?: string
   children: ReactNode
   onClick?: () => void
+  /** Name of the card's button (required for a clickable card). */
+  label?: string
   active?: boolean
 }) {
-  const Comp = onClick ? 'button' : 'div'
   return (
-    <Comp
-      type={onClick ? 'button' : undefined}
+    <div
       onClick={onClick}
-      aria-pressed={onClick ? active : undefined}
       className={cn(
         'min-w-0 rounded-xl border border-border bg-card text-left shadow-card transition-[border-color,box-shadow,background-color]',
-        onClick && 'cursor-pointer hover:border-border-strong',
+        // Its own stacking context, so the button can sit behind the content.
+        onClick && 'relative isolate cursor-pointer hover:border-border-strong',
         active && 'border-primary/50 ring-3 ring-primary/10',
         className
       )}
     >
+      {onClick && (
+        <button
+          type="button"
+          aria-label={label}
+          aria-pressed={active}
+          className="absolute inset-0 -z-10 rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+        />
+      )}
       {children}
-    </Comp>
+    </div>
   )
 }
 

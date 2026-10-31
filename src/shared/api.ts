@@ -75,6 +75,8 @@ export interface CsdApi {
   getSession(key: string): Promise<SessionDetail | null>
   search(query: string): Promise<SearchHit[]>
   updateMeta(key: string, patch: Partial<SessionMeta>): Promise<SessionSummary | null>
+  /** Clear my dashboard names for these sessions, so their Claude Code names show. Returns how many changed. */
+  applyClaudeNames(keys: string[]): Promise<number>
   rescan(): Promise<void>
 
   getSettings(): Promise<AppSettings>

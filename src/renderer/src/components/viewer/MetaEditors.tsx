@@ -1,10 +1,75 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { Plus, X } from 'lucide-react'
 import type { SessionSummary } from '@shared/types'
+import { canUseClaudeName, titleSourceLabel } from '@shared/title'
+import { applyClaudeNames } from '@/lib/actions'
 import { tagColor } from '@/lib/filters'
 import { cn } from '@/lib/utils'
 
-/** Inline-editable session name (wraps to several lines). Empty = use the automatic title. */
+interface Draft {
+  text: string
+  /** The value when editing started (a save happens only if the text differs). */
+  base: string
+  focused: boolean
+  /** Saved, waiting for the update: shown until the value changes from this. */
+  savedOver?: string
+}
+
+/**
+ * Text being edited while the value can change underneath (a rename in Claude
+ * Code, an edit from the phone). While the box is focused or has unsaved
+ * changes, live updates don't replace the text; they show after blur or save.
+ */
+function useDraft(current: string) {
+  const [draft, setDraft] = useState<Draft | null>(null)
+  const cancelled = useRef(false)
+  // A saved draft gives way once the update arrives (adjusting state during render).
+  if (draft && !draft.focused && draft.savedOver !== undefined && current !== draft.savedOver) {
+    setDraft(null)
+  }
+  return {
+    value: draft ? draft.text : current,
+    editing: !!draft?.focused,
+    dirty: !!draft && draft.text !== draft.base,
+    begin: (): void => {
+      cancelled.current = false
+      setDraft((d) =>
+        d
+          ? { ...d, focused: true, savedOver: undefined }
+          : { text: current, base: current, focused: true }
+      )
+    },
+    change: (text: string): void =>
+      setDraft((d) => ({ text, base: d?.base ?? current, focused: true })),
+    /** Blur: returns the text to save, if it changed. */
+    end: (clean: (t: string) => string): string | undefined => {
+      if (cancelled.current || !draft) {
+        setDraft(null)
+        return undefined
+      }
+      const text = clean(draft.text)
+      if (text === clean(draft.base)) {
+        setDraft(null)
+        return undefined
+      }
+      setDraft({ text, base: text, focused: false, savedOver: current })
+      return text
+    },
+    /** Escape: drop the draft (the blur that follows saves nothing). */
+    cancel: (): void => {
+      cancelled.current = true
+      setDraft(null)
+    }
+  }
+}
+
+/**
+ * Inline-editable session name (wraps to several lines). It holds my dashboard
+ * name while that is the title; otherwise it's empty and shows the title (the
+ * Claude Code name, or the automatic one) as its placeholder. Empty = no
+ * dashboard name. A rename in Claude Code while I'm typing doesn't replace my
+ * draft: it's offered under the box instead.
+ */
 export function EditableTitle({
   session,
   onSave,
@@ -14,7 +79,11 @@ export function EditableTitle({
   onSave: (name: string) => void
   focusNonce: number
 }) {
-  const [value, setValue] = useState(session.meta.name ?? '')
+  // A dashboard name that a newer rename in Claude Code replaced isn't shown.
+  const own = session.titleSource === 'name' ? (session.meta.name ?? '') : ''
+  const d = useDraft(own)
+  // The title when editing started, to notice a rename in Claude Code meanwhile.
+  const [startTitle, setStartTitle] = useState(session.title)
   const ref = useRef<HTMLTextAreaElement>(null)
   const autoTitle = session.titleSource === 'name' ? '' : session.title
   useEffect(() => {
@@ -23,33 +92,105 @@ export function EditableTitle({
       ref.current?.select()
     }
   }, [focusNonce])
-  useAutoGrow(ref, value || autoTitle, 120)
-  const commit = (): void => {
-    if (value.trim() !== (session.meta.name ?? '')) onSave(value.trim())
-  }
+  useAutoGrow(ref, d.value || autoTitle, 120)
+  const renamedMeanwhile =
+    d.editing && session.titleSource === 'claude-name' && session.title !== startTitle
   return (
-    <textarea
-      ref={ref}
-      rows={1}
-      value={value}
-      onChange={(e) => setValue(e.target.value.replace(/\n/g, ' '))}
-      onBlur={commit}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter') {
-          e.preventDefault()
-          e.currentTarget.blur()
-        } else if (e.key === 'Escape') {
-          e.preventDefault()
-          e.stopPropagation()
-          setValue(session.meta.name ?? '')
-          requestAnimationFrame(() => ref.current?.blur())
-        }
-      }}
-      placeholder={autoTitle || 'Name this session'}
-      aria-label="Session name"
-      spellCheck={false}
-      className="-mx-1.5 block w-[calc(100%+12px)] resize-none overflow-hidden rounded-md bg-transparent px-1.5 py-0.5 text-[19px] leading-[1.3] font-semibold tracking-[-0.015em] text-foreground outline-none transition-colors placeholder:text-foreground hover:bg-hover focus:bg-background focus:ring-2 focus:ring-ring/30 focus:placeholder:text-subtle-foreground"
-    />
+    <>
+      <textarea
+        ref={ref}
+        rows={1}
+        value={d.value}
+        onFocus={() => {
+          if (!d.editing) setStartTitle(session.title)
+          d.begin()
+        }}
+        onChange={(e) => d.change(e.target.value.replace(/\n/g, ' '))}
+        onBlur={() => {
+          const name = d.end((t) => t.trim())
+          if (name !== undefined) onSave(name)
+        }}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault()
+            e.currentTarget.blur()
+          } else if (e.key === 'Escape') {
+            e.preventDefault()
+            e.stopPropagation()
+            d.cancel()
+            requestAnimationFrame(() => ref.current?.blur())
+          }
+        }}
+        placeholder={autoTitle || 'Name this session'}
+        aria-label="Session name"
+        spellCheck={false}
+        className="-mx-1.5 block w-[calc(100%+12px)] resize-none overflow-hidden rounded-md bg-transparent px-1.5 py-0.5 text-[19px] leading-[1.3] font-semibold tracking-[-0.015em] text-foreground outline-none transition-colors placeholder:text-foreground hover:bg-hover focus:bg-background focus:ring-2 focus:ring-ring/30 focus:placeholder:text-subtle-foreground"
+      />
+      {renamedMeanwhile && (
+        <div
+          data-testid="renamed-meanwhile"
+          className="mt-1 flex flex-wrap items-center gap-x-1.5 text-2xs text-muted-foreground"
+        >
+          <span>Renamed in Claude Code to “{session.title}”.</span>
+          <button
+            type="button"
+            // Keep the focus in the box, so the draft isn't saved first.
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => {
+              d.cancel()
+              ref.current?.blur()
+            }}
+            className="font-medium text-primary hover:underline"
+          >
+            Use it
+          </button>
+          <span>or keep typing to set your own.</span>
+        </div>
+      )}
+    </>
+  )
+}
+
+/** Where the title came from, and the way back to the name given in Claude Code. */
+export function TitleSourceLine({
+  session,
+  shortcutHint,
+  onUseClaudeName = () => void applyClaudeNames([session.key])
+}: {
+  session: SessionSummary
+  /** Mention F2 (desktop). */
+  shortcutHint?: boolean
+  onUseClaudeName?: () => void
+}) {
+  const useClaude = canUseClaudeName(session)
+  // My dashboard name is still saved, but a newer rename in Claude Code wins.
+  const renamedLater = session.titleSource === 'claude-name' && !!session.meta.name
+  return (
+    <div
+      data-testid="title-source"
+      className="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-2xs text-subtle-foreground"
+    >
+      <span>{titleSourceLabel(session.titleSource)}</span>
+      {renamedLater && (
+        <span title={`Your dashboard name was “${session.meta.name}”`}>
+          · renamed in Claude Code after your dashboard name
+        </span>
+      )}
+      {useClaude && (
+        <>
+          <span aria-hidden>·</span>
+          <button
+            type="button"
+            onClick={onUseClaudeName}
+            title={`Claude Code calls it “${session.claudeName}”`}
+            className="font-medium text-primary hover:underline"
+          >
+            Use name from Claude Code
+          </button>
+        </>
+      )}
+      {shortcutHint && <span>· press F2 to rename</span>}
+    </div>
   )
 }
 
@@ -82,22 +223,23 @@ export function DescriptionEditor({
   onSave: (d: string) => void
   focusNonce: number
 }) {
-  const [value, setValue] = useState(session.meta.description ?? '')
+  const d = useDraft(session.meta.description ?? '')
   const ref = useRef<HTMLTextAreaElement>(null)
   useEffect(() => {
     if (focusNonce) ref.current?.focus()
   }, [focusNonce])
-  useAutoGrow(ref, value, 220)
-  const commit = (): void => {
-    if (value.trimEnd() !== (session.meta.description ?? '')) onSave(value.trimEnd())
-  }
+  useAutoGrow(ref, d.value, 220)
   return (
     <textarea
       ref={ref}
-      value={value}
+      value={d.value}
       rows={1}
-      onChange={(e) => setValue(e.target.value)}
-      onBlur={commit}
+      onFocus={d.begin}
+      onChange={(e) => d.change(e.target.value)}
+      onBlur={() => {
+        const text = d.end((t) => t.trimEnd())
+        if (text !== undefined) onSave(text)
+      }}
       onKeyDown={(e) => {
         if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
           e.preventDefault()
@@ -105,7 +247,7 @@ export function DescriptionEditor({
         } else if (e.key === 'Escape') {
           e.preventDefault()
           e.stopPropagation()
-          setValue(session.meta.description ?? '')
+          d.cancel()
           requestAnimationFrame(() => ref.current?.blur())
         }
       }}

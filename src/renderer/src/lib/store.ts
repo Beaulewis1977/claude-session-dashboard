@@ -59,6 +59,10 @@ interface State {
 
   view: 'sessions' | 'settings' | 'usage'
   selectedKey: string | null
+  /** Sessions picked with Ctrl/Shift+click for a bulk action (includes the selected one). */
+  checked: string[]
+  /** Where a Shift+click / Shift+arrow range starts. */
+  anchorKey: string | null
   filters: Filters
   sort: SortKey
   sortBeforeSearch: SortKey
@@ -96,6 +100,8 @@ export const useApp = create<State>((set) => ({
 
   view: 'sessions',
   selectedKey: null,
+  checked: [],
+  anchorKey: null,
   filters: EMPTY_FILTERS,
   sort: 'activity',
   sortBeforeSearch: 'activity',
@@ -112,8 +118,14 @@ export const useApp = create<State>((set) => ({
 
   set: (patch) => set(patch),
   setFilters: (patch) => set((s) => ({ filters: { ...s.filters, ...patch } })),
-  // A focus request belongs to the session it was made for.
-  select: (key) => set((s) => ({ selectedKey: key, focus: { field: null, nonce: s.focus.nonce } })),
+  // A focus request belongs to the session it was made for. A plain selection ends a multi-selection.
+  select: (key) =>
+    set((s) => ({
+      selectedKey: key,
+      anchorKey: key,
+      checked: [],
+      focus: { field: null, nonce: s.focus.nonce }
+    })),
   requestFocus: (field) => set((s) => ({ focus: { field, nonce: s.focus.nonce + 1 } })),
   patchSession: (updated) =>
     set((s) => ({ sessions: s.sessions.map((x) => (x.key === updated.key ? updated : x)) })),

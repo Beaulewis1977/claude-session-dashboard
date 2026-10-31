@@ -23,6 +23,20 @@ export const SHORTCUTS: { group: string; items: [string, string][] }[] = [
     ]
   },
   {
+    group: 'Pick several sessions',
+    items: [
+      [`${MOD}+Click`, 'Add or remove a session'],
+      ['Shift+Click', 'Pick a range'],
+      ['Space', 'Pick / unpick the focused session'],
+      ['Shift+↑', 'Extend the range up'],
+      ['Shift+↓', 'Extend the range down'],
+      [`${MOD}+↑`, 'Move the focus up, keep the picks'],
+      [`${MOD}+↓`, 'Move the focus down, keep the picks'],
+      [`${MOD}+A`, 'Pick every session in the list'],
+      ['Esc', 'Clear the picks']
+    ]
+  },
+  {
     group: 'Selected session',
     items: [
       [`${MOD}+Enter`, 'Resume'],

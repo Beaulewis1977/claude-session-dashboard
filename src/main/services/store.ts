@@ -17,6 +17,11 @@ export interface MetadataFile {
   sessions: Record<string, SessionMeta>
   /** Keyed by `${sourceId}:${sessionId}`. */
   archive: Record<string, ArchiveRecord>
+  /**
+   * Set on the first run that reads names from Claude Code (see
+   * SessionService.backfillNameTimes). Absent in older files.
+   */
+  claudeNamesSince?: string
 }
 
 export interface SettingsFile extends AppSettings {

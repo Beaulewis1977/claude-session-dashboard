@@ -26,13 +26,16 @@ import {
   Search,
   SquareTerminal,
   Terminal,
+  TextCursorInput,
   WifiOff
 } from 'lucide-react'
 import type { SessionDetail, SessionSummary } from '@shared/types'
 import { formatBytes, formatDateTime } from '@shared/format'
 import { messagePreview } from '@shared/branch'
+import { canUseClaudeName } from '@shared/title'
 import { api } from '@/lib/api'
 import {
+  applyClaudeNames,
   copyConversation,
   copyResumeCommand,
   copySessionId,
@@ -63,7 +66,7 @@ import { EnvBadge } from '../EnvBadge'
 import { BillingBadge } from '../BillingPicker'
 import { RemoteBadge } from '../RemoteBadge'
 import { SessionUsageStrip } from './SessionUsage'
-import { DescriptionEditor, EditableTitle, TagEditor } from './MetaEditors'
+import { DescriptionEditor, EditableTitle, TagEditor, TitleSourceLine } from './MetaEditors'
 import { FindBar } from './FindBar'
 import { BranchesPanel, type BranchMark } from './Branches'
 import { Transcript, type OnBranch } from './Transcript'
@@ -135,12 +138,7 @@ function Header({
     session.startedAt &&
     session.lastActivityAt &&
     new Date(session.startedAt).toDateString() === new Date(session.lastActivityAt).toDateString()
-  const autoHint =
-    session.titleSource === 'summary'
-      ? "Title from Claude's summary"
-      : session.titleSource === 'first-prompt'
-        ? 'Title from the first message'
-        : undefined
+  const useClaude = canUseClaudeName(session)
 
   return (
     <div className="border-b border-border px-8 pt-5 pb-4">
@@ -148,16 +146,12 @@ function Header({
         <div className="flex items-start gap-4">
           <div className="min-w-0 flex-1">
             <EditableTitle
-              key={session.meta.name ?? ''}
+              key={session.key}
               session={session}
               onSave={(name) => void updateMeta(session.key, { name })}
               focusNonce={nonce('name')}
             />
-            {autoHint && (
-              <div className="mt-0.5 text-2xs text-subtle-foreground">
-                {autoHint} · press F2 to rename
-              </div>
-            )}
+            <TitleSourceLine session={session} shortcutHint />
           </div>
           <div className="flex shrink-0 items-center gap-1.5 pt-0.5">
             {session.availability === 'imported' ? (
@@ -238,6 +232,12 @@ function Header({
                   <FolderOpen /> Show file in folder
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  disabled={!useClaude}
+                  onSelect={() => void applyClaudeNames([session.key])}
+                >
+                  <TextCursorInput /> Use name from Claude Code
+                </DropdownMenuItem>
                 <DropdownMenuItem onSelect={() => void togglePinned(session.key)}>
                   {session.meta.pinned ? <PinOff /> : <Pin />}
                   {session.meta.pinned ? 'Unpin' : 'Pin to top'}
@@ -253,7 +253,7 @@ function Header({
 
         <div className="mt-2">
           <DescriptionEditor
-            key={session.meta.description ?? ''}
+            key={session.key}
             session={session}
             onSave={(description) => void updateMeta(session.key, { description })}
             focusNonce={nonce('description')}

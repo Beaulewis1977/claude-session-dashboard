@@ -1,5 +1,33 @@
 # Changelog
 
+## Unreleased
+
+**Session names come from Claude Code.**
+
+- **Names from `/rename`:** a session renamed in Claude Code (Windows or WSL) shows that name in
+  the list, the viewer, search and on the phone, and updates live when you rename it again. The
+  Remote Control name is used when there's no `/rename`. Claude's newer automatic titles
+  (`ai-title`) count as its summary.
+- **Title order:** the newer of your dashboard name and the Claude Code name, then Claude's
+  summary, then the first message. The name editor says where the title came from ("From Claude
+  Code", "Set in dashboard", "Auto").
+- **Use name from Claude Code:** clears your dashboard name for a session (viewer ⋯ menu, the new
+  right-click menu on list rows, the phone's menu). Pick several sessions to do it in bulk ("Use
+  Claude Code names").
+- **Pick several sessions (desktop):** Ctrl+click and Shift+click, or from the keyboard: Space
+  picks the focused session, Shift+↑/↓ extends a range, Ctrl+↑/↓ moves without changing the picks,
+  Ctrl+A picks the whole list, Esc clears. Plain ↑/↓ work as before.
+- **A rename's time is the time of its `/rename`:** new messages never make an old name look newer,
+  and `/rename` back to an earlier name counts as a new rename.
+- **Drafts are safe:** a rename in Claude Code (or an edit from the phone) arriving while you type a
+  name or description doesn't replace your text; the name editor offers the new name instead.
+- **Your names stay:** on the first run of this version, names you set in the dashboard keep
+  winning over names already in Claude's files; only a later rename in Claude Code replaces them.
+  Names are only read from Claude's files, never written to them.
+- **Fix:** React warned about a button inside a button on the API credits card. Clickable usage
+  cards are now plain containers with a real button for their action, separate from the info
+  button, so keyboard and screen readers reach each one.
+
 ## 1.3.1 (October 31, 2026)
 
 **Live limits that don't go stale without telling you.**

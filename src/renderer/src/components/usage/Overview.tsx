@@ -56,7 +56,13 @@ export function SummaryCards({
       {cards.map((c) => {
         const up = (c.deltaPct ?? 0) >= 0
         return (
-          <Card key={c.id} className="p-4" onClick={() => onPick(c)} active={active === c.id}>
+          <Card
+            key={c.id}
+            className="p-4"
+            onClick={() => onPick(c)}
+            label={`Show ${c.label} in the charts`}
+            active={active === c.id}
+          >
             <div className="flex items-center justify-between text-xs text-muted-foreground">
               <span className="font-medium">{c.label}</span>
               {c.deltaPct !== undefined && Number.isFinite(c.deltaPct) && (

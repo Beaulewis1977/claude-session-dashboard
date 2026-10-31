@@ -3,6 +3,7 @@
 import { toast } from 'sonner'
 import type { SessionDetail, SessionMeta, SessionSummary } from '@shared/types'
 import { sessionToMarkdown } from '@shared/markdown'
+import { canUseClaudeName } from '@shared/title'
 import { api } from './api'
 import { projectKey } from './filters'
 import { useApp } from './store'
@@ -118,6 +119,45 @@ export async function toggleHidden(key: string): Promise<void> {
   toast(hidden ? 'Session hidden' : 'Session visible again', {
     description: hidden ? 'Find it under "Hidden" in the sidebar.' : undefined,
     action: { label: 'Undo', onClick: () => void updateMeta(key, { hidden: !hidden }) }
+  })
+}
+
+/**
+ * "Use name from Claude Code": clear my dashboard names so the names given in
+ * Claude Code (`/rename`) show. Only sessions that have one: a name with
+ * nothing from Claude Code to fall back on stays. Nothing is written to
+ * Claude's files.
+ */
+export async function applyClaudeNames(keys: string[]): Promise<void> {
+  const st = get()
+  const before = new Map(
+    st.sessions
+      .filter((s) => keys.includes(s.key) && canUseClaudeName(s))
+      .map((s) => [s.key, s.meta.name!])
+  )
+  if (!before.size) {
+    toast('Nothing to change', {
+      description: 'These sessions already show their Claude Code name, or have none.'
+    })
+    return
+  }
+  const list = [...before.keys()]
+  try {
+    // One session: patched in place. Several: the list follows the change event.
+    if (list.length === 1) await updateMeta(list[0], { name: '' })
+    else await api.applyClaudeNames(list)
+  } catch (err) {
+    toast.error('Could not change the names', { description: (err as Error).message })
+    return
+  }
+  const n = before.size
+  toast(n === 1 ? 'Using the name from Claude Code' : `Using Claude Code names for ${n} sessions`, {
+    action: {
+      label: 'Undo',
+      onClick: () => {
+        for (const [key, name] of before) void updateMeta(key, { name })
+      }
+    }
   })
 }
 

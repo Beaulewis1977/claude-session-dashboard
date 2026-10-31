@@ -199,6 +199,12 @@ export const webApi: CsdApi = {
   getSession: (key) => rpc('getSession', key),
   search: (q) => rpc('search', q),
   updateMeta: (key, patch) => rpc('updateMeta', key, patch),
+  // One name at a time, through the same checks as any other edit from a phone.
+  applyClaudeNames: async (keys) => {
+    let n = 0
+    for (const key of keys) if (await rpc('updateMeta', key, { name: '' })) n++
+    return n
+  },
   rescan: async () => fire('sessions'),
 
   getSettings: () => rpc('getSettings'),

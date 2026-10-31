@@ -177,6 +177,100 @@ export interface SessionAnalysis {
   /** Latest Remote Control link Claude Code recorded (`system` / `bridge_status`). */
   remoteUrl?: string
   remoteUrlAt?: string
+  /**
+   * The name given in Claude Code: the last `custom-title` entry (`/rename`),
+   * else the last `agent-name` entry (the Remote Control name).
+   */
+  claudeName?: string
+  /** When that name was set, if the file says (see `NameTrack`). */
+  claudeNameAt?: string
+}
+
+export const NAME_MAX = 300
+
+/** A name from Claude's file: one line, trimmed, at most NAME_MAX characters. */
+export function cleanName(v: unknown): string | undefined {
+  if (typeof v !== 'string') return undefined
+  const t = v.replace(/\s+/g, ' ').trim().slice(0, NAME_MAX).trim()
+  return t || undefined
+}
+
+/**
+ * The latest value of one kind of name entry, and when it was set.
+ *
+ * Claude Code writes `custom-title` / `agent-name` entries without a timestamp,
+ * and writes them again (same value) every so often. `/rename` writes the name
+ * and then its own command entry, which has the exact time. So:
+ *
+ * - A name entry with a matching `/rename` command takes that command's time.
+ *   An explicit `/rename` to the current name is a new rename too.
+ * - A changed name without a command takes the time of the entry just before
+ *   it. That never changes when more is added to the file, so new messages
+ *   can't make an old name look newer.
+ * - The same name written again without a command is not a rename.
+ */
+class NameTrack {
+  value?: string
+  at?: string
+  private seen = new Set<string>()
+  /** A `/rename` command whose name entry hasn't come yet. */
+  private pending?: { name: string; at: string }
+
+  /** A name entry. `before` is the time of the last entry before it. */
+  entry(name: string, before: string | undefined): void {
+    if (this.pending?.name === name) {
+      this.value = name
+      this.at = this.pending.at
+      this.pending = undefined
+    } else if (name !== this.value) {
+      this.value = name
+      this.at = before
+    }
+    this.seen.add(name)
+  }
+
+  /** A `/rename` command for `name`, at `at`. */
+  command(name: string, at: string): void {
+    if (this.seen.has(name)) {
+      this.value = name
+      this.at = at
+    } else {
+      // Its name entry comes later (or never, if the rename didn't happen).
+      this.pending = { name, at }
+    }
+  }
+}
+
+const RENAMED_RE =
+  /^<local-command-stdout>\s*Session renamed to:\s*([\s\S]*?)\s*<\/local-command-stdout>$/
+
+/**
+ * The name a `/rename` command entry set, or undefined if the entry isn't one.
+ * Only Claude Code's own command entries count (a `system` local command, or a
+ * user entry that is only the command), never text that mentions a rename.
+ */
+export function renameCommandName(e: RawEvent): string | undefined {
+  const type = str(e.type)
+  if (type !== 'system' && type !== 'user') return undefined
+  const run = obj(e.commandRun)
+  if (run && run.command === 'rename') {
+    const args = cleanName(run.args)
+    if (args) return args
+  }
+  let text: string | undefined
+  if (type === 'system') text = str(e.content)
+  else if (e.isMeta !== true) text = textFromBlocks(contentOf(e))
+  const t = text?.trim()
+  if (!t) return undefined
+  // `/rename <name>`
+  if (t.startsWith('<command-')) {
+    const cmd = COMMAND_RE.exec(t)
+    if (cmd?.[1].trim() !== '/rename') return undefined
+    return cleanName(COMMAND_ARGS_RE.exec(t)?.[1])
+  }
+  // `/rename` without a name: Claude Code picks one and says which.
+  const out = RENAMED_RE.exec(t)
+  return out ? cleanName(out[1]) : undefined
 }
 
 const REMOTE_URL_RE = /^https:\/\/claude\.ai\/code\/session_[A-Za-z0-9]{8,64}$/
@@ -208,7 +302,15 @@ export function isToolResultOnly(e: RawEvent): boolean {
 
 const SEARCH_TEXT_LIMIT = 400_000
 
-export function analyzeEvents(events: RawEvent[]): SessionAnalysis {
+export interface AnalyzeOptions {
+  /**
+   * The file's own session id. Name entries that carry another session's id
+   * (copied from another file) are not this session's name.
+   */
+  sessionId?: string
+}
+
+export function analyzeEvents(events: RawEvent[], opts: AnalyzeOptions = {}): SessionAnalysis {
   const a: SessionAnalysis = {
     userMessageCount: 0,
     assistantMessageCount: 0,
@@ -226,6 +328,9 @@ export function analyzeEvents(events: RawEvent[]): SessionAnalysis {
   // Id of the transcript message the current event belongs to (see buildMessages).
   let messageStart: string | undefined
   let assistantMsgId: string | undefined
+  const customTitle = new NameTrack()
+  const agentName = new NameTrack()
+  let lastTs: string | undefined
 
   const pushText = (t: string): void => {
     if (textLength >= SEARCH_TEXT_LIMIT || !t) return
@@ -237,10 +342,31 @@ export function analyzeEvents(events: RawEvent[]): SessionAnalysis {
     addHints(a.sourceHints, e)
     const type = str(e.type)
     const ts = validTimestamp(e.timestamp)
+
+    if (type === 'custom-title' || type === 'agent-name') {
+      const sid = str(e.sessionId)
+      if (opts.sessionId && sid && sid !== opts.sessionId) continue
+      const name = cleanName(type === 'custom-title' ? e.customTitle : e.agentName)
+      if (name) (type === 'custom-title' ? customTitle : agentName).entry(name, ts ?? lastTs)
+      if (ts) lastTs = ts
+      continue
+    }
+
+    // A `/rename` command of this session (not one copied into a branch).
+    const renamed = ts && !e.forkedFrom ? renameCommandName(e) : undefined
+    if (renamed) {
+      const sid = str(e.sessionId)
+      if (!(opts.sessionId && sid && sid !== opts.sessionId)) {
+        customTitle.command(renamed, ts!)
+        agentName.command(renamed, ts!)
+      }
+    }
+
     if (ts) {
       const t = Date.parse(ts)
       if (t < minT) minT = t
       if (t > maxT) maxT = t
+      lastTs = ts
     }
     if (!a.sessionId) a.sessionId = str(e.sessionId) ?? str(e.session_id)
     if (!a.cwd) a.cwd = str(e.cwd)
@@ -249,9 +375,10 @@ export function analyzeEvents(events: RawEvent[]): SessionAnalysis {
     const version = str(e.version)
     if (version) a.version = version
 
-    if (type === 'summary') {
-      const s = str(e.summary)
-      if (s) a.summary = s.trim()
+    if (type === 'summary' || type === 'ai-title') {
+      // Claude's automatic title: `summary` in older versions, `ai-title` in newer ones.
+      const s = cleanName(type === 'summary' ? e.summary : e.aiTitle)
+      if (s) a.summary = s
       continue
     }
     if (type === 'system' && e.subtype === 'bridge_status') {
@@ -333,6 +460,11 @@ export function analyzeEvents(events: RawEvent[]): SessionAnalysis {
   if (maxT !== -Infinity) a.lastActivityAt = new Date(maxT).toISOString()
   a.models = [...models]
   a.searchText = textParts.join('\n').slice(0, SEARCH_TEXT_LIMIT)
+  const named = customTitle.value ? customTitle : agentName
+  if (named.value) {
+    a.claudeName = named.value
+    a.claudeNameAt = named.at
+  }
   return a
 }
 

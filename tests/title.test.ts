@@ -3,13 +3,13 @@ import { computeTitle, truncate } from '@shared/title'
 
 describe('computeTitle', () => {
   it('prefers my name', () => {
-    expect(computeTitle({ name: '  My name ' }, 'Summary', 'Prompt')).toEqual({
+    expect(computeTitle({ name: '  My name ' }, undefined, 'Summary', 'Prompt')).toEqual({
       title: 'My name',
       titleSource: 'name'
     })
   })
   it('falls back to the summary when the name is blank', () => {
-    expect(computeTitle({ name: '   ' }, 'Claude summary', 'Prompt')).toEqual({
+    expect(computeTitle({ name: '   ' }, undefined, 'Claude summary', 'Prompt')).toEqual({
       title: 'Claude summary',
       titleSource: 'summary'
     })
@@ -17,14 +17,17 @@ describe('computeTitle', () => {
   it('falls back to the first prompt, cut short', () => {
     const prompt =
       'I want to migrate our date handling from moment.js to date-fns across the whole app. There are about 40 files.'
-    const r = computeTitle(undefined, undefined, prompt)
+    const r = computeTitle(undefined, undefined, undefined, prompt)
     expect(r.titleSource).toBe('first-prompt')
     expect(r.title.length).toBeLessThanOrEqual(80)
     expect(r.title.endsWith('…')).toBe(true)
     expect(prompt.startsWith(r.title.slice(0, -1))).toBe(true)
   })
   it('uses a placeholder when nothing is known', () => {
-    expect(computeTitle({}, '', '')).toEqual({ title: 'Untitled session', titleSource: 'fallback' })
+    expect(computeTitle({}, undefined, '', '')).toEqual({
+      title: 'Untitled session',
+      titleSource: 'fallback'
+    })
   })
 })
 

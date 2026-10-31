@@ -19,12 +19,14 @@ import {
   Play,
   Search,
   Smartphone,
-  SquareTerminal
+  SquareTerminal,
+  TextCursorInput
 } from 'lucide-react'
 import type { SessionDetail, SessionSummary } from '@shared/types'
 import { formatDateTime } from '@shared/format'
 import { api } from '@/lib/api'
 import {
+  applyClaudeNames,
   copyConversation,
   copySessionId,
   exportMarkdown,
@@ -45,7 +47,13 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { EnvBadge } from '@/components/EnvBadge'
 import { RemoteBadge } from '@/components/RemoteBadge'
-import { DescriptionEditor, EditableTitle, TagEditor } from '@/components/viewer/MetaEditors'
+import {
+  DescriptionEditor,
+  EditableTitle,
+  TagEditor,
+  TitleSourceLine
+} from '@/components/viewer/MetaEditors'
+import { canUseClaudeName } from '@shared/title'
 import { FindBar } from '@/components/viewer/FindBar'
 import { SessionUsageStrip } from '@/components/viewer/SessionUsage'
 import { Transcript, type OnBranch } from '@/components/viewer/Transcript'
@@ -219,6 +227,12 @@ export function SessionScreen({ session }: { session: SessionSummary }) {
                 <DropdownMenuSeparator />
               </>
             )}
+            <DropdownMenuItem
+              disabled={!canUseClaudeName(session)}
+              onSelect={() => write(() => applyClaudeNames([session.key]))}
+            >
+              <TextCursorInput /> Use name from Claude Code
+            </DropdownMenuItem>
             <DropdownMenuItem onSelect={() => write(() => togglePinned(session.key))}>
               {session.meta.pinned ? <PinOff /> : <Pin />}
               {session.meta.pinned ? 'Unpin' : 'Pin to top'}
@@ -253,14 +267,18 @@ export function SessionScreen({ session }: { session: SessionSummary }) {
       >
         <div className="border-b border-border px-4 pt-4 pb-4">
           <EditableTitle
-            key={session.meta.name ?? ''}
+            key={session.key}
             session={session}
             onSave={(name) => write(() => updateMeta(session.key, { name }))}
             focusNonce={0}
           />
+          <TitleSourceLine
+            session={session}
+            onUseClaudeName={() => write(() => applyClaudeNames([session.key]))}
+          />
           <div className="mt-1.5">
             <DescriptionEditor
-              key={session.meta.description ?? ''}
+              key={session.key}
               session={session}
               onSave={(description) => write(() => updateMeta(session.key, { description }))}
               focusNonce={0}

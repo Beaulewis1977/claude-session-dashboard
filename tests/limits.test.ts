@@ -8,6 +8,7 @@ import {
   mkdtemp,
   readdir,
   readFile,
+  rename,
   rm,
   symlink,
   utimes,
@@ -31,10 +32,12 @@ import {
   LIVE_SOURCES_NOTE,
   projectWindow,
   REFRESH_HINT,
+  shownWeeklyBuckets,
   weeklyBuckets,
   weightedTokens,
   whyNoLiveReading,
   type CapacityPoint,
+  type GaugeState,
   type LimitsState
 } from '@shared/usage/limits'
 import { parseBridgePayload, sameLimits } from '@shared/usage/bridge'
@@ -305,6 +308,25 @@ describe('gauges and projections', () => {
     const moved = { ...r, weeklyBy: { seven_day_opus: { pct: 6, resetsAt: 1793656800000 } } }
     expect(sameLimits(r, moved)).toBe(false)
     expect(sameLimits(r, { ...r })).toBe(true)
+    // Under the gauge: the bucket's own time unless it's from the same reading,
+    // hidden once its week reset or if read before the current week began.
+    const week = {
+      updatedAt: 1793400000000,
+      windowStart: 1793400000000 - 86_400_000,
+      expired: false
+    } as GaugeState
+    const at = 1793400000000 + 2 * H
+    const b = weeklyBuckets([r], at)[0]
+    expect(shownWeeklyBuckets({ weeklyBuckets: [b], sevenDay: week }, at)).toMatchObject([
+      { key: 'seven_day_opus', asOf: undefined, freshness: 'aging' }
+    ])
+    const newer = { ...week, updatedAt: at }
+    expect(shownWeeklyBuckets({ weeklyBuckets: [b], sevenDay: newer }, at)[0].asOf).toBe(
+      `as of ${asOf(b.updatedAt, at)}`
+    )
+    const nextWeek = { ...newer, windowStart: b.updatedAt + 1 }
+    expect(shownWeeklyBuckets({ weeklyBuckets: [b], sevenDay: nextWeek }, at)).toEqual([])
+    expect(shownWeeklyBuckets({ weeklyBuckets: [b], sevenDay: newer }, b.resetsAt! + 1)).toEqual([])
     // Today's payloads have only the documented windows.
     expect(weeklyBuckets([{ ...r, weeklyBy: undefined }], 0)).toEqual([])
   })
@@ -685,5 +707,121 @@ describe('LimitsService (fixtures)', () => {
       .split('\n')
       .filter((l) => l.includes('"sess-l"') || l.includes('"sess-m"'))
     expect(rows).toHaveLength(2)
+  })
+
+  it('keeps going when bridge.json is locked, and saves the hashes later', async () => {
+    const { installer, sessions, limits, paths } = await fixtureLimits()
+    // An older script the app wrote, so it gets upgraded and the new hash must be saved.
+    const script = join(envPaths(sessions.source('windows')!)!.bridgeDir, 'bin', 'statusline.ps1')
+    const older = '# an older bridge script\r\n'
+    installer['store'].update((d) => {
+      d.installs.windows.scriptSha256 = sha256(older)
+    })
+    await installer['store'].flush()
+    await writeFile(script, older)
+    // bridge.json can't be replaced (a folder in its place, like a lock that won't go away).
+    const file = join(paths.dataDir, 'bridge.json')
+    await rm(file)
+    await mkdir(join(file, 'locked'), { recursive: true })
+    // Startup goes on: refreshing the scripts doesn't throw, and limits start.
+    expect(await installer.refreshScripts(sessions.sources)).toEqual(['windows'])
+    await expect(limits.start()).resolves.toBeUndefined()
+    limits.stop()
+    // The hash is kept in memory and a later save is scheduled.
+    expect(installer.record('windows')?.scriptSha256).toBe(sha256(await readFile(script, 'utf8')))
+    expect(installer['store']['saveTimer']).toBeDefined()
+    await rm(file, { recursive: true, force: true })
+  })
+
+  it('deletes a repeat only once the reading it repeats is saved on disk', async () => {
+    const { limits, sessions, paths } = await fixtureLimits()
+    const live = join(envPaths(sessions.source('windows')!)!.bridgeDir, 'live')
+    await mkdir(live, { recursive: true })
+    const history = join(paths.dataDir, 'limits-history.ndjson')
+    const breakHistory = async () => {
+      await rename(history, `${history}.bak`).catch(() => undefined)
+      await mkdir(history, { recursive: true })
+    }
+    const fixHistory = async () => {
+      await rm(history, { recursive: true, force: true })
+      await rename(`${history}.bak`, history).catch(() => undefined)
+    }
+    const put = async (name: string, sid: string, pct: number, agoMs: number) => {
+      const f = join(live, name)
+      await writeFile(
+        f,
+        JSON.stringify({
+          session_id: sid,
+          rate_limits: { five_hour: { used_percentage: pct, resets_at: FIXTURES_NOW / 1000 } }
+        })
+      )
+      const t = new Date(Date.now() - agoMs)
+      await utimes(f, t, t)
+    }
+    const onDisk = async (sid: string) =>
+      (await readFile(history, 'utf8')).split('\n').filter((l) => l.includes(`"${sid}"`)).length
+
+    // 1. The live scan reads a session, but saving the history fails: memory only.
+    await breakHistory()
+    await put('sess-p.json', 'sess-p', 41, 2 * H)
+    await writeFile(join(live, 'latest.json'), '{}')
+    await limits.scan(true)
+    expect(limits.readings().some((r) => r.sessionId === 'sess-p')).toBe(true)
+    // A temp file repeating it is not deleted while that reading isn't on disk.
+    await put('.tmp.400.sess-p.json', 'sess-p', 41, H)
+    expect(await limits.salvageOrphans()).toMatchObject({ repeats: 1, deleted: 0 })
+    expect(await readdir(live)).toContain('.tmp.400.sess-p.json')
+
+    // 2. Salvage's own save fails: nothing is deleted either.
+    await put('.tmp.401.sess-q.json', 'sess-q', 50, H)
+    await expect(limits.salvageOrphans()).rejects.toThrow()
+    expect(await readdir(live)).toEqual(
+      expect.arrayContaining(['.tmp.400.sess-p.json', '.tmp.401.sess-q.json'])
+    )
+
+    // 3. Once the history can be written, both readings end up on disk once, then the files go.
+    await fixHistory()
+    await limits.scan(true) // saves the reading that failed before
+    expect(await onDisk('sess-p')).toBe(1)
+    expect(await limits.salvageOrphans()).toMatchObject({ imported: 1, deleted: 2 })
+    expect(await onDisk('sess-q')).toBe(1)
+    expect(await onDisk('sess-p')).toBe(1)
+    expect((await readdir(live)).filter((n) => n.startsWith('.tmp.'))).toEqual([])
+  })
+
+  it("deletes only in this home's own live folder, not another bridge folder", async () => {
+    const { limits, sessions } = await fixtureLimits()
+    const live = join(envPaths(sessions.source('windows')!)!.bridgeDir, 'live')
+    await rm(live, { recursive: true, force: true })
+    // live/ points at some other .claude-session-dashboard folder.
+    const other = join(root, 'elsewhere', '.claude-session-dashboard', 'live')
+    await mkdir(other, { recursive: true })
+    await symlink(other, live, 'junction')
+    const f = join(other, '.tmp.500.sess-a.json')
+    await writeFile(f, '')
+    const t = new Date(Date.now() - H)
+    await utimes(f, t, t)
+    expect(await limits.salvageOrphans()).toMatchObject({ deleted: 0 })
+    expect(await readdir(other)).toEqual(['.tmp.500.sess-a.json'])
+  })
+
+  it('imports a payload that has only a per-model weekly window', async () => {
+    const { limits, sessions } = await fixtureLimits()
+    const live = join(envPaths(sessions.source('windows')!)!.bridgeDir, 'live')
+    await mkdir(live, { recursive: true })
+    const f = join(live, '.tmp.600.sess-o.json')
+    await writeFile(
+      f,
+      JSON.stringify({
+        session_id: 'sess-o',
+        rate_limits: { seven_day_opus: { used_percentage: 4, resets_at: FIXTURES_NOW / 1000 } }
+      })
+    )
+    const t = new Date(Date.now() - H)
+    await utimes(f, t, t)
+    expect(await limits.salvageOrphans()).toMatchObject({ imported: 1, deleted: 1 })
+    expect(limits.readings().find((r) => r.sessionId === 'sess-o')?.weeklyBy).toEqual({
+      seven_day_opus: { pct: 4, resetsAt: FIXTURES_NOW }
+    })
   })
 })

@@ -119,6 +119,11 @@ export function parseBridgePayload(
   return r
 }
 
+/** The reading carries limit data: a 5-hour, weekly or per-model weekly window. */
+export function hasLimits(r: BridgeReading): boolean {
+  return !!(r.fiveHour || r.sevenDay || (r.weeklyBy && Object.keys(r.weeklyBy).length))
+}
+
 export type BillingGuess = 'subscription' | 'api' | 'unknown'
 
 /**
@@ -126,7 +131,7 @@ export type BillingGuess = 'subscription' | 'api' | 'unknown'
  * subscription; a cost without `rate_limits` most likely means API billing.
  */
 export function inferBilling(readings: BridgeReading[]): BillingGuess {
-  if (readings.some((r) => r.fiveHour || r.sevenDay)) return 'subscription'
+  if (readings.some(hasLimits)) return 'subscription'
   if (readings.some((r) => r.costUsd !== undefined && r.costUsd > 0)) return 'api'
   return 'unknown'
 }

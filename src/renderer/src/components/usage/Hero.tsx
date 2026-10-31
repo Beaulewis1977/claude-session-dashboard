@@ -6,6 +6,7 @@ import {
   LIVE_SOURCES_NOTE,
   PLAN_LABEL,
   REFRESH_HINT,
+  shownWeeklyBuckets,
   whyNoLiveReading,
   type Freshness,
   type GaugeState,
@@ -357,19 +358,39 @@ export function UpdatedLabel({
 
 /** Extra weekly windows (e.g. one model only), if Claude Code reports any. */
 function WeeklyBuckets({ limits, t }: { limits: LimitsState; t: number }) {
-  const list = limits.weeklyBuckets ?? []
+  const list = shownWeeklyBuckets(limits, t)
   if (!list.length) return null
   return (
     <div className="mt-3 space-y-1 border-t border-border pt-2.5 text-xs">
       {list.map((b) => (
-        <div key={b.key} className="flex items-baseline justify-between gap-3">
+        <div
+          key={b.key}
+          className="flex items-baseline justify-between gap-3"
+          title={`Read ${new Date(b.updatedAt).toLocaleString()}`}
+        >
           <span className="text-muted-foreground">This week · {b.label}</span>
-          <span className="font-medium tabular-nums">
+          <span
+            className={cn(
+              'font-medium tabular-nums',
+              b.freshness !== 'fresh' && 'text-[var(--gauge-warn-text)]'
+            )}
+          >
             {Math.round(b.pct)}%
-            {b.resetsAt && (
-              <span className="ml-1.5 font-normal text-subtle-foreground">
-                resets {when(b.resetsAt, t)}
+            {b.asOf ? (
+              <span
+                className={cn(
+                  'ml-1.5 font-normal',
+                  b.freshness === 'fresh' ? 'text-subtle-foreground' : 'font-medium'
+                )}
+              >
+                {b.asOf}
               </span>
+            ) : (
+              b.resetsAt && (
+                <span className="ml-1.5 font-normal text-subtle-foreground">
+                  resets {when(b.resetsAt, t)}
+                </span>
+              )
             )}
           </span>
         </div>

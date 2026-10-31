@@ -540,3 +540,35 @@ export function weeklyBuckets(readings: BridgeReading[], now: number): WeeklyBuc
   }
   return []
 }
+
+export interface ShownWeeklyBucket extends WeeklyBucket {
+  freshness: Freshness
+  /** "as of 2:47 PM" when it isn't from the same reading as the weekly gauge. */
+  asOf?: string
+}
+
+/**
+ * The per-model weekly windows to show under the weekly gauge. One whose week
+ * has reset, or that was read before the current week started, is hidden; one
+ * from an older reading than the gauge carries its own "as of" time, so an old
+ * value never sits unlabeled next to "Updated just now".
+ */
+export function shownWeeklyBuckets(
+  l: Pick<LimitsState, 'weeklyBuckets' | 'sevenDay'>,
+  now: number
+): ShownWeeklyBucket[] {
+  const week = l.sevenDay && !l.sevenDay.expired ? l.sevenDay : undefined
+  const out: ShownWeeklyBucket[] = []
+  for (const b of l.weeklyBuckets ?? []) {
+    const expired = b.resetsAt !== undefined && b.resetsAt <= now
+    if (expired) continue
+    if (week?.windowStart !== undefined && b.updatedAt < week.windowStart) continue
+    const sameReading = !!week && Math.abs(week.updatedAt - b.updatedAt) < 60_000
+    out.push({
+      ...b,
+      freshness: freshnessOf({ updatedAt: b.updatedAt, expired }, now),
+      asOf: sameReading ? undefined : `as of ${asOf(b.updatedAt, now)}`
+    })
+  }
+  return out
+}

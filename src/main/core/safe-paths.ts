@@ -118,6 +118,24 @@ export async function assertRealBridgeWrite(target: string): Promise<void> {
   }
 }
 
+const samePath = (a: string, b: string): boolean =>
+  process.platform === 'win32'
+    ? resolve(a).toLowerCase() === resolve(b).toLowerCase()
+    : resolve(a) === resolve(b)
+
+/**
+ * Before deleting anything in a bridge live folder: with links and junctions
+ * followed, it must be exactly `<home>/.claude-session-dashboard/live` of the
+ * Claude home it belongs to, not another bridge folder somewhere else and not
+ * anything inside `.claude`.
+ */
+export async function assertExactBridgeLive(live: string, home: string): Promise<void> {
+  const [real, realHome] = await Promise.all([realpath(live), realpath(home)])
+  if (isInsideClaudeDir(real) || !samePath(real, join(realHome, BRIDGE_DIR, 'live'))) {
+    throw new UnsafeWriteError(`Not this home's bridge live folder: ${live}`)
+  }
+}
+
 const SESSION_UUID_FILE_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.jsonl$/i
 

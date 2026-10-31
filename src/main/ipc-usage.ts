@@ -104,7 +104,9 @@ export function registerUsageIpc(deps: UsageIpcDeps): void {
   handle('limits:state', () => deps.limits.state())
   handle('limits:rescan', async () => {
     await deps.rescanSources?.()
-    await deps.installer.refreshScripts(deps.sessions.sources)
+    await deps.installer
+      .refreshScripts(deps.sessions.sources)
+      .catch((err: unknown) => console.warn('could not refresh bridge scripts', err))
     await deps.limits.salvageOrphans().catch((err) => console.warn('salvage failed', err))
     await deps.limits.scan(true)
     deps.limits.emit('changed')

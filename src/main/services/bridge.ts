@@ -271,6 +271,7 @@ export class BridgeInstaller {
    */
   async refreshScripts(sources: SourceInfo[]): Promise<string[]> {
     const updated: string[] = []
+    let dirty = false
     for (const src of sources) {
       const rec = this.record(src.id)
       if (src.status !== 'ok' || !rec) continue
@@ -289,7 +290,7 @@ export class BridgeInstaller {
               const r = d.installs[src.id]
               if (r) r.scriptSha256 = sha256(text)
             })
-            await this.store.flush()
+            dirty = true
           }
           continue
         }
@@ -308,12 +309,20 @@ export class BridgeInstaller {
           const r = d.installs[src.id]
           if (r) r.scriptSha256 = sha256(text)
         })
+        dirty = true
         updated.push(src.id)
       } catch (err) {
         console.warn('could not update the bridge script', p.bridgeDir, err)
       }
     }
-    if (updated.length) await this.store.flush()
+    if (dirty) {
+      // A locked or unwritable bridge.json must not stop startup or a rescan.
+      // The hashes stay in memory and the store saves them again later.
+      await this.store.flush().catch((err: unknown) => {
+        console.warn("couldn't save bridge.json; will retry", err)
+        this.store.update(() => undefined)
+      })
+    }
     return updated
   }
 

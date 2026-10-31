@@ -45,6 +45,7 @@ export const SessionRow = memo(function SessionRow({
   session: s,
   selected,
   checked = false,
+  multi = false,
   hit,
   depth = 0,
   branches = 0,
@@ -53,8 +54,10 @@ export const SessionRow = memo(function SessionRow({
 }: {
   session: SessionSummary
   selected: boolean
-  /** Part of a multi-selection. */
+  /** Picked for a bulk action. */
   checked?: boolean
+  /** Sessions are being picked: `selected` is then only the focused row. */
+  multi?: boolean
   hit?: SearchHit
   /** > 0: shown as a branch under the row above. */
   depth?: number
@@ -70,13 +73,15 @@ export const SessionRow = memo(function SessionRow({
   return (
     <div
       role="option"
-      aria-selected={selected || checked}
+      aria-selected={multi ? checked : selected}
       id={`row-${s.key}`}
       onMouseDown={(e) => onSelect(s.key, e)}
       onDoubleClick={() => onOpen(s.key)}
       className={cn(
         'group relative mx-2 flex h-[98px] flex-col justify-center gap-[3px] rounded-lg px-3 transition-colors duration-75',
-        selected || checked ? 'bg-selected' : 'hover:bg-hover'
+        checked || (selected && !multi) ? 'bg-selected' : 'hover:bg-hover',
+        // The focused row while picking, when it isn't picked itself.
+        multi && selected && !checked && 'ring-1 ring-primary/50 ring-inset'
       )}
       style={indent ? { paddingLeft: 12 + indent } : undefined}
     >

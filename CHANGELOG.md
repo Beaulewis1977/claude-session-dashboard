@@ -1,5 +1,21 @@
 # Changelog
 
+## Unreleased
+
+- **Fix: per-project billing defaults for WSL.** "Always use this for <project>" was keyed by the
+  folder alone, ignoring case, so the same path in two WSL distros, or two folders differing only
+  by case, shared one billing default. It now uses the same project key as the model and effort
+  defaults: distro and exact path for WSL, the folder (ignoring case) for Windows. Windows defaults
+  keep working as they are. A WSL default saved by 1.4.0 or older is moved to every project it
+  applied to before, as soon as the app has seen their sessions; one that matches no session yet
+  is kept until it does.
+- **Tests:** the browser tests no longer time out now and then. Their Vite servers watched the
+  whole repo, so any file changed during a run (an edit, git, the formatter) reloaded the test page
+  mid-test; and on a fresh cache (after `npm install`) Vite found dependencies while a page loaded
+  and failed its requests ("504 Outdated Optimize Dep"). They now run without a file watcher,
+  pre-bundle everything at start, keep their own caches, wait for menus instead of racing them, and
+  run after the other tests, one file at a time.
+
 ## 1.4.0 (October 31, 2026)
 
 **Session names from Claude Code, and the model and effort for each session.**

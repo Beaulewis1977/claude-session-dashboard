@@ -9,8 +9,19 @@
 
 import { createHash, randomBytes } from 'node:crypto'
 import { constants } from 'node:fs'
-import { copyFile, link, mkdir, readFile, rename, stat, unlink, writeFile } from 'node:fs/promises'
-import { dirname, join } from 'node:path'
+import {
+  copyFile,
+  lstat,
+  mkdir,
+  open,
+  readdir,
+  readFile,
+  rename,
+  stat,
+  unlink,
+  writeFile
+} from 'node:fs/promises'
+import { basename, dirname, join } from 'node:path'
 import type { BridgeApplyResult, BridgeEnv, BridgePlan } from '@shared/usage/limits'
 import type { SourceInfo } from '@shared/types'
 import { JsonStore } from '../core/json-store'
@@ -179,67 +190,33 @@ export const SETTINGS_CHANGED =
 
 export class SettingsChangedError extends Error {}
 
-/** Test seams: run code at the moments another program could save settings.json. */
+/** Test seams: run code at the moment another program could save, or replace the rename. */
 export interface WriteSettingsProbe {
-  beforeMoveAside?: () => Promise<void>
-  afterMoveAside?: () => Promise<void>
+  /** Runs after the temp file is written, just before the last check and the swap. */
+  beforeSwap?: () => Promise<void>
+  /** Stands in for fs.rename (tests of a replace that isn't possible). */
+  rename?: (from: string, to: string) => Promise<void>
 }
 
-const LINK_UNSUPPORTED = new Set(['EPERM', 'ENOTSUP', 'ENOSYS', 'EXDEV', 'EINVAL', 'EISDIR'])
+const sameText = (a: string | undefined, b: string | undefined): boolean =>
+  tokenOf(a) === tokenOf(b)
 
 /**
- * Put `from` at `to` only if `to` doesn't exist: never replaces a file. A
- * hard link is atomic; where links aren't supported (some network shares,
- * such as WSL's) an exclusive copy is used. Throws SettingsChangedError if
- * `to` exists (someone saved it in the meantime).
- */
-async function placeExclusive(from: string, to: string): Promise<void> {
-  try {
-    await link(from, to)
-    return
-  } catch (err) {
-    const code = (err as NodeJS.ErrnoException).code
-    if (code === 'EEXIST') throw new SettingsChangedError(SETTINGS_CHANGED)
-    if (!code || !LINK_UNSUPPORTED.has(code)) throw err
-  }
-  try {
-    await copyFile(from, to, constants.COPYFILE_EXCL)
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === 'EEXIST')
-      throw new SettingsChangedError(SETTINGS_CHANGED)
-    throw err
-  }
-}
-
-/** rename, retried a few times: Windows can hold a file open for a moment. */
-async function renameRetry(from: string, to: string): Promise<void> {
-  for (let i = 0; ; i++) {
-    try {
-      await rename(from, to)
-      return
-    } catch (err) {
-      const code = (err as NodeJS.ErrnoException).code
-      if (i >= 4 || (code !== 'EPERM' && code !== 'EBUSY' && code !== 'EACCES')) throw err
-      await new Promise((r) => setTimeout(r, 60 * (i + 1)))
-    }
-  }
-}
-
-/**
- * Write settings.json only if it still holds `expected` (what the user
- * reviewed), without ever losing a save another program (Claude Code, an
- * editor) makes at the same moment:
+ * Save settings.json, the same way for every change the app makes to it (the
+ * status line bridge and session alerts):
  *
- *   1. the current file is moved aside (one atomic rename);
- *   2. what was moved must be exactly `expected`: if someone saved just
- *      before, their file is put back and nothing is changed;
- *   3. the new file is put in place with an exclusive create, which never
- *      replaces a file: if someone saved after step 1, their file stays.
+ *   1. the whole new content goes to a temp file in the same folder, flushed
+ *      to disk;
+ *   2. right before the swap, settings.json is read again and must still be
+ *      exactly what the user reviewed (else nothing changes: review again);
+ *   3. one atomic same-folder rename replaces settings.json with the temp
+ *      file, so there is never a moment without a settings.json.
  *
- * Every save lands either before the move (caught in step 2) or after it
- * (kept by step 3). settings.json is missing for the few milliseconds between
- * steps 1 and 3. If anything else goes wrong, the moved file is put back.
- * Claude's own file mode is kept.
+ * If that rename isn't possible (say, the share doesn't support it), nothing
+ * is changed and the error says so. This narrows, but can't close, the window
+ * in which another program saving at the same moment could be overwritten:
+ * the caller keeps a backup of the reviewed file in the app's data folder
+ * first. Claude's own file mode is kept.
  */
 export async function writeSettings(
   path: string,
@@ -248,70 +225,118 @@ export async function writeSettings(
   probe: WriteSettingsProbe = {}
 ): Promise<void> {
   assertClaudeSettingsWrite(path)
-  const id = randomBytes(4).toString('hex')
-  const tmp = `${path}.csd-${id}.tmp`
-  const aside = `${path}.csd-${id}.prev`
+  const tmp = `${path}.csd-${randomBytes(4).toString('hex')}.tmp`
   assertClaudeSettingsWrite(tmp)
-  assertClaudeSettingsWrite(aside)
   const mode = await stat(path).then(
     (st) => st.mode & 0o777,
     () => undefined
   )
-  await writeFile(tmp, text, { encoding: 'utf8', ...(mode !== undefined ? { mode } : {}) })
-  let moved = false
+  const fh = await open(tmp, 'wx', mode ?? 0o644)
   try {
-    await probe.beforeMoveAside?.()
-    if (expected === undefined) {
-      // There was no file: create it, unless someone else has by now.
-      await placeExclusive(tmp, path)
-      return
-    }
-    try {
-      await renameRetry(path, aside)
-    } catch (err) {
-      // Gone since it was read: someone deleted or replaced it.
-      if ((err as NodeJS.ErrnoException).code === 'ENOENT')
-        throw new SettingsChangedError(SETTINGS_CHANGED)
-      throw err
-    }
-    moved = true
-    await probe.afterMoveAside?.()
-    if ((await readFile(aside, 'utf8')) !== expected) {
-      // Saved just before the move: theirs goes back (unless they saved again since).
-      await placeExclusive(aside, path).catch((err: unknown) => {
-        if (!(err instanceof SettingsChangedError)) throw err
-      })
-      throw new SettingsChangedError(SETTINGS_CHANGED)
-    }
-    await placeExclusive(tmp, path)
-  } catch (err) {
-    if (moved) {
-      // The moved file must never be lost: put it back if settings.json is
-      // missing now. If that fails, it stays where it is and the error says so.
-      const present = await readText(path).then(
-        (t) => t !== undefined,
-        () => true
-      )
-      if (!present) {
-        try {
-          await placeExclusive(aside, path)
-        } catch (again) {
-          if (!(again instanceof SettingsChangedError))
-            throw new Error(
-              `Couldn't put settings.json back after a failed change. Your file is safe at ${aside}: rename it back to settings.json. (${(err as Error).message})`,
-              { cause: again }
-            )
+    await fh.writeFile(text, 'utf8')
+    // On disk before it replaces anything (not every file system supports it).
+    await fh.sync().catch(() => undefined)
+  } finally {
+    await fh.close()
+  }
+  try {
+    await probe.beforeSwap?.()
+    if (!sameText(await readText(path), expected)) throw new SettingsChangedError(SETTINGS_CHANGED)
+    const doRename = probe.rename ?? rename
+    for (let i = 0; ; i++) {
+      try {
+        await doRename(tmp, path)
+        return
+      } catch (err) {
+        const code = (err as NodeJS.ErrnoException).code
+        // Windows can hold the file open for a moment (antivirus, Claude reading it).
+        if (i < 4 && (code === 'EPERM' || code === 'EBUSY' || code === 'EACCES')) {
+          await new Promise((r) => setTimeout(r, 60 * (i + 1)))
+          if (!sameText(await readText(path), expected))
+            throw new SettingsChangedError(SETTINGS_CHANGED)
+          continue
         }
+        throw new Error(
+          `settings.json can't be replaced in one step here (${code ?? (err as Error).message}). Nothing was changed.`,
+          { cause: err }
+        )
       }
-      // settings.json is there again (yours, or a newer save): the moved copy can go.
-      await unlink(aside).catch(() => undefined)
     }
-    throw err
   } finally {
     await unlink(tmp).catch(() => undefined)
   }
-  // Written; what was moved aside is exactly the reviewed file (also backed up).
-  await unlink(aside).catch(() => undefined)
+}
+
+const LEFTOVER_RE = /^settings\.json\.csd-[0-9a-f]+\.(tmp|prev)$/
+
+/**
+ * At startup: tidy up after a save that was interrupted (the app closed or
+ * crashed mid-way). The app's own temp files next to settings.json are
+ * removed. A `.prev` file (the earlier save routine moved settings.json aside
+ * under that name) is put back only if settings.json is missing, and never
+ * over an existing file; otherwise it is copied to the backup folder before it
+ * goes. Returns what was done, for the log.
+ */
+export async function cleanupSettingsLeftovers(
+  settingsPath: string,
+  backupDir: string,
+  dataDir: string
+): Promise<{ removed: number; restored: boolean }> {
+  assertClaudeSettingsWrite(settingsPath)
+  const dir = dirname(settingsPath)
+  let names: string[]
+  try {
+    names = (await readdir(dir)).filter((n) => LEFTOVER_RE.test(n))
+  } catch {
+    return { removed: 0, restored: false }
+  }
+  let removed = 0
+  let restored = false
+  const prevs: { file: string; mtimeMs: number }[] = []
+  for (const n of names) {
+    const file = join(dir, n)
+    assertClaudeSettingsWrite(file)
+    const st = await lstat(file).catch(() => undefined)
+    if (!st?.isFile()) continue
+    if (n.endsWith('.tmp')) {
+      await unlink(file).then(
+        () => removed++,
+        () => undefined
+      )
+    } else prevs.push({ file, mtimeMs: st.mtimeMs })
+  }
+  prevs.sort((a, b) => b.mtimeMs - a.mtimeMs)
+  for (const p of prevs) {
+    const missing = await readText(settingsPath).then(
+      (t) => t === undefined,
+      () => false
+    )
+    if (missing && !restored) {
+      // Exclusive: if anything created settings.json meanwhile, it stays.
+      try {
+        await copyFile(p.file, settingsPath, constants.COPYFILE_EXCL)
+        restored = true
+      } catch {
+        continue
+      }
+    } else {
+      // Kept in the app's backups before it goes.
+      const backup = join(backupDir, `leftover-${Date.now()}-${basename(p.file)}`)
+      assertAppDataWrite(backup, dataDir)
+      await assertRealAppDataWrite(backup, dataDir)
+      await mkdir(backupDir, { recursive: true })
+      try {
+        await copyShared(p.file, backup)
+      } catch {
+        continue
+      }
+    }
+    await unlink(p.file).then(
+      () => removed++,
+      () => undefined
+    )
+  }
+  return { removed, restored }
 }
 
 /**

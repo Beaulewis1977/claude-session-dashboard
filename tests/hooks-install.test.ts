@@ -19,7 +19,7 @@ import {
   rawMember,
   setMember
 } from '../src/main/core/settings-edit'
-import { writeSettings } from '../src/main/services/bridge'
+import { cleanupSettingsLeftovers, writeSettings } from '../src/main/services/bridge'
 import {
   createHooksStore,
   hookCommand,
@@ -146,15 +146,20 @@ describe('hook commands', () => {
     )
     const script = join(home, '.claude-session-dashboard', 'bin', 'csd-hook.ps1')
     const decoded = Buffer.from(cmd.split(' ').pop()!, 'base64').toString('utf16le')
-    // A PowerShell literal string: '' is a quote, nothing else is special.
+    // The path never appears in the PowerShell source: only as base64 data.
+    expect(decoded).not.toContain('Brien')
+    const data = /FromBase64String\('([A-Za-z0-9+/=]+)'\)/.exec(decoded)![1]
+    expect(Buffer.from(data, 'base64').toString('utf8')).toBe(script)
     expect(decoded).toBe(
-      `$ProgressPreference='SilentlyContinue'; & '${script.replace(/'/g, "''")}'`
+      `$ProgressPreference = 'SilentlyContinue'; $p = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${data}')); & $p`
     )
-    expect(windowsHookCommand('C:\\a\\b.ps1')).toBe(
-      cmd.replace(/\S+$/, '') +
-        Buffer.from("$ProgressPreference='SilentlyContinue'; & 'C:\\a\\b.ps1'", 'utf16le').toString(
-          'base64'
-        )
+    // The same fixed source for any path; only the data differs.
+    const other = Buffer.from(
+      windowsHookCommand('C:\\a\\b.ps1').split(' ').pop()!,
+      'base64'
+    ).toString('utf16le')
+    expect(other.replace(/'[A-Za-z0-9+/=]+'\)/, '')).toBe(
+      decoded.replace(/'[A-Za-z0-9+/=]+'\)/, '')
     )
   })
 
@@ -402,6 +407,19 @@ describe('hooks installer', () => {
     expect(await bad.read()).toBe(MINE.replace('opus', 'haiku'))
   })
 
+  it('refusing a file with duplicate keys writes nothing: no backup, no script, no change', async () => {
+    const dup = '{"hooks": {"Stop": []}, "model": "x", "hooks": {"Notification": []}}'
+    const { inst, src, home, dataDir, read } = await setup(dup)
+    const plan = await inst.plan(src, 'install')
+    expect(plan.error).toMatch(/appears twice/)
+    const res = await inst.apply(src, 'install', plan.token)
+    expect(res.ok).toBe(false)
+    expect(await read()).toBe(dup)
+    await expect(readdir(join(dataDir, 'backups'))).rejects.toThrow()
+    await expect(readdir(join(home, '.claude-session-dashboard'))).rejects.toThrow()
+    expect(await readdir(join(home, '.claude'))).toEqual(['settings.json'])
+  })
+
   it('updates its own script, brings back a deleted one, and leaves a changed one alone', async () => {
     const { home, store, inst, src, install } = await setup(MINE)
     await install()
@@ -424,7 +442,7 @@ describe('hooks installer', () => {
   })
 })
 
-describe('writing settings.json while another program saves it', () => {
+describe('saving settings.json', () => {
   async function file(text?: string) {
     const dir = join(root, 'h', '.claude')
     await mkdir(dir, { recursive: true })
@@ -433,30 +451,26 @@ describe('writing settings.json while another program saves it', () => {
     return { dir, path }
   }
 
-  it('writes when nobody else did, leaving nothing behind', async () => {
+  it('writes through a temp file and one rename, leaving nothing behind', async () => {
     const { dir, path } = await file('A')
-    await writeSettings(path, 'NEW', 'A')
+    const seen: string[] = []
+    await writeSettings(path, 'NEW', 'A', {
+      // At the swap: settings.json is still there, and the full new file is ready.
+      beforeSwap: async () => {
+        seen.push(await readFile(path, 'utf8'))
+        const tmp = (await readdir(dir)).find((n) => n.endsWith('.tmp'))!
+        seen.push(await readFile(join(dir, tmp), 'utf8'))
+      }
+    })
+    expect(seen).toEqual(['A', 'NEW'])
     expect(await readFile(path, 'utf8')).toBe('NEW')
     expect(await readdir(dir)).toEqual(['settings.json'])
   })
 
-  it('a save just before the swap is kept, and nothing is changed', async () => {
+  it('a save after the review (up to the swap) is kept, and nothing is changed', async () => {
     const { dir, path } = await file('A')
     await expect(
-      writeSettings(path, 'NEW', 'A', {
-        beforeMoveAside: () => writeFile(path, 'SAVED BY CLAUDE')
-      })
-    ).rejects.toThrow(/changed/)
-    expect(await readFile(path, 'utf8')).toBe('SAVED BY CLAUDE')
-    expect(await readdir(dir)).toEqual(['settings.json'])
-  })
-
-  it('a save in the middle of the swap is kept', async () => {
-    const { dir, path } = await file('A')
-    await expect(
-      writeSettings(path, 'NEW', 'A', {
-        afterMoveAside: () => writeFile(path, 'SAVED BY CLAUDE')
-      })
+      writeSettings(path, 'NEW', 'A', { beforeSwap: () => writeFile(path, 'SAVED BY CLAUDE') })
     ).rejects.toThrow(/changed/)
     expect(await readFile(path, 'utf8')).toBe('SAVED BY CLAUDE')
     expect(await readdir(dir)).toEqual(['settings.json'])
@@ -466,15 +480,79 @@ describe('writing settings.json while another program saves it', () => {
     const { path } = await file()
     await expect(
       writeSettings(path, 'NEW', undefined, {
-        beforeMoveAside: () => writeFile(path, 'SAVED BY CLAUDE')
+        beforeSwap: () => writeFile(path, 'SAVED BY CLAUDE')
       })
     ).rejects.toThrow(/changed/)
     expect(await readFile(path, 'utf8')).toBe('SAVED BY CLAUDE')
   })
 
+  it('refuses, changing nothing, when one atomic rename is not possible', async () => {
+    const { dir, path } = await file('A')
+    const noRename = async () => {
+      throw Object.assign(new Error('cross-device'), { code: 'EXDEV' })
+    }
+    await expect(writeSettings(path, 'NEW', 'A', { rename: noRename })).rejects.toThrow(
+      /can't be replaced in one step.*Nothing was changed/
+    )
+    expect(await readFile(path, 'utf8')).toBe('A')
+    expect(await readdir(dir)).toEqual(['settings.json'])
+  })
+
   it('refuses any path but settings.json in .claude', async () => {
     const { dir } = await file('A')
     await expect(writeSettings(join(dir, 'other.json'), 'x', 'A')).rejects.toThrow(/Refusing/)
+  })
+
+  it('known limit: an editor that already has the file open can still overwrite it; the backup stays intact', async () => {
+    const { settingsPath, dataDir, install, read } = await setup(MINE)
+    // An editor opened settings.json before the change and keeps its own copy.
+    const editorBuffer = await read()
+    expect((await install()).ok).toBe(true)
+    // ...and saves its stale copy afterwards, over the app's change.
+    await writeFile(settingsPath, `${editorBuffer.trimEnd()}\n`)
+    expect(installedEvents(await read(), OURS)).toEqual([])
+    // Nothing of the user's is lost: the reviewed original is in the backup.
+    const dir = join(dataDir, 'backups', 'settings')
+    const backups = await readdir(dir)
+    expect(backups).toHaveLength(1)
+    expect(await readFile(join(dir, backups[0]), 'utf8')).toBe(MINE)
+  })
+})
+
+describe('tidying up after an interrupted save', () => {
+  async function layout(files: Record<string, string>) {
+    const dir = join(root, 'h', '.claude')
+    await mkdir(dir, { recursive: true })
+    for (const [n, t] of Object.entries(files)) await writeFile(join(dir, n), t)
+    const dataDir = join(root, 'appdata')
+    const backupDir = join(dataDir, 'backups', 'settings')
+    return { dir, path: join(dir, 'settings.json'), dataDir, backupDir }
+  }
+
+  it('removes its own temp files and keeps a leftover .prev as a backup', async () => {
+    const l = await layout({
+      'settings.json': 'CURRENT',
+      'settings.json.csd-0a1b2c3d.tmp': 'HALF',
+      'settings.json.csd-11111111.prev': 'OLDER',
+      'notes.txt': 'mine'
+    })
+    const r = await cleanupSettingsLeftovers(l.path, l.backupDir, l.dataDir)
+    expect(r).toEqual({ removed: 2, restored: false })
+    expect((await readdir(l.dir)).sort()).toEqual(['notes.txt', 'settings.json'])
+    expect(await readFile(l.path, 'utf8')).toBe('CURRENT')
+    const saved = await readdir(l.backupDir)
+    expect(saved).toHaveLength(1)
+    expect(await readFile(join(l.backupDir, saved[0]), 'utf8')).toBe('OLDER')
+  })
+
+  it('puts a .prev back only when settings.json is missing', async () => {
+    const l = await layout({ 'settings.json.csd-22222222.prev': 'MOVED ASIDE' })
+    expect(await cleanupSettingsLeftovers(l.path, l.backupDir, l.dataDir)).toEqual({
+      removed: 1,
+      restored: true
+    })
+    expect(await readFile(l.path, 'utf8')).toBe('MOVED ASIDE')
+    expect(await readdir(l.dir)).toEqual(['settings.json'])
   })
 })
 

@@ -68,7 +68,7 @@ import { AccountsService, createAccountsStore, type Encryptor } from './services
 import { httpsFetcher } from './services/anthropic-api'
 import { BillingService } from './services/billing'
 import { createFixturesPlatform, createRealPlatform, type Platform } from './platform'
-import { BridgeInstaller, createBridgeStore } from './services/bridge'
+import { BridgeInstaller, cleanupSettingsLeftovers, createBridgeStore } from './services/bridge'
 import { Launcher } from './services/launcher'
 import { LineageService } from './services/lineage'
 import { LimitsService } from './services/limits'
@@ -577,6 +577,19 @@ async function main(): Promise<void> {
     .start()
     .then(() => migrateBillingKeys())
     .then(() => watcher.restart())
+    // An interrupted save of settings.json: the app's own leftovers go
+    // (a moved-aside file is put back only where settings.json is missing).
+    .then(async () => {
+      for (const src of sessions.sources) {
+        if (src.kind !== 'auto' || src.status !== 'ok' || !src.claudeSettingsPath) continue
+        const r = await cleanupSettingsLeftovers(
+          src.claudeSettingsPath,
+          installer.backupDir,
+          paths.dataDir
+        ).catch(() => undefined)
+        if (r?.removed || r?.restored) console.info('settings.json leftovers tidied', src.id, r)
+      }
+    })
     // A fixed bridge script only reaches an existing install this way.
     .then(() =>
       installer

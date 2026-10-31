@@ -26,6 +26,8 @@ import {
   modelArgs,
   modelLabel,
   modelsSeen,
+  projectModelKey,
+  promoteToProject,
   resolveModelChoice,
   sanitizeProjectModels
 } from '@shared/model-choice'
@@ -244,6 +246,7 @@ describe('launch commands with a model and effort', () => {
 
 describe('where the choice comes from', () => {
   const cwd = 'C:\\Users\\beau\\code\\acme-web'
+  const win = { env: 'windows' as const, cwd }
   const settings = {
     defaultModel: 'sonnet',
     defaultEffort: 'medium' as const,
@@ -251,37 +254,69 @@ describe('where the choice comes from', () => {
   }
 
   it('session → project → Settings', () => {
-    expect(resolveModelChoice({ model: 'haiku', effort: 'max' }, cwd, settings)).toEqual({
+    expect(resolveModelChoice({ model: 'haiku', effort: 'max' }, win, settings)).toEqual({
       model: 'haiku',
       effort: 'max',
       modelFrom: 'session',
       effortFrom: 'session'
     })
     // No session choice: the project's model, Settings' effort.
-    expect(resolveModelChoice({}, cwd, settings)).toEqual({
+    expect(resolveModelChoice({}, win, settings)).toEqual({
       model: 'opus',
       effort: 'medium',
       modelFrom: 'project',
       effortFrom: 'settings'
     })
     // Another project: Settings only.
-    expect(resolveModelChoice(undefined, 'D:\\other', settings)).toMatchObject({
+    expect(
+      resolveModelChoice(undefined, { env: 'windows', cwd: 'D:\\other' }, settings)
+    ).toMatchObject({
       model: 'sonnet',
       modelFrom: 'settings'
     })
   })
 
   it('matches the project folder case-insensitively', () => {
-    expect(resolveModelChoice({}, cwd.toUpperCase(), settings).model).toBe('opus')
+    expect(resolveModelChoice({}, { env: 'windows', cwd: cwd.toUpperCase() }, settings).model).toBe(
+      'opus'
+    )
+  })
+
+  it('keeps WSL projects apart: by distro, and by case (Linux paths are case-sensitive)', () => {
+    const ubuntuApp = { env: 'wsl' as const, distro: 'Ubuntu', cwd: '/home/me/App' }
+    expect(projectModelKey(ubuntuApp)).toBe('wsl:Ubuntu:/home/me/App')
+    const wsl = {
+      defaultModel: 'default',
+      projectModels: { 'wsl:Ubuntu:/home/me/App': { model: 'opus', effort: 'high' as const } }
+    }
+    expect(resolveModelChoice({}, ubuntuApp, wsl)).toMatchObject({
+      model: 'opus',
+      effort: 'high',
+      modelFrom: 'project'
+    })
+    // Other case, other distro, or a Windows folder of the same name: not this project.
+    for (const other of [
+      { ...ubuntuApp, cwd: '/home/me/app' },
+      { ...ubuntuApp, distro: 'Debian' },
+      { env: 'windows' as const, cwd: '/home/me/App' }
+    ])
+      expect(resolveModelChoice({}, other, wsl), JSON.stringify(other)).toMatchObject({
+        model: undefined,
+        modelFrom: 'none'
+      })
+    // A WSL session without a distro has no project key.
+    expect(projectModelKey({ env: 'wsl', cwd: '/home/me/App' })).toBeUndefined()
+    // Windows folders still ignore case.
+    expect(projectModelKey({ env: 'windows', cwd: 'C:\\Code\\App' })).toBe('c:\\code\\app')
   })
 
   it('"default" stops the search: no flag, whatever comes after', () => {
-    expect(resolveModelChoice({ model: 'default' }, cwd, settings)).toMatchObject({
+    expect(resolveModelChoice({ model: 'default' }, win, settings)).toMatchObject({
       model: undefined,
       modelFrom: 'session'
     })
     expect(
-      resolveModelChoice({}, cwd, {
+      resolveModelChoice({}, win, {
         ...settings,
         projectModels: { [cwd.toLowerCase()]: { effort: 'default' } }
       })
@@ -289,7 +324,7 @@ describe('where the choice comes from', () => {
   })
 
   it("Claude Code's default when nothing is set (the app's own defaults)", () => {
-    expect(resolveModelChoice({}, cwd, DEFAULT_SETTINGS)).toEqual({
+    expect(resolveModelChoice({}, win, DEFAULT_SETTINGS)).toEqual({
       model: undefined,
       effort: undefined,
       modelFrom: 'none',
@@ -300,7 +335,7 @@ describe('where the choice comes from', () => {
 
   it('skips stored values that are not safe or known', () => {
     expect(
-      resolveModelChoice({ model: 'x; calc', effort: 'ultra' as never }, cwd, settings)
+      resolveModelChoice({ model: 'x; calc', effort: 'ultra' as never }, win, settings)
     ).toMatchObject({ model: 'opus', modelFrom: 'project', effort: 'medium' })
   })
 })
@@ -327,20 +362,38 @@ describe('saving the choice', () => {
     expect(cleanEffortChoice(null)).toBeUndefined()
   })
 
-  it('project defaults are validated and keyed by lower-cased folder', () => {
+  it('project defaults are validated; Windows folders lower-cased, WSL keys kept as they are', () => {
     expect(
       sanitizeProjectModels({
         'C:\\Code\\App': { model: 'opus', effort: 'low' },
-        '/home/beau/x': { model: 'rm -rf /', effort: 'nope' },
-        '/home/beau/y': { effort: 'default' },
+        'wsl:Ubuntu:/home/beau/x': { model: 'rm -rf /', effort: 'nope' },
+        'wsl:Ubuntu:/home/beau/Y': { effort: 'default' },
+        'wsl:Ubuntu:relative': { model: 'opus' },
+        // A bare Linux path doesn't say which distro: dropped, not applied to all of them.
+        '/home/beau/z': { model: 'sonnet' },
         bad: 'opus'
       })
     ).toEqual({
       'c:\\code\\app': { model: 'opus', effort: 'low' },
-      '/home/beau/y': { effort: 'default' }
+      'wsl:Ubuntu:/home/beau/Y': { effort: 'default' }
     })
     expect(sanitizeProjectModels(null)).toEqual({})
     expect(sanitizeProjectModels(['x'])).toEqual({})
+  })
+
+  it('promoting a session keeps the project fields it does not set', () => {
+    expect(promoteToProject({ effort: 'high' }, { model: 'sonnet' })).toEqual({
+      model: 'sonnet',
+      effort: 'high'
+    })
+    expect(promoteToProject({ model: 'opus', effort: 'high' }, { effort: 'low' })).toEqual({
+      model: 'opus',
+      effort: 'low'
+    })
+    expect(promoteToProject(undefined, { model: 'default', effort: 'max' })).toEqual({
+      model: 'default',
+      effort: 'max'
+    })
   })
 
   it('a phone may set the model and effort of a session, and the defaults', () => {
@@ -453,7 +506,7 @@ describe('Launcher: every launch path uses the choice', () => {
     expect(p.claudeCommand).toBe(`claude --resume ${ID}`)
     settings.update((st) => {
       st.defaultEffort = 'low'
-      st.projectModels = { [s.cwd!.toLowerCase()]: { model: 'sonnet' } }
+      st.projectModels = { [projectModelKey(s)!]: { model: 'sonnet' } }
     })
     p = await launcher.preview({ key: s.key, fork: false, skipPermissions: false })
     expect(p.claudeCommand).toBe(`claude --model sonnet --effort low --resume ${ID}`)

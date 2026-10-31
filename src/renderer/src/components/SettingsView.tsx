@@ -36,7 +36,7 @@ import { HealthSettings } from './settings/HealthSettings'
 import { MobileSettingsSection } from './settings/MobileSettings'
 import { TerminalAccessBlock } from './settings/TerminalAccessSettings'
 import { DefaultModelPickers } from './ModelPicker'
-import { choiceLabel, DEFAULT_CHOICE, isEffortLevel } from '@shared/model-choice'
+import { choiceLabel, DEFAULT_CHOICE, isEffortLevel, projectKeyLabel } from '@shared/model-choice'
 
 export function Section({
   title,
@@ -298,7 +298,7 @@ export function SettingsView() {
               {Object.entries(settings.projectModels).map(([project, d]) => (
                 <div key={project} className="flex items-center gap-2 py-0.5">
                   <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-muted-foreground">
-                    {project}
+                    {projectKeyLabel(project)}
                   </span>
                   <span>
                     {choiceLabel({

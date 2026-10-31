@@ -118,7 +118,7 @@ export class Launcher {
    * (desktop, phone, copied command), so they all match.
    */
   modelChoice(s: SessionSummary): ResolvedModel {
-    return resolveModelChoice(s.meta, s.cwd, this.modelSettings())
+    return resolveModelChoice(s.meta, s, this.modelSettings())
   }
 
   private command(

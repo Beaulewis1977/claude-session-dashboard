@@ -6,7 +6,13 @@ import type { SessionSummary } from '@shared/types'
 import { useApp } from './store'
 
 /** The model and effort a session launches with (session → project → Settings). */
-export function useModelChoice(s: Pick<SessionSummary, 'meta' | 'cwd'> | undefined): ResolvedModel {
+export function useModelChoice(
+  s: Pick<SessionSummary, 'meta' | 'cwd' | 'env' | 'distro'> | undefined
+): ResolvedModel {
   const settings = useApp((st) => st.settings)
-  return useMemo(() => resolveModelChoice(s?.meta, s?.cwd, settings), [s?.meta, s?.cwd, settings])
+  return useMemo(
+    () => resolveModelChoice(s?.meta, s, settings),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [s?.meta, s?.cwd, s?.env, s?.distro, settings]
+  )
 }

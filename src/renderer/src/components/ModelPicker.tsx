@@ -4,6 +4,7 @@
 // Settings, then Claude Code's own default (no flag).
 
 import { useMemo, useState } from 'react'
+import { toast } from 'sonner'
 import { Check, ChevronDown, FolderCog, Gauge, Sparkles, X } from 'lucide-react'
 import {
   choiceLabel,
@@ -18,6 +19,7 @@ import {
   modelLabel,
   modelsSeen,
   projectModelKey,
+  promoteToProject,
   resolveModelChoice,
   type ChoiceFrom,
   type EffortChoice,
@@ -51,9 +53,13 @@ const SEEN_MAX = 8
 const clearChoice = { model: '', effort: '' } as unknown as Pick<SessionMeta, 'model' | 'effort'>
 
 /** What "Default" means for a session: its project's default, else Settings. */
-function useInherited(cwd: string | undefined): ResolvedModel {
+function useInherited(s: SessionSummary): ResolvedModel {
   const settings = useApp((st) => st.settings)
-  return useMemo(() => resolveModelChoice(undefined, cwd, settings), [cwd, settings])
+  const { cwd, env, distro } = s
+  return useMemo(
+    () => resolveModelChoice(undefined, { cwd, env, distro }, settings),
+    [cwd, env, distro, settings]
+  )
 }
 
 const fromShort = (from: ChoiceFrom): string =>
@@ -370,7 +376,7 @@ export function SessionModelControls({
   disabled?: boolean
   className?: string
 }) {
-  const inherited = useInherited(session.cwd)
+  const inherited = useInherited(session)
   const meta = session.meta
   const model = meta.model
   const effort = meta.effort
@@ -391,7 +397,7 @@ export function SessionModelControls({
         explicitDefault={!!inherited.effort}
         disabled={disabled}
       />
-      {!api.remote && session.cwd && <ProjectDefaultMenu session={session} />}
+      {!api.remote && projectModelKey(session) && <ProjectDefaultMenu session={session} />}
     </div>
   )
 }
@@ -400,8 +406,10 @@ export function SessionModelControls({
 function ProjectDefaultMenu({ session }: { session: SessionSummary }) {
   const settings = useApp((s) => s.settings)
   const set = useApp((s) => s.set)
-  const key = projectModelKey(session.cwd)
-  const current = settings.projectModels[key]
+  const key = projectModelKey(session) ?? ''
+  const current = Object.hasOwn(settings.projectModels, key)
+    ? settings.projectModels[key]
+    : undefined
   const own = { model: session.meta.model, effort: session.meta.effort }
   const hasOwn = own.model !== undefined || own.effort !== undefined
   const currentLabel = current
@@ -410,8 +418,15 @@ function ProjectDefaultMenu({ session }: { session: SessionSummary }) {
         effort: isEffortLevel(current.effort) ? current.effort : undefined
       }) || "Claude Code's default"
     : undefined
-  const saveProject = (next: (typeof settings)['projectModels']): void =>
-    void api.updateSettings({ projectModels: next }).then((st) => set({ settings: st }))
+  const saveProject = async (next: (typeof settings)['projectModels']): Promise<boolean> => {
+    try {
+      set({ settings: await api.updateSettings({ projectModels: next }) })
+      return true
+    } catch (err) {
+      toast.error('Could not save the project default', { description: (err as Error).message })
+      return false
+    }
+  }
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -429,17 +444,18 @@ function ProjectDefaultMenu({ session }: { session: SessionSummary }) {
         <DropdownMenuLabel>{session.projectName}</DropdownMenuLabel>
         <DropdownMenuItem
           disabled={!hasOwn}
-          onSelect={() => {
-            saveProject({
-              ...settings.projectModels,
-              [key]: {
-                ...(own.model !== undefined ? { model: own.model } : {}),
-                ...(own.effort !== undefined ? { effort: own.effort } : {})
-              }
-            })
-            // The session now follows the project default.
-            void updateMeta(session.key, clearChoice)
-          }}
+          onSelect={() =>
+            void (async () => {
+              // Only the session's own fields change; the project keeps the others.
+              const next = { ...settings.projectModels, [key]: promoteToProject(current, own) }
+              if (!(await saveProject(next))) return
+              // Saved: the session now follows the project default for what it promoted.
+              await updateMeta(session.key, {
+                ...(own.model !== undefined ? { model: clearChoice.model } : {}),
+                ...(own.effort !== undefined ? { effort: clearChoice.effort } : {})
+              })
+            })()
+          }
         >
           <FolderCog /> Use this session&apos;s choice for the whole project
         </DropdownMenuItem>
@@ -448,7 +464,7 @@ function ProjectDefaultMenu({ session }: { session: SessionSummary }) {
           onSelect={() => {
             const next = { ...settings.projectModels }
             delete next[key]
-            saveProject(next)
+            void saveProject(next)
           }}
         >
           <X /> Clear the project default

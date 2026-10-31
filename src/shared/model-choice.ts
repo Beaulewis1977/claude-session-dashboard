@@ -78,8 +78,46 @@ export interface ModelSettings {
   /** "default" = Claude Code's own default. */
   defaultModel: string
   defaultEffort: EffortChoice
-  /** Per-project defaults, keyed by lower-cased cwd (like projectBilling). */
+  /** Per-project defaults, keyed by projectModelKey(). */
   projectModels: Record<string, ProjectModelDefault>
+}
+
+/** Which project a session belongs to: its folder, in its environment. */
+export interface ProjectRef {
+  env?: 'windows' | 'wsl'
+  distro?: string
+  cwd?: string
+}
+
+const WSL_KEY = /^wsl:([^:]+):(\/.*)$/
+
+/**
+ * Key for a project's defaults. Windows folders are lower-cased (Windows
+ * ignores case in paths). WSL folders are "wsl:<distro>:<path>" with the case
+ * kept: Linux paths are case-sensitive, and each distro has its own files, so
+ * /home/me/App and /home/me/app, or the same path in two distros, are
+ * different projects. Undefined when the session has no folder (or a WSL
+ * session no distro).
+ */
+export function projectModelKey(p: ProjectRef | undefined): string | undefined {
+  if (!p?.cwd) return undefined
+  if (p.env === 'wsl') return p.distro ? `wsl:${p.distro}:${p.cwd}` : undefined
+  return p.cwd.toLowerCase()
+}
+
+/** A stored key in its current form, or undefined for one that can't be placed. */
+function normalizeProjectKey(k: string): string | undefined {
+  if (k.startsWith('wsl:')) return WSL_KEY.test(k) ? k : undefined
+  // A bare Linux path (the first form of these keys, never released) doesn't
+  // say which distro it meant: dropped rather than applied to all of them.
+  if (k.startsWith('/')) return undefined
+  return k.toLowerCase()
+}
+
+/** "WSL: Ubuntu · /home/me/app", or the Windows folder, for Settings. */
+export function projectKeyLabel(k: string): string {
+  const m = WSL_KEY.exec(k)
+  return m ? `WSL: ${m[1]} · ${m[2]}` : k
 }
 
 /** Validate per-project defaults from a settings file or the renderer. */
@@ -91,8 +129,9 @@ export function sanitizeProjectModels(v: unknown): Record<string, ProjectModelDe
     const r = raw as Record<string, unknown>
     const model = cleanModelChoice(r.model)
     const effort = cleanEffortChoice(r.effort)
-    if (model === undefined && effort === undefined) continue
-    out[k.toLowerCase()] = {
+    const key = normalizeProjectKey(k)
+    if (!key || (model === undefined && effort === undefined)) continue
+    out[key] = {
       ...(model !== undefined ? { model } : {}),
       ...(effort !== undefined ? { effort } : {})
     }
@@ -111,10 +150,6 @@ export interface ResolvedModel {
   effortFrom: ChoiceFrom
 }
 
-export function projectModelKey(cwd: string | undefined): string {
-  return (cwd ?? '').toLowerCase()
-}
-
 function pick<T extends string>(
   levels: [Exclude<ChoiceFrom, 'none'>, T | undefined][]
 ): { value?: T; from: ChoiceFrom } {
@@ -130,18 +165,22 @@ function pick<T extends string>(
 /** Session → project → Settings. Invalid stored values are skipped. */
 export function resolveModelChoice(
   meta: { model?: string; effort?: string } | undefined,
-  cwd: string | undefined,
+  project: ProjectRef | undefined,
   settings: Partial<ModelSettings>
 ): ResolvedModel {
-  const project = cwd ? settings.projectModels?.[projectModelKey(cwd)] : undefined
+  const key = projectModelKey(project)
+  const projectDefault =
+    key && settings.projectModels && Object.hasOwn(settings.projectModels, key)
+      ? settings.projectModels[key]
+      : undefined
   const m = pick<string>([
     ['session', cleanModelChoice(meta?.model)],
-    ['project', cleanModelChoice(project?.model)],
+    ['project', cleanModelChoice(projectDefault?.model)],
     ['settings', cleanModelChoice(settings.defaultModel)]
   ])
   const e = pick<EffortChoice>([
     ['session', cleanEffortChoice(meta?.effort)],
-    ['project', cleanEffortChoice(project?.effort)],
+    ['project', cleanEffortChoice(projectDefault?.effort)],
     ['settings', cleanEffortChoice(settings.defaultEffort)]
   ])
   return {
@@ -215,4 +254,19 @@ export function modelsSeen(
     }
   }
   return [...last.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).map(([m]) => m)
+}
+
+/**
+ * "Use this session's choice for the whole project": the session's own
+ * fields replace the project's; the fields it doesn't set stay as they were.
+ */
+export function promoteToProject(
+  current: ProjectModelDefault | undefined,
+  own: { model?: string; effort?: EffortChoice }
+): ProjectModelDefault {
+  return {
+    ...(current ?? {}),
+    ...(own.model !== undefined ? { model: own.model } : {}),
+    ...(own.effort !== undefined ? { effort: own.effort } : {})
+  }
 }

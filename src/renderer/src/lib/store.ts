@@ -10,6 +10,7 @@ import {
 } from '@shared/types'
 import type { CreditsState } from '@shared/usage/credits'
 import type { LimitsState } from '@shared/usage/limits'
+import type { LiveSnapshot } from '@shared/live'
 import { EMPTY_FILTERS, type Filters, type SortKey } from './filters'
 
 export type FocusField = 'name' | 'description' | 'tags' | 'find' | 'search' | null
@@ -56,8 +57,10 @@ interface State {
   loaded: boolean
   limits: LimitsState | null
   credits: CreditsState | null
+  /** Running now (null until loaded). */
+  live: LiveSnapshot | null
 
-  view: 'sessions' | 'settings' | 'usage'
+  view: 'sessions' | 'settings' | 'usage' | 'running'
   /** Settings section to scroll to when Settings opens (e.g. 'accounts'). */
   settingsSection: string | null
   selectedKey: string | null
@@ -99,6 +102,7 @@ export const useApp = create<State>((set) => ({
   loaded: false,
   limits: null,
   credits: null,
+  live: null,
 
   view: 'sessions',
   settingsSection: null,

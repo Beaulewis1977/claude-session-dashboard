@@ -5,6 +5,8 @@ import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import {
   Activity,
+  BellOff,
+  BellRing,
   Check,
   CircleAlert,
   CircleCheck,
@@ -301,7 +303,18 @@ export function MobileSettingsSection() {
                 title={d.connected ? 'Connected now' : 'Not connected'}
               />
               <div className="min-w-0 flex-1">
-                <div className="text-[13px] font-medium">{d.name}</div>
+                <div className="flex items-center gap-2 text-[13px] font-medium">
+                  {d.name}
+                  {d.push && (
+                    <Badge
+                      variant="muted"
+                      className="text-success"
+                      title="Push alerts are on for this phone (it turned them on itself)"
+                    >
+                      <BellRing /> Push on
+                    </Badge>
+                  )}
+                </div>
                 <div className="text-xs text-muted-foreground">
                   Paired {formatDateTime(d.createdAt)} · last seen {formatRelative(d.lastSeenAt)} ·
                   forgotten after 30 days unused
@@ -319,6 +332,34 @@ export function MobileSettingsSection() {
               >
                 <Send /> Test
               </Button>
+              {d.push && (
+                <>
+                  <Button
+                    variant="ghost"
+                    size="xs"
+                    title="Send a test push alert to this phone"
+                    onClick={() =>
+                      void api
+                        .mobilePushTest(d.id)
+                        .then((n) => toast(n ? 'Test push sent' : "Couldn't send the push"))
+                    }
+                  >
+                    <BellRing /> Test push
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="xs"
+                    title="Turn push alerts off for this phone (it can turn them on again)"
+                    onClick={() =>
+                      void run(() => api.mobilePushOff(d.id)).then(() =>
+                        toast(`Push alerts off for “${d.name}”`)
+                      )
+                    }
+                  >
+                    <BellOff /> Push off
+                  </Button>
+                </>
+              )}
               <Button
                 variant="ghost"
                 size="xs"

@@ -6,6 +6,7 @@ import { copyResumeCommand, exportMarkdown, openResume, toggleHidden } from '@/l
 import { branchCounts, groupBranches, visibleSessions } from '@/lib/filters'
 import { useHotkeys } from '@/lib/hotkeys'
 import { useLiveData } from '@/lib/live'
+import { useLiveSessions } from '@/lib/live-sessions'
 import { useApp } from '@/lib/store'
 import { useThemeEffect } from '@/lib/theme'
 import { cn, MOD } from '@/lib/utils'
@@ -23,6 +24,7 @@ import { TooltipProvider } from './components/ui/tooltip'
 import { SessionViewer } from './components/viewer/SessionViewer'
 import { TrayPainter } from './components/usage/TrayPainter'
 import { UsageView } from './components/usage/UsageView'
+import { RunningView } from './components/live/RunningNow'
 
 const LIST_WIDTH_KEY = 'csd.listWidth'
 
@@ -54,7 +56,16 @@ function useBootstrap(): void {
     const offs = [
       api.onSessionsChanged((p) => set({ sessions: p.sessions, sources: p.sources, scan: p.scan })),
       // Tray icon or limit notification clicked.
-      api.onShowUsage(() => set({ view: 'usage' }))
+      api.onShowUsage(() => set({ view: 'usage' })),
+      // A session alert clicked: that session, if the list knows it; else Running now.
+      api.onShowLive((key) => {
+        const st = useApp.getState()
+        if (st.sessions.some((s) => s.key === key)) {
+          if (st.query.trim()) st.set({ query: '', hits: null, sort: st.sortBeforeSearch })
+          st.set({ view: 'sessions' })
+          st.select(key)
+        } else st.set({ view: 'running' })
+      })
     ]
     return () => offs.forEach((off) => off())
   }, [set])
@@ -92,6 +103,7 @@ function NoSelection() {
 export function App() {
   useBootstrap()
   useLiveData(useApp((s) => s.info !== null))
+  useLiveSessions(useApp((s) => s.info !== null))
   const sessions = useApp((s) => s.sessions)
   const filters = useApp((s) => s.filters)
   const sort = useApp((s) => s.sort)
@@ -210,7 +222,7 @@ export function App() {
     {
       combo: 'escape',
       handler: () => set({ view: 'sessions' }),
-      when: () => view === 'settings' || view === 'usage'
+      when: () => view === 'settings' || view === 'usage' || view === 'running'
     },
     { combo: 'j', handler: () => step(1), when: inSessions },
     { combo: 'k', handler: () => step(-1), when: inSessions },
@@ -264,6 +276,10 @@ export function App() {
           ) : view === 'usage' ? (
             <div className="min-w-0 flex-1">
               <UsageView />
+            </div>
+          ) : view === 'running' ? (
+            <div className="min-w-0 flex-1">
+              <RunningView />
             </div>
           ) : (
             <>

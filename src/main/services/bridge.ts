@@ -54,7 +54,7 @@ export const SHIPPED_SCRIPT_SHA256: Record<'statusline.ps1' | 'statusline.sh', s
   'statusline.sh': ['fe0c04e0efd8885e902284407c990dc09cb708df1767dc6e41b606976ae785ba']
 }
 
-const sha256 = (text: string): string => createHash('sha256').update(text).digest('hex')
+export const sha256 = (text: string): string => createHash('sha256').update(text).digest('hex')
 
 export interface BridgeFile {
   version: 1
@@ -127,7 +127,7 @@ export function isBridgeCommand(cmd: unknown): boolean {
   return typeof cmd === 'string' && cmd.replace(/\\/g, '/').includes(MARKER)
 }
 
-async function readText(p: string): Promise<string | undefined> {
+export async function readText(p: string): Promise<string | undefined> {
   try {
     return await readFile(p, 'utf8')
   } catch (err) {
@@ -136,7 +136,7 @@ async function readText(p: string): Promise<string | undefined> {
   }
 }
 
-const tokenOf = (text: string | undefined): string =>
+export const tokenOf = (text: string | undefined): string =>
   createHash('sha256')
     .update(text ?? '\0missing')
     .digest('hex')
@@ -169,7 +169,7 @@ function installedText(before: string | undefined, command: string): string {
 export const SETTINGS_CHANGED =
   'settings.json changed while the app was preparing the change (another program or editor saved it). Nothing was changed. Review the change again.'
 
-class SettingsChangedError extends Error {}
+export class SettingsChangedError extends Error {}
 
 /**
  * Write settings.json atomically in place (temp file in the same folder, then
@@ -177,7 +177,7 @@ class SettingsChangedError extends Error {}
  * before it's replaced, so an edit made meanwhile (say, a new permission rule)
  * is never overwritten with the older copy. Claude's own file mode is kept.
  */
-async function writeSettings(
+export async function writeSettings(
   path: string,
   text: string,
   expected: string | undefined

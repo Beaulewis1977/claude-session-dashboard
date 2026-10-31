@@ -62,7 +62,15 @@ function skipValue(t: string, i: number): number {
 
 /** Locate the members of the top-level object. Throws on anything that isn't one. */
 export function scanTopLevel(text: string): TopLevel {
-  let i = skipWs(text, 0)
+  const top = scanObject(text, skipWs(text, 0))
+  // Nothing but whitespace may follow.
+  if (skipWs(text, top.close + 1) < text.length) throw new Error('Unexpected text after the object')
+  return top
+}
+
+/** Locate the members of the object that starts at `start` (text[start] is "{"). */
+export function scanObject(text: string, start: number): TopLevel {
+  let i = start
   if (text[i] !== '{') throw new Error('Not a JSON object')
   const open = i
   const members: JsonMember[] = []
@@ -164,6 +172,164 @@ export function removeMember(text: string, key: string): string {
       out = out.slice(0, top.open + 1) + (nl ? `\n${closeIndent}` : '') + out.slice(top.close)
     }
   }
+}
+
+// ------------------------------------------------------- nested appends
+
+interface ArrayScan {
+  open: number
+  close: number
+  elements: { start: number; end: number }[]
+}
+
+/** Locate the elements of the array that starts at `start` (text[start] is "["). */
+function scanArray(text: string, start: number): ArrayScan {
+  if (text[start] !== '[') throw new Error('Not a JSON array')
+  const elements: ArrayScan['elements'] = []
+  let i = skipWs(text, start + 1)
+  if (text[i] === ']') return { open: start, close: i, elements }
+  for (;;) {
+    i = skipWs(text, i)
+    const end = skipValue(text, i)
+    elements.push({ start: i, end })
+    i = skipWs(text, end)
+    if (text[i] === ',') {
+      i++
+      continue
+    }
+    if (text[i] === ']') return { open: start, close: i, elements }
+    throw new Error(`Expected "," or "]" at ${i}`)
+  }
+}
+
+/** The file's own indent unit ("  ", "    ", "\t"), or '' for a one-line file. */
+function indentUnit(text: string): { multiline: boolean; unit: string } {
+  const top = scanTopLevel(text)
+  const s = styleOf(text, top)
+  return { multiline: s.multiline, unit: s.unit }
+}
+
+function formatAt(value: unknown, multiline: boolean, unit: string, indent: string): string {
+  if (!multiline) return JSON.stringify(value)
+  return JSON.stringify(value, null, unit).replace(/\n/g, `\n${indent}`)
+}
+
+/** Add `"key": value` at the end of the object at `open` (the key isn't there yet). */
+function addToObject(
+  text: string,
+  open: number,
+  key: string,
+  value: unknown,
+  fmt: { multiline: boolean; unit: string }
+): string {
+  const obj = scanObject(text, open)
+  const last = obj.members[obj.members.length - 1]
+  if (!last) {
+    const outer = lineIndent(text, open)
+    const inner = outer + fmt.unit
+    const member = `${JSON.stringify(key)}: ${formatAt(value, fmt.multiline, fmt.unit, inner)}`
+    if (!fmt.multiline) return `${text.slice(0, open + 1)}${member}${text.slice(obj.close)}`
+    return `${text.slice(0, open + 1)}\n${inner}${member}\n${outer}${text.slice(obj.close)}`
+  }
+  const multiline = fmt.multiline && text.slice(open + 1, obj.members[0].keyStart).includes('\n')
+  const indent = multiline ? lineIndent(text, obj.members[0].keyStart) : ''
+  const member = `${JSON.stringify(key)}: ${formatAt(value, multiline, fmt.unit, indent)}`
+  const sep = multiline ? `,\n${indent}` : ', '
+  return text.slice(0, last.valueEnd) + sep + member + text.slice(last.valueEnd)
+}
+
+/** Add `value` at the end of the array at `open`. */
+function appendToArray(
+  text: string,
+  open: number,
+  value: unknown,
+  fmt: { multiline: boolean; unit: string }
+): string {
+  const arr = scanArray(text, open)
+  const last = arr.elements[arr.elements.length - 1]
+  if (!last) {
+    const outer = lineIndent(text, open)
+    const inner = outer + fmt.unit
+    const el = formatAt(value, fmt.multiline, fmt.unit, inner)
+    if (!fmt.multiline) return `${text.slice(0, open + 1)}${el}${text.slice(arr.close)}`
+    return `${text.slice(0, open + 1)}\n${inner}${el}\n${outer}${text.slice(arr.close)}`
+  }
+  const multiline = fmt.multiline && text.slice(open + 1, arr.elements[0].start).includes('\n')
+  const indent = multiline ? lineIndent(text, arr.elements[0].start) : ''
+  const el = formatAt(value, multiline, fmt.unit, indent)
+  const sep = multiline ? `,\n${indent}` : ', '
+  return text.slice(0, last.end) + sep + el + text.slice(last.end)
+}
+
+/**
+ * Append hook groups to settings.json's `hooks`, one per event: each goes
+ * at the end of `hooks.<event>` (created if missing, `hooks` too). Everything
+ * already there stays exactly as it was, byte for byte: nothing is replaced,
+ * reordered or reformatted. Throws if `hooks` (or an event in it) isn't the
+ * object/array Claude Code expects, so a file the app doesn't understand is
+ * never changed.
+ */
+export function appendHookGroups(text: string, groups: [event: string, group: unknown][]): string {
+  const fmt = indentUnit(text)
+  let out = text
+  for (const [event, group] of groups) {
+    const top = scanTopLevel(out)
+    const hooks = [...top.members].reverse().find((m) => m.key === 'hooks')
+    if (!hooks) {
+      out = addToObject(out, top.open, 'hooks', { [event]: [group] }, fmt)
+      continue
+    }
+    if (out[hooks.valueStart] !== '{') throw new Error('"hooks" in settings.json is not an object')
+    const obj = scanObject(out, hooks.valueStart)
+    const ev = [...obj.members].reverse().find((m) => m.key === event)
+    if (!ev) {
+      out = addToObject(out, hooks.valueStart, event, [group], fmt)
+      continue
+    }
+    if (out[ev.valueStart] !== '[')
+      throw new Error(`"hooks.${event}" in settings.json is not a list`)
+    out = appendToArray(out, ev.valueStart, group, fmt)
+  }
+  return out
+}
+
+/**
+ * The `hooks` value without the handlers `isOurs` picks (JSON level). Groups
+ * left with no handlers are dropped; so are events left empty if `dropEmpty`
+ * says so (only the ones the app created). Returns undefined when nothing of
+ * the app's was found.
+ */
+export function withoutHandlers(
+  hooks: unknown,
+  isOurs: (handler: unknown) => boolean,
+  dropEmpty: (event: string) => boolean
+): Record<string, unknown> | undefined {
+  if (!hooks || typeof hooks !== 'object' || Array.isArray(hooks)) return undefined
+  let found = false
+  const out: Record<string, unknown> = {}
+  for (const [event, list] of Object.entries(hooks as Record<string, unknown>)) {
+    if (!Array.isArray(list)) {
+      out[event] = list
+      continue
+    }
+    const kept: unknown[] = []
+    for (const group of list) {
+      const g = group as Record<string, unknown> | null
+      if (!g || typeof g !== 'object' || !Array.isArray(g.hooks)) {
+        kept.push(group)
+        continue
+      }
+      const handlers = (g.hooks as unknown[]).filter((h) => !isOurs(h))
+      if (handlers.length === g.hooks.length) {
+        kept.push(group)
+        continue
+      }
+      found = true
+      if (handlers.length) kept.push({ ...g, hooks: handlers })
+    }
+    if (kept.length || !dropEmpty(event)) out[event] = kept
+  }
+  return found ? out : undefined
 }
 
 // ------------------------------------------------------------------- diff

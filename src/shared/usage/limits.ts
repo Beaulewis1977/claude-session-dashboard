@@ -496,11 +496,18 @@ export function whyNoLiveReading(
     return "Live limits aren't turned on, so there are no readings yet."
   if (!l.lastLimitAt)
     return `No reading with limits has arrived yet. ${LIVE_SOURCES_NOTE} ${REFRESH_HINT}`
+  // This window's own newest reading (not the other window's).
+  const seen = gauges.filter((g): g is GaugeState => !!g)
+  if (!seen.length) {
+    const what = kind === 'five_hour' ? 'a 5-hour' : kind === 'seven_day' ? 'a weekly' : 'any'
+    return `Claude Code hasn't reported ${what} limit window yet. ${LIVE_SOURCES_NOTE} ${REFRESH_HINT}`
+  }
+  const since = Math.max(...seen.map((g) => g.updatedAt))
   const ranSince =
-    l.lastReadingAt !== undefined && l.lastReadingAt - l.lastLimitAt > AGING_MS
-      ? ` Claude Code last ran the status line at ${asOf(l.lastReadingAt, now)}, but without limit data (that only comes after Claude's first reply in a session).`
+    l.lastReadingAt !== undefined && l.lastReadingAt - since > AGING_MS
+      ? ` Claude Code last ran the status line at ${asOf(l.lastReadingAt, now)}, but without data for this window (limits only come after Claude's first reply in a session).`
       : ''
-  return `No reading since ${asOf(l.lastLimitAt, now)}, before this window started.${ranSince} ${LIVE_SOURCES_NOTE} ${REFRESH_HINT}`
+  return `No reading since ${asOf(since, now)}, before this window started.${ranSince} ${LIVE_SOURCES_NOTE} ${REFRESH_HINT}`
 }
 
 export interface WeeklyBucket {

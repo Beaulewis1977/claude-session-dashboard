@@ -16,8 +16,8 @@ import { JsonStore } from '../core/json-store'
 import { copyShared } from '../core/shared-copy'
 import {
   assertAppDataWrite,
-  assertBridgeWrite,
   assertRealAppDataWrite,
+  assertRealBridgeWrite,
   assertClaudeSettingsWrite
 } from '../core/safe-paths'
 import { diffLines, rawMember, removeMember, scanTopLevel, setMember } from '../core/settings-edit'
@@ -38,7 +38,23 @@ export interface InstallRecord {
   originalText?: string
   writtenText: string
   backupPath?: string
+  /** SHA-256 of the bridge script the app last wrote, to recognise it later. */
+  scriptSha256?: string
 }
+
+/**
+ * SHA-256 of every bridge script an earlier version of the app installed
+ * (with the line endings it wrote). Only these, or the one the app recorded
+ * writing, are replaced by a newer bundled script: anything else was changed
+ * by someone and is left alone.
+ */
+export const SHIPPED_SCRIPT_SHA256: Record<'statusline.ps1' | 'statusline.sh', string[]> = {
+  // 1.0.0–1.3.0: File.Replace got "" as its backup path, so updates failed.
+  'statusline.ps1': ['7f67e6e23eb2648ede21c4c055a78f2dca21498a090d711c80d44eaba52752f5'],
+  'statusline.sh': ['fe0c04e0efd8885e902284407c990dc09cb708df1767dc6e41b606976ae785ba']
+}
+
+const sha256 = (text: string): string => createHash('sha256').update(text).digest('hex')
 
 export interface BridgeFile {
   version: 1
@@ -193,12 +209,32 @@ async function writeSettings(
   throw lastErr
 }
 
-async function writeBridgeFile(path: string, text: string): Promise<void> {
-  assertBridgeWrite(path)
+/**
+ * Write a file in the bridge folder atomically. The real folder (links and
+ * junctions followed) must still be a bridge folder. Windows can hold the
+ * target open for a moment (antivirus, a running status line), so the rename
+ * is retried a few times; the temp file never stays behind.
+ */
+export async function writeBridgeFile(path: string, text: string): Promise<void> {
+  await assertRealBridgeWrite(path)
   await mkdir(dirname(path), { recursive: true })
+  await assertRealBridgeWrite(path)
   const tmp = `${path}.${randomBytes(4).toString('hex')}.tmp`
-  await writeFile(tmp, text, 'utf8')
-  await rename(tmp, path)
+  try {
+    await writeFile(tmp, text, 'utf8')
+    for (let i = 0; ; i++) {
+      try {
+        await rename(tmp, path)
+        return
+      } catch (err) {
+        const code = (err as NodeJS.ErrnoException).code
+        if (i >= 4 || (code !== 'EPERM' && code !== 'EBUSY' && code !== 'EACCES')) throw err
+        await new Promise((r) => setTimeout(r, 50 * (i + 1)))
+      }
+    }
+  } finally {
+    await unlink(tmp).catch(() => undefined)
+  }
 }
 
 export class BridgeInstaller {
@@ -228,27 +264,45 @@ export class BridgeInstaller {
   /**
    * Bring installed bridge scripts up to date with the ones bundled with this
    * version of the app (a fixed script would otherwise only arrive on a
-   * reinstall). Only the app's own script file in the bridge folder is
-   * rewritten, and only where settings.json still runs the bridge; settings.json
+   * reinstall). Only a script the app recognises (one it shipped, or the one
+   * it recorded writing) is replaced: a script someone changed is kept as it
+   * is. Only where settings.json still runs the bridge, and settings.json
    * itself is never touched. Returns the ids of the sources that were updated.
    */
   async refreshScripts(sources: SourceInfo[]): Promise<string[]> {
     const updated: string[] = []
     for (const src of sources) {
-      if (src.status !== 'ok' || !this.record(src.id)) continue
+      const rec = this.record(src.id)
+      if (src.status !== 'ok' || !rec) continue
       const p = envPaths(src)
       if (!p) continue
       try {
         if (!isBridgeCommand(commandOf(await readText(p.settingsPath)))) continue
         const { name, text } = await this.bundledScript(p.env)
         const target = join(p.bridgeDir, 'bin', name)
-        if ((await readText(target)) === text) continue
+        const current = await readText(target)
+        if (current === text) continue
+        const known =
+          current !== undefined &&
+          (sha256(current) === rec.scriptSha256 ||
+            SHIPPED_SCRIPT_SHA256[name as keyof typeof SHIPPED_SCRIPT_SHA256].includes(
+              sha256(current)
+            ))
+        if (!known) {
+          console.warn('bridge script was changed by someone; not updating it', target)
+          continue
+        }
         await writeBridgeFile(target, text)
+        this.store.update((d) => {
+          const r = d.installs[src.id]
+          if (r) r.scriptSha256 = sha256(text)
+        })
         updated.push(src.id)
       } catch (err) {
         console.warn('could not update the bridge script', p.bridgeDir, err)
       }
     }
+    if (updated.length) await this.store.flush()
     return updated
   }
 
@@ -429,7 +483,8 @@ export class BridgeInstaller {
           previousRaw: before !== undefined ? rawMember(before, 'statusLine') : undefined,
           originalText: before,
           writtenText: after,
-          backupPath
+          backupPath,
+          scriptSha256: sha256(script)
         }
       })
     } else {

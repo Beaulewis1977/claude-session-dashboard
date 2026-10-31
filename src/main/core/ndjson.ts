@@ -1,7 +1,7 @@
 // Newline-delimited JSON files in the app's data folder: one JSON value per
 // line, read defensively and written atomically (or appended).
 
-import { appendFile, mkdir, readFile, readdir } from 'node:fs/promises'
+import { appendFile, mkdir, open, readFile, readdir } from 'node:fs/promises'
 import { dirname } from 'node:path'
 import { writeFileAtomic } from './json-store'
 import { assertAppDataWrite, assertRealAppDataWrite } from './safe-paths'
@@ -44,7 +44,29 @@ export async function appendNdjson(
   assertAppDataWrite(path, appDataDir)
   await assertRealAppDataWrite(path, appDataDir)
   await mkdir(dirname(path), { recursive: true })
-  await appendFile(path, rows.map((r) => JSON.stringify(r)).join('\n') + '\n', 'utf8')
+  // A torn last line (power loss mid-append) would swallow the first new row:
+  // end it first, so only the torn line is lost when the file is read.
+  const lead = (await endsWithNewline(path)) ? '' : '\n'
+  await appendFile(path, lead + rows.map((r) => JSON.stringify(r)).join('\n') + '\n', 'utf8')
+}
+
+/** True for a missing or empty file, or one whose last byte is a newline. */
+async function endsWithNewline(path: string): Promise<boolean> {
+  let fh
+  try {
+    fh = await open(path, 'r')
+  } catch {
+    return true
+  }
+  try {
+    const { size } = await fh.stat()
+    if (size === 0) return true
+    const buf = Buffer.alloc(1)
+    await fh.read(buf, 0, 1, size - 1)
+    return buf[0] === 0x0a
+  } finally {
+    await fh.close()
+  }
 }
 
 /** Files in `dir` whose names match `re`, sorted. */

@@ -1,12 +1,25 @@
 import { DEFAULT_HEALTH } from '@shared/usage/health'
 import { DEFAULT_PACE } from '@shared/usage/pace'
-import { cp, mkdir, mkdtemp, readdir, readFile, rm, utimes, writeFile } from 'node:fs/promises'
+import { createHash } from 'node:crypto'
+import {
+  appendFile,
+  cp,
+  mkdir,
+  mkdtemp,
+  readdir,
+  readFile,
+  rm,
+  symlink,
+  utimes,
+  writeFile
+} from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { FIXTURES_NOW, setClockOffset } from '@shared/clock'
 import type { BridgeReading } from '@shared/usage/bridge'
 import {
+  asOf,
   crossedThresholds,
   DEFAULT_WEIGHTS,
   detectCapacityChange,
@@ -24,7 +37,7 @@ import {
   type CapacityPoint,
   type LimitsState
 } from '@shared/usage/limits'
-import { parseBridgePayload } from '@shared/usage/bridge'
+import { parseBridgePayload, sameLimits } from '@shared/usage/bridge'
 import { DEFAULT_PRICES } from '@shared/usage/pricing'
 import type { UsageRecord } from '@shared/usage/types'
 import {
@@ -35,7 +48,13 @@ import {
   seedFixtureUsage
 } from '../src/main/fixtures'
 import { createFixturesPlatform } from '../src/main/platform'
-import { BridgeInstaller, createBridgeStore, envPaths } from '../src/main/services/bridge'
+import {
+  BridgeInstaller,
+  createBridgeStore,
+  envPaths,
+  SHIPPED_SCRIPT_SHA256,
+  writeBridgeFile
+} from '../src/main/services/bridge'
 import { LimitsService } from '../src/main/services/limits'
 import { SessionService } from '../src/main/services/sessions'
 import { appPaths, createMetadataStore, createSettingsStore } from '../src/main/services/store'
@@ -43,6 +62,8 @@ import { UsageService, usagePaths } from '../src/main/services/usage'
 import { FIXTURES } from './helpers'
 
 const H = 3_600_000
+const SCRIPTS_DIR = join(__dirname, '..', 'resources', 'bridge')
+const sha256 = (t: string) => createHash('sha256').update(t).digest('hex')
 const T0 = Date.parse('2026-10-22T10:00:00Z')
 
 function rec(ts: number, output: number, key = 'windows:s'): UsageRecord {
@@ -202,6 +223,16 @@ describe('gauges and projections', () => {
     expect(gaugeSummary('Week', undefined, later)).toBe('Week: no data')
   })
 
+  it('shows a time for today and a date for any other local day, across midnight', () => {
+    const midnight = new Date(2026, 9, 25, 0, 0, 0).getTime() // local time (a DST change day in many zones)
+    const before = midnight - 60_000
+    const after = midnight + 60_000
+    const day = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' })
+    const clock = new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' })
+    expect(asOf(before, after)).toBe(day.format(before))
+    expect(asOf(after, after + 3 * H)).toBe(clock.format(after))
+  })
+
   it('says why there is no current reading', () => {
     const resets = T0 + 5 * H
     const env = { installed: true } as LimitsState['envs'][number]
@@ -216,7 +247,30 @@ describe('gauges and projections', () => {
     // The bridge ran later, but the payloads had no limits.
     expect(
       whyNoLiveReading({ ...base, lastReadingAt: T0 + 5 * H, fiveHour: stale }, T0 + 6 * H)
-    ).toContain('without limit data')
+    ).toContain('without data for this window')
+    // A missing weekly window is explained on its own, not with the 5-hour reading's time.
+    expect(whyNoLiveReading({ ...base, fiveHour: fresh }, T0 + 2 * H, 'seven_day')).toMatch(
+      /hasn't reported a weekly limit window yet/
+    )
+    const oldWeek = gauge(
+      [
+        {
+          ts: T0 - 9 * 86_400_000,
+          source: 'windows',
+          sevenDay: { pct: 5, resetsAt: T0 - 86_400_000 }
+        }
+      ],
+      [],
+      'seven_day',
+      T0 + 2 * H,
+      DEFAULT_WEIGHTS
+    )
+    const weekWhy = whyNoLiveReading(
+      { ...base, fiveHour: fresh, sevenDay: oldWeek },
+      T0 + 2 * H,
+      'seven_day'
+    )!
+    expect(weekWhy).toContain(`No reading since ${asOf(T0 - 9 * 86_400_000, T0 + 2 * H)}`)
     expect(whyNoLiveReading({ ...base, lastLimitAt: undefined }, T0)).toMatch(
       /^No reading with limits has arrived yet/
     )
@@ -247,6 +301,10 @@ describe('gauges and projections', () => {
         updatedAt: 1793400000000
       }
     ])
+    // A change in a per-model window alone is a change, not a repeat.
+    const moved = { ...r, weeklyBy: { seven_day_opus: { pct: 6, resetsAt: 1793656800000 } } }
+    expect(sameLimits(r, moved)).toBe(false)
+    expect(sameLimits(r, { ...r })).toBe(true)
     // Today's payloads have only the documented windows.
     expect(weeklyBuckets([{ ...r, weeklyBy: undefined }], 0)).toEqual([])
   })
@@ -478,16 +536,148 @@ describe('LimitsService (fixtures)', () => {
     expect(again.readings().filter((r) => r.sessionId === 'sess-a')).toHaveLength(2)
   })
 
-  it('brings an installed bridge script up to date, and nothing else', async () => {
+  it('upgrades only a bridge script it recognises, and keeps one someone changed', async () => {
     const { installer, sessions } = await fixtureLimits()
     const script = join(envPaths(sessions.source('windows')!)!.bridgeDir, 'bin', 'statusline.ps1')
     const current = await readFile(script, 'utf8')
-    await writeFile(script, '# an older bridge script')
+    expect(installer.record('windows')?.scriptSha256).toBe(sha256(current))
+
+    // A script the app wrote earlier (its hash is on record) is replaced.
+    const older = '# an older bridge script\r\n'
+    installer['store'].update((d) => {
+      d.installs.windows.scriptSha256 = sha256(older)
+    })
+    await writeFile(script, older)
     expect(await installer.refreshScripts(sessions.sources)).toEqual(['windows'])
     expect(await readFile(script, 'utf8')).toBe(current)
+    expect(installer.record('windows')?.scriptSha256).toBe(sha256(current))
     expect(await installer.refreshScripts(sessions.sources)).toEqual([])
+
+    // A script someone edited (a local workaround) is left exactly as it is.
+    const mine = `${current}# my own tweak\r\n`
+    await writeFile(script, mine)
+    expect(await installer.refreshScripts(sessions.sources)).toEqual([])
+    expect(await readFile(script, 'utf8')).toBe(mine)
+
+    // Every script an earlier version shipped is recognised.
+    expect(SHIPPED_SCRIPT_SHA256['statusline.ps1']).toHaveLength(1)
+    expect(SHIPPED_SCRIPT_SHA256['statusline.sh']).toContain(
+      sha256((await readFile(join(SCRIPTS_DIR, 'statusline.sh'), 'utf8')).replace(/\r\n/g, '\n'))
+    )
+
     // Not installed for root: no script is written there.
     const root = envPaths(sessions.source('wsl-Ubuntu-root')!)!
     await expect(readFile(join(root.bridgeDir, 'bin', 'statusline.sh'))).rejects.toThrow()
+  })
+
+  it('never leaves its temp file behind when a bridge file cannot be replaced', async () => {
+    const bin = join(root, 'home', '.claude-session-dashboard', 'bin')
+    // A folder where the script should be: the rename can't replace it.
+    await mkdir(join(bin, 'statusline.ps1', 'inside'), { recursive: true })
+    await expect(writeBridgeFile(join(bin, 'statusline.ps1'), 'x')).rejects.toThrow()
+    expect(await readdir(bin)).toEqual(['statusline.ps1'])
+  })
+
+  it('refuses to read or delete through a link into .claude', async () => {
+    const { limits, sessions } = await fixtureLimits()
+    const bridgeDir = envPaths(sessions.source('windows')!)!.bridgeDir
+    const live = join(bridgeDir, 'live')
+    await rm(live, { recursive: true, force: true })
+    // live/ is a junction to a folder inside .claude.
+    const inside = join(root, 'home', '.claude', 'projects', 'p')
+    await mkdir(inside, { recursive: true })
+    await symlink(inside, live, 'junction')
+    const victim = join(inside, '.tmp.100.sess-a.json')
+    await writeFile(victim, '')
+    const t = new Date(Date.now() - H)
+    await utimes(victim, t, t)
+    expect(await limits.salvageOrphans()).toMatchObject({ imported: 0, deleted: 0 })
+    expect(await readdir(inside)).toEqual(['.tmp.100.sess-a.json'])
+    // A single temp file that is a link is skipped too.
+    await rm(live)
+    await mkdir(live)
+    await symlink(victim, join(live, '.tmp.101.sess-a.json'), 'file').catch(() => undefined)
+    await limits.salvageOrphans()
+    expect(await readdir(inside)).toEqual(['.tmp.100.sess-a.json'])
+  })
+
+  it('keeps salvaged readings after a torn history line, and deletes nothing if saving fails', async () => {
+    const { limits, sessions, installer, paths } = await fixtureLimits()
+    const live = join(envPaths(sessions.source('windows')!)!.bridgeDir, 'live')
+    await mkdir(live, { recursive: true })
+    const put = async (name: string, pct: number) => {
+      const f = join(live, name)
+      await writeFile(
+        f,
+        JSON.stringify({
+          session_id: 'sess-t',
+          rate_limits: { five_hour: { used_percentage: pct, resets_at: FIXTURES_NOW / 1000 } }
+        })
+      )
+      const t = new Date(Date.now() - H)
+      await utimes(f, t, t)
+    }
+    const history = join(paths.dataDir, 'limits-history.ndjson')
+    // The last line was cut off (power loss mid-append).
+    await appendFile(history, '{"ts":1,"source":"windows","sess')
+    await put('.tmp.200.sess-t.json', 20)
+    expect(await limits.salvageOrphans()).toMatchObject({ imported: 1, deleted: 1 })
+    const again = new LimitsService(
+      sessions,
+      limits['usage'],
+      installer,
+      createBridgeStore(paths.dataDir),
+      history,
+      paths.dataDir,
+      limits['settings'],
+      () => undefined
+    )
+    await again.start()
+    again.stop()
+    expect(again.readings().filter((r) => r.sessionId === 'sess-t')).toHaveLength(1)
+
+    // The history can't be written: the temp file stays.
+    await put('.tmp.201.sess-t.json', 30)
+    const broken = new LimitsService(
+      sessions,
+      limits['usage'],
+      installer,
+      createBridgeStore(paths.dataDir),
+      paths.dataDir, // a folder, not a file: appending fails
+      paths.dataDir,
+      limits['settings'],
+      () => undefined
+    )
+    await expect(broken.salvageOrphans()).rejects.toThrow()
+    expect(await readdir(live)).toContain('.tmp.201.sess-t.json')
+  })
+
+  it('imports a latest.json temp whose session copy is missing, and runs one salvage at a time', async () => {
+    const { limits, sessions, paths } = await fixtureLimits()
+    const live = join(envPaths(sessions.source('windows')!)!.bridgeDir, 'live')
+    await mkdir(live, { recursive: true })
+    const put = async (name: string, sid: string, pct: number) => {
+      const f = join(live, name)
+      await writeFile(
+        f,
+        JSON.stringify({
+          session_id: sid,
+          rate_limits: { five_hour: { used_percentage: pct, resets_at: FIXTURES_NOW / 1000 } }
+        })
+      )
+      const t = new Date(Date.now() - H)
+      await utimes(f, t, t)
+    }
+    // Only the latest.json copy survived for sess-l.
+    await put('.tmp.300.latest.json', 'sess-l', 15)
+    await put('.tmp.301.sess-m.json', 'sess-m', 16)
+    // Startup and a manual rescan at the same moment.
+    const [a, b] = await Promise.all([limits.salvageOrphans(), limits.salvageOrphans()])
+    expect(a).toBe(b)
+    expect(a).toMatchObject({ imported: 2, deleted: 2 })
+    const rows = (await readFile(join(paths.dataDir, 'limits-history.ndjson'), 'utf8'))
+      .split('\n')
+      .filter((l) => l.includes('"sess-l"') || l.includes('"sess-m"'))
+    expect(rows).toHaveLength(2)
   })
 })

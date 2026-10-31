@@ -4,7 +4,7 @@
 // and the implied-capacity history.
 
 import { EventEmitter } from 'node:events'
-import { readdir, readFile, stat, unlink } from 'node:fs/promises'
+import { lstat, readdir, readFile, stat, unlink } from 'node:fs/promises'
 import { basename, join } from 'node:path'
 import { clockOffset, now } from '@shared/clock'
 import { fiveHourBlocks } from '@shared/usage/aggregate'
@@ -44,7 +44,7 @@ import { paceAdvice, paceOf, type PaceSettings } from '@shared/usage/pace'
 import type { WindowKind } from '@shared/usage/limits'
 import type { JsonStore } from '../core/json-store'
 import { appendNdjson, readNdjson } from '../core/ndjson'
-import { assertBridgeWrite } from '../core/safe-paths'
+import { assertRealBridgeWrite } from '../core/safe-paths'
 import { envPaths, type BridgeFile, type BridgeInstaller } from './bridge'
 import type { SessionService } from './sessions'
 import type { UsageService } from './usage'
@@ -68,6 +68,8 @@ const isUnc = (p: string): boolean => /^[\\/]{2}/.test(p)
 const ORPHAN_RE = /^\.tmp\.\d+\.(.+\.json)$/
 /** Younger temp files may still be in use by a running bridge script. */
 const ORPHAN_MIN_AGE_MS = 2 * 60_000
+/** A name that stands for "a file in this folder" when checking the folder itself. */
+const PROBE = '.tmp.0.probe.json'
 
 export interface SalvageResult {
   /** Readings added to the limit history. */
@@ -129,15 +131,29 @@ export class LimitsService extends EventEmitter<{ changed: [] }> {
    * The Windows bridge script used to fail to replace a session's saved
    * payload, so every update after the first stayed behind as
    * `.tmp.<pid>.<name>.json` in live/, with the real limit data in it. Import
-   * the readings with limits into the history (dedupe by session + time) and
-   * delete the temp files that were imported, were repeats, or had no limits.
-   * Files that can't be read or parsed are left alone. Only the app's own
-   * temp files in the bridge folder are ever deleted.
+   * the readings with limits into the history (dedupe by session + time, and
+   * unchanged repeats), then delete the temp files that were imported, were
+   * repeats, or had no limits. Files that can't be read or parsed are left
+   * alone. Only the app's own temp files in a real bridge folder are ever
+   * deleted: links and junctions are followed and checked first.
+   *
+   * Single flight: the startup salvage and a manual rescan share one run, so
+   * the same file is never imported twice.
    */
-  async salvageOrphans(): Promise<SalvageResult> {
+  salvageOrphans(): Promise<SalvageResult> {
+    this.salvaging ??= this.salvageNow().finally(() => {
+      this.salvaging = undefined
+    })
+    return this.salvaging
+  }
+
+  private salvaging: Promise<SalvageResult> | undefined
+
+  private async salvageNow(): Promise<SalvageResult> {
     const res: SalvageResult = { imported: 0, repeats: 0, deleted: 0, failed: 0 }
-    const done: string[] = []
-    const found: { file: string; r: BridgeReading }[] = []
+    type Handled = { live: string; file: string; mtimeMs: number }
+    const done: Handled[] = []
+    const found: (Handled & { r: BridgeReading })[] = []
     for (const src of this.sessions.sources) {
       if (src.status !== 'ok') continue
       const p = envPaths(src)
@@ -145,26 +161,30 @@ export class LimitsService extends EventEmitter<{ changed: [] }> {
       const live = join(p.bridgeDir, 'live')
       let names: string[]
       try {
+        // The real folder (links followed) must be a bridge folder outside .claude.
+        await assertRealBridgeWrite(join(live, PROBE))
         names = await readdir(live)
       } catch {
         continue
       }
       for (const n of names) {
-        const m = ORPHAN_RE.exec(n)
-        if (!m) continue
+        if (!ORPHAN_RE.test(n)) continue
         const file = join(live, n)
         let text: string
         let mtimeMs: number
         try {
-          mtimeMs = (await stat(file)).mtimeMs
+          const st = await lstat(file)
+          if (!st.isFile()) continue
+          mtimeMs = st.mtimeMs
           if (Date.now() - mtimeMs < ORPHAN_MIN_AGE_MS) continue
           text = await readFile(file, 'utf8')
         } catch {
           res.failed++
           continue
         }
+        const h = { live, file, mtimeMs }
         if (!text.trim()) {
-          done.push(file)
+          done.push(h)
           continue
         }
         const r = parseBridgePayload(text, {
@@ -172,23 +192,27 @@ export class LimitsService extends EventEmitter<{ changed: [] }> {
           source: src.id
         })
         if (!r) res.failed++
-        else if (!r.fiveHour && !r.sevenDay) done.push(file)
-        // latest.json is a copy of a session's payload, written a moment later.
-        else if (m[1] === 'latest.json' && r.sessionId) {
-          res.repeats++
-          done.push(file)
-        } else found.push({ file, r })
+        else if (!r.fiveHour && !r.sevenDay) done.push(h)
+        // latest.json temps too: the session's own save may have failed while
+        // this copy survived. A copy of a session temp is an unchanged repeat.
+        else found.push({ ...h, r })
       }
     }
     const seen = new Set(this.history.map((r) => `${r.sessionId ?? ''}|${r.ts}`))
-    const prev = new Map<string, BridgeReading>()
+    const batchPrev = new Map<string, BridgeReading>()
     const fresh: BridgeReading[] = []
-    for (const { file, r } of found.sort((a, b) => a.r.ts - b.r.ts)) {
-      done.push(file)
+    for (const f of found.sort((a, b) => a.r.ts - b.r.ts)) {
+      const { r } = f
+      done.push(f)
       const k = `${r.sessionId ?? ''}|${r.ts}`
-      const last = prev.get(r.sessionId ?? '')
-      prev.set(r.sessionId ?? '', r)
-      if (seen.has(k) || sameLimits(last, r)) {
+      const sid = `${r.source}|${r.sessionId ?? ''}`
+      // The reading just before this one, from the history or this batch.
+      const fromHistory = this.readingBefore(r)
+      const fromBatch = batchPrev.get(sid)
+      const prev =
+        fromBatch && (!fromHistory || fromBatch.ts >= fromHistory.ts) ? fromBatch : fromHistory
+      batchPrev.set(sid, r)
+      if (seen.has(k) || sameLimits(prev, r)) {
         res.repeats++
         continue
       }
@@ -205,10 +229,24 @@ export class LimitsService extends EventEmitter<{ changed: [] }> {
       res.from = fresh[0].ts
       res.to = fresh[fresh.length - 1].ts
     }
-    for (const file of done) {
-      if (!ORPHAN_RE.test(basename(file))) continue
+    const checked = new Map<string, boolean>()
+    for (const { live, file, mtimeMs } of done) {
       try {
-        assertBridgeWrite(file)
+        // Check the folder again right before deleting (it could have been
+        // swapped for a link meanwhile), and skip a file that changed since it was read.
+        if (!checked.has(live)) {
+          checked.set(
+            live,
+            await assertRealBridgeWrite(join(live, PROBE)).then(
+              () => true,
+              () => false
+            )
+          )
+        }
+        if (!checked.get(live) || !ORPHAN_RE.test(basename(file))) continue
+        await assertRealBridgeWrite(file)
+        const st = await lstat(file)
+        if (!st.isFile() || st.mtimeMs !== mtimeMs) continue
         await unlink(file)
         res.deleted++
       } catch {
@@ -217,6 +255,16 @@ export class LimitsService extends EventEmitter<{ changed: [] }> {
     }
     if (fresh.length) this.emit('changed')
     return res
+  }
+
+  /** The newest reading of the same session (or source) that is older than `r`. */
+  private readingBefore(r: BridgeReading): BridgeReading | undefined {
+    const list = r.sessionId
+      ? (this.bySession.get(r.sessionId) ?? [])
+      : this.history.filter((x) => !x.sessionId)
+    for (let i = list.length - 1; i >= 0; i--)
+      if (list[i].ts < r.ts && list[i].source === r.source) return list[i]
+    return undefined
   }
 
   stop(): void {

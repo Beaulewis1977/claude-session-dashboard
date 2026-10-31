@@ -136,11 +136,13 @@ export function sameLimits(a: BridgeReading | undefined, b: BridgeReading): bool
   if (!a) return false
   const w = (x?: LimitWindow, y?: LimitWindow): boolean =>
     (!x && !y) || (!!x && !!y && x.pct === y.pct && x.resetsAt === y.resetsAt)
+  const keys = new Set([...Object.keys(a.weeklyBy ?? {}), ...Object.keys(b.weeklyBy ?? {})])
   return (
     a.source === b.source &&
     a.sessionId === b.sessionId &&
     w(a.fiveHour, b.fiveHour) &&
     w(a.sevenDay, b.sevenDay) &&
+    [...keys].every((k) => w(a.weeklyBy?.[k], b.weeklyBy?.[k])) &&
     a.costUsd === b.costUsd &&
     a.contextPct === b.contextPct
   )

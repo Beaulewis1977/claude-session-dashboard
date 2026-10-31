@@ -104,6 +104,11 @@ beforeAll(async () => {
     // Its own dependency cache: the other browser tests run Vite servers at the same time.
     cacheDir: resolve(root, 'node_modules/.vite-resume-keys-browser'),
     logLevel: 'error',
+    // Find and pre-bundle every dependency of the renderer when the server
+    // starts. The test page is a virtual module Vite can't scan, so without this
+    // a fresh cache (after npm install) discovers them while a page loads and
+    // answers its requests with "504 Outdated Optimize Dep".
+    optimizeDeps: { entries: ['src/renderer/src/**/*.tsx'] },
     resolve: {
       alias: {
         '@': resolve(root, 'src/renderer/src'),
@@ -129,7 +134,10 @@ beforeAll(async () => {
         }
       }
     ],
-    server: { host: '127.0.0.1', port: 0 }
+    // No file watching or hot reload: a file changed in the repo while the tests
+    // run (an edit, git, the formatter) would otherwise reload or restyle the
+    // page in the middle of a test.
+    server: { host: '127.0.0.1', port: 0, watch: null, hmr: false }
   })
   await server.listen()
   const address = server.httpServer?.address()

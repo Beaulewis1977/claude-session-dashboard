@@ -21,8 +21,10 @@
   still come through), and mute single sessions. Clicking a notification opens the session.
 - **Safety details:** the app's hooks are recognised only by their exact command (a wrapper of yours
   that mentions the script stays); Disable removes only their text, keeping comments and formatting;
-  files with comments work and duplicate keys are refused; a save by Claude Code at the same moment
-  is never overwritten. Running processes are matched by their start time on every check. Focus
+  files with comments work and duplicate keys are refused. Both installers save settings.json the
+  same way: a backup first, a flushed temp file, a last check that the file is still what you
+  reviewed, then one atomic rename (settings.json never goes missing). The Windows hook command
+  passes the script path as data, so no quote in a profile path can break out. Running processes are matched by their start time on every check. Focus
   terminal matches tab names exactly and won't guess between two equal names.
 - **Phone:** a Running tab with the same view, and **push alerts** that arrive when the app is closed
   (opt-in per phone, Web Push). A push says only what happened, with an opaque reference; tapping it

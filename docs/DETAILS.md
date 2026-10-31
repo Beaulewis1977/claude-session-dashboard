@@ -70,9 +70,12 @@ each only after you approve it:
   appended at the end of each event's list (existing hooks are never replaced, reordered or
   reformatted), and **Disable** takes out exactly the app's handlers: only those running exactly
   the command the app wrote, removed as text so everything else stays byte for byte (the whole file
-  when nothing else changed since). Comments are fine; a duplicate `hooks` key is refused. The write
-  moves settings.json aside, checks it is what you reviewed, and creates the new file exclusively,
-  so a save by Claude Code at the same moment is never lost. The hook script only saves each event to
+  when nothing else changed since). Comments are fine; a duplicate `hooks` key is refused. Both
+  installers save settings.json the same way: a backup first, the new file written to a temp file
+  and flushed, settings.json checked again right before the swap (it must still be what you
+  reviewed), then one atomic rename, so settings.json never goes missing; if that rename isn't
+  possible, nothing changes. An editor that already has settings.json open can still save over the
+  change afterwards; the backup keeps your reviewed file. The hook script only saves each event to
   `~/.claude-session-dashboard/events/`; the app prunes its own event files there after a week.
 - **Phone push alerts** (opt-in on each phone) are the one outgoing call of the phone feature: an
   end-to-end encrypted Web Push message (RFC 8291 with VAPID) to the push endpoint that phone's

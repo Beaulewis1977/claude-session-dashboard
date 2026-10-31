@@ -1,16 +1,18 @@
 // "Focus terminal": bring a running session's terminal window (and its
-// Windows Terminal tab, when it can be found) to the front.
+// Windows Terminal tab, when it can be told apart) to the front.
 //
-// Windows only, best effort:
-//   1. From the Claude process (Windows sessions), walk up its parents to the
-//      first one with a window: Windows Terminal, or a classic console.
-//   2. In Windows Terminal, pick the tab whose title holds the session's name
-//      (Claude Code puts it there) with UI Automation.
-//   3. Otherwise (WSL sessions, or a terminal started elsewhere) look through
-//      all terminal windows for that title.
-// The PID and titles reach PowerShell only as environment variables (the
-// titles base64-encoded), never as script text. Nothing is typed into or
-// changed in the terminal.
+// Windows only, in two steps:
+//   1. A PowerShell lists the terminal windows (Windows Terminal and classic
+//      consoles) with their tabs, and the window the session's own Claude
+//      process belongs to (walking up its parent processes).
+//   2. pickFocusTarget (pure, tested) chooses: the tab whose title is exactly
+//      the session's name (Claude Code puts it there, after a status glyph).
+//      Two tabs with that name is ambiguous and nothing is guessed; a name
+//      that only appears inside a longer title ("foo" in "foobar") never
+//      counts. Then a second PowerShell selects that tab (checking its name
+//      again) and brings the window forward.
+// Inputs reach PowerShell only as environment variables (names base64), never
+// as script text. Nothing is typed into or changed in a terminal.
 
 import { execFile } from 'node:child_process'
 import { win32 } from 'node:path'
@@ -20,13 +22,73 @@ import { systemRoot } from './which'
 export interface FocusRequest {
   /** The Claude Code process (Windows sessions only). */
   pid?: number
-  /** Titles the tab or window may carry, best first. */
+  /** Names the tab or window may carry, best first. */
   titles: string[]
 }
 
-const SCRIPT = String.raw`
-$ErrorActionPreference = 'Stop'
-Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
+export interface TermWindow {
+  hwnd: number
+  /** CASCADIA_HOSTING_WINDOW_CLASS (Windows Terminal) or ConsoleWindowClass. */
+  cls: string
+  title: string
+  /** Tab names, in order (Windows Terminal only). */
+  tabs: string[]
+}
+
+export interface TermList {
+  /** The window of the session's own process, if found. */
+  ancestor?: number
+  windows: TermWindow[]
+}
+
+export type FocusPick =
+  { hwnd: number; tab?: number; tabName?: string } | { error: 'ambiguous' | 'not-found' }
+
+const WT = 'CASCADIA_HOSTING_WINDOW_CLASS'
+
+/**
+ * A title as compared: without the status glyph Claude Code puts in front
+ * ("◑ ", "✳ "), spaces collapsed, case ignored.
+ */
+export function normalizeTitle(s: string): string {
+  return s
+    .replace(/^[^\p{L}\p{N}]+/u, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase()
+}
+
+/** Which window and tab to bring forward (exact names only; ambiguity is reported). */
+export function pickFocusTarget(list: TermList, titles: string[]): FocusPick {
+  const names = [...new Set(titles.map(normalizeTitle).filter((t) => t.length >= 3))]
+  const tabsOf = (w: TermWindow, name: string): number[] =>
+    w.tabs.map((t, i) => (normalizeTitle(t) === name ? i : -1)).filter((i) => i >= 0)
+
+  const own = list.windows.find((w) => w.hwnd === list.ancestor)
+  if (own) {
+    // Its own window is certain; pick a tab only when exactly one has the name.
+    if (own.cls === WT)
+      for (const name of names) {
+        const hits = tabsOf(own, name)
+        if (hits.length === 1) return { hwnd: own.hwnd, tab: hits[0], tabName: own.tabs[hits[0]] }
+        if (hits.length > 1) break
+      }
+    return { hwnd: own.hwnd }
+  }
+  for (const name of names) {
+    const hits: { hwnd: number; tab?: number; tabName?: string }[] = []
+    for (const w of list.windows) {
+      if (w.cls === WT)
+        for (const i of tabsOf(w, name)) hits.push({ hwnd: w.hwnd, tab: i, tabName: w.tabs[i] })
+      else if (normalizeTitle(w.title) === name) hits.push({ hwnd: w.hwnd })
+    }
+    if (hits.length === 1) return hits[0]
+    if (hits.length > 1) return { error: 'ambiguous' }
+  }
+  return { error: 'not-found' }
+}
+
+const WIN32 = String.raw`
 Add-Type -TypeDefinition @'
 using System;
 using System.Collections.Generic;
@@ -38,12 +100,14 @@ public static class CsdWin {
   [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern int GetClassName(IntPtr h, StringBuilder s, int n);
   [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern int GetWindowText(IntPtr h, StringBuilder s, int n);
   [DllImport("user32.dll")] static extern bool IsWindowVisible(IntPtr h);
+  [DllImport("user32.dll")] static extern bool IsWindow(IntPtr h);
   [DllImport("user32.dll")] static extern bool SetForegroundWindow(IntPtr h);
   [DllImport("user32.dll")] static extern bool ShowWindow(IntPtr h, int n);
   [DllImport("user32.dll")] static extern bool IsIconic(IntPtr h);
   [DllImport("user32.dll")] static extern void keybd_event(byte v, byte s, uint f, UIntPtr e);
   public static string ClassOf(IntPtr h) { var s = new StringBuilder(256); GetClassName(h, s, 256); return s.ToString(); }
   public static string TitleOf(IntPtr h) { var s = new StringBuilder(512); GetWindowText(h, s, 512); return s.ToString(); }
+  public static bool Exists(IntPtr h) { return IsWindow(h); }
   public static IntPtr[] Terminals() {
     var list = new List<IntPtr>();
     EnumWindows((h, l) => {
@@ -64,124 +128,148 @@ public static class CsdWin {
   }
 }
 '@
-
-function Out-Result($ok, $how, $why) {
-  [Console]::Out.WriteLine((@{ ok = $ok; how = $how; why = $why } | ConvertTo-Json -Compress))
-  exit 0
-}
-
-$titles = @()
-if ($env:CSD_FOCUS_TITLES) {
-  $titles = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($env:CSD_FOCUS_TITLES)) -split "\n" |
-    Where-Object { $_.Trim().Length -ge 3 } | ForEach-Object { $_.Trim() }
-}
-function Test-Title([string]$t) {
-  foreach ($c in $titles) { if ($t.IndexOf($c, [StringComparison]::OrdinalIgnoreCase) -ge 0) { return $true } }
-  return $false
-}
-
-function Select-Tab([IntPtr]$h) {
-  if (-not $titles.Count) { return $false }
+Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
+function Get-Tabs([IntPtr]$h) {
   try {
     $root = [System.Windows.Automation.AutomationElement]::FromHandle($h)
     $cond = New-Object System.Windows.Automation.PropertyCondition(
       [System.Windows.Automation.AutomationElement]::ControlTypeProperty,
       [System.Windows.Automation.ControlType]::TabItem)
-    foreach ($tab in $root.FindAll([System.Windows.Automation.TreeScope]::Descendants, $cond)) {
-      if (Test-Title $tab.Current.Name) {
-        $tab.GetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern).Select()
-        return $true
-      }
-    }
-  } catch { }
-  return $false
+    return @($root.FindAll([System.Windows.Automation.TreeScope]::Descendants, $cond))
+  } catch { return @() }
 }
+`
 
-# 1. Up from the Claude process to the first parent with a window.
-$start = 0
-if ($env:CSD_FOCUS_PID -match '^\d+$') { $start = [int]$env:CSD_FOCUS_PID }
-if ($start -gt 0) {
+const LIST = String.raw`
+$ErrorActionPreference = 'Stop'
+$ProgressPreference = 'SilentlyContinue'
+# UTF-8, or tab names with an em dash or Claude's status glyph arrive mangled.
+[Console]::OutputEncoding = New-Object System.Text.UTF8Encoding $false
+${WIN32}
+$ancestor = 0
+if ($env:CSD_FOCUS_PID -match '^\d+$') {
   $parent = @{}
   foreach ($p in (Get-CimInstance Win32_Process -Property ProcessId, ParentProcessId)) {
     $parent[[int]$p.ProcessId] = [int]$p.ParentProcessId
   }
-  $cur = $start
+  $cur = [int]$env:CSD_FOCUS_PID
   for ($i = 0; $i -lt 16 -and $cur -gt 0; $i++) {
     $gp = Get-Process -Id $cur -ErrorAction SilentlyContinue
-    if ($gp -and $gp.MainWindowHandle -ne [IntPtr]::Zero) {
-      $h = $gp.MainWindowHandle
-      $tab = $false
-      if ([CsdWin]::ClassOf($h) -eq 'CASCADIA_HOSTING_WINDOW_CLASS') { $tab = Select-Tab $h }
-      [void][CsdWin]::Focus($h)
-      Out-Result $true ($(if ($tab) { 'tab' } else { 'window' })) $null
-    }
+    if ($gp -and $gp.MainWindowHandle -ne [IntPtr]::Zero) { $ancestor = [int64]$gp.MainWindowHandle; break }
     if (-not $parent.ContainsKey($cur)) { break }
     $cur = $parent[$cur]
   }
 }
-
-# 2. Any terminal window with the session's title (or a tab with it).
+$windows = @()
 foreach ($h in [CsdWin]::Terminals()) {
-  if ([CsdWin]::ClassOf($h) -eq 'CASCADIA_HOSTING_WINDOW_CLASS') {
-    if (Select-Tab $h) { [void][CsdWin]::Focus($h); Out-Result $true 'tab' $null }
-  } elseif (Test-Title ([CsdWin]::TitleOf($h))) {
-    [void][CsdWin]::Focus($h); Out-Result $true 'window' $null
+  $cls = [CsdWin]::ClassOf($h)
+  $tabs = @()
+  if ($cls -eq 'CASCADIA_HOSTING_WINDOW_CLASS') { $tabs = @(Get-Tabs $h | ForEach-Object { [string]$_.Current.Name }) }
+  $windows += [pscustomobject]@{ hwnd = [int64]$h; cls = $cls; title = [CsdWin]::TitleOf($h); tabs = $tabs }
+}
+# The process's own window may be of another class: add it.
+if ($ancestor -ne 0 -and -not ($windows | Where-Object { $_.hwnd -eq $ancestor })) {
+  $h = [IntPtr]$ancestor
+  $windows += [pscustomobject]@{ hwnd = $ancestor; cls = [CsdWin]::ClassOf($h); title = [CsdWin]::TitleOf($h); tabs = @() }
+}
+[Console]::Out.WriteLine((@{ ancestor = $ancestor; windows = @($windows) } | ConvertTo-Json -Compress -Depth 4))
+`
+
+const ACT = String.raw`
+$ErrorActionPreference = 'Stop'
+$ProgressPreference = 'SilentlyContinue'
+${WIN32}
+if ($env:CSD_FOCUS_HWND -notmatch '^\d+$') { [Console]::Out.WriteLine('{"ok":false}'); exit 0 }
+$h = [IntPtr][int64]$env:CSD_FOCUS_HWND
+if (-not [CsdWin]::Exists($h)) { [Console]::Out.WriteLine('{"ok":false}'); exit 0 }
+$how = 'window'
+if ($env:CSD_FOCUS_TAB -match '^\d+$') {
+  $want = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($env:CSD_FOCUS_TABNAME))
+  $tabs = Get-Tabs $h
+  $i = [int]$env:CSD_FOCUS_TAB
+  # Only the tab that still has the name it had a moment ago.
+  if ($i -lt $tabs.Count -and [string]$tabs[$i].Current.Name -ceq $want) {
+    try {
+      $tabs[$i].GetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern).Select()
+      $how = 'tab'
+    } catch { }
   }
 }
-Out-Result $false $null 'not-found'
+[void][CsdWin]::Focus($h)
+[Console]::Out.WriteLine((@{ ok = $true; how = $how } | ConvertTo-Json -Compress))
 `
 
 const NOT_FOUND =
   "Couldn't find its terminal window. It may run in VS Code, an IDE or a terminal the app can't see (for a WSL session, give it a name with /rename so its tab can be found). Copy the resume command or open it on your phone instead."
+const AMBIGUOUS =
+  "More than one terminal tab has this session's name, so the app won't guess. Give the session its own name with /rename, or switch to it yourself."
 
-/** Bring the session's terminal forward. Windows only; elsewhere it says so. */
-export function focusTerminal(
-  req: FocusRequest,
-  opts: { simulate?: boolean } = {}
-): Promise<FocusResult> {
-  if (opts.simulate)
-    return Promise.resolve({
-      ok: false,
-      simulated: true,
-      error: 'Fixtures mode: no terminal to focus.'
-    })
-  if (process.platform !== 'win32')
-    return Promise.resolve({ ok: false, error: 'Focusing a terminal works on Windows only.' })
-  const titles = [
-    ...new Set(
-      req.titles.map((t) => t.replace(/[\r\n]+/g, ' ').trim()).filter((t) => t.length >= 3)
-    )
-  ]
+function runPs(script: string, env: Record<string, string>): Promise<string> {
   const ps = win32.join(systemRoot(), 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe')
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     execFile(
       ps,
-      ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', SCRIPT],
+      ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', script],
       {
         windowsHide: true,
         timeout: 20_000,
-        env: {
-          ...process.env,
-          CSD_FOCUS_PID: req.pid && Number.isInteger(req.pid) ? String(req.pid) : '',
-          CSD_FOCUS_TITLES: Buffer.from(titles.slice(0, 5).join('\n'), 'utf8').toString('base64')
-        }
+        maxBuffer: 4 * 1024 * 1024,
+        env: { ...process.env, ...env }
       },
       (err, stdout) => {
         const line = String(stdout ?? '')
           .split(/\r?\n/)
           .reverse()
           .find((l) => l.trim().startsWith('{'))
-        try {
-          const r = JSON.parse(line ?? '') as { ok?: boolean; how?: string }
-          if (r.ok) return resolve({ ok: true, how: r.how === 'tab' ? 'tab' : 'window' })
-          return resolve({ ok: false, error: NOT_FOUND })
-        } catch {
-          resolve({
-            ok: false,
-            error: err ? `Couldn't focus the terminal: ${err.message}` : NOT_FOUND
-          })
-        }
+        if (line) resolve(line)
+        else reject(err ?? new Error('No answer from PowerShell'))
       }
     )
   })
+}
+
+/** PowerShell's JSON for a one-item list may be the item itself. */
+const asArray = <T>(v: T | T[] | undefined | null): T[] => (Array.isArray(v) ? v : v ? [v] : [])
+
+export function parseTermList(json: string): TermList {
+  const o = JSON.parse(json) as { ancestor?: number; windows?: unknown }
+  const windows = asArray(o.windows as TermWindow | TermWindow[]).map((w) => ({
+    hwnd: Number(w.hwnd),
+    cls: String(w.cls ?? ''),
+    title: String(w.title ?? ''),
+    tabs: asArray(w.tabs as string | string[]).map(String)
+  }))
+  return { ancestor: o.ancestor ? Number(o.ancestor) : undefined, windows }
+}
+
+/** Bring the session's terminal forward. Windows only; elsewhere it says so. */
+export async function focusTerminal(
+  req: FocusRequest,
+  opts: { simulate?: boolean } = {}
+): Promise<FocusResult> {
+  if (opts.simulate)
+    return { ok: false, simulated: true, error: 'Fixtures mode: no terminal to focus.' }
+  if (process.platform !== 'win32')
+    return { ok: false, error: 'Focusing a terminal works on Windows only.' }
+  try {
+    const list = parseTermList(
+      await runPs(LIST, {
+        CSD_FOCUS_PID: req.pid && Number.isInteger(req.pid) ? String(req.pid) : ''
+      })
+    )
+    const pick = pickFocusTarget(list, req.titles)
+    if ('error' in pick)
+      return { ok: false, error: pick.error === 'ambiguous' ? AMBIGUOUS : NOT_FOUND }
+    const r = JSON.parse(
+      await runPs(ACT, {
+        CSD_FOCUS_HWND: String(pick.hwnd),
+        CSD_FOCUS_TAB: pick.tab !== undefined ? String(pick.tab) : '',
+        CSD_FOCUS_TABNAME: Buffer.from(pick.tabName ?? '', 'utf8').toString('base64')
+      })
+    ) as { ok?: boolean; how?: string }
+    if (!r.ok) return { ok: false, error: NOT_FOUND }
+    return { ok: true, how: r.how === 'tab' ? 'tab' : 'window' }
+  } catch (err) {
+    return { ok: false, error: `Couldn't focus the terminal: ${(err as Error).message}` }
+  }
 }

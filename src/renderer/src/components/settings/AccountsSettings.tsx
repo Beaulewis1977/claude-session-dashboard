@@ -361,6 +361,7 @@ export function AccountsSettings({
     credits?.summaries.find((s) => s.accountId === id)?.grants ?? []
   return (
     <Section
+      id="accounts"
       title="Accounts & API credits"
       description="Add API keys to run sessions on API credits and to track spending. Admin keys also pull your organization's usage and cost history from Anthropic."
     >

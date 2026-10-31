@@ -29,7 +29,7 @@ import {
 import { Input } from '../ui/input'
 import { Popover, PopoverAnchor, PopoverContent } from '../ui/popover'
 import { BridgeDialog } from '../settings/BridgeDialog'
-import { CreditsHeroCard, LimitCard } from './Hero'
+import { CreditsEmptyState, CreditsHeroCard, LimitCard } from './Hero'
 import { MainChart, ModelShare, SummaryCards, TopSessions } from './Overview'
 import { CreditsTab, LimitHistoryTab, RawTableTab } from './Tabs'
 import { LimitHealthCard, WhereItWent } from './LimitHealth'
@@ -338,6 +338,15 @@ export function UsageView() {
             <CreditsHeroCard credits={credits} onOpen={() => setTab('credits')} />
           )}
         </div>
+
+        {!hasCredits && (
+          <CreditsEmptyState
+            credits={credits}
+            onSetup={
+              remote ? undefined : () => set({ view: 'settings', settingsSection: 'accounts' })
+            }
+          />
+        )}
 
         {limits?.advice && <PaceAdviceLine advice={limits.advice} />}
 

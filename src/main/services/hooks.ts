@@ -22,11 +22,13 @@ import { assertAppDataWrite, assertRealAppDataWrite } from '../core/safe-paths'
 import {
   appendHookGroups,
   diffLines,
+  hooksProblem,
+  parseJsonc,
   rawMember,
+  removeHookHandlers,
   removeMember,
   scanTopLevel,
-  setMember,
-  withoutHandlers
+  setMember
 } from '../core/settings-edit'
 import {
   BRIDGE_DIR_NAME,
@@ -39,8 +41,6 @@ import {
   writeBridgeFile,
   writeSettings
 } from './bridge'
-
-const MARKER = `${BRIDGE_DIR_NAME}/bin/csd-hook`
 
 export interface HookInstallRecord {
   installedAt: string
@@ -91,15 +91,24 @@ export function createHooksStore(dataDir: string): JsonStore<HooksFile> {
 const shQuote = (s: string): string =>
   /^[A-Za-z0-9_./~-]+$/.test(s) ? s : `'${s.replace(/'/g, `'\\''`)}'`
 
+/**
+ * The PowerShell that runs the Windows hook script. The script's path goes
+ * in single quotes (PowerShell's literal string), and the whole command is
+ * passed base64-encoded (-EncodedCommand). Claude Code may run hook commands
+ * in Git Bash or in PowerShell; base64 means the same to both, so no `$`,
+ * backtick or quote in a profile path is ever read as shell text.
+ */
+export function windowsHookCommand(script: string): string {
+  const ps = `$ProgressPreference='SilentlyContinue'; & '${script.replace(/'/g, "''")}'`
+  const b64 = Buffer.from(ps, 'utf16le').toString('base64')
+  return `powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand ${b64}`
+}
+
 /** The command Claude Code runs for each hook event in this home. */
 export function hookCommand(src: SourceInfo): string | undefined {
   const p = envPaths(src)
   if (!p) return undefined
-  if (p.env === 'windows') {
-    // Forward slashes: Claude Code may run it through Git Bash, which eats backslashes.
-    const script = `${p.bridgeDir.replace(/\\/g, '/')}/bin/csd-hook.ps1`
-    return `powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "${script}"`
-  }
+  if (p.env === 'windows') return windowsHookCommand(join(p.bridgeDir, 'bin', 'csd-hook.ps1'))
   const linuxHome = src.user === 'root' ? '/root' : `/home/${src.user ?? ''}`
   return `sh ${shQuote(`${linuxHome}/${BRIDGE_DIR_NAME}/bin/csd-hook.sh`)}`
 }
@@ -109,23 +118,27 @@ export function hookGroup(command: string): Record<string, unknown> {
   return { hooks: [{ type: 'command', command, timeout: 10, async: true }] }
 }
 
-export function isHookCommand(cmd: unknown): boolean {
-  return typeof cmd === 'string' && cmd.replace(/\\/g, '/').includes(MARKER)
+/**
+ * Is this handler the app's? Only a command handler running exactly one of
+ * the commands the app wrote. A wrapper or script of the user's that merely
+ * mentions the path is theirs, and stays.
+ */
+export function isOurHandler(h: unknown, commands: ReadonlySet<string>): boolean {
+  if (!h || typeof h !== 'object' || Array.isArray(h)) return false
+  const o = h as Record<string, unknown>
+  return o.type === 'command' && typeof o.command === 'string' && commands.has(o.command)
 }
-
-const isOurHandler = (h: unknown): boolean =>
-  !!h && typeof h === 'object' && isHookCommand((h as Record<string, unknown>).command)
 
 function hooksOf(text: string | undefined): Record<string, unknown> | undefined {
   if (!text) return undefined
-  const v = (JSON.parse(text) as Record<string, unknown>).hooks
+  const v = (parseJsonc(text) as Record<string, unknown>).hooks
   return v && typeof v === 'object' && !Array.isArray(v)
     ? (v as Record<string, unknown>)
     : undefined
 }
 
-/** Events in settings.json that run our hook script. */
-export function installedEvents(text: string | undefined): string[] {
+/** Events in settings.json that run one of the app's hook commands. */
+export function installedEvents(text: string | undefined, commands: ReadonlySet<string>): string[] {
   const hooks = hooksOf(text)
   if (!hooks) return []
   return Object.entries(hooks)
@@ -137,7 +150,9 @@ export function installedEvents(text: string | undefined): string[] {
             !!g &&
             typeof g === 'object' &&
             Array.isArray((g as Record<string, unknown>).hooks) &&
-            ((g as Record<string, unknown>).hooks as unknown[]).some(isOurHandler)
+            ((g as Record<string, unknown>).hooks as unknown[]).some((h) =>
+              isOurHandler(h, commands)
+            )
         )
     )
     .map(([event]) => event)
@@ -165,6 +180,16 @@ export class HooksInstaller {
     return this.store.value.installs[sourceId]
   }
 
+  /** The commands that are the app's in this home: the current one, and the one it recorded. */
+  commands(src: SourceInfo): Set<string> {
+    const out = new Set<string>()
+    const c = hookCommand(src)
+    if (c) out.add(c)
+    const rec = this.record(src.id)?.command
+    if (rec) out.add(rec)
+    return out
+  }
+
   /** Sources where the app installed the hooks (and settings.json still runs them). */
   installedSources(): string[] {
     return Object.keys(this.store.value.installs)
@@ -188,7 +213,7 @@ export class HooksInstaller {
       const p = envPaths(src)
       if (src.status !== 'ok' || !rec || !p) continue
       try {
-        if (!installedEvents(await readText(p.settingsPath)).length) continue
+        if (!installedEvents(await readText(p.settingsPath), this.commands(src)).length) continue
         const { name, text } = await this.bundledScript(p.env)
         const target = join(p.bridgeDir, 'bin', name)
         const current = await readText(target)
@@ -250,7 +275,7 @@ export class HooksInstaller {
       return env
     }
     try {
-      const events = installedEvents(await readText(p.settingsPath))
+      const events = installedEvents(await readText(p.settingsPath), this.commands(src))
       env.installed = events.length > 0
       if (rec) env.changedSinceInstall = rec.events.some((e) => !events.includes(e))
     } catch {
@@ -284,19 +309,22 @@ export class HooksInstaller {
     let after: string
     try {
       if (before !== undefined) {
-        JSON.parse(before)
+        parseJsonc(before)
         scanTopLevel(before)
+        const problem = hooksProblem(before)
+        if (problem) throw new Error(problem)
       }
-      const have = installedEvents(before)
+      const commands = this.commands(src)
+      const have = installedEvents(before, commands)
       if (action === 'install') {
         const missing = HOOK_EVENTS.filter((e) => !have.includes(e))
         if (!missing.length) return { ...base, noop: true, token: tokenOf(before) }
         after = this.installedText(before, command, missing)
       } else {
         if (!have.length) return { ...base, noop: true, token: tokenOf(before) }
-        after = this.restoredText(before!, this.record(src.id))
+        after = this.restoredText(before!, this.record(src.id), commands)
       }
-      JSON.parse(after)
+      parseJsonc(after)
     } catch (err) {
       return {
         ...base,
@@ -323,10 +351,14 @@ export class HooksInstaller {
   /**
    * What "Disable" writes, most exact first: the original file (nothing else
    * changed since); else the previous `hooks` value byte for byte (only other
-   * settings changed); else `hooks` with exactly our handlers taken out (hooks
-   * were edited since: everything else in them stays).
+   * settings changed); else exactly our handlers taken out of the text (hooks
+   * were edited since: every other byte stays, comments and formatting too).
    */
-  restoredText(current: string, rec: HookInstallRecord | undefined): string {
+  restoredText(
+    current: string,
+    rec: HookInstallRecord | undefined,
+    commands: ReadonlySet<string>
+  ): string {
     if (rec && current === rec.writtenText) {
       if (rec.originalText !== undefined) return rec.originalText
       if (!rec.fileExisted) return removeMember(current, 'hooks')
@@ -337,11 +369,13 @@ export class HooksInstaller {
         ? removeMember(current, 'hooks')
         : setMember(current, 'hooks', undefined, rec.previousHooksRaw)
     }
-    const created = new Set(rec?.createdEvents ?? HOOK_EVENTS)
-    const next = withoutHandlers(hooksOf(current), isOurHandler, (e) => created.has(e))
-    if (!next) return current
-    if (!Object.keys(next).length && !rec?.hadHooks) return removeMember(current, 'hooks')
-    return setMember(current, 'hooks', next)
+    const created = new Set<string>(rec?.createdEvents ?? HOOK_EVENTS)
+    return (
+      removeHookHandlers(current, (h) => isOurHandler(h, commands), {
+        dropEvent: (e) => created.has(e),
+        dropHooks: !rec?.hadHooks
+      }) ?? current
+    )
   }
 
   async apply(
@@ -382,7 +416,7 @@ export class HooksInstaller {
         await writeBridgeFile(join(p.bridgeDir, 'bin', name), script)
         await mkdir(join(p.bridgeDir, 'events'), { recursive: true }).catch(() => undefined)
         // 3. Only our hook groups, appended.
-        const have = installedEvents(before)
+        const have = installedEvents(before, this.commands(src))
         const events = HOOK_EVENTS.filter((e) => !have.includes(e))
         const after = this.installedText(before, command, events)
         await writeSettings(p.settingsPath, after, before)
@@ -415,7 +449,7 @@ export class HooksInstaller {
           }
         })
       } else {
-        const after = this.restoredText(before!, this.record(src.id))
+        const after = this.restoredText(before!, this.record(src.id), this.commands(src))
         await writeSettings(p.settingsPath, after, before)
         this.store.update((d) => {
           delete d.installs[src.id]

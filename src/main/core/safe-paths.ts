@@ -64,7 +64,7 @@ export function assertUserWrite(target: string): void {
 const BRIDGE_DIR = '.claude-session-dashboard'
 
 /**
- * Exception #1 (Phase 5): the opt-in status line installer may write exactly
+ * Exception #1 (Phase 5): the opt-in status line and hook installers may write exactly
  * one kind of file inside `.claude`: `<home>/.claude/settings.json`.
  */
 export function assertClaudeSettingsWrite(target: string): void {
@@ -73,7 +73,7 @@ export function assertClaudeSettingsWrite(target: string): void {
   const parent = parts[parts.length - 2]?.toLowerCase()
   if (
     parent !== '.claude' ||
-    !(name === 'settings.json' || /^settings\.json\.csd-[0-9a-f]+\.tmp$/.test(name ?? ''))
+    !(name === 'settings.json' || /^settings\.json\.csd-[0-9a-f]+\.(tmp|prev)$/.test(name ?? ''))
   ) {
     throw new UnsafeWriteError(
       `Refusing to write anything in .claude except settings.json: ${target}`

@@ -8,7 +8,8 @@
 // "Disable" puts the previous `statusLine` back exactly. Nothing is deleted.
 
 import { createHash, randomBytes } from 'node:crypto'
-import { mkdir, readFile, rename, stat, unlink, writeFile } from 'node:fs/promises'
+import { constants } from 'node:fs'
+import { copyFile, link, mkdir, readFile, rename, stat, unlink, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import type { BridgeApplyResult, BridgeEnv, BridgePlan } from '@shared/usage/limits'
 import type { SourceInfo } from '@shared/types'
@@ -20,7 +21,14 @@ import {
   assertRealBridgeWrite,
   assertClaudeSettingsWrite
 } from '../core/safe-paths'
-import { diffLines, rawMember, removeMember, scanTopLevel, setMember } from '../core/settings-edit'
+import {
+  diffLines,
+  parseJsonc,
+  rawMember,
+  removeMember,
+  scanTopLevel,
+  setMember
+} from '../core/settings-edit'
 
 export const BRIDGE_DIR_NAME = '.claude-session-dashboard'
 const MARKER = `${BRIDGE_DIR_NAME}/bin/statusline`
@@ -144,7 +152,7 @@ export const tokenOf = (text: string | undefined): string =>
 
 function statusLineOf(text: string | undefined): Record<string, unknown> | undefined {
   if (!text) return undefined
-  const v = (JSON.parse(text) as Record<string, unknown>).statusLine
+  const v = (parseJsonc(text) as Record<string, unknown>).statusLine
   return v && typeof v === 'object' && !Array.isArray(v)
     ? (v as Record<string, unknown>)
     : undefined
@@ -171,42 +179,139 @@ export const SETTINGS_CHANGED =
 
 export class SettingsChangedError extends Error {}
 
+/** Test seams: run code at the moments another program could save settings.json. */
+export interface WriteSettingsProbe {
+  beforeMoveAside?: () => Promise<void>
+  afterMoveAside?: () => Promise<void>
+}
+
+const LINK_UNSUPPORTED = new Set(['EPERM', 'ENOTSUP', 'ENOSYS', 'EXDEV', 'EINVAL', 'EISDIR'])
+
 /**
- * Write settings.json atomically in place (temp file in the same folder, then
- * rename), only if it still holds `expected`: the file is read again just
- * before it's replaced, so an edit made meanwhile (say, a new permission rule)
- * is never overwritten with the older copy. Claude's own file mode is kept.
+ * Put `from` at `to` only if `to` doesn't exist: never replaces a file. A
+ * hard link is atomic; where links aren't supported (some network shares,
+ * such as WSL's) an exclusive copy is used. Throws SettingsChangedError if
+ * `to` exists (someone saved it in the meantime).
+ */
+async function placeExclusive(from: string, to: string): Promise<void> {
+  try {
+    await link(from, to)
+    return
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code
+    if (code === 'EEXIST') throw new SettingsChangedError(SETTINGS_CHANGED)
+    if (!code || !LINK_UNSUPPORTED.has(code)) throw err
+  }
+  try {
+    await copyFile(from, to, constants.COPYFILE_EXCL)
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'EEXIST')
+      throw new SettingsChangedError(SETTINGS_CHANGED)
+    throw err
+  }
+}
+
+/** rename, retried a few times: Windows can hold a file open for a moment. */
+async function renameRetry(from: string, to: string): Promise<void> {
+  for (let i = 0; ; i++) {
+    try {
+      await rename(from, to)
+      return
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException).code
+      if (i >= 4 || (code !== 'EPERM' && code !== 'EBUSY' && code !== 'EACCES')) throw err
+      await new Promise((r) => setTimeout(r, 60 * (i + 1)))
+    }
+  }
+}
+
+/**
+ * Write settings.json only if it still holds `expected` (what the user
+ * reviewed), without ever losing a save another program (Claude Code, an
+ * editor) makes at the same moment:
+ *
+ *   1. the current file is moved aside (one atomic rename);
+ *   2. what was moved must be exactly `expected`: if someone saved just
+ *      before, their file is put back and nothing is changed;
+ *   3. the new file is put in place with an exclusive create, which never
+ *      replaces a file: if someone saved after step 1, their file stays.
+ *
+ * Every save lands either before the move (caught in step 2) or after it
+ * (kept by step 3). settings.json is missing for the few milliseconds between
+ * steps 1 and 3. If anything else goes wrong, the moved file is put back.
+ * Claude's own file mode is kept.
  */
 export async function writeSettings(
   path: string,
   text: string,
-  expected: string | undefined
+  expected: string | undefined,
+  probe: WriteSettingsProbe = {}
 ): Promise<void> {
   assertClaudeSettingsWrite(path)
-  const tmp = `${path}.csd-${randomBytes(4).toString('hex')}.tmp`
+  const id = randomBytes(4).toString('hex')
+  const tmp = `${path}.csd-${id}.tmp`
+  const aside = `${path}.csd-${id}.prev`
   assertClaudeSettingsWrite(tmp)
+  assertClaudeSettingsWrite(aside)
   const mode = await stat(path).then(
     (st) => st.mode & 0o777,
     () => undefined
   )
   await writeFile(tmp, text, { encoding: 'utf8', ...(mode !== undefined ? { mode } : {}) })
-  let lastErr: unknown
+  let moved = false
   try {
-    for (let i = 0; i < 5; i++) {
-      if ((await readText(path)) !== expected) throw new SettingsChangedError(SETTINGS_CHANGED)
-      try {
-        await rename(tmp, path)
-        return
-      } catch (err) {
-        lastErr = err
-        await new Promise((r) => setTimeout(r, 60 * (i + 1)))
-      }
+    await probe.beforeMoveAside?.()
+    if (expected === undefined) {
+      // There was no file: create it, unless someone else has by now.
+      await placeExclusive(tmp, path)
+      return
     }
+    try {
+      await renameRetry(path, aside)
+    } catch (err) {
+      // Gone since it was read: someone deleted or replaced it.
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT')
+        throw new SettingsChangedError(SETTINGS_CHANGED)
+      throw err
+    }
+    moved = true
+    await probe.afterMoveAside?.()
+    if ((await readFile(aside, 'utf8')) !== expected) {
+      // Saved just before the move: theirs goes back (unless they saved again since).
+      await placeExclusive(aside, path).catch((err: unknown) => {
+        if (!(err instanceof SettingsChangedError)) throw err
+      })
+      throw new SettingsChangedError(SETTINGS_CHANGED)
+    }
+    await placeExclusive(tmp, path)
   } catch (err) {
-    lastErr = err
+    if (moved) {
+      // The moved file must never be lost: put it back if settings.json is
+      // missing now. If that fails, it stays where it is and the error says so.
+      const present = await readText(path).then(
+        (t) => t !== undefined,
+        () => true
+      )
+      if (!present) {
+        try {
+          await placeExclusive(aside, path)
+        } catch (again) {
+          if (!(again instanceof SettingsChangedError))
+            throw new Error(
+              `Couldn't put settings.json back after a failed change. Your file is safe at ${aside}: rename it back to settings.json. (${(err as Error).message})`,
+              { cause: again }
+            )
+        }
+      }
+      // settings.json is there again (yours, or a newer save): the moved copy can go.
+      await unlink(aside).catch(() => undefined)
+    }
+    throw err
+  } finally {
+    await unlink(tmp).catch(() => undefined)
   }
-  await unlink(tmp).catch(() => undefined)
-  throw lastErr
+  // Written; what was moved aside is exactly the reviewed file (also backed up).
+  await unlink(aside).catch(() => undefined)
 }
 
 /**
@@ -385,7 +490,7 @@ export class BridgeInstaller {
     let chained: string | undefined
     try {
       if (before !== undefined) {
-        JSON.parse(before) // must be valid JSON
+        parseJsonc(before) // must be valid JSON (comments allowed)
         scanTopLevel(before)
       }
       const current = statusLineOf(before)
@@ -401,7 +506,7 @@ export class BridgeInstaller {
         after = this.restoredText(before!, rec)
         chained = rec?.previousRaw ? commandOf(`{"statusLine":${rec.previousRaw}}`) : undefined
       }
-      JSON.parse(after) // sanity: the result must still be valid JSON
+      parseJsonc(after) // sanity: the result must still be valid JSON
     } catch (err) {
       return {
         ...base,

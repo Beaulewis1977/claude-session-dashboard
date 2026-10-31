@@ -68,14 +68,17 @@ each only after you approve it:
 - **Session alerts** add the app's hooks to the `hooks` key of a `~/.claude/settings.json`, with
   the status line bridge's safety model: the exact diff first, a backup, the app's hook groups
   appended at the end of each event's list (existing hooks are never replaced, reordered or
-  reformatted), and **Disable** takes out exactly the app's handlers (the file byte for byte when
-  nothing else changed since). The hook script only saves each event to
+  reformatted), and **Disable** takes out exactly the app's handlers: only those running exactly
+  the command the app wrote, removed as text so everything else stays byte for byte (the whole file
+  when nothing else changed since). Comments are fine; a duplicate `hooks` key is refused. The write
+  moves settings.json aside, checks it is what you reviewed, and creates the new file exclusively,
+  so a save by Claude Code at the same moment is never lost. The hook script only saves each event to
   `~/.claude-session-dashboard/events/`; the app prunes its own event files there after a week.
 - **Phone push alerts** (opt-in on each phone) are the one outgoing call of the phone feature: an
   end-to-end encrypted Web Push message (RFC 8291 with VAPID) to the push endpoint that phone's
   browser registered, and only to the browser push services (Google FCM, Apple, Mozilla,
-  Microsoft). The message holds only the kind of alert and a random reference; no session names,
-  folders or text. Tapping it makes the phone ask the PC, over Tailscale, which session it means.
+  Microsoft). The message holds only the kind of alert and a random reference (one per phone, usable once,
+  for a day); no session names, folders or text. Tapping it makes the phone ask the PC, over Tailscale, which session it means.
 
 Two later features stay inside the rules: **Import claude.ai data export** only reads the zip you
 pick (it is never written) and stores the conversations in the app's archive, and **Ask Claude**

@@ -19,6 +19,11 @@
 - **Alerts:** Windows notifications when a session needs approval, finishes (after a minimum working
   time), stops with an error, keeps waiting, or ends. Pick the events, set quiet hours (approvals can
   still come through), and mute single sessions. Clicking a notification opens the session.
+- **Safety details:** the app's hooks are recognised only by their exact command (a wrapper of yours
+  that mentions the script stays); Disable removes only their text, keeping comments and formatting;
+  files with comments work and duplicate keys are refused; a save by Claude Code at the same moment
+  is never overwritten. Running processes are matched by their start time on every check. Focus
+  terminal matches tab names exactly and won't guess between two equal names.
 - **Phone:** a Running tab with the same view, and **push alerts** that arrive when the app is closed
   (opt-in per phone, Web Push). A push says only what happened, with an opaque reference; tapping it
   loads the details from the PC over Tailscale. Settings → Phone shows which phones have push on, and

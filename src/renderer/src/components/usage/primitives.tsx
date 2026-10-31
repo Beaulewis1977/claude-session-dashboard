@@ -26,6 +26,9 @@ export function InfoTip({
       <button
         type="button"
         aria-label="More information"
+        // Inside a clickable card, a click on the tip shouldn't open the card.
+        onClick={(e) => e.stopPropagation()}
+        onKeyDown={(e) => e.stopPropagation()}
         className="inline-flex size-4 items-center justify-center rounded-full text-subtle-foreground transition-colors hover:text-muted-foreground"
       >
         <Info className="size-3.5" />
@@ -34,6 +37,10 @@ export function InfoTip({
   )
 }
 
+/**
+ * A card. A clickable one is a `div` with the button role, not a `<button>`:
+ * cards hold their own buttons (info tips), and a button can't hold a button.
+ */
 export function Card({
   className,
   children,
@@ -45,21 +52,33 @@ export function Card({
   onClick?: () => void
   active?: boolean
 }) {
-  const Comp = onClick ? 'button' : 'div'
   return (
-    <Comp
-      type={onClick ? 'button' : undefined}
+    <div
+      role={onClick ? 'button' : undefined}
+      tabIndex={onClick ? 0 : undefined}
       onClick={onClick}
+      onKeyDown={
+        onClick
+          ? (e) => {
+              if (e.target !== e.currentTarget) return
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault()
+                onClick()
+              }
+            }
+          : undefined
+      }
       aria-pressed={onClick ? active : undefined}
       className={cn(
         'min-w-0 rounded-xl border border-border bg-card text-left shadow-card transition-[border-color,box-shadow,background-color]',
-        onClick && 'cursor-pointer hover:border-border-strong',
+        onClick &&
+          'cursor-pointer outline-none hover:border-border-strong focus-visible:ring-2 focus-visible:ring-ring/40',
         active && 'border-primary/50 ring-3 ring-primary/10',
         className
       )}
     >
       {children}
-    </Comp>
+    </div>
   )
 }
 

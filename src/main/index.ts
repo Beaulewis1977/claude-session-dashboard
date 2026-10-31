@@ -365,6 +365,10 @@ async function main(): Promise<void> {
     installer,
     sessions,
     platform,
+    rescanSources: async () => {
+      await sessions.rescan()
+      await watcher.restart()
+    },
     weekStart: () => settings.value.weekStart,
     sourceOf,
     billingOf: (key) => {
@@ -502,6 +506,12 @@ async function main(): Promise<void> {
   void sessions
     .start()
     .then(() => watcher.restart())
+    // A fixed bridge script only reaches an existing install this way.
+    .then(() =>
+      installer
+        .refreshScripts(sessions.sources)
+        .catch((err: unknown) => console.warn('could not refresh bridge scripts', err))
+    )
     .then(() => Promise.all([usage.start(), limits.start()]))
     .then(() => accounts.startAutoRefresh())
     .then(async () => {

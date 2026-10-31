@@ -21,7 +21,13 @@ export interface BridgeReading {
   version?: string
   cwd?: string
   fiveHour?: LimitWindow
+  /** The weekly window across all models (`seven_day`). */
   sevenDay?: LimitWindow
+  /**
+   * Any other weekly windows, keyed by their payload name (e.g. "seven_day_opus").
+   * Claude Code documents only `seven_day` today; this keeps a per-model one if it appears.
+   */
+  weeklyBy?: Record<string, LimitWindow>
   /** Session cost as estimated by Claude Code (`cost.total_cost_usd`). */
   costUsd?: number
   contextPct?: number
@@ -96,6 +102,11 @@ export function parseBridgePayload(
   if (rl) {
     r.fiveHour = limitWindow(rl.five_hour)
     r.sevenDay = limitWindow(rl.seven_day)
+    for (const [k, v] of Object.entries(rl)) {
+      if (!/^seven_day_[a-z0-9_]+$/i.test(k)) continue
+      const w = limitWindow(v)
+      if (w) (r.weeklyBy ??= {})[k] = w
+    }
   }
   const cost = finite(obj(o.cost)?.total_cost_usd)
   if (cost !== undefined && cost >= 0) r.costUsd = cost
@@ -108,6 +119,11 @@ export function parseBridgePayload(
   return r
 }
 
+/** The reading carries limit data: a 5-hour, weekly or per-model weekly window. */
+export function hasLimits(r: BridgeReading): boolean {
+  return !!(r.fiveHour || r.sevenDay || (r.weeklyBy && Object.keys(r.weeklyBy).length))
+}
+
 export type BillingGuess = 'subscription' | 'api' | 'unknown'
 
 /**
@@ -115,7 +131,7 @@ export type BillingGuess = 'subscription' | 'api' | 'unknown'
  * subscription; a cost without `rate_limits` most likely means API billing.
  */
 export function inferBilling(readings: BridgeReading[]): BillingGuess {
-  if (readings.some((r) => r.fiveHour || r.sevenDay)) return 'subscription'
+  if (readings.some(hasLimits)) return 'subscription'
   if (readings.some((r) => r.costUsd !== undefined && r.costUsd > 0)) return 'api'
   return 'unknown'
 }
@@ -125,11 +141,13 @@ export function sameLimits(a: BridgeReading | undefined, b: BridgeReading): bool
   if (!a) return false
   const w = (x?: LimitWindow, y?: LimitWindow): boolean =>
     (!x && !y) || (!!x && !!y && x.pct === y.pct && x.resetsAt === y.resetsAt)
+  const keys = new Set([...Object.keys(a.weeklyBy ?? {}), ...Object.keys(b.weeklyBy ?? {})])
   return (
     a.source === b.source &&
     a.sessionId === b.sessionId &&
     w(a.fiveHour, b.fiveHour) &&
     w(a.sevenDay, b.sevenDay) &&
+    [...keys].every((k) => w(a.weeklyBy?.[k], b.weeklyBy?.[k])) &&
     a.costUsd === b.costUsd &&
     a.contextPct === b.contextPct
   )

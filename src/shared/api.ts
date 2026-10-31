@@ -110,6 +110,8 @@ export interface CsdApi {
 
   // Live limits and the status line bridge
   getLimits(): Promise<LimitsState>
+  /** Re-detect sources, re-read every bridge folder and update the gauges ("Rescan now"). */
+  rescanLimits(): Promise<LimitsState>
   compareHealth(
     kind: 'five_hour' | 'seven_day',
     a: CompareRange,

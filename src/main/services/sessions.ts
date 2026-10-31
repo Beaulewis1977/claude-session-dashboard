@@ -8,6 +8,7 @@ import { EventEmitter } from 'node:events'
 import { readdir, readFile, stat } from 'node:fs/promises'
 import { basename, join } from 'node:path'
 import { analyzeEvents, buildMessages, isUuid, parseJsonl } from '@shared/jsonl'
+import { now } from '@shared/clock'
 import { baseName } from '@shared/format'
 import { computeTitle } from '@shared/title'
 import type { SessionLineage } from '@shared/lineage'
@@ -303,8 +304,7 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
     }
   }
 
-  /** Re-detect sources and sync every one of them. */
-  async rescan(): Promise<void> {
+  private async detect(): Promise<ResolvedSource[]> {
     const s = this.settings.value
     const detected = await detectSources(this.platform, {
       extraFolders: s.extraFolders,
@@ -313,12 +313,51 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
     // Drop duplicates (e.g. an extra folder that is also auto-detected) and
     // anything inside the app's own data folder.
     const seen = new Set<string>()
-    this.sources = detected.filter((src) => {
+    return detected.filter((src) => {
       const k = src.projectsDir.toLowerCase()
       if (seen.has(k) || isInside(src.projectsDir, this.paths.dataDir)) return false
       seen.add(k)
       return true
     })
+  }
+
+  /**
+   * Sources are detected once per rescan. A WSL distro that wasn't running when
+   * the app started (it often starts at login, before WSL) or that stopped
+   * later stays "not running"/"unreadable" until something rescans, and only
+   * readable sources are watched. So while any source isn't readable, the
+   * watcher calls this now and then: it detects again and rescans if any
+   * source's status changed. Returns true if it rescanned.
+   */
+  async recheckSources(): Promise<boolean> {
+    if (this.scan.phase === 'scanning') return false
+    const sig = (list: ResolvedSource[]): string =>
+      list
+        .map((x) => `${x.id}=${x.status}`)
+        .sort()
+        .join('|')
+    if (sig(await this.detect()) === sig(this.sources)) return false
+    await this.rescan()
+    return true
+  }
+
+  private rescans: Promise<void> = Promise.resolve()
+
+  /**
+   * Re-detect sources and sync every one of them. Rescans run one at a time
+   * (an automatic re-check can meet a manual one).
+   */
+  rescan(): Promise<void> {
+    const run = this.rescans.then(
+      () => this.rescanNow(),
+      () => this.rescanNow()
+    )
+    this.rescans = run.catch(() => undefined)
+    return run
+  }
+
+  private async rescanNow(): Promise<void> {
+    this.sources = await this.detect()
     const files = new Map<string, FileInfo[]>()
     for (const src of this.sources) {
       if (src.status !== 'ok') continue
@@ -336,7 +375,7 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
     this.dropUnknownSources()
     // Drop index entries (e.g. from the cache) for sessions that no longer exist.
     for (const key of this.cached.keys()) if (!this.entries.has(key)) this.search.remove(key)
-    this.scan = { phase: 'ready', done: total, total }
+    this.scan = { phase: 'ready', done: total, total, finishedAt: now() }
     this.emitChanged(true)
   }
 

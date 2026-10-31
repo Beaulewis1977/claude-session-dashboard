@@ -1,14 +1,46 @@
-import { cp, mkdtemp, readFile, rm, stat, unlink, writeFile, appendFile } from 'node:fs/promises'
+import {
+  cp,
+  mkdir,
+  mkdtemp,
+  readFile,
+  rm,
+  stat,
+  unlink,
+  writeFile,
+  appendFile
+} from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { prepareFixtures, seedFixtureData, fixturesLayout } from '../src/main/fixtures'
 import { createFixturesPlatform } from '../src/main/platform'
 import { Launcher } from '../src/main/services/launcher'
 import { SessionService } from '../src/main/services/sessions'
+import { SourceWatcher } from '../src/main/services/watcher'
 import { appPaths, createMetadataStore, createSettingsStore } from '../src/main/services/store'
 import { sessionToMarkdown } from '@shared/markdown'
 import { FIXTURES } from './helpers'
+
+// Every chokidar watcher that is open right now, to catch leaked ones.
+const OPEN = vi.hoisted(() => new Set<unknown>())
+vi.mock('chokidar', async (importOriginal) => {
+  const m = await importOriginal<typeof import('chokidar')>()
+  return {
+    ...m,
+    watch: (...args: Parameters<typeof m.watch>) => {
+      const w = m.watch(...args)
+      OPEN.add(w)
+      const close = w.close.bind(w)
+      // Closing takes a moment (many folders, a network share), as in real use.
+      w.close = async () => {
+        await new Promise((r) => setTimeout(r, 25))
+        OPEN.delete(w)
+        return close()
+      }
+      return w
+    }
+  }
+})
 
 let root: string
 /** Services with background work (archive copies) to finish before cleanup. */
@@ -259,5 +291,102 @@ describe('SessionService (fixtures)', () => {
     expect(md).toContain('WSL: Ubuntu')
     expect(md).toContain('<summary>🔧 Write pg-backup.service</summary>')
     expect(md).toContain('Nightly postgres backup timer')
+  })
+
+  // Regression: sources were only detected at startup (or a manual rescan). A
+  // distro that wasn't running when the app started (it often starts at login,
+  // before WSL) stayed "not running" for the whole run, and a source that went
+  // unreadable once was never polled again.
+  it('picks up a distro that starts after the app, and a source that comes back', async () => {
+    const { sessions, layout } = await setup()
+    const debian = () => sessions.payload().sources.filter((s) => s.distro === 'Debian')
+    expect(debian().map((s) => s.status)).toEqual(['not-running'])
+    expect(await sessions.recheckSources()).toBe(false) // nothing changed
+
+    // Debian starts, with one Claude Code session in it.
+    const proj = join(
+      layout.sourcesDir,
+      'wsl',
+      'Debian',
+      'home',
+      'dev',
+      '.claude',
+      'projects',
+      '-home-dev-app'
+    )
+    await mkdir(proj, { recursive: true })
+    await cp(
+      join(
+        FIXTURES,
+        'wsl',
+        'Ubuntu',
+        'home',
+        'beau',
+        '.claude',
+        'projects',
+        '-home-beau-dotfiles',
+        '5d4c3b2a-1f0e-4d9c-8b7a-6f5e4d3c2b1a.jsonl'
+      ),
+      join(proj, '0d1e2f3a-4b5c-4d6e-8f70-8192a3b4c5d6.jsonl')
+    )
+    await writeFile(
+      join(layout.fixturesDir, 'wsl-list-running.utf16'),
+      Buffer.from('Ubuntu\r\nDebian\r\ndocker-desktop\r\n', 'utf16le')
+    )
+    const watcher = new SourceWatcher(sessions)
+    try {
+      expect(await watcher.recheck()).toBe(true)
+      expect(debian().map((s) => [s.id, s.status])).toEqual([['wsl-Debian-dev', 'ok']])
+      expect(sessions.list().find((s) => s.sourceId === 'wsl-Debian-dev')?.distro).toBe('Debian')
+      expect(sessions.payload().scan.finishedAt).toBeGreaterThan(0)
+
+      // A source that went unreadable (e.g. the distro stopped for a moment) comes back too.
+      Object.assign(sessions.source('wsl-Ubuntu-beau')!, { status: 'unreadable' })
+      expect(await watcher.recheck()).toBe(true)
+      expect(sessions.source('wsl-Ubuntu-beau')?.status).toBe('ok')
+      // All readable again: nothing to re-check.
+      expect(await watcher.recheck()).toBe(false)
+    } finally {
+      await watcher.close()
+    }
+  })
+
+  it('never runs two watchers at once, and a re-check after close starts nothing', async () => {
+    const { sessions, layout } = await setup()
+    const running = (names: string[]) =>
+      writeFile(
+        join(layout.fixturesDir, 'wsl-list-running.utf16'),
+        Buffer.from(names.map((n) => n + '\r\n').join(''), 'utf16le')
+      )
+    await mkdir(
+      join(layout.sourcesDir, 'wsl', 'Debian', 'home', 'dev', '.claude', 'projects', 'p'),
+      {
+        recursive: true
+      }
+    )
+    const watcher = new SourceWatcher(sessions)
+    const count = () => ({
+      watchers: (watcher['watchers'] as unknown[]).length,
+      timers: (watcher['timers'] as unknown[]).length
+    })
+    const ok = () => sessions.sources.filter((s) => s.status === 'ok').length
+    try {
+      await watcher.restart()
+      // An automatic re-check that finds a change meets manual rescans.
+      await running(['Ubuntu', 'Debian', 'docker-desktop'])
+      await Promise.all([watcher.recheck(), watcher.restart(), watcher.restart()])
+      expect(count()).toEqual({ watchers: ok(), timers: 2 })
+      expect(OPEN.size).toBe(ok()) // none leaked
+
+      // A re-check still running when the app closes doesn't start watching again.
+      await running(['Ubuntu', 'docker-desktop'])
+      const pending = watcher.recheck()
+      await watcher.close()
+      await pending
+      expect(count()).toEqual({ watchers: 0, timers: 0 })
+      expect(OPEN.size).toBe(0)
+    } finally {
+      await watcher.close()
+    }
   })
 })

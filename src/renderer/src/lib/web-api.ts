@@ -261,6 +261,7 @@ export const webApi: CsdApi = {
   askHistory: async () => [],
 
   toggleMiniMeter: onPc('The mini meter'),
+  rescanLimits: onPc('Rescanning'),
   closeMiniMeter: async () => undefined,
   setTrayImage: async () => undefined,
   onShowUsage: () => () => undefined,

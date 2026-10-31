@@ -4,11 +4,12 @@
 // and the implied-capacity history.
 
 import { EventEmitter } from 'node:events'
-import { readdir, readFile, stat } from 'node:fs/promises'
-import { join } from 'node:path'
+import { lstat, readdir, readFile, stat, unlink } from 'node:fs/promises'
+import { basename, join } from 'node:path'
 import { clockOffset, now } from '@shared/clock'
 import { fiveHourBlocks } from '@shared/usage/aggregate'
 import {
+  hasLimits,
   inferBilling,
   parseBridgePayload,
   sameLimits,
@@ -22,7 +23,8 @@ import {
   impliedCapacity,
   type CapacityWeights,
   type LimitsState,
-  type Plan
+  type Plan,
+  weeklyBuckets
 } from '@shared/usage/limits'
 import type { ModelPrice } from '@shared/usage/pricing'
 import {
@@ -43,6 +45,7 @@ import { paceAdvice, paceOf, type PaceSettings } from '@shared/usage/pace'
 import type { WindowKind } from '@shared/usage/limits'
 import type { JsonStore } from '../core/json-store'
 import { appendNdjson, readNdjson } from '../core/ndjson'
+import { assertExactBridgeLive, assertRealBridgeWrite } from '../core/safe-paths'
 import { envPaths, type BridgeFile, type BridgeInstaller } from './bridge'
 import type { SessionService } from './sessions'
 import type { UsageService } from './usage'
@@ -61,6 +64,27 @@ export interface LimitsSettings {
 
 const STALE_MS = 60 * 60_000
 const isUnc = (p: string): boolean => /^[\\/]{2}/.test(p)
+
+/** A temp file the bridge script left in live/: `.tmp.<pid>.<name>.json`. */
+const ORPHAN_RE = /^\.tmp\.\d+\.(.+\.json)$/
+/** Younger temp files may still be in use by a running bridge script. */
+const ORPHAN_MIN_AGE_MS = 2 * 60_000
+/** A reading's identity in the history: source, session and time. */
+const keyOf = (r: BridgeReading): string => `${r.source}|${r.sessionId ?? ''}|${r.ts}`
+
+export interface SalvageResult {
+  /** Readings added to the limit history. */
+  imported: number
+  /** Readings with limits already in the history, unchanged repeats, or latest.json copies. */
+  repeats: number
+  /** Temp files deleted (imported, repeats, empty or without limits). */
+  deleted: number
+  /** Temp files left in place because they couldn't be read or parsed. */
+  failed: number
+  /** Time range of the imported readings, epoch ms. */
+  from?: number
+  to?: number
+}
 
 export class LimitsService extends EventEmitter<{ changed: [] }> {
   private history: BridgeReading[] = []
@@ -89,11 +113,180 @@ export class LimitsService extends EventEmitter<{ changed: [] }> {
   }
 
   async start(): Promise<void> {
-    for (const r of await readNdjson<BridgeReading>(this.historyFile)) {
-      if (r && typeof r.ts === 'number' && typeof r.source === 'string') this.add(r)
+    const loaded = (await readNdjson<BridgeReading>(this.historyFile)).filter(
+      (r) => r && typeof r.ts === 'number' && typeof r.source === 'string'
+    )
+    // Salvaged readings are appended after newer ones, so the file isn't in order.
+    for (const r of loaded.sort((a, b) => a.ts - b.ts)) {
+      this.add(r)
+      this.saved.add(keyOf(r))
     }
+    const salvaged = await this.salvageOrphans().catch((err) => {
+      console.warn('could not salvage bridge temp files', err)
+      return undefined
+    })
+    if (salvaged && (salvaged.imported || salvaged.deleted || salvaged.failed))
+      console.info('bridge temp files salvaged', salvaged)
     await this.scan()
     this.timer = setInterval(() => void this.scan(), 5000)
+  }
+
+  /**
+   * The Windows bridge script used to fail to replace a session's saved
+   * payload, so every update after the first stayed behind as
+   * `.tmp.<pid>.<name>.json` in live/, with the real limit data in it. Import
+   * the readings with limits into the history (dedupe by session + time, and
+   * unchanged repeats), then delete the temp files that were imported, were
+   * repeats, or had no limits. Files that can't be read or parsed are left
+   * alone. Only the app's own temp files in a real bridge folder are ever
+   * deleted: links and junctions are followed and checked first.
+   *
+   * Single flight: the startup salvage and a manual rescan share one run, so
+   * the same file is never imported twice.
+   */
+  salvageOrphans(): Promise<SalvageResult> {
+    this.salvaging ??= this.salvageNow().finally(() => {
+      this.salvaging = undefined
+    })
+    return this.salvaging
+  }
+
+  private salvaging: Promise<SalvageResult> | undefined
+  /** Readings known to be in the history file (see keyOf). */
+  private saved = new Set<string>()
+  /** Readings in memory whose append failed; saved again on the next scan. */
+  private unsaved: BridgeReading[] = []
+
+  /** Append to the history file; only then are the readings known to be saved. */
+  private async persist(rows: BridgeReading[]): Promise<void> {
+    await appendNdjson(this.historyFile, rows, this.dataDir)
+    for (const r of rows) this.saved.add(keyOf(r))
+  }
+
+  private async salvageNow(): Promise<SalvageResult> {
+    const res: SalvageResult = { imported: 0, repeats: 0, deleted: 0, failed: 0 }
+    /** `needs`: the reading that must be saved on disk before the file may go. */
+    type Handled = { live: string; file: string; mtimeMs: number; needs?: BridgeReading }
+    const done: Handled[] = []
+    const found: (Handled & { r: BridgeReading })[] = []
+    const homes = new Map<string, string>()
+    for (const src of this.sessions.sources) {
+      if (src.status !== 'ok') continue
+      const p = envPaths(src)
+      if (!p) continue
+      const live = join(p.bridgeDir, 'live')
+      let names: string[]
+      try {
+        // With links followed, exactly this home's live folder (outside .claude).
+        await assertExactBridgeLive(live, p.home)
+        names = await readdir(live)
+      } catch {
+        continue
+      }
+      homes.set(live, p.home)
+      for (const n of names) {
+        if (!ORPHAN_RE.test(n)) continue
+        const file = join(live, n)
+        let text: string
+        let mtimeMs: number
+        try {
+          const st = await lstat(file)
+          if (!st.isFile()) continue
+          mtimeMs = st.mtimeMs
+          if (Date.now() - mtimeMs < ORPHAN_MIN_AGE_MS) continue
+          text = await readFile(file, 'utf8')
+        } catch {
+          res.failed++
+          continue
+        }
+        const h = { live, file, mtimeMs }
+        if (!text.trim()) {
+          done.push(h)
+          continue
+        }
+        const r = parseBridgePayload(text, {
+          ts: Math.round(mtimeMs + clockOffset()),
+          source: src.id
+        })
+        if (!r) res.failed++
+        else if (!hasLimits(r)) done.push(h)
+        // latest.json temps too: the session's own save may have failed while
+        // this copy survived. A copy of a session temp is an unchanged repeat.
+        else found.push({ ...h, r })
+      }
+    }
+    const seen = new Map(this.history.map((r) => [keyOf(r), r]))
+    const batchPrev = new Map<string, BridgeReading>()
+    const fresh: BridgeReading[] = []
+    for (const f of found.sort((a, b) => a.r.ts - b.r.ts)) {
+      const { r } = f
+      const sid = `${r.source}|${r.sessionId ?? ''}`
+      // The reading just before this one, from the history or this batch.
+      const fromHistory = this.readingBefore(r)
+      const fromBatch = batchPrev.get(sid)
+      const prev =
+        fromBatch && (!fromHistory || fromBatch.ts >= fromHistory.ts) ? fromBatch : fromHistory
+      const match = seen.get(keyOf(r)) ?? (sameLimits(prev, r) ? prev : undefined)
+      // A repeat stands for the reading it repeats (the one that gets saved).
+      batchPrev.set(sid, match ?? r)
+      if (match) {
+        res.repeats++
+        // Deleted only once that reading is on disk, not just in memory.
+        done.push({ ...f, needs: match })
+        continue
+      }
+      seen.set(keyOf(r), r)
+      fresh.push(r)
+      done.push({ ...f, needs: r })
+    }
+    if (fresh.length) {
+      // Saved first: a temp file is only deleted once its reading is in the history.
+      await this.persist(fresh)
+      for (const r of fresh) this.add(r)
+      this.history.sort((a, b) => a.ts - b.ts)
+      for (const list of this.bySession.values()) list.sort((a, b) => a.ts - b.ts)
+      res.imported = fresh.length
+      res.from = fresh[0].ts
+      res.to = fresh[fresh.length - 1].ts
+    }
+    const checked = new Map<string, boolean>()
+    for (const { live, file, mtimeMs, needs } of done) {
+      try {
+        // Its reading (or the one it repeats) must be saved on disk.
+        if (needs && !this.saved.has(keyOf(needs))) continue
+        // Check the folder again right before deleting (it could have been
+        // swapped for a link meanwhile), and skip a file that changed since it was read.
+        if (!checked.has(live)) {
+          checked.set(
+            live,
+            await assertExactBridgeLive(live, homes.get(live)!).then(
+              () => true,
+              () => false
+            )
+          )
+        }
+        if (!checked.get(live) || !ORPHAN_RE.test(basename(file))) continue
+        await assertRealBridgeWrite(file)
+        const st = await lstat(file)
+        if (!st.isFile() || st.mtimeMs !== mtimeMs) continue
+        await unlink(file)
+        res.deleted++
+      } catch {
+        // Gone already, or not ours to delete.
+      }
+    }
+    if (fresh.length) this.emit('changed')
+    return res
+  }
+
+  /** The newest reading of the same session (or source) that is older than `r`. */
+  private readingBefore(r: BridgeReading): BridgeReading | undefined {
+    const list = r.sessionId
+      ? (this.bySession.get(r.sessionId) ?? [])
+      : this.history.filter((x) => !x.sessionId)
+    for (let i = list.length - 1; i >= 0; i--)
+      if (list[i].ts < r.ts && list[i].source === r.source) return list[i]
+    return undefined
   }
 
   stop(): void {
@@ -138,8 +331,11 @@ export class LimitsService extends EventEmitter<{ changed: [] }> {
     return undefined
   }
 
-  /** Check every Claude home's live folder for new payloads. */
-  async scan(): Promise<void> {
+  /** When the bridge folders were last checked. */
+  lastScanAt: number | undefined
+
+  /** Check every Claude home's live folder for new payloads (`full`: re-read every file). */
+  async scan(full = false): Promise<void> {
     if (this.scanning) return
     this.scanning = true
     const fresh: BridgeReading[] = []
@@ -158,7 +354,7 @@ export class LimitsService extends EventEmitter<{ changed: [] }> {
         }
         const known = this.latestByFile.get(latest)
         const fullEvery = isUnc(live) ? 5 * 60_000 : 60_000
-        const due = (this.lastFullScan.get(live) ?? 0) + fullEvery < Date.now()
+        const due = full || (this.lastFullScan.get(live) ?? 0) + fullEvery < Date.now()
         if (known === st.mtimeMs && !due) continue
         this.latestByFile.set(latest, st.mtimeMs)
         // latest.json is a copy of the newest session file; read session files
@@ -198,18 +394,23 @@ export class LimitsService extends EventEmitter<{ changed: [] }> {
       }
     } finally {
       this.scanning = false
+      this.lastScanAt = Date.now()
     }
-    if (!fresh.length) return
+    if (!fresh.length && !this.unsaved.length) return
     fresh.sort((a, b) => a.ts - b.ts)
     for (const r of fresh) {
       this.checkAlerts(r)
       this.add(r)
     }
     this.history.sort((a, b) => a.ts - b.ts)
-    await appendNdjson(this.historyFile, fresh, this.dataDir).catch((err) =>
-      console.warn('could not save limit readings', err)
-    )
-    this.emit('changed')
+    // Readings whose save failed earlier go along, so none stays memory-only.
+    const toSave = [...this.unsaved, ...fresh]
+    this.unsaved = []
+    await this.persist(toSave).catch((err) => {
+      this.unsaved = [...toSave, ...this.unsaved]
+      console.warn('could not save limit readings; will retry', err)
+    })
+    if (fresh.length) this.emit('changed')
   }
 
   private checkAlerts(r: BridgeReading): void {
@@ -286,7 +487,7 @@ export class LimitsService extends EventEmitter<{ changed: [] }> {
     const five = gauge(readings, records, 'five_hour', t, s.weights, this.isSubscription)
     const week = gauge(readings, records, 'seven_day', t, s.weights, this.isSubscription)
     const lastReadingAt = readings.length ? readings[readings.length - 1].ts : undefined
-    const lastLimitReading = [...readings].reverse().find((r) => r.fiveHour || r.sevenDay)
+    const lastLimitReading = [...readings].reverse().find(hasLimits)
 
     const lastBySource = new Map<string, number>()
     for (const r of readings) lastBySource.set(r.source, r.ts)
@@ -367,6 +568,9 @@ export class LimitsService extends EventEmitter<{ changed: [] }> {
       fiveHour: five,
       sevenDay: week,
       lastReadingAt,
+      lastLimitAt: lastLimitReading?.ts,
+      weeklyBuckets: weeklyBuckets(readings, t),
+      lastScanAt: this.lastScanAt === undefined ? undefined : this.lastScanAt + clockOffset(),
       stale: !lastLimitReading || t - lastLimitReading.ts > STALE_MS,
       envs,
       block,

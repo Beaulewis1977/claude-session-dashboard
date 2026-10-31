@@ -19,11 +19,18 @@ try {
   function Save-Atomic([string]$name) {
     $dest = Join-Path $live $name
     $tmp = Join-Path $live (".tmp.$PID.$name")
-    [System.IO.File]::WriteAllText($tmp, $raw, $utf8)
-    if ([System.IO.File]::Exists($dest)) {
-      [System.IO.File]::Replace($tmp, $dest, $null)
-    } else {
-      [System.IO.File]::Move($tmp, $dest)
+    try {
+      [System.IO.File]::WriteAllText($tmp, $raw, $utf8)
+      if ([System.IO.File]::Exists($dest)) {
+        # [NullString]: PowerShell passes a plain $null to a .NET string as "",
+        # and Replace rejects "" as a backup path, so every update would fail.
+        [System.IO.File]::Replace($tmp, $dest, [NullString]::Value)
+      } else {
+        [System.IO.File]::Move($tmp, $dest)
+      }
+    } finally {
+      # Never leave a temp file behind, whatever happened above.
+      if ([System.IO.File]::Exists($tmp)) { [System.IO.File]::Delete($tmp) }
     }
   }
 

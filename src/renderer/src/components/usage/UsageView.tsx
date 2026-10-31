@@ -10,9 +10,11 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { now } from '@shared/clock'
-import { PLAN_LABEL, type BridgeEnv } from '@shared/usage/limits'
+import { ago } from '@shared/format'
+import { LIVE_SOURCES_NOTE, PLAN_LABEL, type BridgeEnv } from '@shared/usage/limits'
 import type { Dimension, PeriodCard, Period, UsageQuery, UsageReport } from '@shared/usage/types'
 import { api } from '@/lib/api'
+import { useNow } from '@/lib/meter-hooks'
 import { useApp } from '@/lib/store'
 import { cn } from '@/lib/utils'
 import { Button } from '../ui/button'
@@ -191,6 +193,9 @@ export function UsageView() {
   const [bridge, setBridge] = useState<BridgeEnv | null>(null)
   const [version, setVersion] = useState(0)
   const [ask, setAsk] = useState(false)
+  const [rescanning, setRescanning] = useState(false)
+  const scan = useApp((s) => s.scan)
+  const t = useNow()
 
   useEffect(() => api.onUsageChanged(() => setVersion((v) => v + 1)), [])
 
@@ -239,9 +244,37 @@ export function UsageView() {
               {PLAN_LABEL[settings.plan]} · every token from your session logs, plus your live plan
               limits
             </p>
+            <p className="mt-0.5 text-[11.5px] text-subtle-foreground">
+              {LIVE_SOURCES_NOTE}
+              {scan.finishedAt !== undefined && (
+                <span title={new Date(scan.finishedAt).toLocaleString()}>
+                  {' '}
+                  · Last scan {ago(scan.finishedAt, t)}
+                </span>
+              )}
+            </p>
           </div>
           {!remote && (
             <>
+              <Button
+                variant="ghost"
+                size="sm"
+                disabled={rescanning || scan.phase === 'scanning'}
+                onClick={async () => {
+                  setRescanning(true)
+                  try {
+                    set({ limits: await api.rescanLimits() })
+                    setVersion((v) => v + 1)
+                  } catch (err) {
+                    toast.error('Rescan failed', { description: (err as Error).message })
+                  } finally {
+                    setRescanning(false)
+                  }
+                }}
+              >
+                <RefreshCw className={cn(rescanning && 'animate-spin')} />
+                {rescanning ? 'Rescanning…' : 'Rescan now'}
+              </Button>
               <Button variant="outline" size="sm" onClick={() => setAsk(true)}>
                 <Sparkles className="text-primary" /> Ask Claude
               </Button>

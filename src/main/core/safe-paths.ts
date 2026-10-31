@@ -2,7 +2,7 @@
 // restoring a missing session file (see restore.ts, which never overwrites).
 
 import { lstat, realpath } from 'node:fs/promises'
-import { dirname, resolve, sep } from 'node:path'
+import { dirname, join, relative, resolve, sep } from 'node:path'
 
 export function isInsideClaudeDir(p: string): boolean {
   return resolve(p)
@@ -88,6 +88,51 @@ export function assertBridgeWrite(target: string): void {
     .map((s) => s.toLowerCase())
   if (isInsideClaudeDir(target) || !segs.includes(BRIDGE_DIR)) {
     throw new UnsafeWriteError(`Refusing to write outside the bridge folder: ${target}`)
+  }
+}
+
+/**
+ * `assertBridgeWrite`, then the same check on the real folder with links and
+ * junctions followed, so a bridge folder (or live/, bin/) that points into
+ * `.claude` or anywhere else can't redirect a write or a delete. A target
+ * that is itself a link is refused too. Call it before creating folders.
+ */
+export async function assertRealBridgeWrite(target: string): Promise<void> {
+  assertBridgeWrite(target)
+  // The nearest folder that exists, resolved, plus the part not created yet.
+  let dir = resolve(dirname(target))
+  while (
+    !(await lstat(dir).then(
+      () => true,
+      () => false
+    ))
+  ) {
+    if (dirname(dir) === dir) break
+    dir = dirname(dir)
+  }
+  const real = join(await realpath(dir), relative(dir, resolve(target)))
+  assertBridgeWrite(real)
+  const st = await lstat(target).catch(() => undefined)
+  if (st?.isSymbolicLink()) {
+    throw new UnsafeWriteError(`Refusing to write through a link: ${target}`)
+  }
+}
+
+const samePath = (a: string, b: string): boolean =>
+  process.platform === 'win32'
+    ? resolve(a).toLowerCase() === resolve(b).toLowerCase()
+    : resolve(a) === resolve(b)
+
+/**
+ * Before deleting anything in a bridge live folder: with links and junctions
+ * followed, it must be exactly `<home>/.claude-session-dashboard/live` of the
+ * Claude home it belongs to, not another bridge folder somewhere else and not
+ * anything inside `.claude`.
+ */
+export async function assertExactBridgeLive(live: string, home: string): Promise<void> {
+  const [real, realHome] = await Promise.all([realpath(live), realpath(home)])
+  if (isInsideClaudeDir(real) || !samePath(real, join(realHome, BRIDGE_DIR, 'live'))) {
+    throw new UnsafeWriteError(`Not this home's bridge live folder: ${live}`)
   }
 }
 

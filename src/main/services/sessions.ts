@@ -341,8 +341,22 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
     return true
   }
 
-  /** Re-detect sources and sync every one of them. */
-  async rescan(): Promise<void> {
+  private rescans: Promise<void> = Promise.resolve()
+
+  /**
+   * Re-detect sources and sync every one of them. Rescans run one at a time
+   * (an automatic re-check can meet a manual one).
+   */
+  rescan(): Promise<void> {
+    const run = this.rescans.then(
+      () => this.rescanNow(),
+      () => this.rescanNow()
+    )
+    this.rescans = run.catch(() => undefined)
+    return run
+  }
+
+  private async rescanNow(): Promise<void> {
     this.sources = await this.detect()
     const files = new Map<string, FileInfo[]>()
     for (const src of this.sources) {

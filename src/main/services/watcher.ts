@@ -19,11 +19,31 @@ export class SourceWatcher {
   private timers: NodeJS.Timeout[] = []
   private pending = new Map<string, NodeJS.Timeout>()
   private rechecking = false
+  /** Set by close(): an in-flight re-check must not start watching again. */
+  private stopped = false
+  /** Starting and stopping run one at a time, in order. */
+  private queue: Promise<void> = Promise.resolve()
 
   constructor(private readonly sessions: SessionService) {}
 
-  async restart(): Promise<void> {
-    await this.close()
+  private serial(fn: () => Promise<void>): Promise<void> {
+    const run = this.queue.then(fn, fn)
+    this.queue = run.catch(() => undefined)
+    return run
+  }
+
+  restart(): Promise<void> {
+    this.stopped = false
+    return this.serial(() => this.restartNow())
+  }
+
+  close(): Promise<void> {
+    this.stopped = true
+    return this.serial(() => this.closeNow())
+  }
+
+  private async restartNow(): Promise<void> {
+    await this.closeNow()
     for (const src of this.sessions.sources) {
       if (src.status !== 'ok') continue
       if (isUnc(src.projectsDir)) {
@@ -52,11 +72,15 @@ export class SourceWatcher {
 
   /** Re-detect sources while any isn't readable; restart watching if one changed. */
   async recheck(): Promise<boolean> {
-    if (this.rechecking || this.sessions.sources.every((s) => s.status === 'ok')) return false
+    if (this.rechecking || this.stopped || this.sessions.sources.every((s) => s.status === 'ok'))
+      return false
     this.rechecking = true
     try {
       const changed = await this.sessions.recheckSources()
-      if (changed) await this.restart()
+      if (changed)
+        await this.serial(async () => {
+          if (!this.stopped) await this.restartNow()
+        })
       return changed
     } catch (err) {
       console.warn('could not re-check sources', err)
@@ -79,7 +103,7 @@ export class SourceWatcher {
     )
   }
 
-  async close(): Promise<void> {
+  private async closeNow(): Promise<void> {
     for (const t of this.timers) clearInterval(t)
     for (const t of this.pending.values()) clearTimeout(t)
     this.timers = []

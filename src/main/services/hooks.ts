@@ -92,14 +92,18 @@ const shQuote = (s: string): string =>
   /^[A-Za-z0-9_./~-]+$/.test(s) ? s : `'${s.replace(/'/g, `'\\''`)}'`
 
 /**
- * The PowerShell that runs the Windows hook script. The script's path goes
- * in single quotes (PowerShell's literal string), and the whole command is
- * passed base64-encoded (-EncodedCommand). Claude Code may run hook commands
- * in Git Bash or in PowerShell; base64 means the same to both, so no `$`,
- * backtick or quote in a profile path is ever read as shell text.
+ * The PowerShell that runs the Windows hook script. The script's path is
+ * never part of PowerShell source: it travels as base64 data (UTF-8), which
+ * fixed source decodes into a variable and runs with `& $p`. So no character
+ * in a profile path (ASCII or typographic quotes, `$`, backticks, `;`) can end
+ * a string or start a command. The whole command is passed as
+ * -EncodedCommand: base64 again, which reads the same in Git Bash and in
+ * PowerShell (Claude Code may run hooks in either).
  */
 export function windowsHookCommand(script: string): string {
-  const ps = `$ProgressPreference='SilentlyContinue'; & '${script.replace(/'/g, "''")}'`
+  const data = Buffer.from(script, 'utf8').toString('base64')
+  // Base64 holds only A-Z a-z 0-9 + / =: nothing in it can close the quotes.
+  const ps = `$ProgressPreference = 'SilentlyContinue'; $p = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${data}')); & $p`
   const b64 = Buffer.from(ps, 'utf16le').toString('base64')
   return `powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand ${b64}`
 }

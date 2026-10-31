@@ -68,6 +68,9 @@ Everything stays on your PC and your own private network.
 - `--dangerously-skip-permissions` is on by default, with a per-launch checkbox and a warning label.
   **Copy resume command** lets you paste it yourself.
 - **Billing per launch:** run any session on your subscription or on an API key.
+- **Model and effort per session:** pick the model (an alias like `opus`, a model seen in your
+  logs, or any model ID) and the effort level. Every launch adds `--model` / `--effort`; Default
+  adds nothing, so Claude Code decides.
 
 ### Usage and limits
 
@@ -172,6 +175,11 @@ top.
 - Tick **Remote Control** in the dialog (or turn it on by default in Settings → Resume) to continue
   the session in the Claude app or at claude.ai/code. It needs Claude Code 2.1.51 or later, signed in
   with your Claude subscription.
+- **Model and effort:** choose them under the session's title ("Launch with") or in the launch
+  dialog. They're saved for that session; Default falls back to the project's default (⋯ **Project
+  default** next to the pickers), then Settings → Resume, then Claude Code's own choice. The Resume
+  button shows the result ("Resume · Opus · High"). If you set `CLAUDE_CODE_EFFORT_LEVEL`, Claude
+  Code uses it instead of `--effort`.
 
 ### Connect your phone
 

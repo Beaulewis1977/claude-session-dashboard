@@ -6,6 +6,7 @@
 // the optional home Wi-Fi mode listens on one private LAN address instead.
 
 import type { AppSettings } from './types'
+import type { ResolvedModel } from './model-choice'
 
 export type MobileMode = 'tailscale' | 'lan'
 
@@ -144,6 +145,8 @@ export interface RemoteLaunchPreview {
   /** Will ask on the PC first. */
   confirmOnPc: boolean
   willRestore: boolean
+  /** The model and effort the launch will use. */
+  modelChoice?: ResolvedModel
 }
 
 export interface RemoteLaunchResult {
@@ -172,6 +175,8 @@ export interface MobileMe {
 export const MOBILE_SAFE_SETTINGS = [
   'terminal',
   'remoteControlDefault',
+  'defaultModel',
+  'defaultEffort',
   'alertsEnabled',
   'alertThresholds',
   'weekStart'

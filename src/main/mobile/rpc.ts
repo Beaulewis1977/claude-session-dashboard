@@ -31,7 +31,7 @@ const str = (v: unknown, max = 1000): string => {
   return v.slice(0, max)
 }
 
-/** The fields a phone may edit: name, description, tags, pinned, hidden. */
+/** The fields a phone may edit: name, description, tags, pinned, hidden, launch model and effort. */
 export function phoneMetaPatch(v: unknown): Partial<SessionMeta> {
   const o = (v && typeof v === 'object' ? v : {}) as Record<string, unknown>
   const out: Partial<SessionMeta> = {}
@@ -42,6 +42,10 @@ export function phoneMetaPatch(v: unknown): Partial<SessionMeta> {
     out.tags = o.tags.filter((t): t is string => typeof t === 'string').slice(0, 50)
   if ('pinned' in o) out.pinned = o.pinned === true
   if ('hidden' in o) out.hidden = o.hidden === true
+  // Validated (or cleared) by cleanMetaPatch like the desktop's own edits.
+  if ('model' in o) out.model = typeof o.model === 'string' ? o.model.slice(0, 200) : undefined
+  if ('effort' in o)
+    out.effort = typeof o.effort === 'string' ? (o.effort as SessionMeta['effort']) : undefined
   return out
 }
 

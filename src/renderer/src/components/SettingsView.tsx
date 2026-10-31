@@ -15,6 +15,7 @@ import {
   ShieldCheck,
   SquareTerminal,
   Sun,
+  Trash2,
   TriangleAlert,
   X
 } from 'lucide-react'
@@ -34,18 +35,26 @@ import { UsageSettings } from './settings/UsageSettings'
 import { HealthSettings } from './settings/HealthSettings'
 import { MobileSettingsSection } from './settings/MobileSettings'
 import { TerminalAccessBlock } from './settings/TerminalAccessSettings'
+import { DefaultModelPickers } from './ModelPicker'
+import { choiceLabel, DEFAULT_CHOICE, isEffortLevel, projectKeyLabel } from '@shared/model-choice'
 
 export function Section({
   title,
   description,
-  children
+  children,
+  id
 }: {
   title: string
   description?: ReactNode
   children: ReactNode
+  /** For links to this section (see store.settingsSection). */
+  id?: string
 }) {
   return (
-    <section className="border-b border-border py-7 last:border-0">
+    <section
+      id={id ? `settings-${id}` : undefined}
+      className="scroll-mt-4 border-b border-border py-7 last:border-0"
+    >
       <h2 className="text-[14px] font-semibold tracking-[-0.01em]">{title}</h2>
       {description && (
         <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{description}</p>
@@ -159,6 +168,19 @@ export function SettingsView() {
     void api.getArchiveStats().then(setArchive)
   }, [scan.phase, sources])
 
+  // Opened from a link to one section (e.g. the API credits card).
+  const section = useApp((s) => s.settingsSection)
+  useEffect(() => {
+    if (!section) return
+    const t = window.setTimeout(() => {
+      document
+        .getElementById(`settings-${section}`)
+        ?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      set({ settingsSection: null })
+    }, 50)
+    return () => window.clearTimeout(t)
+  }, [section, set])
+
   const update = async (patch: Partial<AppSettings>): Promise<void> => {
     set({ settings: { ...settings, ...patch } })
     set({ settings: await api.updateSettings(patch) })
@@ -251,6 +273,55 @@ export function SettingsView() {
               aria-label="Remote Control by default"
             />
           </Row>
+          <Row
+            label="Model and effort"
+            hint={
+              <>
+                <span className="font-mono">--model</span> and{' '}
+                <span className="font-mono">--effort</span> for every launch. A session&apos;s own
+                choice wins, then its project&apos;s. Default adds no flag.
+              </>
+            }
+          >
+            <DefaultModelPickers
+              model={settings.defaultModel}
+              effort={settings.defaultEffort}
+              onModel={(defaultModel) => void update({ defaultModel })}
+              onEffort={(defaultEffort) => void update({ defaultEffort })}
+            />
+          </Row>
+          {Object.keys(settings.projectModels).length > 0 && (
+            <div className="rounded-lg border border-border px-3 py-2 text-xs">
+              <div className="mb-1 text-2xs font-medium tracking-wide text-subtle-foreground uppercase">
+                Project model defaults
+              </div>
+              {Object.entries(settings.projectModels).map(([project, d]) => (
+                <div key={project} className="flex items-center gap-2 py-0.5">
+                  <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-muted-foreground">
+                    {projectKeyLabel(project)}
+                  </span>
+                  <span>
+                    {choiceLabel({
+                      model: d.model !== DEFAULT_CHOICE ? d.model : undefined,
+                      effort: isEffortLevel(d.effort) ? d.effort : undefined
+                    }) || "Claude Code's default"}
+                  </span>
+                  <Button
+                    variant="ghost"
+                    size="icon-xs"
+                    aria-label="Remove project model default"
+                    onClick={() => {
+                      const next = { ...settings.projectModels }
+                      delete next[project]
+                      void update({ projectModels: next })
+                    }}
+                  >
+                    <Trash2 />
+                  </Button>
+                </div>
+              ))}
+            </div>
+          )}
         </Section>
 
         <MobileSettingsSection />

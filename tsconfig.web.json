@@ -28,6 +28,7 @@
     "src/preload/api.ts",
     "src/shared/**/*",
     "tests/clipboard.test.ts",
-    "tests/ui-names.test.ts"
+    "tests/ui-names.test.ts",
+    "tests/credits-empty.test.ts"
   ]
 }

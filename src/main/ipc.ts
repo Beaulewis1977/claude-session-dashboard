@@ -14,6 +14,7 @@ import {
   toYmd
 } from '@shared/usage/health'
 import { sanitizePace } from '@shared/usage/pace'
+import { cleanEffortChoice, cleanModelChoice, sanitizeProjectModels } from '@shared/model-choice'
 import type {
   AppInfo,
   AppSettings,
@@ -79,7 +80,12 @@ function publicSettings(s: SettingsFile): AppSettings {
     elsewhere: s.elsewhere.map((e) => ({ ...e })),
     askSkipPreview: s.askSkipPreview,
     askTimeoutSec: s.askTimeoutSec,
-    remoteControlDefault: s.remoteControlDefault === true
+    remoteControlDefault: s.remoteControlDefault === true,
+    defaultModel: s.defaultModel,
+    defaultEffort: s.defaultEffort,
+    projectModels: Object.fromEntries(
+      Object.entries(s.projectModels ?? {}).map(([k, v]) => [k, { ...v }])
+    )
   }
 }
 
@@ -220,6 +226,15 @@ export function registerIpc(deps: IpcDeps): void {
       if (typeof p.branchConfirmed === 'boolean') s.branchConfirmed = p.branchConfirmed
       if (typeof p.remoteControlDefault === 'boolean')
         s.remoteControlDefault = p.remoteControlDefault
+      if ('defaultModel' in p) {
+        const m = cleanModelChoice(p.defaultModel)
+        if (m) s.defaultModel = m
+      }
+      if ('defaultEffort' in p) {
+        const e = cleanEffortChoice(p.defaultEffort)
+        if (e) s.defaultEffort = e
+      }
+      if ('projectModels' in p) s.projectModels = sanitizeProjectModels(p.projectModels)
       if (typeof p.adminRefreshMinutes === 'number' && p.adminRefreshMinutes >= 0)
         s.adminRefreshMinutes = Math.min(1440, Math.round(p.adminRefreshMinutes))
     })

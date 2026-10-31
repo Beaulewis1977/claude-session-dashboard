@@ -18,6 +18,8 @@ interface PendingFork {
   parentKey: string
   parentSessionId: string
   parentTitle: string
+  /** The parent's own model / effort when the fork was launched, kept by the fork. */
+  inherit: Pick<SessionSummary['meta'], 'model' | 'effort'>
   sourceId: string
   firstUuid: string
   at: number
@@ -65,6 +67,7 @@ export class LineageService {
       parentKey: parent.key,
       parentSessionId: parent.sessionId,
       parentTitle: parent.title,
+      inherit: { model: parent.meta.model, effort: parent.meta.effort },
       sourceId: parent.sourceId,
       firstUuid: parent.firstUuid,
       at: Date.now(),
@@ -125,7 +128,8 @@ export class LineageService {
           via: 'fork',
           createdAt: new Date(p.at).toISOString()
         },
-        branchName(p.parentTitle, names)
+        branchName(p.parentTitle, names),
+        p.inherit
       )
     }
     return matched

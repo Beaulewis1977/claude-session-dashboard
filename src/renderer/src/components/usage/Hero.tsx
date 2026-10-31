@@ -19,6 +19,7 @@ import { useApp } from '@/lib/store'
 import { Button } from '../ui/button'
 import { Tooltip } from '../ui/tooltip'
 import { levelOf, LEVEL_COLOR, useNow } from '@/lib/meter-hooks'
+import { creditsEmptyText } from '@/lib/billing'
 import { Card, CardHeader, CountUp, RingGauge, Skeleton, Sparkline } from './primitives'
 
 const timeFmt = new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' })
@@ -470,5 +471,34 @@ export function CreditsHeroCard({
         )}
       </div>
     </Card>
+  )
+}
+
+export function CreditsEmptyState({
+  credits,
+  onSetup
+}: {
+  credits: CreditsState | null | undefined
+  /** Opens Settings → Accounts & API credits; unset on a phone (keys stay on the PC). */
+  onSetup?: () => void
+}) {
+  const text = creditsEmptyText(credits)
+  if (!text) return null
+  return (
+    <div
+      data-testid="credits-empty"
+      className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border border-dashed border-border px-4 py-2.5"
+    >
+      <KeyRound className="size-4 shrink-0 text-subtle-foreground" />
+      <div className="min-w-0 flex-1 text-[13px] text-muted-foreground">
+        {text}
+        {!onSetup && <span className="text-subtle-foreground"> (in the app on your PC)</span>}
+      </div>
+      {onSetup && (
+        <Button variant="outline" size="sm" onClick={onSetup}>
+          Accounts &amp; API credits
+        </Button>
+      )}
+    </div>
   )
 }

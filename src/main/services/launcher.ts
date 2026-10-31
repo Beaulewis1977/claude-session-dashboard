@@ -23,6 +23,7 @@ import {
   type RemoteControl
 } from '../core/launch'
 import { restoreIfMissing } from '../core/restore'
+import { resolveModelChoice, type ModelSettings, type ResolvedModel } from '@shared/model-choice'
 import { isAbsoluteWindowsPath } from '../core/which'
 import type { Platform } from '../platform'
 import { BranchService } from './branches'
@@ -66,7 +67,9 @@ export class Launcher {
     private readonly platform: Platform,
     private readonly sessions: SessionService,
     private readonly defaultTerminal: () => TerminalPref,
-    private readonly billing?: LaunchBilling
+    private readonly billing?: LaunchBilling,
+    /** Settings → Resume defaults and per-project defaults for model / effort. */
+    private readonly modelSettings: () => Partial<ModelSettings> = () => ({})
   ) {
     this.branches = new BranchService(sessions, (p) => platform.pathExists(p))
   }
@@ -109,6 +112,15 @@ export class Launcher {
     return { name: remoteControlName(name) }
   }
 
+  /**
+   * The model and effort for a launch: the session's own choice, else its
+   * project's default, else Settings. Read here for every launch path
+   * (desktop, phone, copied command), so they all match.
+   */
+  modelChoice(s: SessionSummary): ResolvedModel {
+    return resolveModelChoice(s.meta, s, this.modelSettings())
+  }
+
   private command(
     s: SessionSummary,
     opts: LaunchOptions,
@@ -120,6 +132,7 @@ export class Launcher {
     return buildLaunchCommand({
       remoteControl: this.remoteControl(s, opts),
       askPermissions: opts.askPermissions === true,
+      modelChoice: this.modelChoice(s),
       env: s.env,
       distro: s.distro,
       sessionId: s.sessionId,
@@ -158,7 +171,8 @@ export class Launcher {
           opts.fork,
           opts.newSession,
           this.remoteControl(s, opts),
-          opts.askPermissions === true
+          opts.askPermissions === true,
+          this.modelChoice(s)
         )
       )
     } catch {
@@ -225,7 +239,8 @@ export class Launcher {
         remoteControlName: this.remoteControl(
           branch ? { ...s, meta: { ...s.meta, name: s.meta.name || branch.name } } : s,
           opts
-        )?.name
+        )?.name,
+        modelChoice: this.modelChoice(s)
       }
     }
     const originalExists = await this.platform.pathExists(s.originalPath)
@@ -245,7 +260,8 @@ export class Launcher {
       terminalReason: cmd?.terminalReason,
       billingLabel: this.billingLabel(opts),
       launchError: error ?? folderError,
-      remoteControlName: this.remoteControl(s, opts)?.name
+      remoteControlName: this.remoteControl(s, opts)?.name,
+      modelChoice: this.modelChoice(s)
     }
   }
 

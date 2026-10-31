@@ -14,6 +14,7 @@
 // with quotes, backslashes or control characters are refused.
 
 import type { EnvKind, TerminalPref } from '@shared/types'
+import { modelArgs, type ResolvedModel } from '@shared/model-choice'
 import { isAbsoluteWindowsPath } from './which'
 import { isValidDistroName } from './wsl'
 
@@ -55,7 +56,11 @@ export interface LaunchInput {
    * commands without asking.
    */
   askPermissions?: boolean
+  /** `--model` / `--effort` (validated; nothing for Claude Code's default). */
+  modelChoice?: ModelChoice
 }
+
+export type ModelChoice = Pick<ResolvedModel, 'model' | 'effort'>
 
 export interface RemoteControl {
   /** Already cleaned with remoteControlName(). */
@@ -206,16 +211,19 @@ export function claudeArgs(
   fork: boolean,
   newSession = false,
   remoteControl?: RemoteControl,
-  askPermissions = false
+  askPermissions = false,
+  modelChoice?: ModelChoice
 ): string[] {
   if (askPermissions && skipPermissions)
     throw new Error("Can't both skip and ask for permission prompts.")
   const rc = remoteControlArgs(remoteControl)
   const ask = askPermissions ? ASK_PERMISSION_ARGS : []
+  // Validated again here: these reach every shell on the way to Claude.
+  const model = modelArgs(modelChoice?.model, modelChoice?.effort)
   if (newSession)
-    return [...rc, ...ask, ...(skipPermissions ? ['--dangerously-skip-permissions'] : [])]
+    return [...rc, ...ask, ...model, ...(skipPermissions ? ['--dangerously-skip-permissions'] : [])]
   if (!isValidSessionId(sessionId)) throw new Error(`Invalid session id: ${sessionId}`)
-  const args = [...rc, ...ask, '--resume', sessionId]
+  const args = [...rc, ...ask, ...model, '--resume', sessionId]
   if (skipPermissions) args.push('--dangerously-skip-permissions')
   if (fork) args.push('--fork-session')
   return args
@@ -336,7 +344,8 @@ function build(input: LaunchInput): Omit<LaunchCommand, 'commandLine'> {
     input.fork,
     input.newSession,
     input.remoteControl,
-    input.askPermissions
+    input.askPermissions,
+    input.modelChoice
   )
   const claudeCommand = claudeCommandLine(cArgs)
   // Remote Control refuses API-key auth: remove the keys in the final shell

@@ -69,6 +69,12 @@ import { SessionService } from './services/sessions'
 import { appPaths, createMetadataStore, createSettingsStore } from './services/store'
 import { UsageService, usagePaths } from './services/usage'
 import { SourceWatcher } from './services/watcher'
+import {
+  cleanEffortChoice,
+  cleanModelChoice,
+  DEFAULT_CHOICE,
+  sanitizeProjectModels
+} from '@shared/model-choice'
 
 // Windows looks for a program in the current folder before PATH. The app
 // starts programs by absolute path anyway; this documented opt-out also covers
@@ -234,6 +240,9 @@ async function main(): Promise<void> {
     if (typeof s.askSkipPreview !== 'boolean') s.askSkipPreview = false
     if (typeof s.askTimeoutSec !== 'number') s.askTimeoutSec = 180
     if (typeof s.remoteControlDefault !== 'boolean') s.remoteControlDefault = false
+    s.defaultModel = cleanModelChoice(s.defaultModel) ?? DEFAULT_CHOICE
+    s.defaultEffort = cleanEffortChoice(s.defaultEffort) ?? DEFAULT_CHOICE
+    s.projectModels = sanitizeProjectModels(s.projectModels)
   })
   if (FIXTURES) {
     await seedFixtureData(appRoot, paths.archiveDir, metadata)
@@ -273,30 +282,36 @@ async function main(): Promise<void> {
     (sid) => bridgeGuess(sid),
     (id) => !!accounts.get(id)
   )
-  const launcher = new Launcher(platform, sessions, () => settings.value.terminal, {
-    keyFor: (id) => accounts.keyFor(id),
-    label: (id) => {
-      const a = accounts.get(id)
-      return a ? `API · ${a.nickname}` : undefined
+  const launcher = new Launcher(
+    platform,
+    sessions,
+    () => settings.value.terminal,
+    {
+      keyFor: (id) => accounts.keyFor(id),
+      label: (id) => {
+        const a = accounts.get(id)
+        return a ? `API · ${a.nickname}` : undefined
+      },
+      subscriptionLabel: () => `Subscription (${PLAN_LABEL[settings.value.plan]})`,
+      launched: (s, opts, cwd, ctx) => {
+        const at = new Date().toISOString()
+        const tag = {
+          mode: opts.billingAccountId ? ('api' as const) : ('subscription' as const),
+          accountId: opts.billingAccountId,
+          source: 'launch' as const,
+          at
+        }
+        const remote = opts.remoteControl ? { at, via: ctx.via, device: ctx.device } : undefined
+        if (opts.fork || opts.newSession) billing.expect(s.sourceId, cwd, tag, remote)
+        else {
+          sessions.tagBilling(s.sessionId, tag)
+          if (remote) sessions.tagRemote(s.sessionId, remote)
+        }
+        if (opts.fork) lineage.expectFork(s)
+      }
     },
-    subscriptionLabel: () => `Subscription (${PLAN_LABEL[settings.value.plan]})`,
-    launched: (s, opts, cwd, ctx) => {
-      const at = new Date().toISOString()
-      const tag = {
-        mode: opts.billingAccountId ? ('api' as const) : ('subscription' as const),
-        accountId: opts.billingAccountId,
-        source: 'launch' as const,
-        at
-      }
-      const remote = opts.remoteControl ? { at, via: ctx.via, device: ctx.device } : undefined
-      if (opts.fork || opts.newSession) billing.expect(s.sourceId, cwd, tag, remote)
-      else {
-        sessions.tagBilling(s.sessionId, tag)
-        if (remote) sessions.tagRemote(s.sessionId, remote)
-      }
-      if (opts.fork) lineage.expectFork(s)
-    }
-  })
+    () => settings.value
+  )
   const usage = new UsageService(sessions, usagePaths(paths.dataDir, paths.archiveDir), () => ({
     weekStart: settings.value.weekStart,
     prices: settings.value.prices

@@ -38,45 +38,45 @@ export function InfoTip({
 }
 
 /**
- * A card. A clickable one is a `div` with the button role, not a `<button>`:
- * cards hold their own buttons (info tips), and a button can't hold a button.
+ * A card: always a plain container. A clickable card gets a real `<button>`
+ * for its action, stretched across the card *behind* the content, so the
+ * card's own buttons (info tips) and tooltips stay separate and reachable.
+ * Keyboard and screen readers use that button; a mouse click anywhere on the
+ * card (it bubbles up from the button too) runs the action once.
  */
 export function Card({
   className,
   children,
   onClick,
+  label,
   active
 }: {
   className?: string
   children: ReactNode
   onClick?: () => void
+  /** Name of the card's button (required for a clickable card). */
+  label?: string
   active?: boolean
 }) {
   return (
     <div
-      role={onClick ? 'button' : undefined}
-      tabIndex={onClick ? 0 : undefined}
       onClick={onClick}
-      onKeyDown={
-        onClick
-          ? (e) => {
-              if (e.target !== e.currentTarget) return
-              if (e.key === 'Enter' || e.key === ' ') {
-                e.preventDefault()
-                onClick()
-              }
-            }
-          : undefined
-      }
-      aria-pressed={onClick ? active : undefined}
       className={cn(
         'min-w-0 rounded-xl border border-border bg-card text-left shadow-card transition-[border-color,box-shadow,background-color]',
-        onClick &&
-          'cursor-pointer outline-none hover:border-border-strong focus-visible:ring-2 focus-visible:ring-ring/40',
+        // Its own stacking context, so the button can sit behind the content.
+        onClick && 'relative isolate cursor-pointer hover:border-border-strong',
         active && 'border-primary/50 ring-3 ring-primary/10',
         className
       )}
     >
+      {onClick && (
+        <button
+          type="button"
+          aria-label={label}
+          aria-pressed={active}
+          className="absolute inset-0 -z-10 rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+        />
+      )}
       {children}
     </div>
   )

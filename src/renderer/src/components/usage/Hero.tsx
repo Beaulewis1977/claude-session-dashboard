@@ -420,7 +420,7 @@ export function CreditsHeroCard({
   const admin = credits.admin.find((a) => a.monthUsd > 0)
   const days = burn > 0 ? remaining / burn : undefined
   return (
-    <Card className="flex flex-col p-5" onClick={onOpen}>
+    <Card className="flex flex-col p-5" onClick={onOpen} label="Open API credits details">
       <CardHeader
         title="API credits"
         subtitle={names}

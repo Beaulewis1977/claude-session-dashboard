@@ -1,10 +1,17 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { Plus, X } from 'lucide-react'
 import type { SessionSummary } from '@shared/types'
+import { canUseClaudeName, titleSourceLabel } from '@shared/title'
+import { applyClaudeNames } from '@/lib/actions'
 import { tagColor } from '@/lib/filters'
 import { cn } from '@/lib/utils'
 
-/** Inline-editable session name (wraps to several lines). Empty = use the automatic title. */
+/**
+ * Inline-editable session name (wraps to several lines). It holds my dashboard
+ * name while that is the title; otherwise it's empty and shows the title (the
+ * Claude Code name, or the automatic one) as its placeholder. Empty = no
+ * dashboard name.
+ */
 export function EditableTitle({
   session,
   onSave,
@@ -14,7 +21,9 @@ export function EditableTitle({
   onSave: (name: string) => void
   focusNonce: number
 }) {
-  const [value, setValue] = useState(session.meta.name ?? '')
+  // A dashboard name that a newer rename in Claude Code replaced isn't shown.
+  const own = session.titleSource === 'name' ? (session.meta.name ?? '') : ''
+  const [value, setValue] = useState(own)
   const ref = useRef<HTMLTextAreaElement>(null)
   const autoTitle = session.titleSource === 'name' ? '' : session.title
   useEffect(() => {
@@ -25,7 +34,7 @@ export function EditableTitle({
   }, [focusNonce])
   useAutoGrow(ref, value || autoTitle, 120)
   const commit = (): void => {
-    if (value.trim() !== (session.meta.name ?? '')) onSave(value.trim())
+    if (value.trim() !== own) onSave(value.trim())
   }
   return (
     <textarea
@@ -41,7 +50,7 @@ export function EditableTitle({
         } else if (e.key === 'Escape') {
           e.preventDefault()
           e.stopPropagation()
-          setValue(session.meta.name ?? '')
+          setValue(own)
           requestAnimationFrame(() => ref.current?.blur())
         }
       }}
@@ -50,6 +59,49 @@ export function EditableTitle({
       spellCheck={false}
       className="-mx-1.5 block w-[calc(100%+12px)] resize-none overflow-hidden rounded-md bg-transparent px-1.5 py-0.5 text-[19px] leading-[1.3] font-semibold tracking-[-0.015em] text-foreground outline-none transition-colors placeholder:text-foreground hover:bg-hover focus:bg-background focus:ring-2 focus:ring-ring/30 focus:placeholder:text-subtle-foreground"
     />
+  )
+}
+
+/** Where the title came from, and the way back to the name given in Claude Code. */
+export function TitleSourceLine({
+  session,
+  shortcutHint,
+  onUseClaudeName = () => void applyClaudeNames([session.key])
+}: {
+  session: SessionSummary
+  /** Mention F2 (desktop). */
+  shortcutHint?: boolean
+  onUseClaudeName?: () => void
+}) {
+  const useClaude = canUseClaudeName(session)
+  // My dashboard name is still saved, but a newer rename in Claude Code wins.
+  const renamedLater = session.titleSource === 'claude-name' && !!session.meta.name
+  return (
+    <div
+      data-testid="title-source"
+      className="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-2xs text-subtle-foreground"
+    >
+      <span>{titleSourceLabel(session.titleSource)}</span>
+      {renamedLater && (
+        <span title={`Your dashboard name was “${session.meta.name}”`}>
+          · renamed in Claude Code after your dashboard name
+        </span>
+      )}
+      {useClaude && (
+        <>
+          <span aria-hidden>·</span>
+          <button
+            type="button"
+            onClick={onUseClaudeName}
+            title={`Claude Code calls it “${session.claudeName}”`}
+            className="font-medium text-primary hover:underline"
+          >
+            Use name from Claude Code
+          </button>
+        </>
+      )}
+      {shortcutHint && <span>· press F2 to rename</span>}
+    </div>
   )
 }
 

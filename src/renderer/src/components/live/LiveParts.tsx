@@ -109,7 +109,7 @@ export function LiveActions({
   const label = (text: string): string | false => size === 'sm' && text
   const ended = live.state === 'exited'
   return (
-    <div className="flex shrink-0 items-center gap-0.5" onMouseDown={(e) => e.stopPropagation()}>
+    <div className="flex shrink-0 items-center gap-0.5">
       <Tooltip
         content={
           ended

@@ -45,32 +45,38 @@ function CompactRow({
   selected: boolean
 }) {
   const time = timeLine(live, t)
+  const line = live.detail && live.state === 'approval' ? live.detail : time.state
+  // The row opens the transcript (a real button: Enter and Space work); its
+  // actions are buttons of their own beside it, not inside it.
   return (
     <div
-      role="button"
-      tabIndex={0}
-      onMouseDown={(e) => e.button === 0 && openSession(live, summary)}
-      onKeyDown={(e) => e.key === 'Enter' && openSession(live, summary)}
       className={cn(
-        'group mx-2 flex flex-col gap-0.5 rounded-lg px-3 py-1.5 transition-colors',
-        selected ? 'bg-selected' : 'hover:bg-hover',
-        !summary && 'cursor-default'
+        'group relative mx-2 rounded-lg transition-colors',
+        selected ? 'bg-selected' : 'hover:bg-hover focus-within:bg-hover'
       )}
     >
-      <div className="flex min-w-0 items-center gap-2">
-        <EnvDot env={live.env} />
-        <span className="min-w-0 flex-1 truncate text-[12.5px] font-medium">
-          {liveTitle(live, summary)}
+      <button
+        type="button"
+        disabled={!summary}
+        onClick={() => openSession(live, summary)}
+        aria-current={selected || undefined}
+        className="flex w-full min-w-0 flex-col gap-0.5 rounded-lg px-3 py-1.5 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring/40 disabled:cursor-default"
+      >
+        <span className="flex w-full min-w-0 items-center gap-2">
+          <EnvDot env={live.env} />
+          <span className="min-w-0 flex-1 truncate text-[12.5px] font-medium">
+            {liveTitle(live, summary)}
+          </span>
+          <StatusChip live={live} />
         </span>
-        <StatusChip live={live} />
-      </div>
-      <div className="flex min-w-0 items-center gap-2 pl-3.5 text-2xs text-subtle-foreground">
-        <span className="min-w-0 flex-1 truncate">
-          {live.detail && live.state === 'approval' ? live.detail : time.state}
-        </span>
-        <span className="hidden group-focus-within:flex group-hover:flex">
-          <LiveActions live={live} summary={summary} />
-        </span>
+        <span className="block w-full truncate pl-3.5 text-2xs text-subtle-foreground">{line}</span>
+      </button>
+      <div
+        role="group"
+        aria-label={`Actions for ${liveTitle(live, summary)}`}
+        className="absolute right-1.5 bottom-0.5 hidden rounded-md bg-hover group-focus-within:flex group-hover:flex"
+      >
+        <LiveActions live={live} summary={summary} />
       </div>
     </div>
   )

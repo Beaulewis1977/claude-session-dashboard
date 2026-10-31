@@ -281,7 +281,18 @@ export class BridgeInstaller {
         const { name, text } = await this.bundledScript(p.env)
         const target = join(p.bridgeDir, 'bin', name)
         const current = await readText(target)
-        if (current === text) continue
+        if (current === text) {
+          // Up to date. Remember it, so a later version can recognise it
+          // (installs from before hashes were recorded have none).
+          if (rec.scriptSha256 !== sha256(text)) {
+            this.store.update((d) => {
+              const r = d.installs[src.id]
+              if (r) r.scriptSha256 = sha256(text)
+            })
+            await this.store.flush()
+          }
+          continue
+        }
         const known =
           current !== undefined &&
           (sha256(current) === rec.scriptSha256 ||

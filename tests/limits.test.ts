@@ -541,6 +541,12 @@ describe('LimitsService (fixtures)', () => {
     const script = join(envPaths(sessions.source('windows')!)!.bridgeDir, 'bin', 'statusline.ps1')
     const current = await readFile(script, 'utf8')
     expect(installer.record('windows')?.scriptSha256).toBe(sha256(current))
+    // An install from before hashes were recorded: an up-to-date script gets one.
+    installer['store'].update((d) => {
+      delete d.installs.windows.scriptSha256
+    })
+    expect(await installer.refreshScripts(sessions.sources)).toEqual([])
+    expect(installer.record('windows')?.scriptSha256).toBe(sha256(current))
 
     // A script the app wrote earlier (its hash is on record) is replaced.
     const older = '# an older bridge script\r\n'

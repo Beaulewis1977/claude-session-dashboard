@@ -177,6 +177,51 @@ export interface SessionAnalysis {
   /** Latest Remote Control link Claude Code recorded (`system` / `bridge_status`). */
   remoteUrl?: string
   remoteUrlAt?: string
+  /**
+   * The name given in Claude Code: the last `custom-title` entry (`/rename`),
+   * else the last `agent-name` entry (the Remote Control name).
+   */
+  claudeName?: string
+  /** When that name was set, if the file says (see `NameTrack`). */
+  claudeNameAt?: string
+}
+
+export const NAME_MAX = 300
+
+/** A name from Claude's file: one line, trimmed, at most NAME_MAX characters. */
+export function cleanName(v: unknown): string | undefined {
+  if (typeof v !== 'string') return undefined
+  const t = v.replace(/\s+/g, ' ').trim().slice(0, NAME_MAX).trim()
+  return t || undefined
+}
+
+/**
+ * The latest value of one kind of name entry, and when it last changed.
+ *
+ * Claude Code writes `custom-title` / `agent-name` entries without a timestamp,
+ * and writes them again (same value) every so often. So a name's time is the
+ * time of the first entry after the change that has one: `/rename` writes the
+ * name, then the `/rename` command entry with the exact time. A name at the
+ * very end of a file gets the time of the entry before it.
+ */
+class NameTrack {
+  value?: string
+  at?: string
+  private pending = false
+
+  set(name: string, ts: string | undefined, lastTs: string | undefined): void {
+    if (name === this.value) return
+    this.value = name
+    this.at = ts ?? lastTs
+    this.pending = !ts
+  }
+
+  /** An entry with a timestamp came by. */
+  tick(ts: string): void {
+    if (!this.pending) return
+    this.at = ts
+    this.pending = false
+  }
 }
 
 const REMOTE_URL_RE = /^https:\/\/claude\.ai\/code\/session_[A-Za-z0-9]{8,64}$/
@@ -208,7 +253,15 @@ export function isToolResultOnly(e: RawEvent): boolean {
 
 const SEARCH_TEXT_LIMIT = 400_000
 
-export function analyzeEvents(events: RawEvent[]): SessionAnalysis {
+export interface AnalyzeOptions {
+  /**
+   * The file's own session id. Name entries that carry another session's id
+   * (copied from another file) are not this session's name.
+   */
+  sessionId?: string
+}
+
+export function analyzeEvents(events: RawEvent[], opts: AnalyzeOptions = {}): SessionAnalysis {
   const a: SessionAnalysis = {
     userMessageCount: 0,
     assistantMessageCount: 0,
@@ -226,6 +279,9 @@ export function analyzeEvents(events: RawEvent[]): SessionAnalysis {
   // Id of the transcript message the current event belongs to (see buildMessages).
   let messageStart: string | undefined
   let assistantMsgId: string | undefined
+  const customTitle = new NameTrack()
+  const agentName = new NameTrack()
+  let lastTs: string | undefined
 
   const pushText = (t: string): void => {
     if (textLength >= SEARCH_TEXT_LIMIT || !t) return
@@ -237,10 +293,23 @@ export function analyzeEvents(events: RawEvent[]): SessionAnalysis {
     addHints(a.sourceHints, e)
     const type = str(e.type)
     const ts = validTimestamp(e.timestamp)
+
+    if (type === 'custom-title' || type === 'agent-name') {
+      const sid = str(e.sessionId)
+      if (opts.sessionId && sid && sid !== opts.sessionId) continue
+      const name = cleanName(type === 'custom-title' ? e.customTitle : e.agentName)
+      if (name) (type === 'custom-title' ? customTitle : agentName).set(name, ts, lastTs)
+      if (ts) lastTs = ts
+      continue
+    }
+
     if (ts) {
       const t = Date.parse(ts)
       if (t < minT) minT = t
       if (t > maxT) maxT = t
+      customTitle.tick(ts)
+      agentName.tick(ts)
+      lastTs = ts
     }
     if (!a.sessionId) a.sessionId = str(e.sessionId) ?? str(e.session_id)
     if (!a.cwd) a.cwd = str(e.cwd)
@@ -249,9 +318,10 @@ export function analyzeEvents(events: RawEvent[]): SessionAnalysis {
     const version = str(e.version)
     if (version) a.version = version
 
-    if (type === 'summary') {
-      const s = str(e.summary)
-      if (s) a.summary = s.trim()
+    if (type === 'summary' || type === 'ai-title') {
+      // Claude's automatic title: `summary` in older versions, `ai-title` in newer ones.
+      const s = cleanName(type === 'summary' ? e.summary : e.aiTitle)
+      if (s) a.summary = s
       continue
     }
     if (type === 'system' && e.subtype === 'bridge_status') {
@@ -333,6 +403,11 @@ export function analyzeEvents(events: RawEvent[]): SessionAnalysis {
   if (maxT !== -Infinity) a.lastActivityAt = new Date(maxT).toISOString()
   a.models = [...models]
   a.searchText = textParts.join('\n').slice(0, SEARCH_TEXT_LIMIT)
+  const named = customTitle.value ? customTitle : agentName
+  if (named.value) {
+    a.claudeName = named.value
+    a.claudeNameAt = named.at
+  }
   return a
 }
 

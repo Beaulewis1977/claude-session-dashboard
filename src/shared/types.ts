@@ -43,6 +43,8 @@ export interface SourceInfo {
 /** User-editable metadata. Lives only in the app's own metadata file. */
 export interface SessionMeta {
   name?: string
+  /** When I last set `name` in the dashboard (compared with a rename in Claude Code). */
+  nameAt?: string
   description?: string
   tags?: string[]
   hidden?: boolean
@@ -113,7 +115,13 @@ export interface ArchiveRecord {
  */
 export type Availability = 'live' | 'archived-only' | 'source-offline' | 'imported'
 
-export type TitleSource = 'name' | 'summary' | 'first-prompt' | 'fallback'
+/**
+ * name         – the name I set in the dashboard.
+ * claude-name  – the name given in Claude Code (`/rename`, Remote Control).
+ * summary      – Claude's automatic title.
+ * first-prompt – the first user message, cut short.
+ */
+export type TitleSource = 'name' | 'claude-name' | 'summary' | 'first-prompt' | 'fallback'
 
 export interface SessionSummary {
   /** Unique key in the app: `${sourceId}:${sessionId}`. */
@@ -135,8 +143,12 @@ export interface SessionSummary {
   cwd?: string
   gitBranch?: string
   version?: string
-  /** Claude's own `summary` line, if present. */
+  /** Claude's own automatic title (`summary` / `ai-title` line), if present. */
   summary?: string
+  /** The name given in Claude Code (`/rename`, Remote Control), if any. Read-only. */
+  claudeName?: string
+  /** When it was set in Claude Code, if known. */
+  claudeNameAt?: string
   firstPrompt?: string
   startedAt?: string
   lastActivityAt?: string

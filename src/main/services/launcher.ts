@@ -99,9 +99,14 @@ export class Launcher {
     return { terminal: requested, fellBack: false }
   }
 
-  /** Remote Control named after the session: my name for it, else its title. */
+  /**
+   * Remote Control named after the session: my name for it (unless a newer
+   * name was given in Claude Code), else its title.
+   */
   private remoteControl(s: SessionSummary, opts: LaunchOptions): RemoteControl | undefined {
-    return opts.remoteControl ? { name: remoteControlName(s.meta.name || s.title) } : undefined
+    if (!opts.remoteControl) return undefined
+    const name = s.titleSource === 'claude-name' ? s.title : s.meta.name || s.title
+    return { name: remoteControlName(name) }
   }
 
   private command(

@@ -19,6 +19,7 @@ const api: CsdApi = {
   getSession: (key) => ipcRenderer.invoke('sessions:get', key),
   search: (q) => ipcRenderer.invoke('sessions:search', q),
   updateMeta: (key, patch) => ipcRenderer.invoke('sessions:updateMeta', key, patch),
+  applyClaudeNames: (keys) => ipcRenderer.invoke('sessions:applyClaudeNames', keys),
   rescan: () => ipcRenderer.invoke('sessions:rescan'),
   getSettings: () => ipcRenderer.invoke('settings:get'),
   updateSettings: (patch) => ipcRenderer.invoke('settings:update', patch),

@@ -16,6 +16,7 @@ import {
 import { sanitizePace } from '@shared/usage/pace'
 import { cleanEffortChoice, cleanModelChoice, sanitizeProjectModels } from '@shared/model-choice'
 import { normalizeProjectKey } from '@shared/project-key'
+import { sanitizeLiveAlerts } from '@shared/live-alerts'
 import type {
   AppInfo,
   AppSettings,
@@ -86,7 +87,8 @@ function publicSettings(s: SettingsFile): AppSettings {
     defaultEffort: s.defaultEffort,
     projectModels: Object.fromEntries(
       Object.entries(s.projectModels ?? {}).map(([k, v]) => [k, { ...v }])
-    )
+    ),
+    liveAlerts: sanitizeLiveAlerts(s.liveAlerts)
   }
 }
 
@@ -238,6 +240,15 @@ export function registerIpc(deps: IpcDeps): void {
         if (e) s.defaultEffort = e
       }
       if ('projectModels' in p) s.projectModels = sanitizeProjectModels(p.projectModels)
+      // A partial change (one toggle) keeps the rest, quiet hours included.
+      if ('liveAlerts' in p) {
+        const cur = sanitizeLiveAlerts(s.liveAlerts)
+        const next = (p.liveAlerts ?? {}) as Partial<typeof cur>
+        s.liveAlerts = sanitizeLiveAlerts(
+          { ...cur, ...next, quiet: { ...cur.quiet, ...(next.quiet ?? {}) } },
+          cur
+        )
+      }
       if (typeof p.adminRefreshMinutes === 'number' && p.adminRefreshMinutes >= 0)
         s.adminRefreshMinutes = Math.min(1440, Math.round(p.adminRefreshMinutes))
     })

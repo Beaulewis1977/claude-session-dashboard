@@ -48,6 +48,8 @@ export interface MobileDevice {
   agent?: string
   /** Has a live connection right now. */
   connected?: boolean
+  /** Push alerts are turned on for this phone (Web Push, opt-in per phone). */
+  push?: boolean
 }
 
 export interface ActivityEntry {
@@ -169,6 +171,8 @@ export interface MobileMe {
   confirmOnPc: boolean
   mode: MobileMode
   appVersion: string
+  /** This phone has push alerts on (a Web Push subscription is stored on the PC). */
+  push: boolean
 }
 
 /** Settings a phone may change. Never security, pairing, API keys, Tailscale or the server. */
@@ -179,7 +183,8 @@ export const MOBILE_SAFE_SETTINGS = [
   'defaultEffort',
   'alertsEnabled',
   'alertThresholds',
-  'weekStart'
+  'weekStart',
+  'liveAlerts'
 ] as const satisfies readonly (keyof AppSettings)[]
 
 export type MobileSafeSetting = (typeof MOBILE_SAFE_SETTINGS)[number]
@@ -189,10 +194,34 @@ export type MobileEvent =
   | { type: 'ready' }
   | {
       type: 'event'
-      channel: 'sessions' | 'usage' | 'limits' | 'credits' | 'settings' | 'policy'
+      channel: 'sessions' | 'usage' | 'limits' | 'credits' | 'settings' | 'policy' | 'live'
     }
   | { type: 'toast'; title: string; body?: string }
   | { type: 'revoked' }
+
+/**
+ * What a Web Push alert says. Deliberately vague: the push service (Google,
+ * Apple, Mozilla) only relays an encrypted message, but even so a push holds
+ * no session name, project, path or message text. Just the kind of alert and
+ * an opaque reference that the phone resolves over Tailscale when tapped.
+ */
+export type PushKind = 'approval' | 'finished' | 'waiting' | 'exited' | 'failed' | 'test'
+
+export interface PushNotice {
+  v: 1
+  kind: PushKind
+  /** Opaque, random; resolved to a session on the PC (rpc `resolveLiveRef`). */
+  ref?: string
+}
+
+export const PUSH_TEXT: Record<PushKind, string> = {
+  approval: 'A session needs your approval',
+  finished: 'A session finished',
+  waiting: 'A session is waiting for you',
+  exited: 'A session ended',
+  failed: 'A session stopped with an error',
+  test: 'Push alerts work on this phone'
+}
 
 export const APP_STORE_URL = 'https://apps.apple.com/app/tailscale/id1470499037'
 export const PLAY_STORE_URL = 'https://play.google.com/store/apps/details?id=com.tailscale.ipn'

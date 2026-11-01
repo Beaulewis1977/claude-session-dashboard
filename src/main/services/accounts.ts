@@ -84,7 +84,9 @@ export class AccountsService extends EventEmitter<{ changed: [] }> {
   }
 
   list(): Account[] {
-    return this.store.value.accounts.map(({ enc: _enc, ...a }) => ({ ...a }))
+    return this.store.value.accounts.map(({ enc, ...a }) =>
+      !enc && !a.sample ? { ...a, needsKey: true } : { ...a }
+    )
   }
 
   get(accountId: string): Account | undefined {
@@ -105,10 +107,26 @@ export class AccountsService extends EventEmitter<{ changed: [] }> {
           "Windows can't encrypt the key for this app right now, so it won't be stored (keys are never saved in plain text)."
       }
     }
-    if (this.store.value.accounts.some((a) => a.masked === maskKey(k) && !a.sample)) {
+    const same = this.store.value.accounts.filter((a) => a.masked === maskKey(k) && !a.sample)
+    if (same.some((a) => a.enc)) {
       return { error: 'This key is already added.' }
     }
     const enc = this.enc.encrypt(k).toString('base64')
+    // A restored account without its key (backups never hold keys): the same
+    // key goes back into it, so its id, credit grants and history stay linked.
+    const restored = same.find((a) => !a.enc && a.kind === kind)
+    if (restored) {
+      this.store.update((d) => {
+        const a = d.accounts.find((x) => x.id === restored.id)
+        if (!a) return
+        a.enc = enc
+        if (nickname.trim()) a.nickname = nickname.trim().slice(0, 60)
+      })
+      await this.store.flush()
+      this.emit('changed')
+      if (kind === 'admin') void this.refreshAdmin(restored.id)
+      return { account: this.get(restored.id) }
+    }
     const account: StoredAccount = {
       id: id('acct'),
       nickname: nickname.trim().slice(0, 60) || (kind === 'admin' ? 'Admin key' : 'API key'),

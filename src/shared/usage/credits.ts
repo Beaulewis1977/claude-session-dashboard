@@ -21,6 +21,11 @@ export interface Account {
   createdAt: string
   /** Sample account in fixtures mode (no real key stored). */
   sample?: boolean
+  /**
+   * Restored from a backup (which never holds keys): the key isn't on this
+   * PC. Adding the same key again reconnects it to this account.
+   */
+  needsKey?: boolean
 }
 
 export interface CreditGrant {

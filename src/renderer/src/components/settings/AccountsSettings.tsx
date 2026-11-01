@@ -240,8 +240,19 @@ function AccountCard({ a, grants }: { a: Account; grants: CreditGrant[] }) {
               {a.kind === 'admin' ? 'Admin' : 'API'}
             </Badge>
             {a.sample && <Badge variant="muted">Sample</Badge>}
+            {a.needsKey && (
+              <Badge variant="warning">
+                <TriangleAlert /> Key not on this PC
+              </Badge>
+            )}
           </div>
           <div className="font-mono text-[11px] text-muted-foreground">{a.masked}</div>
+          {a.needsKey && (
+            <div className="mt-0.5 text-xs text-muted-foreground">
+              Restored from a backup, which never holds keys. Add the same key again (Add API key)
+              to reconnect it; its credits and history stay with it.
+            </div>
+          )}
           {a.kind === 'admin' && (
             <div className="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground">
               <Wifi className="size-3" />

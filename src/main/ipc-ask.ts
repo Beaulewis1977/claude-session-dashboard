@@ -6,6 +6,7 @@ import { localTimeZone } from '@shared/usage/time'
 import type { JsonStore } from './core/json-store'
 import { handle } from './ipc-guard'
 import { AskService, createAskStore } from './services/ask'
+import type { PrintRunner } from './services/print-runner'
 import type { LimitsService } from './services/limits'
 import type { SettingsFile } from './services/store'
 import type { UsageService } from './services/usage'
@@ -15,6 +16,7 @@ export async function registerAskIpc(deps: {
   usage: UsageService
   limits: LimitsService
   settings: JsonStore<SettingsFile>
+  runner?: PrintRunner
   simulate: boolean
 }): Promise<{ flush: () => Promise<void> }> {
   const store = createAskStore(deps.dataDir)
@@ -22,6 +24,7 @@ export async function registerAskIpc(deps: {
   const ask = new AskService({
     store,
     dataDir: deps.dataDir,
+    printRunner: deps.runner,
     simulate: deps.simulate,
     timeoutSec: () => deps.settings.value.askTimeoutSec,
     data: async () => {

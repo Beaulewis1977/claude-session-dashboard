@@ -55,6 +55,8 @@ export function isSourceLabel(v: unknown): v is SourceLabel {
 
 /** Start of every prompt the dashboard's "Ask Claude" sends, so those runs can be recognised. */
 export const ASK_MARKER = '[claude-session-dashboard:ask-claude]'
+/** Start of every session summary prompt (summary.ts re-exports it). */
+export const SUMMARY_PROMPT_MARKER = '[claude-session-dashboard:summary]'
 
 export interface SourceHints {
   /** Distinct `entrypoint` values, in order of appearance (at most 6). */
@@ -133,6 +135,9 @@ export function detectSource(h: SourceHints | undefined, ctx: SourceContext): De
   if (ctx.imported) return { label: 'claude-ai', reason: 'Imported from a claude.ai data export' }
   if (ctx.firstPrompt?.startsWith(ASK_MARKER))
     return { label: 'ask-claude', reason: "Started by the dashboard's Ask Claude" }
+  // Summaries run with --no-session-persistence; one that is saved anyway is hidden the same way.
+  if (ctx.firstPrompt?.startsWith(SUMMARY_PROMPT_MARKER))
+    return { label: 'ask-claude', reason: "Started by the dashboard's session summaries" }
   const eps = h?.entrypoints ?? []
   if (h?.remote)
     return {

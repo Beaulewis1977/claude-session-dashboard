@@ -42,6 +42,15 @@ import type {
   TerminalStatus
 } from './terminal'
 import type { FocusResult, LiveSnapshot } from './live'
+import type {
+  BackupError,
+  BackupFolderCandidate,
+  BackupRunSummary,
+  BackupSchedule,
+  BackupStatus,
+  RestorePreview,
+  SnapshotInfo
+} from './backup'
 
 export interface SearchHit {
   key: string
@@ -212,4 +221,28 @@ export interface CsdApi {
   mobilePushOff(deviceId: string): Promise<void>
   /** Send a test push to a paired phone; returns how many were sent (desktop only). */
   mobilePushTest(deviceId: string): Promise<number>
+
+  // Backups (desktop only)
+  backupStatus(): Promise<BackupStatus>
+  onBackupChanged(cb: () => void): () => void
+  /** Folder dialog; null when cancelled. Nothing is saved yet. */
+  backupPickFolder(): Promise<BackupFolderCandidate | null>
+  backupConnect(
+    folder: string,
+    opts: { encrypt?: boolean; password?: string; remember?: boolean }
+  ): Promise<BackupStatus | BackupError>
+  /** Stop backing up to the folder (nothing in it is deleted). */
+  backupDisconnect(): Promise<BackupStatus>
+  backupUpdate(patch: { schedule?: BackupSchedule; keep?: number }): Promise<BackupStatus>
+  backupRun(): Promise<BackupRunSummary>
+  /** Encrypt new snapshots with this password (null: stop encrypting new ones). */
+  backupSetPassword(password: string | null, remember: boolean): Promise<BackupStatus | BackupError>
+  backupUnlock(password: string, remember: boolean): Promise<BackupStatus | BackupError>
+  backupForget(): Promise<BackupStatus>
+  backupSnapshots(): Promise<SnapshotInfo[] | BackupError>
+  backupPreview(snapshotId: string, password?: string): Promise<RestorePreview | BackupError>
+  /** Restore a previewed snapshot; the app restarts to finish. */
+  backupRestore(token: string): Promise<{ ok: true; written: number; relaunch: boolean } | BackupError>
+  backupOpenFolder(): Promise<void>
+  backupOpenSafety(): Promise<void>
 }

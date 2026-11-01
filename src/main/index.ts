@@ -84,6 +84,9 @@ import {
 } from '@shared/model-choice'
 import { migrateLegacyKeys } from '@shared/project-key'
 import { sanitizeLiveAlerts } from '@shared/live-alerts'
+import { applyPendingRestore } from './core/backup-restore'
+import { BackupService, createBackupStore } from './services/backup'
+import { registerBackupIpc } from './ipc-backup'
 
 // Windows looks for a program in the current folder before PATH. The app
 // starts programs by absolute path anyway; this documented opt-out also covers
@@ -227,6 +230,15 @@ async function main(): Promise<void> {
   }
 
   const paths = appPaths(dataDir)
+  // A restore staged before the restart (Settings → Backup) is finished first,
+  // before any of the app's data is loaded.
+  const restored = await applyPendingRestore(paths.dataDir, {
+    archiveDir: paths.archiveDir,
+    now: Date.now()
+  }).catch((err: unknown) => {
+    console.warn('could not finish the restore', err)
+    return undefined
+  })
   const metadata = createMetadataStore(paths)
   const settings = createSettingsStore(paths)
   await Promise.all([metadata.load(), settings.load()])
@@ -424,6 +436,38 @@ async function main(): Promise<void> {
     simulate: FIXTURES
   })
   limits.on('changed', () => accounts.emit('changed'))
+
+  // Backups of the app's own data to a folder I pick (see services/backup.ts).
+  const backupStore = createBackupStore(paths.dataDir)
+  await backupStore.load()
+  const backup = new BackupService({
+    store: backupStore,
+    dataDir: paths.dataDir,
+    appVersion: app.getVersion(),
+    encryptor,
+    beforeBackup: async () => {
+      await Promise.all([
+        metadata.flush(),
+        settings.flush(),
+        accountsStore.flush(),
+        askIpc.flush()
+      ]).catch(() => undefined)
+    }
+  })
+  if (restored) backup.recordRestore(restored)
+  await backup.init()
+  const devServer = !!process.env.ELECTRON_RENDERER_URL
+  registerBackupIpc({
+    backup,
+    dataDir: paths.dataDir,
+    canRelaunch: !devServer,
+    restart: () => {
+      // In development the dev server owns the window's page: quit only.
+      if (!devServer) app.relaunch()
+      app.quit()
+    }
+  })
+  backup.start()
 
   // Phone companion: off by default, 127.0.0.1 only (see mobile/).
   const mobileStore = new JsonStore<MobileFile>(
@@ -625,6 +669,9 @@ async function main(): Promise<void> {
       await accountsStore.flush().catch(() => undefined)
       await bridgeStore.flush().catch(() => undefined)
       await askIpc.flush().catch(() => undefined)
+      // A backup still running is just cut short: only complete snapshots count.
+      backup.stop()
+      await backupStore.flush().catch(() => undefined)
       await Promise.all([metadata.flush(), settings.flush()]).catch(() => undefined)
       app.quit()
     })()

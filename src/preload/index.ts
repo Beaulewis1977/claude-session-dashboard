@@ -120,7 +120,24 @@ const api: CsdApi = {
   planHooks: (id, action) => ipcRenderer.invoke('hooks:plan', id, action),
   applyHooks: (id, action, token) => ipcRenderer.invoke('hooks:apply', id, action, token),
   mobilePushOff: (id) => ipcRenderer.invoke('mobile:pushOff', id),
-  mobilePushTest: (id) => ipcRenderer.invoke('mobile:pushTest', id)
+  mobilePushTest: (id) => ipcRenderer.invoke('mobile:pushTest', id),
+
+  backupStatus: () => ipcRenderer.invoke('backup:status'),
+  onBackupChanged: (cb) => on('backup:changed', cb),
+  backupPickFolder: () => ipcRenderer.invoke('backup:pickFolder'),
+  backupConnect: (folder, opts) => ipcRenderer.invoke('backup:connect', folder, opts),
+  backupDisconnect: () => ipcRenderer.invoke('backup:disconnect'),
+  backupUpdate: (patch) => ipcRenderer.invoke('backup:update', patch),
+  backupRun: () => ipcRenderer.invoke('backup:run'),
+  backupSetPassword: (password, remember) =>
+    ipcRenderer.invoke('backup:setPassword', password, remember),
+  backupUnlock: (password, remember) => ipcRenderer.invoke('backup:unlock', password, remember),
+  backupForget: () => ipcRenderer.invoke('backup:forget'),
+  backupSnapshots: () => ipcRenderer.invoke('backup:snapshots'),
+  backupPreview: (id, password) => ipcRenderer.invoke('backup:preview', id, password),
+  backupRestore: (token) => ipcRenderer.invoke('backup:restore', token),
+  backupOpenFolder: () => ipcRenderer.invoke('backup:openFolder'),
+  backupOpenSafety: () => ipcRenderer.invoke('backup:openSafety')
 }
 
 contextBridge.exposeInMainWorld('csd', api)

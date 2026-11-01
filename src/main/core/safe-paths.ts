@@ -159,3 +159,27 @@ export function assertBranchWrite(target: string, projectDir: string): void {
     )
   }
 }
+
+/**
+ * Backups (Settings → Backup): the app writes, and retention deletes, only
+ * inside the backup set's own folder (`<folder I picked>/ClaudeSessionDashboard
+ * Backup`). Never inside a `.claude` folder, and never through a link or a
+ * junction that leads out of the set.
+ */
+export async function assertRealBackupWrite(target: string, setDir: string): Promise<void> {
+  if (
+    isInsideClaudeDir(target) ||
+    !isInside(target, setDir) ||
+    resolve(target) === resolve(setDir)
+  ) {
+    throw new UnsafeWriteError(`Refusing to write outside the backup folder: ${target}`)
+  }
+  const [dir, base, st] = await Promise.all([
+    realExisting(dirname(target)),
+    realExisting(setDir),
+    lstat(target).catch(() => undefined)
+  ])
+  if (!isInside(dir, base) || isInsideClaudeDir(dir) || st?.isSymbolicLink()) {
+    throw new UnsafeWriteError(`Refusing to write outside the backup folder: ${target}`)
+  }
+}

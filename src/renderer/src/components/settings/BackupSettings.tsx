@@ -22,6 +22,7 @@ import {
   isBackupError,
   MAX_KEEP,
   MIN_PASSWORD,
+  type BackupError,
   type BackupFolderCandidate,
   type BackupStatus,
   type RestoreAction,
@@ -178,17 +179,20 @@ function ConnectDialog({
   const [error, setError] = useState<string>()
   // Joining an encrypted set: the password can also be entered later.
   const valid = existing ? true : !encrypt || newPasswordOk(password, confirm)
+  const [changed, setChanged] = useState<'replaced' | 'unencrypted'>()
   const submit = async (): Promise<void> => {
     setBusy(true)
     setError(undefined)
     const r = await api.backupConnect(candidate.folder, {
       encrypt: !existing && encrypt,
       password: password || undefined,
-      remember
+      remember,
+      accept: !!changed
     })
     setBusy(false)
     if (isBackupError(r)) {
       setError(r.error)
+      if (r.changed) setChanged(r.changed)
       return
     }
     toast.success(existing ? 'Using the existing backups in this folder' : 'Backup folder set', {
@@ -303,7 +307,8 @@ function ConnectDialog({
             Cancel
           </Button>
           <Button variant="primary" disabled={!valid || busy} onClick={() => void submit()}>
-            {busy && <Loader2 className="animate-spin" />} Use this folder
+            {busy && <Loader2 className="animate-spin" />}
+            {changed ? 'Use this set anyway' : 'Use this folder'}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -779,6 +784,101 @@ function LastRun({ status }: { status: BackupStatus }) {
   )
 }
 
+const PAUSED_TEXT = {
+  unencrypted:
+    'This folder was encrypted, but its settings now say it isn’t (changed outside the app, or an old copy came back from syncing). Nothing is written unencrypted until you choose.',
+  replaced:
+    'A different backup set is in this folder now (changed outside the app). Nothing is written to it until you choose to use it, or another folder.',
+  'other-writer':
+    'Another PC backs up to this folder, and only one PC can. Restoring still works. Take it over to back up from this PC instead; the other PC then stops backing up here.'
+} as const
+
+function PausedBanner({
+  status,
+  onPassword,
+  onStatus,
+  onPick
+}: {
+  status: BackupStatus
+  onPassword: () => void
+  onStatus: (s: BackupStatus) => void
+  onPick: () => void
+}) {
+  const reason = status.paused?.reason
+  const [confirmTakeOver, setConfirmTakeOver] = useState(false)
+  if (!reason) return null
+  const done = (r: BackupStatus | BackupError): void => {
+    if (isBackupError(r)) toast.error('Couldn’t change it', { description: r.error })
+    else onStatus(r)
+  }
+  return (
+    <div className="flex items-start gap-3 rounded-lg border border-warning/30 bg-warning-soft px-3 py-2.5">
+      <TriangleAlert className="mt-0.5 size-4 shrink-0 text-warning" />
+      <div className="min-w-0 flex-1 text-xs">
+        <div className="font-medium text-foreground">Backups are paused</div>
+        <div className="text-muted-foreground">
+          {PAUSED_TEXT[reason]}
+          {reason === 'other-writer' && status.paused?.since
+            ? ` (since ${formatDateTime(status.paused.since)})`
+            : ''}
+        </div>
+      </div>
+      <div className="flex shrink-0 flex-col gap-1.5">
+        {reason === 'unencrypted' && (
+          <>
+            <Button variant="outline" size="sm" onClick={onPassword}>
+              <Lock /> Set a password…
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => void api.backupSetPassword(null, false).then(done)}
+            >
+              Back up without a password
+            </Button>
+          </>
+        )}
+        {reason === 'replaced' && (
+          <>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() =>
+                status.destination &&
+                void api.backupConnect(status.destination, { accept: true }).then(done)
+              }
+            >
+              Use this backup set
+            </Button>
+            <Button variant="ghost" size="sm" onClick={onPick}>
+              Choose another folder…
+            </Button>
+          </>
+        )}
+        {reason === 'other-writer' &&
+          (confirmTakeOver ? (
+            <>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => void api.backupTakeOver().then(done)}
+              >
+                Yes, back up from this PC
+              </Button>
+              <Button variant="ghost" size="sm" onClick={() => setConfirmTakeOver(false)}>
+                Cancel
+              </Button>
+            </>
+          ) : (
+            <Button variant="outline" size="sm" onClick={() => setConfirmTakeOver(true)}>
+              Take over…
+            </Button>
+          ))}
+      </div>
+    </div>
+  )
+}
+
 export function BackupSettings() {
   const [status, setStatus] = useState<BackupStatus | null>(null)
   const [candidate, setCandidate] = useState<BackupFolderCandidate | null>(null)
@@ -894,35 +994,13 @@ export function BackupSettings() {
         </div>
       )}
 
-      {s?.downgraded && (
-        <div className="flex items-start gap-3 rounded-lg border border-warning/30 bg-warning-soft px-3 py-2.5">
-          <TriangleAlert className="mt-0.5 size-4 shrink-0 text-warning" />
-          <div className="min-w-0 flex-1 text-xs">
-            <div className="font-medium text-foreground">Backups are paused</div>
-            <div className="text-muted-foreground">
-              This folder was encrypted, but its settings now say it isn’t (changed outside the app,
-              or an old copy came back from syncing). Nothing is written unencrypted until you
-              choose.
-            </div>
-          </div>
-          <div className="flex shrink-0 flex-col gap-1.5">
-            <Button variant="outline" size="sm" onClick={() => setPw('enable')}>
-              <Lock /> Set a password…
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() =>
-                void api.backupSetPassword(null, false).then((r) => {
-                  if (isBackupError(r)) toast.error('Couldn’t change it', { description: r.error })
-                  else setStatus(r)
-                })
-              }
-            >
-              Back up without a password
-            </Button>
-          </div>
-        </div>
+      {s?.paused && (
+        <PausedBanner
+          status={s}
+          onPassword={() => setPw('enable')}
+          onStatus={setStatus}
+          onPick={() => void pick()}
+        />
       )}
 
       <Row
@@ -1014,7 +1092,7 @@ export function BackupSettings() {
         <Button
           variant="outline"
           size="sm"
-          disabled={!s?.available || s.running || s.locked || s.downgraded}
+          disabled={!s?.available || s.running || s.locked || !!s.paused}
           onClick={() => void runNow()}
         >
           <RefreshCw className={cn(s?.running && 'animate-spin')} /> Back up now

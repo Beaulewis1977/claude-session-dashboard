@@ -11,7 +11,7 @@
 
 import { EventEmitter } from 'node:events'
 import { randomBytes } from 'node:crypto'
-import { realpath, stat } from 'node:fs/promises'
+import { lstat, realpath, stat } from 'node:fs/promises'
 import { basename, isAbsolute, join, resolve } from 'node:path'
 import {
   BACKUP_SCHEDULES,
@@ -50,6 +50,7 @@ import {
 import {
   BackupBusyError,
   createSet,
+  hasSetArtifacts,
   listSnapshots,
   manifestFiles,
   readSet,
@@ -62,6 +63,7 @@ import {
   type ManifestFile,
   type SetFile
 } from '../core/backup-store'
+import { assertSetRoot } from '../core/backup-fs'
 import { JsonStore } from '../core/json-store'
 import { isInside, isInsideClaudeDir } from '../core/safe-paths'
 import type { Encryptor } from './accounts'
@@ -84,11 +86,12 @@ export interface BackupFile {
   cache: Record<string, CacheEntry>
   lastRestore?: RestoreRecord
   /**
-   * The password this app last saw the set use (null: none). A set that
-   * turns unencrypted without this app doing it (edited, or an old copy back
-   * from a sync conflict) pauses backups instead of writing in the clear.
+   * Per backup folder (kept after "stop using it"): which set this app last
+   * saw there and which password it used (null: none). A different set in the
+   * same place, or one that turns unencrypted, without this app doing it
+   * (edited, or an old copy back from syncing), pauses backups until I choose.
    */
-  expect?: { setId: string; keyId: string | null }
+  known?: Record<string, { setId: string; keyId: string | null }>
 }
 
 export function createBackupStore(dataDir: string): JsonStore<BackupFile> {
@@ -121,8 +124,22 @@ const RETRY_MS = 60 * 60_000
 const TICK_MS = 15 * 60_000
 const PREVIEW_TTL = 30 * 60_000
 
-const DOWNGRADED =
-  'This backup folder was encrypted, but its settings now say it isn’t (changed outside the app, or an old copy came back from syncing). Backups are paused so nothing is written unencrypted: set a password again, or choose to back up without one.'
+export type PauseReason = NonNullable<BackupStatus['paused']>['reason']
+
+const PAUSED: Record<PauseReason, string> = {
+  unencrypted:
+    'This backup folder was encrypted, but its settings now say it isn’t (changed outside the app, or an old copy came back from syncing). Backups are paused so nothing is written unencrypted: set a password again, or choose to back up without one.',
+  replaced:
+    'The backups in this folder were replaced by a different backup set (changed outside the app). Backups are paused until you choose to use this set, or another folder.',
+  'other-writer':
+    'Another PC backs up to this folder. Only one PC can, so this one has stopped. Restoring still works; to back up from this PC instead, take the folder over.'
+}
+
+export const INVALID_PREVIEW = "That restore preview isn't valid. Start a new preview"
+
+/** The key for a folder in `known` (Windows paths aren't case-sensitive). */
+const folderKey = (setDir: string): string =>
+  process.platform === 'win32' ? resolve(setDir).toLowerCase() : resolve(setDir)
 
 const err = (error: string, needsPassword?: boolean): BackupError =>
   needsPassword ? { error, needsPassword } : { error }
@@ -136,6 +153,9 @@ function message(e: unknown): string {
   if (code === 'ENOSPC') return 'The backup drive is full.'
   return (e as Error)?.message || String(e)
 }
+
+const ORPHANED =
+  'This folder has backup files, but its backup-set.json is missing or can’t be read. The app won’t start a new backup set over them. Choose another folder, or put backup-set.json back.'
 
 export function cleanKeep(v: unknown): number | undefined {
   if (typeof v !== 'number' || !Number.isFinite(v)) return undefined
@@ -200,7 +220,7 @@ export class BackupService extends EventEmitter<{ changed: [] }> {
     const setDir = this.file.setDir
     if (!setDir) return
     const set = await readSet(setDir).catch(() => undefined)
-    if (set) this.loadRemembered(set)
+    if (set) await this.loadRemembered(set)
   }
 
   /**
@@ -208,14 +228,14 @@ export class BackupService extends EventEmitter<{ changed: [] }> {
    * whenever the set is read, so a drive that was missing at startup and
    * comes back later works without asking again.
    */
-  private loadRemembered(set: SetFile): void {
+  private async loadRemembered(set: SetFile): Promise<void> {
     const r = this.file.remembered
     if (!r || r.setId !== set.id || this.keys.has(r.keyId)) return
     const entry = set.keys.find((k) => k.id === r.keyId)
     if (!entry) return
     try {
       const master = Buffer.from(
-        this.deps.encryptor.decrypt(Buffer.from(r.enc, 'base64')),
+        await this.deps.encryptor.decrypt(Buffer.from(r.enc, 'base64')),
         'base64'
       )
       this.keys.set(entry.id, keysFromMaster(entry, master))
@@ -224,17 +244,27 @@ export class BackupService extends EventEmitter<{ changed: [] }> {
     }
   }
 
-  /** Record which password the set uses now, as seen (or set) by this app. */
-  private expectKey(set: SetFile): void {
+  /** Record which set (and password) this folder has now, as seen or set by this app. */
+  private recordIdentity(setDir: string, set: SetFile): void {
     this.deps.store.update((f) => {
-      f.expect = { setId: set.id, keyId: set.current }
+      f.known = { ...(f.known ?? {}), [folderKey(setDir)]: { setId: set.id, keyId: set.current } }
     })
   }
 
-  /** The set was encrypted, and now says it isn't, without this app doing it. */
-  private downgraded(set: SetFile): boolean {
-    const e = this.file.expect
-    return !!e && e.setId === set.id && e.keyId !== null && set.current === null
+  /** Changed behind the app's back, or another install's set: pause. */
+  private identityProblem(setDir: string, set: SetFile): 'replaced' | 'unencrypted' | undefined {
+    const k = this.file.known?.[folderKey(setDir)]
+    if (!k) return undefined
+    if (k.setId !== set.id) return 'replaced'
+    if (k.keyId !== null && set.current === null) return 'unencrypted'
+    return undefined
+  }
+
+  private pauseReason(setDir: string, set: SetFile): PauseReason | undefined {
+    const p = this.identityProblem(setDir, set)
+    if (p) return p
+    if (set.writer && set.writer.installId !== this.installId()) return 'other-writer'
+    return undefined
   }
 
   start(): void {
@@ -267,8 +297,8 @@ export class BackupService extends EventEmitter<{ changed: [] }> {
     const lastTry = Date.parse(f.lastAttemptAt ?? '') || 0
     if (f.last && !f.last.ok && t - lastTry < RETRY_MS) return false
     const set = await readSet(f.setDir).catch(() => undefined)
-    if (!set || this.downgraded(set)) return false
-    this.loadRemembered(set)
+    if (!set || this.pauseReason(f.setDir, set)) return false
+    await this.loadRemembered(set)
     if (set.current && !this.keys.has(set.current)) return false
     return true
   }
@@ -323,18 +353,22 @@ export class BackupService extends EventEmitter<{ changed: [] }> {
     } catch (e) {
       return { ...base, unavailableReason: message(e) }
     }
-    if (!set)
-      return {
-        ...base,
-        unavailableReason: "The backup folder can't be found. Is the drive connected?"
-      }
-    this.loadRemembered(set)
+    if (!set) return { ...base, unavailableReason: await this.missingSetReason(f.setDir) }
+    try {
+      await assertSetRoot(f.setDir)
+    } catch (e) {
+      return { ...base, unavailableReason: message(e) }
+    }
+    await this.loadRemembered(set)
     await this.refreshCounts(f.setDir).catch(() => undefined)
     const c = this.counts?.setDir === f.setDir ? this.counts : undefined
+    const reason = this.pauseReason(f.setDir, set)
     return {
       ...base,
       available: true,
-      downgraded: this.downgraded(set) || undefined,
+      paused: reason
+        ? { reason, since: reason === 'other-writer' ? set.writer?.since : undefined }
+        : undefined,
       encrypted: !!set.current,
       locked: !!set.current && !this.keys.has(set.current),
       remembered:
@@ -372,6 +406,16 @@ export class BackupService extends EventEmitter<{ changed: [] }> {
     const setDir = own ? resolve(folder) : join(resolve(folder), BACKUP_SET_DIR)
     if (isInside(this.deps.dataDir, setDir))
       return err('Choose a folder outside the app’s own data folder.')
+    const st = await lstat(setDir).catch(() => undefined)
+    if (st?.isSymbolicLink() || (st && !st.isDirectory()))
+      return err(
+        `“${basename(setDir)}” in that folder is a link or junction (or not a folder), so the app won’t use it.`
+      )
+    if (st) {
+      const realSet = await realpath(setDir)
+      if (isInsideClaudeDir(realSet) || isInside(realSet, dataReal))
+        return err('Choose a folder outside the app’s own data folder and .claude.')
+    }
     return { setDir }
   }
 
@@ -380,7 +424,10 @@ export class BackupService extends EventEmitter<{ changed: [] }> {
     if ('error' in r) return { folder, setDir: '', error: r.error }
     try {
       const set = await readSet(r.setDir)
-      if (!set) return { folder, setDir: r.setDir }
+      if (!set) {
+        if (await hasSetArtifacts(r.setDir)) return { folder, setDir: r.setDir, error: ORPHANED }
+        return { folder, setDir: r.setDir }
+      }
       const list = await listSnapshots(r.setDir)
       return {
         folder,
@@ -403,13 +450,14 @@ export class BackupService extends EventEmitter<{ changed: [] }> {
    */
   async connect(
     folder: string,
-    opts: { encrypt?: boolean; password?: string; remember?: boolean }
+    opts: { encrypt?: boolean; password?: string; remember?: boolean; accept?: boolean }
   ): Promise<BackupStatus | BackupError> {
     const r = await this.setDirFor(folder)
     if ('error' in r) return r
     try {
       let set = await readSet(r.setDir)
       if (!set) {
+        if (await hasSetArtifacts(r.setDir)) return err(ORPHANED)
         if (opts.encrypt) {
           if (!opts.password || opts.password.length < MIN_PASSWORD)
             return err(`Use a password of at least ${MIN_PASSWORD} characters.`)
@@ -418,15 +466,32 @@ export class BackupService extends EventEmitter<{ changed: [] }> {
             this.deps.kdf ?? DEFAULT_KDF,
             new Date(this.now()).toISOString()
           )
-          set = await createSet(r.setDir, new Date(this.now()).toISOString(), k.entry)
+          set = await createSet(
+            r.setDir,
+            new Date(this.now()).toISOString(),
+            k.entry,
+            this.installId()
+          )
           this.keys.set(k.entry.id, k.keys)
-          if (opts.remember) this.remember(set, k.entry, k.master)
-        } else set = await createSet(r.setDir, new Date(this.now()).toISOString())
-      } else if (set.current && opts.password) {
-        const entry = set.keys.find((k) => k.id === set?.current) as KeyEntry
-        const k = await unlockKey(entry, opts.password)
-        this.keys.set(entry.id, k.keys)
-        if (opts.remember) this.remember(set, entry, k.master)
+          if (opts.remember) await this.remember(set, k.entry, k.master)
+        } else
+          set = await createSet(
+            r.setDir,
+            new Date(this.now()).toISOString(),
+            undefined,
+            this.installId()
+          )
+      } else {
+        // Reselecting a folder doesn't quietly accept a set that changed behind
+        // the app's back: that takes an explicit choice.
+        const problem = this.identityProblem(r.setDir, set)
+        if (problem && !opts.accept) return { ...err(PAUSED[problem]), changed: problem }
+        if (set.current && opts.password) {
+          const entry = set.keys.find((k) => k.id === set?.current) as KeyEntry
+          const k = await unlockKey(entry, opts.password)
+          this.keys.set(entry.id, k.keys)
+          if (opts.remember) await this.remember(set, entry, k.master)
+        }
       }
       const setId = set.id
       this.deps.store.update((f) => {
@@ -441,10 +506,29 @@ export class BackupService extends EventEmitter<{ changed: [] }> {
         f.setDir = r.setDir
         if (f.remembered && f.remembered.setId !== setId) delete f.remembered
       })
-      this.loadRemembered(set)
-      this.expectKey(set)
+      await this.loadRemembered(set)
+      this.recordIdentity(r.setDir, set)
       await this.deps.store.flush()
       await this.refreshCounts(r.setDir, true).catch(() => undefined)
+      this.emit('changed')
+      return this.status()
+    } catch (e) {
+      return err(message(e), e instanceof WrongPasswordError)
+    }
+  }
+
+  /**
+   * Make this PC the one that backs up into the set (another PC that did
+   * stops at its next backup). Asked for explicitly in the app.
+   */
+  async takeOver(): Promise<BackupStatus | BackupError> {
+    const c = await this.currentSet()
+    if ('error' in c) return c
+    if (this.running) return err('Wait for the backup that’s running to finish.')
+    try {
+      c.set.writer = { installId: this.installId(), since: new Date(this.now()).toISOString() }
+      await writeSet(c.setDir, c.set)
+      await this.deps.store.flush()
       this.emit('changed')
       return this.status()
     } catch (e) {
@@ -458,7 +542,6 @@ export class BackupService extends EventEmitter<{ changed: [] }> {
       delete f.destination
       delete f.setDir
       delete f.remembered
-      delete f.expect
       delete f.last
       delete f.lastSuccessAt
       delete f.lastAttemptAt
@@ -484,10 +567,10 @@ export class BackupService extends EventEmitter<{ changed: [] }> {
 
   // ------------------------------------------------------------- passwords
 
-  private remember(set: SetFile, entry: KeyEntry, master: Buffer): void {
+  private async remember(set: SetFile, entry: KeyEntry, master: Buffer): Promise<void> {
     if (!this.canRemember())
       throw new Error("This PC can't protect a saved password, so it wasn't saved.")
-    const enc = this.deps.encryptor.encrypt(master.toString('base64')).toString('base64')
+    const enc = (await this.deps.encryptor.encrypt(master.toString('base64'))).toString('base64')
     this.deps.store.update((f) => {
       f.remembered = { setId: set.id, keyId: entry.id, enc }
     })
@@ -498,12 +581,18 @@ export class BackupService extends EventEmitter<{ changed: [] }> {
     if (!setDir) return err('Choose a backup folder first.')
     try {
       const set = await readSet(setDir)
-      if (!set) return err("The backup folder can't be found. Is the drive connected?")
-      this.loadRemembered(set)
+      if (!set) return err(await this.missingSetReason(setDir))
+      await assertSetRoot(setDir)
+      await this.loadRemembered(set)
       return { setDir, set }
     } catch (e) {
       return err(message(e))
     }
+  }
+
+  private async missingSetReason(setDir: string): Promise<string> {
+    if (await hasSetArtifacts(setDir).catch(() => false)) return ORPHANED
+    return "The backup folder can't be found. Is the drive connected?"
   }
 
   /**
@@ -525,7 +614,7 @@ export class BackupService extends EventEmitter<{ changed: [] }> {
         this.deps.store.update((f) => {
           delete f.remembered
         })
-        this.expectKey(set)
+        this.recordIdentity(setDir, set)
       } else {
         if (password.length < MIN_PASSWORD)
           return err(`Use a password of at least ${MIN_PASSWORD} characters.`)
@@ -538,11 +627,11 @@ export class BackupService extends EventEmitter<{ changed: [] }> {
         set.current = k.entry.id
         await writeSet(setDir, set)
         this.keys.set(k.entry.id, k.keys)
-        this.expectKey(set)
+        this.recordIdentity(setDir, set)
         this.deps.store.update((f) => {
           delete f.remembered
         })
-        if (remember) this.remember(set, k.entry, k.master)
+        if (remember) await this.remember(set, k.entry, k.master)
       }
       await this.deps.store.flush()
       this.emit('changed')
@@ -561,8 +650,9 @@ export class BackupService extends EventEmitter<{ changed: [] }> {
     try {
       const k = await unlockKey(entry, password)
       this.keys.set(entry.id, k.keys)
-      this.expectKey(c.set)
-      if (remember) this.remember(c.set, entry, k.master)
+      // Entering the password doesn't accept a set that was replaced.
+      if (this.identityProblem(c.setDir, c.set) !== 'replaced') this.recordIdentity(c.setDir, c.set)
+      if (remember) await this.remember(c.set, entry, k.master)
       await this.deps.store.flush()
       this.emit('changed')
       return this.status()
@@ -624,11 +714,17 @@ export class BackupService extends EventEmitter<{ changed: [] }> {
     const c = await this.currentSet()
     if ('error' in c) return this.failed(reason, t0, c.error)
     const { setDir, set } = c
-    if (this.downgraded(set)) return this.failed(reason, t0, DOWNGRADED)
+    const paused = this.pauseReason(setDir, set)
+    if (paused) return this.failed(reason, t0, PAUSED[paused])
     const keys = set.current ? this.keys.get(set.current) : null
     if (set.current && !keys)
       return this.failed(reason, t0, 'Enter the backup password to back up.')
     try {
+      // A set from before writers were recorded: this install claims it.
+      if (!set.writer) {
+        set.writer = { installId: this.installId(), since: new Date(this.now()).toISOString() }
+        await writeSet(setDir, set)
+      }
       await this.deps.beforeBackup?.().catch(() => undefined)
       const { files, skipped } = await collectFiles(this.deps.dataDir)
       const r = await runBackup({
@@ -684,7 +780,7 @@ export class BackupService extends EventEmitter<{ changed: [] }> {
         f.last = summary
         f.lastSuccessAt = summary.at
         f.lastAttemptAt = summary.at
-        f.expect = { setId: set.id, keyId: set.current }
+        f.known = { ...(f.known ?? {}), [folderKey(setDir)]: { setId: set.id, keyId: set.current } }
       })
       await this.deps.store.flush().catch(() => undefined)
       await this.refreshCounts(setDir, true).catch(() => undefined)
@@ -782,8 +878,7 @@ export class BackupService extends EventEmitter<{ changed: [] }> {
   /** Stage a previewed restore; the app then restarts to finish it. */
   async restore(token: string): Promise<{ ok: true; written: number } | BackupError> {
     const p = this.previews.get(token)
-    if (!p || p.expires < this.now())
-      return err('That preview has expired. Choose the snapshot again.')
+    if (!p || p.expires < this.now()) return err(INVALID_PREVIEW)
     if (this.running) return err('Wait for the backup that’s running to finish.')
     const c = await this.currentSet()
     if ('error' in c) return c

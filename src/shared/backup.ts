@@ -50,10 +50,12 @@ export interface BackupStatus {
   /** Encrypted, and the password is needed (not entered since the app started, not remembered). */
   locked: boolean
   /**
-   * The set was encrypted and now says it isn't, without this app doing it:
-   * backups are paused until a password is set again or "no password" is chosen.
+   * Backups are paused until I choose:
+   * - unencrypted: the set was encrypted and now says it isn't (not by this app);
+   * - replaced: a different backup set is in the folder now (not by this app);
+   * - other-writer: another PC backs up into this set (since `since`).
    */
-  downgraded?: boolean
+  paused?: { reason: 'unencrypted' | 'replaced' | 'other-writer'; since?: string }
   /** The password is remembered on this PC (Electron safeStorage). */
   remembered: boolean
   /** safeStorage can protect a remembered password here. */
@@ -130,7 +132,12 @@ export interface RestoreRecord {
   error?: string
 }
 
-export type BackupError = { error: string; needsPassword?: boolean }
+export type BackupError = {
+  error: string
+  needsPassword?: boolean
+  /** connect(): the set in that folder changed behind the app; connect again with accept to use it. */
+  changed?: 'replaced' | 'unencrypted'
+}
 
 export const isBackupError = (v: unknown): v is BackupError =>
   !!v && typeof v === 'object' && typeof (v as BackupError).error === 'string'

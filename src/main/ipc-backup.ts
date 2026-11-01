@@ -46,9 +46,11 @@ export function registerBackupIpc(deps: BackupIpcDeps): void {
     return backup.connect(str(folder), {
       encrypt: o.encrypt === true,
       password: pass(o.password),
-      remember: o.remember === true
+      remember: o.remember === true,
+      accept: o.accept === true
     })
   })
+  handle('backup:takeOver', () => backup.takeOver())
   handle('backup:disconnect', () => backup.disconnect())
   handle('backup:update', (_e, patch) => {
     const p = (patch ?? {}) as Record<string, unknown>

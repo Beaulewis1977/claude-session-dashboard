@@ -144,6 +144,8 @@ export interface CsdApi {
   addAccount(nickname: string, key: string): Promise<{ account?: Account; error?: string }>
   renameAccount(id: string, nickname: string): Promise<void>
   removeAccount(id: string): Promise<void>
+  /** Give an account restored from a backup its key again (the same key it used). */
+  reconnectAccount(id: string, key: string): Promise<{ account?: Account; error?: string }>
   addGrant(grant: Omit<CreditGrant, 'id'>): Promise<CreditGrant | undefined>
   removeGrant(id: string): Promise<void>
   refreshAdmin(id: string): Promise<void>
@@ -229,8 +231,10 @@ export interface CsdApi {
   backupPickFolder(): Promise<BackupFolderCandidate | null>
   backupConnect(
     folder: string,
-    opts: { encrypt?: boolean; password?: string; remember?: boolean }
+    opts: { encrypt?: boolean; password?: string; remember?: boolean; accept?: boolean }
   ): Promise<BackupStatus | BackupError>
+  /** Make this PC the one that backs up into the connected set. */
+  backupTakeOver(): Promise<BackupStatus | BackupError>
   /** Stop backing up to the folder (nothing in it is deleted). */
   backupDisconnect(): Promise<BackupStatus>
   backupUpdate(patch: { schedule?: BackupSchedule; keep?: number }): Promise<BackupStatus>

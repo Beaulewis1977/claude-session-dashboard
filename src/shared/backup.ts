@@ -49,6 +49,11 @@ export interface BackupStatus {
   encrypted: boolean
   /** Encrypted, and the password is needed (not entered since the app started, not remembered). */
   locked: boolean
+  /**
+   * The set was encrypted and now says it isn't, without this app doing it:
+   * backups are paused until a password is set again or "no password" is chosen.
+   */
+  downgraded?: boolean
   /** The password is remembered on this PC (Electron safeStorage). */
   remembered: boolean
   /** safeStorage can protect a remembered password here. */

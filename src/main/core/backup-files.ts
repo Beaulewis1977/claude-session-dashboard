@@ -12,6 +12,7 @@
 // OpenSSH's settings, Chromium's cache, the session cache and the backup
 // settings themselves.
 
+import type { Dirent, Stats } from 'node:fs'
 import { lstat, readdir } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { isInside } from './safe-paths'
@@ -38,7 +39,9 @@ export interface SourceFile {
   transform?: (data: Buffer) => Buffer
 }
 
-const SEGMENT_RE = /^[A-Za-z0-9][A-Za-z0-9._ -]{0,199}$/
+// The archive's file names come from safeSegment()/archiveName(): letters,
+// digits, ".", "_" and "-" (a leading "_" included). No leading ".".
+const SEGMENT_RE = /^[A-Za-z0-9_][A-Za-z0-9._ -]{0,199}$/
 const TEMP_RE = /\.tmp$|\.corrupt-\d+$/i
 
 /**
@@ -119,36 +122,97 @@ export function stripAccountKeys(data: Buffer): Buffer {
   return Buffer.from(JSON.stringify({ ...o, accounts }, null, 2))
 }
 
-async function walk(abs: string, rel: string, out: SourceFile[], depth: number): Promise<void> {
-  let entries
+/** The file system calls collectFiles uses (tests pass failing ones). */
+export interface CollectIo {
+  readdir: (p: string) => Promise<Dirent[]>
+  lstat: (p: string) => Promise<Stats>
+}
+
+const realIo: CollectIo = {
+  readdir: (p) => readdir(p, { withFileTypes: true }),
+  lstat: (p) => lstat(p)
+}
+
+export interface Collected {
+  files: SourceFile[]
+  /** Files in the backed-up folders that a backup can't hold (odd names, too deep). */
+  skipped: string[]
+}
+
+const gone = (err: unknown): boolean => (err as NodeJS.ErrnoException)?.code === 'ENOENT'
+
+/** Anything but "it vanished" stops the backup: a snapshot never quietly misses data. */
+function readError(rel: string, err: unknown): Error {
+  const code = (err as NodeJS.ErrnoException)?.code
+  return new Error(
+    `Couldn't read ${rel}${code ? ` (${code})` : ''}: ${(err as Error)?.message ?? err}`
+  )
+}
+
+async function walk(
+  abs: string,
+  rel: string,
+  out: Collected,
+  depth: number,
+  io: CollectIo
+): Promise<void> {
+  let entries: Dirent[]
   try {
-    entries = await readdir(abs, { withFileTypes: true })
-  } catch {
-    return
+    entries = await io.readdir(abs)
+  } catch (err) {
+    if (gone(err)) return
+    throw readError(rel, err)
   }
   for (const e of entries) {
     const childAbs = join(abs, e.name)
     const childRel = `${rel}/${e.name}`
     // Links and junctions are never followed (they could lead out of the folder).
-    if (e.isSymbolicLink()) continue
+    if (e.isSymbolicLink()) {
+      out.skipped.push(childRel)
+      continue
+    }
     if (e.isDirectory()) {
-      if (depth < 4) await walk(childAbs, childRel, out, depth + 1)
-    } else if (e.isFile() && isRestorablePath(childRel)) {
-      const st = await lstat(childAbs).catch(() => undefined)
-      if (st?.isFile())
-        out.push({ rel: childRel, abs: childAbs, size: st.size, mtimeMs: st.mtimeMs })
+      if (depth < 5) await walk(childAbs, childRel, out, depth + 1, io)
+      else out.skipped.push(childRel)
+    } else if (e.isFile()) {
+      if (TEMP_RE.test(e.name)) continue
+      if (!isRestorablePath(childRel)) {
+        out.skipped.push(childRel)
+        continue
+      }
+      let st: Stats
+      try {
+        st = await io.lstat(childAbs)
+      } catch (err) {
+        if (gone(err)) continue
+        throw readError(childRel, err)
+      }
+      if (st.isFile())
+        out.files.push({ rel: childRel, abs: childAbs, size: st.size, mtimeMs: st.mtimeMs })
     }
   }
 }
 
-/** Every file a backup of `dataDir` holds right now. */
-export async function collectFiles(dataDir: string): Promise<SourceFile[]> {
-  const out: SourceFile[] = []
+/**
+ * Every file a backup of `dataDir` holds right now. Throws when something
+ * that exists can't be read, so a backup fails instead of reporting success
+ * for an incomplete snapshot (which retention could later keep in place of
+ * complete ones).
+ */
+export async function collectFiles(dataDir: string, io: CollectIo = realIo): Promise<Collected> {
+  const out: Collected = { files: [], skipped: [] }
   for (const name of TOP_FILES) {
     const abs = join(dataDir, name)
-    const st = await lstat(abs).catch(() => undefined)
-    if (!st?.isFile()) continue
-    out.push({
+    let st: Stats
+    try {
+      st = await io.lstat(abs)
+    } catch (err) {
+      // Optional: a new install has none of these yet.
+      if (gone(err)) continue
+      throw readError(name, err)
+    }
+    if (!st.isFile()) throw new Error(`${name} in the app's data folder isn't a file`)
+    out.files.push({
       rel: name,
       abs,
       size: st.size,
@@ -158,10 +222,18 @@ export async function collectFiles(dataDir: string): Promise<SourceFile[]> {
   }
   for (const d of TOP_DIRS) {
     const abs = join(dataDir, d)
-    const st = await lstat(abs).catch(() => undefined)
-    if (st?.isDirectory()) await walk(abs, d, out, 1)
+    let st: Stats
+    try {
+      st = await io.lstat(abs)
+    } catch (err) {
+      if (gone(err)) continue
+      throw readError(d, err)
+    }
+    if (!st.isDirectory()) throw new Error(`${d} in the app's data folder isn't a folder`)
+    await walk(abs, d, out, 1, io)
   }
-  return out.sort((a, b) => (a.rel < b.rel ? -1 : a.rel > b.rel ? 1 : 0))
+  out.files.sort((a, b) => (a.rel < b.rel ? -1 : a.rel > b.rel ? 1 : 0))
+  return out
 }
 
 // ------------------------------------------------------------------ merging

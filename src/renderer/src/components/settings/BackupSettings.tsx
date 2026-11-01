@@ -894,6 +894,37 @@ export function BackupSettings() {
         </div>
       )}
 
+      {s?.downgraded && (
+        <div className="flex items-start gap-3 rounded-lg border border-warning/30 bg-warning-soft px-3 py-2.5">
+          <TriangleAlert className="mt-0.5 size-4 shrink-0 text-warning" />
+          <div className="min-w-0 flex-1 text-xs">
+            <div className="font-medium text-foreground">Backups are paused</div>
+            <div className="text-muted-foreground">
+              This folder was encrypted, but its settings now say it isn’t (changed outside the app,
+              or an old copy came back from syncing). Nothing is written unencrypted until you
+              choose.
+            </div>
+          </div>
+          <div className="flex shrink-0 flex-col gap-1.5">
+            <Button variant="outline" size="sm" onClick={() => setPw('enable')}>
+              <Lock /> Set a password…
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() =>
+                void api.backupSetPassword(null, false).then((r) => {
+                  if (isBackupError(r)) toast.error('Couldn’t change it', { description: r.error })
+                  else setStatus(r)
+                })
+              }
+            >
+              Back up without a password
+            </Button>
+          </div>
+        </div>
+      )}
+
       <Row
         label="Schedule"
         hint={
@@ -983,7 +1014,7 @@ export function BackupSettings() {
         <Button
           variant="outline"
           size="sm"
-          disabled={!s?.available || s.running || s.locked}
+          disabled={!s?.available || s.running || s.locked || s.downgraded}
           onClick={() => void runNow()}
         >
           <RefreshCw className={cn(s?.running && 'animate-spin')} /> Back up now

@@ -239,7 +239,10 @@ export async function applyPendingRestore(
       const stagedSt = await stat(staged)
       // It may have grown since the preview: still never replace with a smaller copy.
       if (cur?.isFile() && neverShrinks(it.rel) && cur.size >= stagedSt.size) continue
-      if (it.action === 'merge') {
+      // By file, not by the planned action: a settings, metadata or accounts file
+      // that was missing at preview ("add") still goes through the same rules
+      // (no phone server from another PC, archive paths moved to this one).
+      if (mergedOnRestore(it.rel)) {
         const current = cur?.isFile() ? await readFile(target, 'utf8') : undefined
         const merged = mergeOnRestore(it.rel, await readFile(staged, 'utf8'), current, {
           archiveDir: opts.archiveDir

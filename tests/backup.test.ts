@@ -150,7 +150,7 @@ async function backup(
     setDir,
     set,
     keys,
-    files: await collectFiles(dataDir),
+    files: (await collectFiles(dataDir)).files,
     cache,
     reason: 'manual',
     now,
@@ -160,7 +160,7 @@ async function backup(
 
 describe('what a backup holds', () => {
   it('collects the archive, metadata, usage and settings, but no secrets or PC-only files', async () => {
-    const rels = (await collectFiles(dataDir)).map((f) => f.rel)
+    const rels = (await collectFiles(dataDir)).files.map((f) => f.rel)
     expect(rels).toEqual([
       'accounts.json',
       'archive/windows/7f3c9a12-4b8e-4d21-9c6a-1e2f3a4b5c6d.jsonl',
@@ -309,24 +309,19 @@ describe('interrupted backups', () => {
     expect(list.snapshots).toEqual([])
     expect(list.damaged).toEqual(['20261101T115900Z-0000abcd.json'])
 
-    await writeFile(
-      join(setDir, 'lock.json'),
-      JSON.stringify({ at: new Date(clock).toISOString() })
-    )
+    // Locks use the real clock.
+    const lock = (body: object) => writeFile(join(setDir, 'lock.json'), JSON.stringify(body))
+    await lock({ at: new Date().toISOString(), pid: process.pid })
     await expect(backup(set, null)).rejects.toThrow(/running/)
-    // This install's own lock (it quit mid-backup) doesn't block it.
-    await writeFile(
-      join(setDir, 'lock.json'),
-      JSON.stringify({ at: new Date(clock).toISOString(), owner: 'me' })
-    )
+    // This install's own lock from a process that has ended (it quit mid-backup) doesn't block it.
+    await lock({ at: new Date().toISOString(), owner: 'me', pid: 2 ** 22 + 7 })
     await expect(backup(set, null, {}, { owner: 'someone-else' })).rejects.toThrow(/running/)
     await expect(backup(set, null, {}, { owner: 'me' })).resolves.toBeTruthy()
+    // ...but one held by this very process does.
+    await lock({ at: new Date().toISOString(), owner: 'me', pid: process.pid })
+    await expect(backup(set, null, {}, { owner: 'me' })).rejects.toThrow(/running/)
     // A lock from a crash hours ago doesn't block.
-    await writeFile(
-      join(setDir, 'lock.json'),
-      JSON.stringify({ at: new Date(clock).toISOString() })
-    )
-    clock += 4 * 60 * 60_000
+    await lock({ at: new Date(Date.now() - 4 * 60 * 60_000).toISOString() })
     await expect(backup(set, null)).resolves.toBeTruthy()
   })
 })
@@ -831,6 +826,6 @@ describe('JsonStore stays the only writer of backup.json', () => {
   it('is in the data folder and not part of a backup', async () => {
     const s = new JsonStore(join(dataDir, 'backup.json'), dataDir, () => ({}))
     await s.load()
-    expect((await collectFiles(dataDir)).some((f) => f.rel === 'backup.json')).toBe(false)
+    expect((await collectFiles(dataDir)).files.some((f) => f.rel === 'backup.json')).toBe(false)
   })
 })

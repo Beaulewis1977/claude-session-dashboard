@@ -187,10 +187,24 @@ export async function readSet(setDir: string): Promise<SetFile | undefined> {
   if (v?.format !== 'csd-backup-set' || typeof v.id !== 'string')
     throw new DamagedBackupError(`${SET_FILE} isn't a backup set of this app`)
   if (v.version !== 1) throw new DamagedBackupError('Made by a newer version of the app')
-  const keys = Array.isArray(v.keys) ? v.keys.filter(validKeyEntry) : []
-  const current =
-    typeof v.current === 'string' && keys.some((k) => k.id === v.current) ? v.current : null
-  return { format: v.format, version: 1, id: v.id, createdAt: String(v.createdAt), current, keys }
+  // Damaged password details are refused, never read as "not encrypted":
+  // that would let the next backup write session data in the clear.
+  if (!Array.isArray(v.keys) || !v.keys.every(validKeyEntry))
+    throw new DamagedBackupError(`${SET_FILE} is damaged (password details can't be read)`)
+  const keys = v.keys
+  if (
+    v.current !== null &&
+    !(typeof v.current === 'string' && keys.some((k) => k.id === v.current))
+  )
+    throw new DamagedBackupError(`${SET_FILE} is damaged (its current password can't be found)`)
+  return {
+    format: v.format,
+    version: 1,
+    id: v.id,
+    createdAt: String(v.createdAt),
+    current: v.current,
+    keys
+  }
 }
 
 const README = `This folder holds backups made by Claude Session Dashboard
@@ -244,7 +258,9 @@ export async function writeSet(setDir: string, set: SetFile): Promise<void> {
  * quit or crashed mid-backup; it never runs two at once) or older than a few
  * hours is taken over; another PC's recent lock is respected.
  */
-async function acquireLock(setDir: string, now: number, owner?: string): Promise<string> {
+async function acquireLock(setDir: string, owner?: string): Promise<string> {
+  // Locks are about real time (never the app's display clock).
+  const now = Date.now()
   const path = join(setDir, LOCK_FILE)
   const nonce = randomBytes(8).toString('hex')
   const body = JSON.stringify({ at: new Date(now).toISOString(), pid: process.pid, nonce, owner })
@@ -260,9 +276,15 @@ async function acquireLock(setDir: string, now: number, owner?: string): Promise
   let at = 0
   let mine = false
   try {
-    const v = JSON.parse(await readFile(path, 'utf8')) as { at: string; owner?: string }
+    const v = JSON.parse(await readFile(path, 'utf8')) as {
+      at: string
+      owner?: string
+      pid?: number
+    }
     at = Date.parse(v.at) || 0
-    mine = !!owner && v.owner === owner
+    // This install's lock from a process that has ended (the app quit or
+    // crashed mid-backup). Never one this process holds right now.
+    mine = !!owner && v.owner === owner && v.pid !== process.pid && !alive(v.pid)
   } catch {
     // Unreadable: treat as stale.
   }
@@ -270,6 +292,16 @@ async function acquireLock(setDir: string, now: number, owner?: string): Promise
     throw new BackupBusyError('Another backup into this folder is running right now.')
   await writeInSet(path, body, setDir)
   return nonce
+}
+
+function alive(pid: unknown): boolean {
+  if (typeof pid !== 'number' || !Number.isInteger(pid) || pid <= 0) return false
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch (err) {
+    return (err as NodeJS.ErrnoException).code === 'EPERM'
+  }
 }
 
 async function releaseLock(setDir: string, nonce: string): Promise<void> {
@@ -496,6 +528,8 @@ export interface RunOptions {
   onProgress?: (done: number, total: number) => void
   /** Tests: called after each object, to simulate a crash part way through. */
   afterFile?: (index: number) => void | Promise<void>
+  /** Remove old snapshots while still holding the lock (see applyRetention). */
+  retention?: { keep: number; minObjectAgeMs?: number }
 }
 
 export interface RunResult {
@@ -503,11 +537,13 @@ export interface RunResult {
   added: number
   addedBytes: number
   cache: Record<string, CacheEntry>
+  retention?: RetentionResult
+  retentionError?: string
 }
 
 export async function runBackup(o: RunOptions): Promise<RunResult> {
   if ((o.set.current ?? null) !== (o.keys?.keyId ?? null)) throw new WrongPasswordError()
-  const nonce = await acquireLock(o.setDir, o.now(), o.owner)
+  const nonce = await acquireLock(o.setDir, o.owner)
   try {
     await cleanTemp(o.setDir)
     const cache: Record<string, CacheEntry> = {}
@@ -515,6 +551,7 @@ export async function runBackup(o: RunOptions): Promise<RunResult> {
     let added = 0
     let addedBytes = 0
     let i = 0
+    const sourceOf = new Map<string, SourceFile>()
     for (const f of o.files) {
       let sha: string | undefined
       let size = f.size
@@ -546,9 +583,23 @@ export async function runBackup(o: RunOptions): Promise<RunResult> {
       }
       if (!f.transform && size === f.size) cache[f.rel] = { s: f.size, m: f.mtimeMs, h: sha }
       entries.push({ p: f.rel, s: size, m: f.mtimeMs, h: sha, o: id })
+      sourceOf.set(f.rel, f)
       await o.afterFile?.(i)
       i++
       o.onProgress?.(i, o.files.length)
+    }
+    // Last check before the snapshot counts: every object it names is there
+    // (another PC sharing a synced folder may have removed an old one).
+    for (const e of entries) {
+      if (await exists(objectPath(o.setDir, e.o))) continue
+      const src = sourceOf.get(e.p) as SourceFile
+      const w = await writeObject(src, o.setDir, o.keys)
+      if (w.stored) {
+        added++
+        addedBytes += w.stored
+      }
+      Object.assign(e, { s: w.size, h: w.sha, o: w.id })
+      if (cache[e.p]) cache[e.p] = { ...(cache[e.p] as CacheEntry), h: w.sha }
     }
     const t = o.now()
     const snapId = `${stampOf(t)}-${rand()}`
@@ -577,7 +628,17 @@ export async function runBackup(o: RunOptions): Promise<RunResult> {
       JSON.stringify(manifest),
       o.setDir
     )
-    return { manifest, added, addedBytes, cache }
+    const result: RunResult = { manifest, added, addedBytes, cache }
+    // Still under the lock, so no other backup can be reusing an object
+    // that retention is about to remove.
+    if (o.retention) {
+      try {
+        result.retention = await retainLocked(o.setDir, o.retention.keep, o.retention)
+      } catch (err) {
+        result.retentionError = (err as Error).message
+      }
+    }
+    return result
   } finally {
     await releaseLock(o.setDir, nonce)
   }
@@ -620,7 +681,21 @@ export interface RetentionResult {
 export async function applyRetention(
   setDir: string,
   keep: number,
-  opts: { minObjectAgeMs?: number; protect?: string[] } = {}
+  opts: { minObjectAgeMs?: number; protect?: string[]; owner?: string } = {}
+): Promise<RetentionResult> {
+  // The same lock as a backup: never while a backup may be reusing objects.
+  const nonce = await acquireLock(setDir, opts.owner)
+  try {
+    return await retainLocked(setDir, keep, opts)
+  } finally {
+    await releaseLock(setDir, nonce)
+  }
+}
+
+async function retainLocked(
+  setDir: string,
+  keep: number,
+  opts: { minObjectAgeMs?: number; protect?: string[] }
 ): Promise<RetentionResult> {
   const keepN = Math.max(1, Math.floor(keep))
   const { snapshots, damaged } = await listSnapshots(setDir)

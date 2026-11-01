@@ -242,7 +242,9 @@ export interface CsdApi {
   backupSnapshots(): Promise<SnapshotInfo[] | BackupError>
   backupPreview(snapshotId: string, password?: string): Promise<RestorePreview | BackupError>
   /** Restore a previewed snapshot; the app restarts to finish. */
-  backupRestore(token: string): Promise<{ ok: true; written: number; relaunch: boolean } | BackupError>
+  backupRestore(
+    token: string
+  ): Promise<{ ok: true; written: number; relaunch: boolean } | BackupError>
   backupOpenFolder(): Promise<void>
   backupOpenSafety(): Promise<void>
 }

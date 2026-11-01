@@ -18,6 +18,11 @@ export function registerAccountsIpc(deps: CreditsDeps & { accounts: AccountsServ
     const res = await accounts.add(String(nickname ?? ''), String(key ?? ''))
     return res.error ? { error: res.error } : { account: res.account }
   })
+  handle('accounts:reconnect', async (_e, id, key) => {
+    // The key is only passed through; it's never logged or returned.
+    const res = await accounts.reconnect(String(id ?? ''), String(key ?? ''))
+    return res.error ? { error: res.error } : { account: res.account }
+  })
   handle('accounts:rename', (_e, id, nickname) => accounts.rename(String(id), String(nickname)))
   handle('accounts:remove', (_e, id) => accounts.remove(String(id)))
   handle('grants:add', (_e, grant) => accounts.addGrant(grant))

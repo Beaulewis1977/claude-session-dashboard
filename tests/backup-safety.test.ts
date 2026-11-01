@@ -3,7 +3,17 @@
 // restored API accounts, a drive that comes back, and switching folders.
 
 import type { Dirent, Stats } from 'node:fs'
-import { lstat, mkdir, mkdtemp, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
+import {
+  lstat,
+  mkdir,
+  mkdtemp,
+  readdir,
+  readFile,
+  rename,
+  rm,
+  symlink,
+  writeFile
+} from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -20,7 +30,7 @@ import {
   runBackup,
   SET_FILE
 } from '../src/main/core/backup-store'
-import { AccountsService, createAccountsStore } from '../src/main/services/accounts'
+import { AccountsService, createAccountsStore, keyFingerprint } from '../src/main/services/accounts'
 import { BackupService, createBackupStore } from '../src/main/services/backup'
 import { BACKUP_SET_DIR, isBackupError } from '../src/shared/backup'
 import { maskKey } from '../src/shared/usage/credits'
@@ -28,8 +38,8 @@ import { maskKey } from '../src/shared/usage/credits'
 const FAST = { N: 2 ** 10, r: 8, p: 1 }
 const encryptor = {
   available: () => true,
-  encrypt: (t: string) => Buffer.from(`dpapi:${t}`),
-  decrypt: (b: Buffer) => b.toString().slice('dpapi:'.length)
+  encrypt: async (t: string) => Buffer.from(`dpapi:${t}`),
+  decrypt: async (b: Buffer) => b.toString().slice('dpapi:'.length)
 }
 
 let root: string
@@ -123,7 +133,7 @@ describe('1. damaged encryption details never mean "not encrypted"', () => {
     await writeFile(file, JSON.stringify({ ...v, current: null }))
     clock += 2 * 24 * 60 * 60_000
     const st = await svc.status()
-    expect(st.downgraded).toBe(true)
+    expect(st.paused?.reason).toBe('unencrypted')
     expect(await svc.due()).toBe(false)
     const run = await svc.runNow('manual')
     expect(run.ok).toBe(false)
@@ -133,7 +143,7 @@ describe('1. damaged encryption details never mean "not encrypted"', () => {
 
     // My explicit choice resumes (here: without a password).
     expect(isBackupError(await svc.setPassword(null, false))).toBe(false)
-    expect((await svc.status()).downgraded).toBeUndefined()
+    expect((await svc.status()).paused).toBeUndefined()
     expect((await svc.runNow('manual')).ok).toBe(true)
   })
 })
@@ -343,8 +353,10 @@ describe('5. a restored API account gets its key back without losing its history
         nickname: 'Work',
         kind: 'standard',
         masked: maskKey(KEY),
-        createdAt: '2026-10-01T00:00:00Z'
-      })
+        createdAt: '2026-10-01T00:00:00Z',
+        // Backups keep the key's fingerprint (never the key).
+        fp: keyFingerprint(KEY)
+      } as never)
       d.grants.push({
         id: 'g1',
         accountId: 'acct-restored',
@@ -360,14 +372,14 @@ describe('5. a restored API account gets its key back without losing its history
       refreshMinutes: () => 0
     })
     expect(svc.list()[0]?.needsKey).toBe(true)
-    expect(svc.keyFor('acct-restored')).toBeUndefined()
+    expect(await svc.keyFor('acct-restored')).toBeUndefined()
 
     const res = await svc.add('Work laptop', KEY)
     expect(res.error).toBeUndefined()
     expect(res.account?.id).toBe('acct-restored')
     expect(svc.list()).toHaveLength(1)
     expect(svc.list()[0]?.needsKey).toBeUndefined()
-    expect(svc.keyFor('acct-restored')).toBe(KEY)
+    expect(await svc.keyFor('acct-restored')).toBe(KEY)
     expect(svc.grants()[0]?.accountId).toBe('acct-restored')
     // Now it's there: a second add is still refused.
     expect((await svc.add('again', KEY)).error).toMatch(/already added/)
@@ -416,5 +428,207 @@ describe('7. a newly chosen folder gets its first backup soon', () => {
     expect((await svc.runNow('manual')).ok).toBe(true)
     await svc.connect(other, {})
     expect(await svc.due()).toBe(false)
+  })
+})
+
+// ---------------------------------------------------------------- re-review
+
+describe('the folder’s set can’t change behind the app', () => {
+  it('a different set put in the folder pauses backups until I explicitly use it', async () => {
+    const { svc } = await service()
+    await svc.connect(dest, { encrypt: true, password: 'correct horse battery', remember: true })
+    expect((await svc.runNow('manual')).ok).toBe(true)
+    // Swapped for a different, unencrypted set (same folder).
+    await rm(setDir, { recursive: true, force: true })
+    await createSet(setDir, new Date(clock).toISOString())
+    const st = await svc.status()
+    expect(st.paused?.reason).toBe('replaced')
+    expect(await svc.due()).toBe(false)
+    const run = await svc.runNow('manual')
+    expect(run.ok).toBe(false)
+    expect(run.error).toMatch(/replaced/)
+    // Reselecting the folder doesn't quietly accept it...
+    expect(await svc.connect(dest, {})).toMatchObject({ changed: 'replaced' })
+    expect((await svc.status()).paused?.reason).toBe('replaced')
+    // ...an explicit choice does.
+    expect(isBackupError(await svc.connect(dest, { accept: true }))).toBe(false)
+    expect((await svc.runNow('manual')).ok).toBe(true)
+  })
+
+  it('a downgraded set stays paused across stop-using and reselecting', async () => {
+    const { svc } = await service()
+    await svc.connect(dest, { encrypt: true, password: 'correct horse battery', remember: true })
+    expect((await svc.runNow('manual')).ok).toBe(true)
+    const file = join(setDir, SET_FILE)
+    await writeFile(
+      file,
+      JSON.stringify({ ...JSON.parse(await readFile(file, 'utf8')), current: null })
+    )
+    await svc.disconnect()
+    const again = await svc.connect(dest, {})
+    expect(again).toMatchObject({ changed: 'unencrypted' })
+    expect((await listSnapshots(setDir)).snapshots).toHaveLength(1)
+    expect(await allText(setDir)).not.toContain('secret plan')
+  })
+
+  it('backup files without a readable set file are never started over', async () => {
+    const { svc } = await service()
+    await svc.connect(dest, { encrypt: true, password: 'correct horse battery', remember: true })
+    expect((await svc.runNow('manual')).ok).toBe(true)
+    await rm(join(setDir, SET_FILE))
+    const st = await svc.status()
+    expect(st.available).toBe(false)
+    expect(st.unavailableReason).toMatch(/backup-set\.json is missing/)
+    expect((await svc.runNow('manual')).ok).toBe(false)
+    expect((await svc.candidate(dest)).error).toMatch(/won’t start a new backup set/)
+    // Not even when I ask for no encryption: no plaintext set over them.
+    expect(await svc.connect(dest, { encrypt: false })).toMatchObject({
+      error: expect.stringMatching(/won’t start/)
+    })
+    await expect(readFile(join(setDir, SET_FILE))).rejects.toThrow()
+    await expect(createSet(setDir, new Date(clock).toISOString())).rejects.toThrow(/won’t start/)
+  })
+
+  it('a backup folder that is a junction is refused', async () => {
+    const { svc } = await service()
+    const elsewhere = join(root, 'elsewhere')
+    await mkdir(elsewhere, { recursive: true })
+    try {
+      await symlink(elsewhere, setDir, 'junction')
+    } catch {
+      return
+    }
+    expect((await svc.candidate(dest)).error).toMatch(/link or junction/)
+    expect(await svc.connect(dest, {})).toMatchObject({
+      error: expect.stringMatching(/link or junction/)
+    })
+    expect(await readdir(elsewhere)).toEqual([])
+  })
+})
+
+describe('one PC writes to a set', () => {
+  it('another install restores but doesn’t back up until it takes over', async () => {
+    const a = await service()
+    await a.svc.connect(dest, {})
+    expect((await a.svc.runNow('manual')).ok).toBe(true)
+
+    const otherData = join(root, 'OtherPC', 'ClaudeSessionDashboard')
+    await mkdir(otherData, { recursive: true })
+    await writeFile(join(otherData, 'metadata.json'), '{"version":1,"sessions":{},"archive":{}}')
+    const b = await service({ dataDir: otherData })
+    await b.svc.connect(dest, {})
+    expect((await b.svc.status()).paused?.reason).toBe('other-writer')
+    expect(await b.svc.due()).toBe(false)
+    expect((await b.svc.runNow('manual')).ok).toBe(false)
+    // Restoring from it still works.
+    const snaps = (await b.svc.snapshots()) as { id: string }[]
+    expect(await b.svc.preview(snaps[0]!.id)).toMatchObject({ snapshotId: snaps[0]!.id })
+
+    expect(isBackupError(await b.svc.takeOver())).toBe(false)
+    expect((await b.svc.runNow('manual')).ok).toBe(true)
+    // The first PC stops at its next backup.
+    expect((await a.svc.status()).paused?.reason).toBe('other-writer')
+    expect((await a.svc.runNow('manual')).ok).toBe(false)
+  })
+})
+
+describe('restore previews', () => {
+  it('an unknown or invalid preview token gets a clear message', async () => {
+    const { svc } = await service()
+    await svc.connect(dest, {})
+    expect(await svc.restore('f'.repeat(32))).toEqual({
+      error: "That restore preview isn't valid. Start a new preview"
+    })
+  })
+})
+
+describe('restored API accounts: exact keys only, histories kept together', () => {
+  const K1 = 'sk-ant-api03-FirstKeyAAAAAAAAAAAAAAAA_same'
+  // Same prefix and last 4 characters: the same mask as K1.
+  const K2 = 'sk-ant-api03-SecondKeyBBBBBBBBBBBBBBBB_same'
+
+  async function accounts(seed: (d: ReturnType<typeof createAccountsStore>['value']) => void) {
+    const store = createAccountsStore(dataDir)
+    await store.load()
+    store.update(seed)
+    const merges: [string, string][] = []
+    const svc = new AccountsService(store, encryptor, {
+      fetcher: async () => {
+        throw new Error('no network')
+      },
+      userAgent: 't',
+      refreshMinutes: () => 0,
+      onMerge: (from, to) => {
+        merges.push([from, to])
+      }
+    })
+    await svc.init()
+    return { svc, store, merges }
+  }
+
+  const acct = (o: Record<string, unknown>) =>
+    ({ kind: 'standard', masked: maskKey(K1), createdAt: '2026-10-01T00:00:00Z', ...o }) as never
+
+  it('a key already added before the restore is merged into the restored account', async () => {
+    expect(maskKey(K1)).toBe(maskKey(K2))
+    const enc = (await encryptor.encrypt(K1)).toString('base64')
+    const { svc, merges } = await accounts((d) => {
+      // Added on this PC before restoring (its own id), then the restored one.
+      d.accounts.push(acct({ id: 'acct-here', nickname: 'New', enc }))
+      d.accounts.push(acct({ id: 'acct-old', nickname: 'Work', fp: keyFingerprint(K1) }))
+      d.grants.push({
+        id: 'g-old',
+        accountId: 'acct-old',
+        amountUsd: 50,
+        receivedAt: '2026-10-01T00:00:00'
+      })
+      d.grants.push({
+        id: 'g-here',
+        accountId: 'acct-here',
+        amountUsd: 5,
+        receivedAt: '2026-11-01T00:00:00'
+      })
+    })
+    // Adding it again is refused, and points to Reconnect.
+    expect((await svc.add('x', K1)).error).toMatch(/Reconnect key/)
+    const r = await svc.reconnect('acct-old', K1)
+    expect(r.error).toBeUndefined()
+    expect(svc.list().map((a) => a.id)).toEqual(['acct-old'])
+    expect(await svc.keyFor('acct-old')).toBe(K1)
+    expect(svc.grants().map((g) => g.accountId)).toEqual(['acct-old', 'acct-old'])
+    expect(merges).toEqual([['acct-here', 'acct-old']])
+  })
+
+  it('a different key with the same mask is never attached to restored history', async () => {
+    const { svc } = await accounts((d) => {
+      d.accounts.push(acct({ id: 'acct-old', nickname: 'Work', fp: keyFingerprint(K1) }))
+    })
+    expect((await svc.reconnect('acct-old', K2)).error).toMatch(/isn’t the key this account used/)
+    const added = await svc.add('Other', K2)
+    expect(added.account?.id).not.toBe('acct-old')
+    expect(svc.list().find((a) => a.id === 'acct-old')?.needsKey).toBe(true)
+    // The right key reconnects it.
+    expect((await svc.reconnect('acct-old', K1)).account?.id).toBe('acct-old')
+  })
+
+  it('an account restored without a fingerprint is only reconnected by choosing it', async () => {
+    const { svc } = await accounts((d) => {
+      d.accounts.push(acct({ id: 'acct-legacy', nickname: 'Old' }))
+    })
+    // Adding a key with that mask doesn't attach it (it could be K2).
+    const added = await svc.add('New', K2)
+    expect(added.account?.id).not.toBe('acct-legacy')
+    expect(svc.list().find((a) => a.id === 'acct-legacy')?.needsKey).toBe(true)
+    // Choosing the account and giving a matching key does.
+    expect((await svc.reconnect('acct-legacy', K1)).account?.id).toBe('acct-legacy')
+  })
+
+  it('keys saved before fingerprints get one at startup (never the key itself)', async () => {
+    const enc = (await encryptor.encrypt(K1)).toString('base64')
+    const { store } = await accounts((d) => {
+      d.accounts.push(acct({ id: 'acct-1', nickname: 'Mine', enc }))
+    })
+    expect((store.value.accounts[0] as { fp?: string }).fp).toBe(keyFingerprint(K1))
+    expect(JSON.stringify(store.value)).not.toContain(K1)
   })
 })

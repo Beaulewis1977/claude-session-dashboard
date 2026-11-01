@@ -6,7 +6,7 @@
 // and never sent to the renderer.
 
 import { EventEmitter } from 'node:events'
-import { randomBytes } from 'node:crypto'
+import { createHash, randomBytes } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { now } from '@shared/clock'
@@ -23,15 +23,31 @@ import {
 import { JsonStore } from '../core/json-store'
 import { ApiError, fetchReport, type Fetcher } from './anthropic-api'
 
+/**
+ * Electron safeStorage (Windows DPAPI), through its asynchronous API. Keys
+ * saved with the older synchronous API decrypt the same way.
+ */
 export interface Encryptor {
+  /** Checked once at startup (safeStorage.isAsyncEncryptionAvailable). */
   available(): boolean
-  encrypt(text: string): Buffer
-  decrypt(data: Buffer): string
+  encrypt(text: string): Promise<Buffer>
+  decrypt(data: Buffer): Promise<string>
 }
 
 interface StoredAccount extends Account {
   /** base64 of the safeStorage ciphertext. */
   enc?: string
+  /**
+   * SHA-256 of the whole key (with a fixed prefix): tells keys apart exactly,
+   * where the masked form shows only the start and the last 4 characters.
+   * A hash of a long random key can't be turned back into the key.
+   */
+  fp?: string
+}
+
+/** The fingerprint stored for a key (see StoredAccount.fp). */
+export function keyFingerprint(key: string): string {
+  return createHash('sha256').update(`csd-api-key-v1:${key.trim()}`).digest('hex')
 }
 
 export interface AccountsFile {
@@ -56,6 +72,12 @@ export interface AccountsOptions {
   /** Fixtures mode: Admin reports come from these files instead of the network. */
   sampleAdminDir?: string
   refreshMinutes: () => number
+  /**
+   * Reconnecting a restored account merged another account (same key) into
+   * it: point everything that used `fromId` (sessions, project defaults) at
+   * `toId`.
+   */
+  onMerge?: (fromId: string, toId: string) => void | Promise<void>
 }
 
 const id = (p: string): string => `${p}-${randomBytes(6).toString('hex')}`
@@ -83,8 +105,31 @@ export class AccountsService extends EventEmitter<{ changed: [] }> {
     }
   }
 
+  /** Fingerprints for keys saved before they existed (decrypted here, never stored). */
+  async init(): Promise<void> {
+    const todo = this.store.value.accounts.filter((a) => a.enc && !a.fp)
+    if (!todo.length) return
+    const fps = new Map<string, string>()
+    for (const a of todo) {
+      const key = await this.decrypt(a.enc as string)
+      if (key) fps.set(a.id, keyFingerprint(key))
+    }
+    if (!fps.size) return
+    this.store.update((d) => {
+      for (const a of d.accounts) if (fps.has(a.id)) a.fp = fps.get(a.id)
+    })
+  }
+
+  private async decrypt(enc: string): Promise<string | undefined> {
+    try {
+      return await this.enc.decrypt(Buffer.from(enc, 'base64'))
+    } catch {
+      return undefined
+    }
+  }
+
   list(): Account[] {
-    return this.store.value.accounts.map(({ enc, ...a }) =>
+    return this.store.value.accounts.map(({ enc, fp: _fp, ...a }) =>
       !enc && !a.sample ? { ...a, needsKey: true } : { ...a }
     )
   }
@@ -107,14 +152,23 @@ export class AccountsService extends EventEmitter<{ changed: [] }> {
           "Windows can't encrypt the key for this app right now, so it won't be stored (keys are never saved in plain text)."
       }
     }
-    const same = this.store.value.accounts.filter((a) => a.masked === maskKey(k) && !a.sample)
-    if (same.some((a) => a.enc)) {
-      return { error: 'This key is already added.' }
+    const fp = keyFingerprint(k)
+    const real = this.store.value.accounts.filter((a) => !a.sample)
+    // The same key, stored: by fingerprint, or (no fingerprint yet) by its mask.
+    const stored = real.find((a) => a.enc && (a.fp ? a.fp === fp : a.masked === maskKey(k)))
+    if (stored) {
+      const restored = real.some((a) => !a.enc && a.fp === fp)
+      return {
+        error: restored
+          ? `This key is already added as “${stored.nickname}”. To connect it to the account restored from a backup, use Reconnect key on that account.`
+          : 'This key is already added.'
+      }
     }
-    const enc = this.enc.encrypt(k).toString('base64')
-    // A restored account without its key (backups never hold keys): the same
-    // key goes back into it, so its id, credit grants and history stay linked.
-    const restored = same.find((a) => !a.enc && a.kind === kind)
+    const enc = (await this.enc.encrypt(k)).toString('base64')
+    // A restored account without its key (backups never hold keys) that used
+    // exactly this key: the key goes back into it, so its id, credit grants
+    // and history stay linked. Never by the mask alone (two keys can share it).
+    const restored = real.find((a) => !a.enc && a.fp === fp && a.kind === kind)
     if (restored) {
       this.store.update((d) => {
         const a = d.accounts.find((x) => x.id === restored.id)
@@ -133,7 +187,8 @@ export class AccountsService extends EventEmitter<{ changed: [] }> {
       kind,
       masked: maskKey(k),
       createdAt: new Date(now()).toISOString(),
-      enc
+      enc,
+      fp
     }
     this.store.update((d) => {
       d.accounts.push(account)
@@ -143,6 +198,63 @@ export class AccountsService extends EventEmitter<{ changed: [] }> {
     if (kind === 'admin') void this.refreshAdmin(account.id)
     const { enc: _e, ...pub } = account
     return { account: pub }
+  }
+
+  /**
+   * Give a restored account (no key on this PC) its key again, chosen by the
+   * user for that account. The key must be the one it used: same fingerprint,
+   * or, for an account restored without one, the same type and mask. If the
+   * key is already stored as another account (added before the restore), that
+   * account is merged into this one: its grants move here, and everything that
+   * used it is pointed here (onMerge), so no history is split or lost.
+   */
+  async reconnect(accountId: string, key: string): Promise<{ account?: Account; error?: string }> {
+    const k = key.trim()
+    const kind = keyKind(k)
+    const target = this.store.value.accounts.find((a) => a.id === accountId && !a.sample)
+    if (!target) return { error: 'That account isn’t there any more.' }
+    if (target.enc) return { error: 'This account already has its key on this PC.' }
+    if (!kind)
+      return {
+        error: 'That doesn’t look like an Anthropic API key (sk-ant-api… or sk-ant-admin…).'
+      }
+    if (kind !== target.kind)
+      return {
+        error: `This account used ${target.kind === 'admin' ? 'an Admin' : 'a standard'} key.`
+      }
+    const fp = keyFingerprint(k)
+    if (target.fp ? target.fp !== fp : target.masked !== maskKey(k))
+      return { error: 'That isn’t the key this account used.' }
+    if (!this.encryptionAvailable())
+      return {
+        error:
+          "Windows can't encrypt the key for this app right now, so it won't be stored (keys are never saved in plain text)."
+      }
+    const enc = (await this.enc.encrypt(k)).toString('base64')
+    const other = this.store.value.accounts.find(
+      (a) =>
+        a.id !== target.id && !a.sample && a.enc && (a.fp ? a.fp === fp : a.masked === maskKey(k))
+    )
+    if (other) {
+      this.aborts.get(other.id)?.abort()
+      this.aborts.delete(other.id)
+    }
+    this.store.update((d) => {
+      const a = d.accounts.find((x) => x.id === target.id)
+      if (!a) return
+      a.enc = enc
+      a.fp = fp
+      if (other) {
+        for (const g of d.grants) if (g.accountId === other.id) g.accountId = target.id
+        d.accounts = d.accounts.filter((x) => x.id !== other.id)
+        delete d.admin[other.id]
+      }
+    })
+    await this.store.flush()
+    if (other) await this.opts.onMerge?.(other.id, target.id)
+    this.emit('changed')
+    if (kind === 'admin') void this.refreshAdmin(target.id)
+    return { account: this.get(target.id) }
   }
 
   async rename(accountId: string, nickname: string): Promise<void> {
@@ -170,14 +282,10 @@ export class AccountsService extends EventEmitter<{ changed: [] }> {
   }
 
   /** The decrypted key, for the main process only (launching, Admin API). */
-  keyFor(accountId: string): string | undefined {
+  async keyFor(accountId: string): Promise<string | undefined> {
     const a = this.store.value.accounts.find((x) => x.id === accountId)
     if (!a?.enc) return undefined
-    try {
-      return this.enc.decrypt(Buffer.from(a.enc, 'base64'))
-    } catch {
-      return undefined
-    }
+    return this.decrypt(a.enc)
   }
 
   // ------------------------------------------------------------ grants
@@ -278,7 +386,7 @@ export class AccountsService extends EventEmitter<{ changed: [] }> {
           JSON.parse(await readFile(join(this.opts.sampleAdminDir, 'cost_report.json'), 'utf8'))
         ]
       } else {
-        const key = this.keyFor(accountId)
+        const key = await this.keyFor(accountId)
         if (!key)
           throw new ApiError(
             "The key couldn't be decrypted on this computer. Remove it and add it again."

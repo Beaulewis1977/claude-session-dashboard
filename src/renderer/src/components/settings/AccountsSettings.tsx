@@ -146,6 +146,74 @@ function AddKeyDialog({ onClose }: { onClose: () => void }) {
   )
 }
 
+/** Give a restored account its key again: only the key it used is accepted. */
+function ReconnectDialog({ account, onClose }: { account: Account; onClose: () => void }) {
+  const [key, setKey] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string>()
+  const submit = async (): Promise<void> => {
+    setBusy(true)
+    setError(undefined)
+    const res = await api.reconnectAccount(account.id, key)
+    setBusy(false)
+    if (res.error) {
+      setError(res.error)
+      return
+    }
+    setKey('')
+    toast.success(`Reconnected ${account.nickname}`, { description: account.masked })
+    onClose()
+  }
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-w-[520px]">
+        <DialogHeader
+          icon={
+            <div className="flex size-8 items-center justify-center rounded-lg bg-accent-soft text-primary">
+              <KeyRound className="size-4" />
+            </div>
+          }
+          title={`Reconnect the key for “${account.nickname}”`}
+          description={`Paste the key this account used (${account.masked}). Another key is refused, even one that looks the same. If you already added this key as a separate account, that account is merged into this one, so all its sessions and credits stay together.`}
+        />
+        <form
+          className="space-y-3 px-5 pt-3 pb-5"
+          onSubmit={(e) => {
+            e.preventDefault()
+            void submit()
+          }}
+        >
+          <Input
+            type="password"
+            autoComplete="off"
+            autoFocus
+            aria-label="API key"
+            className="font-mono"
+            placeholder={account.masked}
+            value={key}
+            onChange={(e) => setKey(e.target.value)}
+          />
+          {error && (
+            <div className="flex items-start gap-2 text-xs text-destructive">
+              <TriangleAlert className="mt-px size-3.5 shrink-0" />
+              {error}
+            </div>
+          )}
+          <button type="submit" hidden />
+        </form>
+        <DialogFooter>
+          <Button variant="ghost" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button variant="primary" disabled={!key.trim() || busy} onClick={() => void submit()}>
+            {busy && <Loader2 className="animate-spin" />} Reconnect
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 function GrantForm({ accountId, onDone }: { accountId: string; onDone: () => void }) {
   const today = new Date(now()).toISOString().slice(0, 10)
   const [amount, setAmount] = useState('')
@@ -209,6 +277,7 @@ function AccountCard({ a, grants }: { a: Account; grants: CreditGrant[] }) {
   const credits = useApp((s) => s.credits)
   const [adding, setAdding] = useState(false)
   const [confirmRemove, setConfirmRemove] = useState(false)
+  const [reconnecting, setReconnecting] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
   const admin = credits?.admin.find((x) => x.accountId === a.id)
   const summary = credits?.summaries.find((x) => x.accountId === a.id)
@@ -248,11 +317,17 @@ function AccountCard({ a, grants }: { a: Account; grants: CreditGrant[] }) {
           </div>
           <div className="font-mono text-[11px] text-muted-foreground">{a.masked}</div>
           {a.needsKey && (
-            <div className="mt-0.5 text-xs text-muted-foreground">
-              Restored from a backup, which never holds keys. Add the same key again (Add API key)
-              to reconnect it; its credits and history stay with it.
+            <div className="mt-0.5 flex items-center gap-2 text-xs text-muted-foreground">
+              <span>
+                Restored from a backup, which never holds keys. Reconnect the key it used; its
+                credits and history stay with it.
+              </span>
+              <Button variant="outline" size="xs" onClick={() => setReconnecting(true)}>
+                <KeyRound /> Reconnect key…
+              </Button>
             </div>
           )}
+          {reconnecting && <ReconnectDialog account={a} onClose={() => setReconnecting(false)} />}
           {a.kind === 'admin' && (
             <div className="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground">
               <Wifi className="size-3" />

@@ -275,14 +275,25 @@ async function main(): Promise<void> {
   const watcher = new SourceWatcher(sessions)
   const lineage = new LineageService(sessions)
 
-  // API keys: encrypted with safeStorage (DPAPI on Windows). On Linux the
-  // "basic_text" backend isn't real encryption, so keys are refused there.
+  // API keys and a remembered backup password: encrypted with safeStorage
+  // (DPAPI on Windows), through its asynchronous API (keys saved with the old
+  // synchronous one decrypt the same way). Availability is checked once, now.
+  // On Linux the "basic_text" backend isn't real encryption, so keys are
+  // refused there.
+  const canEncrypt =
+    (await safeStorage.isAsyncEncryptionAvailable().catch(() => false)) &&
+    (process.platform !== 'linux' || safeStorage.getSelectedStorageBackend() !== 'basic_text')
   const encryptor: Encryptor = {
-    available: () =>
-      safeStorage.isEncryptionAvailable() &&
-      (process.platform !== 'linux' || safeStorage.getSelectedStorageBackend() !== 'basic_text'),
-    encrypt: (t) => safeStorage.encryptString(t),
-    decrypt: (b) => safeStorage.decryptString(b)
+    available: () => canEncrypt,
+    encrypt: (t) => safeStorage.encryptStringAsync(t),
+    decrypt: async (b) => (await safeStorage.decryptStringAsync(b)).result
+  }
+  // The phone companion's own TLS and push keys still use the synchronous
+  // calls (its code reads them synchronously); see the PR's known issues.
+  const phoneKeys = {
+    available: () => canEncrypt,
+    encrypt: (t: string) => safeStorage.encryptString(t),
+    decrypt: (b: Buffer) => safeStorage.decryptString(b)
   }
   const accountsStore = createAccountsStore(paths.dataDir)
   await accountsStore.load()
@@ -296,8 +307,23 @@ async function main(): Promise<void> {
     sampleAdminDir: FIXTURES
       ? join(fixturesLayout(appRoot).fixturesDir, 'usage', 'admin')
       : undefined,
-    refreshMinutes: () => settings.value.adminRefreshMinutes
+    refreshMinutes: () => settings.value.adminRefreshMinutes,
+    // A restored account took over another account with the same key: every
+    // session tagged with the old one, and every default, points to it now.
+    onMerge: async (from, to) => {
+      for (const [sid, m] of Object.entries(metadata.value.sessions))
+        if (m.billing?.mode === 'api' && m.billing.accountId === from)
+          sessions.tagBilling(sid, { ...m.billing, accountId: to })
+      settings.update((st) => {
+        if (st.defaultBilling === from) st.defaultBilling = to
+        for (const [k, v] of Object.entries(st.projectBilling))
+          if (v === from) st.projectBilling[k] = to
+      })
+      await Promise.all([metadata.flush(), settings.flush()]).catch(() => undefined)
+      mobile?.push('settings')
+    }
   })
+  await accounts.init()
   let bridgeGuess: (sessionId: string) => 'subscription' | 'api' | 'unknown' = () => 'unknown'
   const billing = new BillingService(
     sessions,
@@ -513,7 +539,7 @@ async function main(): Promise<void> {
     tailscale: FIXTURES
       ? fakeTailscale({ dnsName: 'ryzen-desktop.tail1234.ts.net' })
       : new TailscaleClient(),
-    keys: encryptor,
+    keys: phoneKeys,
     appVersion: app.getVersion(),
     fixtures: FIXTURES,
     claudePath: async () => (await platform.launchTools()).claude,

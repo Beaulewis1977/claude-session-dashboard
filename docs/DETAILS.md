@@ -217,19 +217,30 @@ settings backups can hold secrets from Claude's `env`), caches, and `backup.json
   every file, so any one of them restores in full.
 - **Atomic:** objects and manifests are written to a temp file, flushed, and renamed into place. A
   snapshot exists only once its manifest does: an interrupted backup (the app closed, the drive was
-  unplugged) leaves at most some objects the next backup reuses.
+  unplugged) leaves at most some objects the next backup reuses. Right before the manifest is
+  written, every object it names is checked to be there (and written again if not).
+- **Complete or failed, never quietly partial:** if a file or folder that exists can't be read
+  (permissions, a disk error), the backup fails and no snapshot is made. Only a file that vanished
+  while being listed is left out. A file a backup can't hold (an odd name) is named in the result.
 - **Encryption:** scrypt (N = 2^17, r = 8, p = 1, Node's built-in crypto, no native module) turns
   the password into a key; each file is AES-256-GCM with its own random IV, and a restore checks
   every file against its name, so a changed or damaged file is refused. The password is never
   stored. **Remember on this PC** keeps the derived key, encrypted with Windows (DPAPI) through
   Electron safeStorage, in `backup.json`. Changing the password applies to new snapshots (the first
-  one copies everything again); older snapshots need the password they were made with.
+  one copies everything again); older snapshots need the password they were made with. A
+  `backup-set.json` whose password details are damaged, or whose current password can't be found,
+  is refused (never read as "not encrypted"). If an encrypted folder says it isn't any more without
+  the app having changed it (edited, or an old copy back from a sync conflict), backups pause until
+  you set a password again or choose to back up without one. A remembered password is picked up
+  as soon as the drive is back, without a restart.
 - **Schedule:** daily or weekly while the app is open (checked every 15 minutes), plus **Back up
-  now**. A failed backup (drive missing, folder full) is tried again after an hour.
+  now**. A failed backup (drive missing, folder full) is tried again after an hour. A newly chosen
+  folder gets its first backup at the next check.
 - **Retention:** keep the last N snapshots (default 14, up to 365). Older manifests are deleted, then
   objects no remaining snapshot uses, once they're 12 hours old (so another PC still writing into a
   shared folder keeps its new files). If any manifest can't be read (still syncing), no object is
-  deleted. Only the app's own files, by their exact names, inside its own subfolder, are ever
+  deleted. Retention runs under the same lock as a backup, so it never removes an object a backup
+  is reusing. Only the app's own files, by their exact names, inside its own subfolder, are ever
   deleted.
 - **Restore:** pick a snapshot and see what would change, per kind of data. Files are restored only
   to the app's own data folder, and only paths on the backup's allow-list (a crafted manifest can't
@@ -238,7 +249,10 @@ settings backups can hold secrets from Claude's `env`), caches, and `backup.json
   replaces to `restore-backups\<time>\` and puts the restored one in place. A restore never deletes a
   file, never replaces an archived session with a smaller copy, keeps API keys saved on this PC (and
   keys added since), keeps the window and phone companion settings, and moves archive paths from
-  another PC or Windows user to this one.
+  another PC or Windows user to this one. These rules apply even when the file didn't exist here
+  yet (a new PC never gets the old PC's phone server switched on). API accounts come back without
+  their keys and show **Key not on this PC**: add the same key again and it reconnects to the
+  restored account, with its credits and history.
 
 ## Running now and session alerts
 

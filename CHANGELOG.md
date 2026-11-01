@@ -16,7 +16,14 @@
   (never `.claude`). It finishes on restart before any data loads, copies every file it replaces to
   `restore-backups\` first, never deletes a file, never replaces an archived session with a smaller
   copy, and keeps this PC's API keys, phone pairing and window and phone settings. Works across PCs
-  and Windows users (archive paths are moved to the new data folder).
+  and Windows users (archive paths are moved to the new data folder), including on a new PC where
+  those files don't exist yet. Restored API accounts show **Key not on this PC**; adding the same
+  key again reconnects it, keeping its credits and history.
+- **Safety details:** a backup that can't read a file that exists fails instead of making a partial
+  snapshot; damaged password details in the backup folder are refused, and a folder that turns
+  unencrypted behind the app's back pauses backups until you choose; retention runs under the same
+  lock as a backup; a remembered password works again as soon as the drive is back; a newly chosen
+  folder gets its first backup right away.
 
 ## 1.5.0 (November 1, 2026)
 

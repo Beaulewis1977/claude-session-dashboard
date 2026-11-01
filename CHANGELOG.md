@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## 1.5.0 (November 1, 2026)
+
+**Running now: every live Claude Code session at a glance, with alerts on your PC and phone.**
 
 - **Running now.** A new sidebar entry (with a count badge) and a section at the top of the session
   list show every Claude Code session that's running, on Windows and in WSL, with its state:

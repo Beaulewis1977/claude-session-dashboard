@@ -19,6 +19,7 @@ import {
   type MobileSettings,
   type MobileStatus,
   type PairingInfo,
+  type PushKind,
   type TailscaleStatus
 } from '@shared/mobile'
 import type { TerminalPref } from '@shared/types'
@@ -31,6 +32,13 @@ import { allowedHosts, bindAddress, lanAddresses, LOOPBACK } from './network'
 import { RemoteLauncher, type RemoteLaunchDeps } from './remote-launch'
 import { MobileServer, type ServerDeps, type WebAssets } from './server'
 import type { TailscaleClient } from './tailscale'
+import {
+  createVapidKeys,
+  parseSubscription,
+  sendPush,
+  type PushPost,
+  type VapidKeys
+} from './webpush'
 
 export interface KeyBox {
   available(): boolean
@@ -57,6 +65,10 @@ export interface MobileServiceDeps {
   claudePath(): Promise<string | undefined>
   /** Terminal access: a phone offers its public SSH key (shown on the PC only). */
   proposeKey?: ServerDeps['proposeKey']
+  /** Which session a tapped push alert means (Running now; per phone, once). */
+  resolveLiveRef?: (deviceId: string, ref: unknown) => string | null
+  /** For tests: how a push is posted (default: HTTPS to the push service). */
+  pushPost?: PushPost
 }
 
 export class MobileService extends EventEmitter<{ changed: [] }> {
@@ -96,7 +108,21 @@ export class MobileService extends EventEmitter<{ changed: [] }> {
       }),
       hosts: () => this.hosts(),
       changed: () => this.changed(),
-      proposeKey: deps.proposeKey
+      proposeKey: deps.proposeKey,
+      push: {
+        publicKey: () => this.pushPublicKey(),
+        subscribe: (id, sub) => this.subscribePush(id, sub),
+        unsubscribe: (id) => this.pushOff(id, 'phone'),
+        test: (id) => this.webPush({ kind: 'test' }, id),
+        state: (id, endpoint) => {
+          const d = this.registry.pushTargets().find((x) => x.id === id)
+          return {
+            on: !!d,
+            matches: !!d && typeof endpoint === 'string' && d.push!.endpoint === endpoint
+          }
+        }
+      },
+      resolveLiveRef: (id, ref) => deps.resolveLiveRef?.(id, ref) ?? null
     })
   }
 
@@ -470,6 +496,159 @@ export class MobileService extends EventEmitter<{ changed: [] }> {
     return n
   }
 
+  // ------------------------------------------------------------ push
+
+  private vapidCache: VapidKeys | undefined
+
+  /** The app's VAPID keys: made once, kept in mobile.json (private key encrypted when possible). */
+  private vapid(): VapidKeys {
+    if (this.vapidCache) return this.vapidCache
+    const saved = this.deps.store.value.vapid
+    if (saved) {
+      try {
+        const privateKeyPkcs8 = saved.encrypted
+          ? this.deps.keys.decrypt(Buffer.from(saved.privateKey, 'base64'))
+          : saved.privateKey
+        this.vapidCache = { publicKey: saved.publicKey, privateKeyPkcs8 }
+        return this.vapidCache
+      } catch {
+        // Can't be read on this PC any more (e.g. a copied profile): make new
+        // keys. Phones then have to turn push on again, since their
+        // subscriptions belong to the old key.
+        this.deps.store.update((f) => {
+          for (const d of f.devices) delete d.push
+        })
+      }
+    }
+    const k = createVapidKeys()
+    const encrypted = this.deps.keys.available()
+    this.deps.store.update((f) => {
+      f.vapid = {
+        publicKey: k.publicKey,
+        privateKey: encrypted
+          ? this.deps.keys.encrypt(k.privateKeyPkcs8).toString('base64')
+          : k.privateKeyPkcs8,
+        encrypted
+      }
+    })
+    this.vapidCache = k
+    return k
+  }
+
+  /** What a phone passes as `applicationServerKey` when it subscribes. */
+  pushPublicKey(): string {
+    return this.vapid().publicKey
+  }
+
+  private subscribePush(deviceId: string, raw: unknown): { ok: boolean; error?: string } {
+    const sub = parseSubscription(raw)
+    if ('error' in sub) return { ok: false, error: sub.error }
+    // Only for a key the phone got from this PC (re-made keys invalidate old subscriptions).
+    this.vapid()
+    const d = this.registry.list().find((x) => x.id === deviceId)
+    this.registry.setPush(deviceId, sub)
+    this.registry.log({
+      action: 'push',
+      deviceId,
+      device: d?.name,
+      detail: 'Push alerts turned on for this phone',
+      ok: true
+    })
+    this.changed()
+    return { ok: true }
+  }
+
+  /** Turn a phone's push alerts off (from the PC, or the phone itself). */
+  pushOff(deviceId: string, by: 'pc' | 'phone' = 'pc'): void {
+    const d = this.registry.list().find((x) => x.id === deviceId)
+    if (!d?.push) return
+    this.registry.setPush(deviceId, undefined)
+    this.registry.log({
+      action: 'push',
+      deviceId,
+      device: d.name,
+      detail:
+        by === 'pc' ? 'Push alerts turned off on the PC' : 'Push alerts turned off on the phone',
+      ok: true
+    })
+    this.changed()
+  }
+
+  /**
+   * Send a push alert to every paired phone with push on (or one). The
+   * reference may be a function, to make one per phone (see LiveService). The
+   * message is only `{v, kind, ref}` (see webpush.ts). Only while phone access
+   * is on: turning it off stops push too. In fixtures mode nothing is sent.
+   * Returns how many phones it was sent to.
+   */
+  async webPush(
+    notice: { kind: PushKind; ref?: string | ((deviceId: string) => string) },
+    deviceId?: string
+  ): Promise<number> {
+    if (!this.settings.enabled) return 0
+    const targets = this.registry.pushTargets().filter((d) => !deviceId || d.id === deviceId)
+    if (!targets.length) return 0
+    if (this.deps.fixtures) {
+      this.registry.log({
+        action: 'push',
+        detail: `Push “${notice.kind}” (simulated) for ${phones(targets.length)}`,
+        ok: true
+      })
+      this.changed()
+      return targets.length
+    }
+    const vapid = this.vapid()
+    const results = await Promise.all(
+      targets.map(async (d) => ({
+        d,
+        // Each phone gets its own reference (it only works for that phone).
+        r: await sendPush(
+          d.push!,
+          {
+            kind: notice.kind,
+            ref: typeof notice.ref === 'function' ? notice.ref(d.id) : notice.ref
+          },
+          vapid,
+          { post: this.deps.pushPost }
+        )
+      }))
+    )
+    let sent = 0
+    for (const { d, r } of results) {
+      if (r.ok) sent++
+      else if (r.gone) {
+        this.registry.setPush(d.id, undefined)
+        this.registry.log({
+          action: 'push',
+          deviceId: d.id,
+          device: d.name,
+          detail: 'The phone ended its push subscription: push alerts are off for it now',
+          ok: false
+        })
+      } else
+        this.registry.log({
+          action: 'push',
+          deviceId: d.id,
+          device: d.name,
+          detail: `Push “${notice.kind}” failed: ${r.error ?? 'unknown error'}`,
+          ok: false
+        })
+    }
+    if (sent)
+      this.registry.log({
+        action: 'push',
+        detail: `Push “${notice.kind}” sent to ${phones(sent)}`,
+        ok: true
+      })
+    this.changed()
+    return sent
+  }
+
+  /** Settings → Phone: a test push to one phone. */
+  sendTestPush(deviceId: string): Promise<number> {
+    return this.webPush({ kind: 'test' }, deviceId)
+  }
+
   // ------------------------------------------------------------ checks
 
   async claudeCheck(): Promise<ClaudeCheck> {
@@ -557,3 +736,5 @@ export function recordedPort(target: string): number | undefined {
 export function webAppFile(rendererDir: string): string {
   return join(rendererDir, 'mobile.html')
 }
+
+const phones = (n: number): string => `${n} phone${n === 1 ? '' : 's'}`

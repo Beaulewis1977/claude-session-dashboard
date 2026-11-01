@@ -41,6 +41,7 @@ import type {
   TerminalLogEntry,
   TerminalStatus
 } from './terminal'
+import type { FocusResult, LiveSnapshot } from './live'
 
 export interface SearchHit {
   key: string
@@ -192,4 +193,23 @@ export interface CsdApi {
   getTerminalAccess(): Promise<TerminalAccessInfo>
   /** A local terminal in the session's folder (desktop only). */
   openTerminalHere(key: string): Promise<LaunchResult>
+
+  // Running now and session alerts
+  getLive(): Promise<LiveSnapshot>
+  onLiveChanged(cb: () => void): () => void
+  /** A session alert was clicked on the desktop: show this session. */
+  onShowLive(cb: (key: string) => void): () => void
+  /** Bring the session's terminal window (and tab) forward (desktop only). */
+  focusTerminal(key: string): Promise<FocusResult>
+  /** The exact settings.json change for turning session alerts on or off (desktop only). */
+  planHooks(sourceId: string, action: 'install' | 'uninstall'): Promise<BridgePlan>
+  applyHooks(
+    sourceId: string,
+    action: 'install' | 'uninstall',
+    token: string
+  ): Promise<BridgeApplyResult>
+  /** Turn push alerts off for a paired phone (desktop only). */
+  mobilePushOff(deviceId: string): Promise<void>
+  /** Send a test push to a paired phone; returns how many were sent (desktop only). */
+  mobilePushTest(deviceId: string): Promise<number>
 }

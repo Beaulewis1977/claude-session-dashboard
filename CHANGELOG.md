@@ -2,6 +2,35 @@
 
 ## Unreleased
 
+- **Running now.** A new sidebar entry (with a count badge) and a section at the top of the session
+  list show every Claude Code session that's running, on Windows and in WSL, with its state:
+  Working, Needs approval, Waiting for you, or Exited. Each shows how long it has been running and
+  since when it waits. States come from Claude Code's own `~/.claude/sessions/*.json` (read only;
+  each process is checked to be alive, including its start time, so crashed sessions and stale files
+  don't show), from hook events, and from recent transcript activity. A session that just ended
+  stays a while as Exited.
+- **Actions:** Focus terminal (brings the Windows Terminal window forward and selects the session's
+  tab, found by its name; WSL sessions too), Open on phone (a QR code of the Remote Control link),
+  Copy resume command, and Mute.
+- **Session alerts (opt-in per environment):** Settings → Session alerts adds a tiny hook script to
+  Claude Code's `settings.json` for exact, instant states, after you review the diff. Your existing
+  hooks are kept byte for byte (the app's go at the end of each list); Disable takes out exactly the
+  app's. Installed scripts are updated with the app, like the status line bridge.
+- **Alerts:** Windows notifications when a session needs approval, finishes (after a minimum working
+  time), stops with an error, keeps waiting, or ends. Pick the events, set quiet hours (approvals can
+  still come through), and mute single sessions. Clicking a notification opens the session.
+- **Safety details:** the app's hooks are recognised only by their exact command (a wrapper of yours
+  that mentions the script stays); Disable removes only their text, keeping comments and formatting;
+  files with comments work and duplicate keys are refused. Both installers save settings.json the
+  same way: a backup first, a flushed temp file, a last check that the file is still what you
+  reviewed, then one atomic rename (settings.json never goes missing). The Windows hook command
+  passes the script path as data, so no quote in a profile path can break out. Running processes are matched by their start time on every check. Focus
+  terminal matches tab names exactly and won't guess between two equal names.
+- **Phone:** a Running tab with the same view, and **push alerts** that arrive when the app is closed
+  (opt-in per phone, Web Push). A push says only what happened, with an opaque reference; tapping it
+  loads the details from the PC over Tailscale. Settings → Phone shows which phones have push on, and
+  can send a test or turn it off.
+
 - **Fix: per-project billing defaults for WSL.** "Always use this for <project>" was keyed by the
   folder alone, ignoring case, so the same path in two WSL distros, or two folders differing only
   by case, shared one billing default. It now uses the same project key as the model and effort

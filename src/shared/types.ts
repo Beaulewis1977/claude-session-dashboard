@@ -15,6 +15,7 @@ import {
 import { DEFAULT_PACE, type PaceSettings } from './usage/pace'
 import type { SourceHints, SourceLabel } from './source-label'
 import type { EffortChoice, ProjectModelDefault, ResolvedModel } from './model-choice'
+import { DEFAULT_LIVE_ALERTS, type LiveAlertSettings } from './live-alerts'
 
 export type EnvKind = 'windows' | 'wsl'
 
@@ -62,6 +63,8 @@ export interface SessionMeta {
   source?: { label: SourceLabel; by: 'auto' | 'manual'; reason?: string }
   /** Kept at the top of the session list. */
   pinned?: boolean
+  /** No "Running now" alerts for this session (desktop or phone). */
+  muteAlerts?: boolean
   /** Last launched from the app with Remote Control on (from the desktop or a paired phone). */
   remote?: RemoteTag
   /** Model for launches (`--model`): an alias or ID, "default" for none; unset = the project / Settings default. */
@@ -276,6 +279,8 @@ export interface AppSettings {
   defaultEffort: EffortChoice
   /** Per-project model / effort defaults, keyed by lower-cased cwd. */
   projectModels: Record<string, ProjectModelDefault>
+  /** Running now: which session events alert, quiet hours, where. */
+  liveAlerts: LiveAlertSettings
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -303,7 +308,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   remoteControlDefault: false,
   defaultModel: 'default',
   defaultEffort: 'default',
-  projectModels: {}
+  projectModels: {},
+  liveAlerts: DEFAULT_LIVE_ALERTS
 }
 
 export interface ScanState {

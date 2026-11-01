@@ -26,44 +26,69 @@ function hunks(diff: DiffLine[]): (DiffLine | { type: 'gap'; count: number })[] 
   return out
 }
 
+type EnvLike = Pick<BridgeEnv, 'sourceId' | 'label' | 'env' | 'user' | 'settingsPath'>
+
+/** The status line bridge (live limits) or the hook bridge (session alerts). */
+const KINDS = {
+  limits: {
+    plan: (id: string, a: 'install' | 'uninstall') => api.planBridge(id, a),
+    apply: (id: string, a: 'install' | 'uninstall', t: string) => api.applyBridge(id, a, t),
+    name: 'live limits',
+    Name: 'Live limits'
+  },
+  alerts: {
+    plan: (id: string, a: 'install' | 'uninstall') => api.planHooks(id, a),
+    apply: (id: string, a: 'install' | 'uninstall', t: string) => api.applyHooks(id, a, t),
+    name: 'session alerts',
+    Name: 'Session alerts'
+  }
+}
+
 export function BridgeDialog({
   env,
   action,
-  onClose
+  onClose,
+  kind = 'limits'
 }: {
-  env: BridgeEnv
+  env: EnvLike
   action: 'install' | 'uninstall'
   onClose: () => void
+  kind?: keyof typeof KINDS
 }) {
+  const k = KINDS[kind]
   const [plan, setPlan] = useState<BridgePlan | null>(null)
   const [busy, setBusy] = useState(false)
   useEffect(() => {
-    void api.planBridge(env.sourceId, action).then(setPlan)
-  }, [env.sourceId, action])
+    void k.plan(env.sourceId, action).then(setPlan)
+  }, [env.sourceId, action, k])
   const lines = useMemo(() => (plan ? hunks(plan.diff) : []), [plan])
   const install = action === 'install'
 
   const apply = async (): Promise<void> => {
     if (!plan) return
     setBusy(true)
-    const res = await api.applyBridge(env.sourceId, action, plan.token)
+    const res = await k.apply(env.sourceId, action, plan.token)
     setBusy(false)
     if (!res.ok) {
-      toast.error(install ? 'Could not enable live limits' : 'Could not disable live limits', {
+      toast.error(install ? `Could not enable ${k.name}` : `Could not disable ${k.name}`, {
         description: res.error
       })
-      if (res.error?.includes('changed since'))
-        void api.planBridge(env.sourceId, action).then(setPlan)
+      if (res.error?.includes('changed since')) void k.plan(env.sourceId, action).then(setPlan)
       return
     }
     toast.success(
-      install ? `Live limits enabled for ${env.label}` : `Live limits disabled for ${env.label}`,
+      install ? `${k.Name} enabled for ${env.label}` : `${k.Name} disabled for ${env.label}`,
       {
-        description: install
-          ? 'Data appears after Claude Code next updates its status line (send any message).'
-          : res.backupPath
-            ? 'Your previous status line is back.'
-            : undefined
+        description:
+          kind === 'alerts'
+            ? install
+              ? 'Sessions started (or resumed) from now on send their events. Running sessions pick it up when they restart.'
+              : 'Your other hooks are untouched.'
+            : install
+              ? 'Data appears after Claude Code next updates its status line (send any message).'
+              : res.backupPath
+                ? 'Your previous status line is back.'
+                : undefined
       }
     )
     onClose()
@@ -78,13 +103,15 @@ export function BridgeDialog({
               <FileCog className="size-4" />
             </div>
           }
-          title={
-            install ? `Enable live limits · ${env.label}` : `Disable live limits · ${env.label}`
-          }
+          title={install ? `Enable ${k.name} · ${env.label}` : `Disable ${k.name} · ${env.label}`}
           description={
-            install
-              ? 'Claude Code will run a tiny status line script that saves the usage data it already shows in /usage. This is the only change:'
-              : 'This puts your previous status line setting back exactly as it was:'
+            kind === 'alerts'
+              ? install
+                ? 'Claude Code will run a tiny script on a few session events (needs approval, finished, started, ended) that saves the event for the dashboard. Your existing hooks stay exactly as they are; these are added at the end:'
+                : 'This takes out exactly the hooks the app added. Your own hooks stay as they are:'
+              : install
+                ? 'Claude Code will run a tiny status line script that saves the usage data it already shows in /usage. This is the only change:'
+                : 'This puts your previous status line setting back exactly as it was:'
           }
         />
         <div className="space-y-3 px-5 pt-3 pb-5">
@@ -112,9 +139,7 @@ export function BridgeDialog({
             </div>
           ) : plan.noop ? (
             <div className="rounded-lg border border-border px-3 py-3 text-xs text-muted-foreground">
-              {install
-                ? 'Live limits are already enabled here.'
-                : 'Live limits are not enabled here.'}
+              {install ? `${k.Name} are already enabled here.` : `${k.Name} are not enabled here.`}
             </div>
           ) : (
             <pre className="selectable max-h-72 overflow-auto rounded-lg border border-code-border bg-code-bg py-2 font-mono text-[11.5px] leading-[1.6]">
@@ -143,7 +168,18 @@ export function BridgeDialog({
           )}
           {plan && !plan.error && !plan.noop && (
             <div className="space-y-1.5 text-xs text-muted-foreground">
-              {plan.chained ? (
+              {kind === 'alerts' ? (
+                install && (
+                  <div className="flex items-start gap-2">
+                    <Link2 className="mt-px size-3.5 shrink-0 text-info" />
+                    <span>
+                      The hooks run in the background (they never slow Claude down) and print
+                      nothing. They save only the event; the dashboard reads the event and ignores
+                      prompts and replies.
+                    </span>
+                  </div>
+                )
+              ) : plan.chained ? (
                 <div className="flex items-start gap-2">
                   <Link2 className="mt-px size-3.5 shrink-0 text-info" />
                   <span>
@@ -183,7 +219,7 @@ export function BridgeDialog({
             onClick={() => (plan?.noop ? onClose() : void apply())}
           >
             {busy && <Loader2 className="animate-spin" />}
-            {plan?.noop ? 'Close' : install ? 'Enable live limits' : 'Disable and restore'}
+            {plan?.noop ? 'Close' : install ? `Enable ${k.name}` : 'Disable and restore'}
           </Button>
         </DialogFooter>
       </DialogContent>

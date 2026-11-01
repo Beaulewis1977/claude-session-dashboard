@@ -167,6 +167,9 @@ ${firewallCommandText(args)}`,
   handle('mobile:renameDevice', (_e, id, name) => mobile.rename(String(id), String(name)))
   handle('mobile:activity', () => mobile.activity(300))
   handle('mobile:sendTest', (_e, id) => mobile.sendTest(typeof id === 'string' ? id : undefined))
+  // Web Push: the PC can turn a phone's push alerts off, or send it a test.
+  handle('mobile:pushOff', (_e, id) => mobile.pushOff(String(id), 'pc'))
+  handle('mobile:pushTest', (_e, id) => mobile.sendTestPush(String(id)))
   handle('mobile:lanAddresses', () => mobile.lanAddresses())
   handle('mobile:claudeCheck', () => mobile.claudeCheck())
   handle('mobile:diagnostics', () => mobile.diagnostics())

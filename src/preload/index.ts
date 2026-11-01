@@ -107,7 +107,20 @@ const api: CsdApi = {
   terminalOpenBackups: () => ipcRenderer.invoke('terminal:openBackups'),
   onTerminalChanged: (cb) => on('terminal:changed', cb),
   getTerminalAccess: () => ipcRenderer.invoke('terminal:phoneInfo'),
-  openTerminalHere: (key) => ipcRenderer.invoke('terminal:openHere', key)
+  openTerminalHere: (key) => ipcRenderer.invoke('terminal:openHere', key),
+
+  getLive: () => ipcRenderer.invoke('live:state'),
+  onLiveChanged: (cb) => on('live:changed', cb),
+  onShowLive: (cb) => {
+    const listener = (_e: unknown, key: string): void => cb(String(key))
+    ipcRenderer.on('app:showLive', listener)
+    return () => ipcRenderer.removeListener('app:showLive', listener)
+  },
+  focusTerminal: (key) => ipcRenderer.invoke('live:focus', key),
+  planHooks: (id, action) => ipcRenderer.invoke('hooks:plan', id, action),
+  applyHooks: (id, action, token) => ipcRenderer.invoke('hooks:apply', id, action, token),
+  mobilePushOff: (id) => ipcRenderer.invoke('mobile:pushOff', id),
+  mobilePushTest: (id) => ipcRenderer.invoke('mobile:pushTest', id)
 }
 
 contextBridge.exposeInMainWorld('csd', api)

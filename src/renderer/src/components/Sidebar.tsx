@@ -11,8 +11,10 @@ import {
   Monitor,
   Settings,
   SquareTerminal,
-  TriangleAlert
+  TriangleAlert,
+  Zap
 } from 'lucide-react'
+import { useLiveCounts } from '@/lib/live-sessions'
 import { facets, tagColor, type Facet, type Filters, type Visibility } from '@/lib/filters'
 import { useApp } from '@/lib/store'
 import { openTerminalHere, projectSessionKey } from '@/lib/actions'
@@ -26,6 +28,7 @@ function Item({
   icon,
   label,
   count,
+  badge,
   onClick,
   title
 }: {
@@ -33,6 +36,8 @@ function Item({
   icon: ReactNode
   label: ReactNode
   count?: number
+  /** Shown instead of the count (e.g. Running now). */
+  badge?: ReactNode
   onClick: () => void
   title?: string
 }) {
@@ -53,6 +58,7 @@ function Item({
         {icon}
       </span>
       <span className="min-w-0 flex-1 truncate">{label}</span>
+      {badge}
       {count !== undefined && (
         <span className="shrink-0 text-2xs text-subtle-foreground tabular-nums">{count}</span>
       )}
@@ -104,6 +110,7 @@ export function Sidebar() {
   const [allProjects, setAllProjects] = useState(false)
   const f = facets(sessions, filters)
   const notices = sources.filter((s) => s.status !== 'ok' && s.status !== 'missing').length
+  const live = useLiveCounts()
 
   const showSessions = (patch: Partial<Filters>): void => {
     set({ view: 'sessions' })
@@ -129,6 +136,29 @@ export function Sidebar() {
               />
             </div>
           </Tooltip>
+          <Item
+            active={view === 'running'}
+            icon={<Zap />}
+            label="Running now"
+            onClick={() => set({ view: view === 'running' ? 'sessions' : 'running' })}
+            title={
+              live.running
+                ? `${live.running} running${live.approval ? `, ${live.approval} need approval` : ''}`
+                : 'No Claude Code session is running'
+            }
+            badge={
+              live.running > 0 ? (
+                <span
+                  className={cn(
+                    'flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full px-1 text-[10px] font-semibold tabular-nums',
+                    live.approval ? 'bg-warning text-white' : 'bg-accent-soft text-primary'
+                  )}
+                >
+                  {live.running}
+                </span>
+              ) : undefined
+            }
+          />
         </div>
         <div className="mt-3 space-y-px">
           <Item

@@ -11,6 +11,7 @@ and the decisions behind it.
 - [Using it: more detail](#using-it-more-detail)
 - [Branching](#branching)
 - [Keeping sessions longer in Claude Code itself](#keeping-sessions-longer-in-claude-code-itself)
+- [Running now and session alerts](#running-now-and-session-alerts)
 - [Phone companion](#phone-companion)
 - [Terminal access (SSH)](#terminal-access-ssh)
 - [Usage, limits and API credits](#usage-limits-and-api-credits)
@@ -60,6 +61,27 @@ is off by default; when you turn it on, a small server for the app's own phone w
 `127.0.0.1` and `tailscale serve` publishes it to your own tailnet only (never Funnel, never public).
 An optional home Wi-Fi mode listens on one private LAN address instead, behind a firewall rule you
 approve. See [Phone companion](#phone-companion).
+
+**Running now** reads Claude Code's `~/.claude/sessions/*.json` (read only). Two opt-in additions,
+each only after you approve it:
+
+- **Session alerts** add the app's hooks to the `hooks` key of a `~/.claude/settings.json`, with
+  the status line bridge's safety model: the exact diff first, a backup, the app's hook groups
+  appended at the end of each event's list (existing hooks are never replaced, reordered or
+  reformatted), and **Disable** takes out exactly the app's handlers: only those running exactly
+  the command the app wrote, removed as text so everything else stays byte for byte (the whole file
+  when nothing else changed since). Comments are fine; a duplicate `hooks` key is refused. Both
+  installers save settings.json the same way: a backup first, the new file written to a temp file
+  and flushed, settings.json checked again right before the swap (it must still be what you
+  reviewed), then one atomic rename, so settings.json never goes missing; if that rename isn't
+  possible, nothing changes. An editor that already has settings.json open can still save over the
+  change afterwards; the backup keeps your reviewed file. The hook script only saves each event to
+  `~/.claude-session-dashboard/events/`; the app prunes its own event files there after a week.
+- **Phone push alerts** (opt-in on each phone) are the one outgoing call of the phone feature: an
+  end-to-end encrypted Web Push message (RFC 8291 with VAPID) to the push endpoint that phone's
+  browser registered, and only to the browser push services (Google FCM, Apple, Mozilla,
+  Microsoft). The message holds only the kind of alert and a random reference (one per phone, usable once,
+  for a day); no session names, folders or text. Tapping it makes the phone ask the PC, over Tailscale, which session it means.
 
 Two later features stay inside the rules: **Import claude.ai data export** only reads the zip you
 pick (it is never written) and stores the conversations in the app's archive, and **Ask Claude**
@@ -164,6 +186,41 @@ anyway, but if you also want Claude Code to keep them, add this to `%USERPROFILE
 ```json
 { "cleanupPeriodDays": 3650 }
 ```
+
+## Running now and session alerts
+
+**Where the states come from.** Claude Code keeps one file per running session in
+`~/.claude/sessions/<pid>.json`. Newer versions keep a live `status` in it (`busy`, `idle`,
+`waiting` while a dialog is open, `shell` while idle with a background shell running), plus the
+session's name and Remote Control id. These files stay behind when a session crashes, so each
+process is checked: on Windows by its PID and its start time (so a reused PID doesn't count), in WSL
+through `\\wsl.localhost\<distro>\proc`. A file whose process is gone shows as **Exited** for 20
+minutes, then drops out; a file left behind long ago never shows.
+
+**Session alerts** make it exact. Their hooks fire on Notification (permission prompts, questions,
+Claude Code's "still waiting" reminder), PermissionRequest, Stop, StopFailure, SubagentStop,
+UserPromptSubmit, SessionStart and SessionEnd: never on every tool call. Each runs asynchronously, so
+Claude never waits for it. The script saves the event as `events/<session>.<event>.json`; the app
+reads only the event name, notification type and message, tool name and end reason, never prompts
+or replies. Without session alerts, the app uses the status files and recent transcript activity.
+
+**Alerts** fire on a change between two reads (every 2 seconds on Windows, 5 in WSL): a session
+starts waiting for approval (also one that was already waiting when the app started), finishes a
+turn that took at least the minimum time (20 seconds by default), stops with an error, gets Claude
+Code's "still waiting" reminder, or ends. The same alert for the same session waits at least a
+minute. Quiet hours (local time, may wrap past midnight) silence alerts, optionally except approvals.
+
+**Focus terminal** walks up from the session's Claude process to the first one with a window
+(Windows Terminal, or a classic console), brings it forward, and in Windows Terminal selects the
+tab whose title holds the session's name (Claude Code puts it there; give a session a name with
+`/rename` to make it easy to find). WSL sessions are found by their tab title. It never types into
+or changes a terminal. A session in VS Code or another IDE can't be focused this way; the app says
+so.
+
+**Push alerts on a phone.** On the phone, Running now → **Turn on push alerts** asks the browser for
+permission and registers with its push service; the PC stores only that subscription (the endpoint
+and its public keys). An iPhone needs the app added to the Home Screen first. The phone's Settings
+can send a test push or turn it off; Settings → Phone on the PC shows which phones have push on.
 
 ## Phone companion
 

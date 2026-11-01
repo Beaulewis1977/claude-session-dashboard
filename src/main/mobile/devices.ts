@@ -18,6 +18,8 @@ export interface StoredDevice {
   createdAt: string
   lastSeenAt: string
   agent?: string
+  /** Web Push subscription, when the phone turned push alerts on (opt-in per phone). */
+  push?: { endpoint: string; p256dh: string; auth: string; at: string }
 }
 
 export interface MobileFile {
@@ -30,6 +32,8 @@ export interface MobileFile {
   firewallRule?: { name: string; port: number; address: string }
   /** Self-signed certificate for home Wi-Fi mode (the key is encrypted when possible). */
   lanCert?: { address: string; cert: string; key: string; encrypted: boolean; expiresAt: string }
+  /** The app's VAPID key pair for Web Push (the private key is encrypted when possible). */
+  vapid?: { publicKey: string; privateKey: string; encrypted: boolean }
 }
 
 export const DEVICE_TTL_MS = 30 * 24 * 60 * 60 * 1000
@@ -264,8 +268,33 @@ export class DeviceRegistry {
       createdAt: d.createdAt,
       lastSeenAt: d.lastSeenAt,
       agent: d.agent,
-      connected: connected(d.id)
+      connected: connected(d.id),
+      push: !!d.push
     }))
+  }
+
+  // ------------------------------------------------------------- push
+
+  /** Turn a phone's push alerts on (with its subscription) or off. */
+  setPush(id: string, sub: { endpoint: string; p256dh: string; auth: string } | undefined): void {
+    this.store.update((f) => {
+      const d = f.devices.find((x) => x.id === id)
+      if (!d) return
+      if (sub)
+        d.push = {
+          endpoint: sub.endpoint,
+          p256dh: sub.p256dh,
+          auth: sub.auth,
+          at: new Date(this.now()).toISOString()
+        }
+      else delete d.push
+    })
+  }
+
+  /** Paired phones (still active) with push alerts on. */
+  pushTargets(): StoredDevice[] {
+    this.prune()
+    return this.store.value.devices.filter((d) => !!d.push)
   }
 
   // ------------------------------------------------------------- activity

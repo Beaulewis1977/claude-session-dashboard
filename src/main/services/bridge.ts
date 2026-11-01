@@ -8,8 +8,20 @@
 // "Disable" puts the previous `statusLine` back exactly. Nothing is deleted.
 
 import { createHash, randomBytes } from 'node:crypto'
-import { mkdir, readFile, rename, stat, unlink, writeFile } from 'node:fs/promises'
-import { dirname, join } from 'node:path'
+import { constants } from 'node:fs'
+import {
+  copyFile,
+  lstat,
+  mkdir,
+  open,
+  readdir,
+  readFile,
+  rename,
+  stat,
+  unlink,
+  writeFile
+} from 'node:fs/promises'
+import { basename, dirname, join } from 'node:path'
 import type { BridgeApplyResult, BridgeEnv, BridgePlan } from '@shared/usage/limits'
 import type { SourceInfo } from '@shared/types'
 import { JsonStore } from '../core/json-store'
@@ -20,7 +32,14 @@ import {
   assertRealBridgeWrite,
   assertClaudeSettingsWrite
 } from '../core/safe-paths'
-import { diffLines, rawMember, removeMember, scanTopLevel, setMember } from '../core/settings-edit'
+import {
+  diffLines,
+  parseJsonc,
+  rawMember,
+  removeMember,
+  scanTopLevel,
+  setMember
+} from '../core/settings-edit'
 
 export const BRIDGE_DIR_NAME = '.claude-session-dashboard'
 const MARKER = `${BRIDGE_DIR_NAME}/bin/statusline`
@@ -54,7 +73,7 @@ export const SHIPPED_SCRIPT_SHA256: Record<'statusline.ps1' | 'statusline.sh', s
   'statusline.sh': ['fe0c04e0efd8885e902284407c990dc09cb708df1767dc6e41b606976ae785ba']
 }
 
-const sha256 = (text: string): string => createHash('sha256').update(text).digest('hex')
+export const sha256 = (text: string): string => createHash('sha256').update(text).digest('hex')
 
 export interface BridgeFile {
   version: 1
@@ -127,7 +146,7 @@ export function isBridgeCommand(cmd: unknown): boolean {
   return typeof cmd === 'string' && cmd.replace(/\\/g, '/').includes(MARKER)
 }
 
-async function readText(p: string): Promise<string | undefined> {
+export async function readText(p: string): Promise<string | undefined> {
   try {
     return await readFile(p, 'utf8')
   } catch (err) {
@@ -136,7 +155,7 @@ async function readText(p: string): Promise<string | undefined> {
   }
 }
 
-const tokenOf = (text: string | undefined): string =>
+export const tokenOf = (text: string | undefined): string =>
   createHash('sha256')
     .update(text ?? '\0missing')
     .digest('hex')
@@ -144,7 +163,7 @@ const tokenOf = (text: string | undefined): string =>
 
 function statusLineOf(text: string | undefined): Record<string, unknown> | undefined {
   if (!text) return undefined
-  const v = (JSON.parse(text) as Record<string, unknown>).statusLine
+  const v = (parseJsonc(text) as Record<string, unknown>).statusLine
   return v && typeof v === 'object' && !Array.isArray(v)
     ? (v as Record<string, unknown>)
     : undefined
@@ -169,18 +188,41 @@ function installedText(before: string | undefined, command: string): string {
 export const SETTINGS_CHANGED =
   'settings.json changed while the app was preparing the change (another program or editor saved it). Nothing was changed. Review the change again.'
 
-class SettingsChangedError extends Error {}
+export class SettingsChangedError extends Error {}
+
+/** Test seams: run code at the moment another program could save, or replace the rename. */
+export interface WriteSettingsProbe {
+  /** Runs after the temp file is written, just before the last check and the swap. */
+  beforeSwap?: () => Promise<void>
+  /** Stands in for fs.rename (tests of a replace that isn't possible). */
+  rename?: (from: string, to: string) => Promise<void>
+}
+
+const sameText = (a: string | undefined, b: string | undefined): boolean =>
+  tokenOf(a) === tokenOf(b)
 
 /**
- * Write settings.json atomically in place (temp file in the same folder, then
- * rename), only if it still holds `expected`: the file is read again just
- * before it's replaced, so an edit made meanwhile (say, a new permission rule)
- * is never overwritten with the older copy. Claude's own file mode is kept.
+ * Save settings.json, the same way for every change the app makes to it (the
+ * status line bridge and session alerts):
+ *
+ *   1. the whole new content goes to a temp file in the same folder, flushed
+ *      to disk;
+ *   2. right before the swap, settings.json is read again and must still be
+ *      exactly what the user reviewed (else nothing changes: review again);
+ *   3. one atomic same-folder rename replaces settings.json with the temp
+ *      file, so there is never a moment without a settings.json.
+ *
+ * If that rename isn't possible (say, the share doesn't support it), nothing
+ * is changed and the error says so. This narrows, but can't close, the window
+ * in which another program saving at the same moment could be overwritten:
+ * the caller keeps a backup of the reviewed file in the app's data folder
+ * first. Claude's own file mode is kept.
  */
-async function writeSettings(
+export async function writeSettings(
   path: string,
   text: string,
-  expected: string | undefined
+  expected: string | undefined,
+  probe: WriteSettingsProbe = {}
 ): Promise<void> {
   assertClaudeSettingsWrite(path)
   const tmp = `${path}.csd-${randomBytes(4).toString('hex')}.tmp`
@@ -189,24 +231,112 @@ async function writeSettings(
     (st) => st.mode & 0o777,
     () => undefined
   )
-  await writeFile(tmp, text, { encoding: 'utf8', ...(mode !== undefined ? { mode } : {}) })
-  let lastErr: unknown
+  const fh = await open(tmp, 'wx', mode ?? 0o644)
   try {
-    for (let i = 0; i < 5; i++) {
-      if ((await readText(path)) !== expected) throw new SettingsChangedError(SETTINGS_CHANGED)
+    await fh.writeFile(text, 'utf8')
+    // On disk before it replaces anything (not every file system supports it).
+    await fh.sync().catch(() => undefined)
+  } finally {
+    await fh.close()
+  }
+  try {
+    await probe.beforeSwap?.()
+    if (!sameText(await readText(path), expected)) throw new SettingsChangedError(SETTINGS_CHANGED)
+    const doRename = probe.rename ?? rename
+    for (let i = 0; ; i++) {
       try {
-        await rename(tmp, path)
+        await doRename(tmp, path)
         return
       } catch (err) {
-        lastErr = err
-        await new Promise((r) => setTimeout(r, 60 * (i + 1)))
+        const code = (err as NodeJS.ErrnoException).code
+        // Windows can hold the file open for a moment (antivirus, Claude reading it).
+        if (i < 4 && (code === 'EPERM' || code === 'EBUSY' || code === 'EACCES')) {
+          await new Promise((r) => setTimeout(r, 60 * (i + 1)))
+          if (!sameText(await readText(path), expected))
+            throw new SettingsChangedError(SETTINGS_CHANGED)
+          continue
+        }
+        throw new Error(
+          `settings.json can't be replaced in one step here (${code ?? (err as Error).message}). Nothing was changed.`,
+          { cause: err }
+        )
       }
     }
-  } catch (err) {
-    lastErr = err
+  } finally {
+    await unlink(tmp).catch(() => undefined)
   }
-  await unlink(tmp).catch(() => undefined)
-  throw lastErr
+}
+
+const LEFTOVER_RE = /^settings\.json\.csd-[0-9a-f]+\.(tmp|prev)$/
+
+/**
+ * At startup: tidy up after a save that was interrupted (the app closed or
+ * crashed mid-way). The app's own temp files next to settings.json are
+ * removed. A `.prev` file (the earlier save routine moved settings.json aside
+ * under that name) is put back only if settings.json is missing, and never
+ * over an existing file; otherwise it is copied to the backup folder before it
+ * goes. Returns what was done, for the log.
+ */
+export async function cleanupSettingsLeftovers(
+  settingsPath: string,
+  backupDir: string,
+  dataDir: string
+): Promise<{ removed: number; restored: boolean }> {
+  assertClaudeSettingsWrite(settingsPath)
+  const dir = dirname(settingsPath)
+  let names: string[]
+  try {
+    names = (await readdir(dir)).filter((n) => LEFTOVER_RE.test(n))
+  } catch {
+    return { removed: 0, restored: false }
+  }
+  let removed = 0
+  let restored = false
+  const prevs: { file: string; mtimeMs: number }[] = []
+  for (const n of names) {
+    const file = join(dir, n)
+    assertClaudeSettingsWrite(file)
+    const st = await lstat(file).catch(() => undefined)
+    if (!st?.isFile()) continue
+    if (n.endsWith('.tmp')) {
+      await unlink(file).then(
+        () => removed++,
+        () => undefined
+      )
+    } else prevs.push({ file, mtimeMs: st.mtimeMs })
+  }
+  prevs.sort((a, b) => b.mtimeMs - a.mtimeMs)
+  for (const p of prevs) {
+    const missing = await readText(settingsPath).then(
+      (t) => t === undefined,
+      () => false
+    )
+    if (missing && !restored) {
+      // Exclusive: if anything created settings.json meanwhile, it stays.
+      try {
+        await copyFile(p.file, settingsPath, constants.COPYFILE_EXCL)
+        restored = true
+      } catch {
+        continue
+      }
+    } else {
+      // Kept in the app's backups before it goes.
+      const backup = join(backupDir, `leftover-${Date.now()}-${basename(p.file)}`)
+      assertAppDataWrite(backup, dataDir)
+      await assertRealAppDataWrite(backup, dataDir)
+      await mkdir(backupDir, { recursive: true })
+      try {
+        await copyShared(p.file, backup)
+      } catch {
+        continue
+      }
+    }
+    await unlink(p.file).then(
+      () => removed++,
+      () => undefined
+    )
+  }
+  return { removed, restored }
 }
 
 /**
@@ -385,7 +515,7 @@ export class BridgeInstaller {
     let chained: string | undefined
     try {
       if (before !== undefined) {
-        JSON.parse(before) // must be valid JSON
+        parseJsonc(before) // must be valid JSON (comments allowed)
         scanTopLevel(before)
       }
       const current = statusLineOf(before)
@@ -401,7 +531,7 @@ export class BridgeInstaller {
         after = this.restoredText(before!, rec)
         chained = rec?.previousRaw ? commandOf(`{"statusLine":${rec.previousRaw}}`) : undefined
       }
-      JSON.parse(after) // sanity: the result must still be valid JSON
+      parseJsonc(after) // sanity: the result must still be valid JSON
     } catch (err) {
       return {
         ...base,

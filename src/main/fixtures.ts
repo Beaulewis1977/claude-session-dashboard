@@ -4,11 +4,14 @@
 
 import { constants } from 'node:fs'
 import { access, copyFile, mkdir, readdir, readFile, utimes, writeFile } from 'node:fs/promises'
-import { join } from 'node:path'
-import { FIXTURES_NOW } from '@shared/clock'
+import { dirname, join } from 'node:path'
+import { clockOffset, FIXTURES_NOW, now } from '@shared/clock'
 import type { JsonStore } from './core/json-store'
 import type { AccountsFile } from './services/accounts'
 import type { BridgeInstaller } from './services/bridge'
+import { BRIDGE_DIR_NAME } from './services/bridge'
+import type { HooksInstaller } from './services/hooks'
+import type { ProcCheck } from './services/live'
 import type { SessionService } from './services/sessions'
 import type { MetadataFile, SettingsFile } from './services/store'
 
@@ -197,4 +200,173 @@ export async function seedFixtureAccounts(
     ]
   })
   await Promise.all([accounts.flush(), metadata.flush(), settings.flush()])
+}
+
+/** Sample processes that count as running in fixtures mode (nothing real is checked). */
+const FIXTURE_LIVE_PIDS = new Set([41200, 41288, 51700])
+
+export function fixtureProcChecker(): ProcCheck {
+  return { check: async (items) => items.map((q) => FIXTURE_LIVE_PIDS.has(q.pid)) }
+}
+
+interface FixtureRun {
+  source: string
+  pid: number
+  sessionId: string
+  cwd: string
+  status?: string
+  waitingFor?: string
+  name?: string
+  /** Minutes ago. */
+  started: number
+  changed: number
+  bridgeSessionId?: string
+}
+
+const FIXTURE_RUNS: FixtureRun[] = [
+  {
+    source: 'windows',
+    pid: 41200,
+    sessionId: '7f3c9a12-4b8e-4d21-9c6a-1e2f3a4b5c6d',
+    cwd: 'C:\\Users\\beau\\code\\acme-web',
+    status: 'busy',
+    started: 42,
+    changed: 3
+  },
+  {
+    source: 'windows',
+    pid: 41288,
+    sessionId: 'c41e2d7a-9b0f-4c3e-b5a6-7d8e9f0a1b2c',
+    cwd: 'C:\\Users\\beau\\My Projects\\desktop app',
+    status: 'waiting',
+    waitingFor: 'dialog open',
+    started: 95,
+    changed: 6,
+    bridgeSessionId: 'session_01FixtureRemoteCtl0001'
+  },
+  {
+    source: 'wsl-Ubuntu-beau',
+    pid: 51700,
+    sessionId: 'e9a1b2c3-d4e5-4f60-8172-839405a6b7c8',
+    cwd: '/home/beau/projects/orders-api',
+    status: 'idle',
+    name: 'orders-api retries',
+    started: 130,
+    changed: 12
+  },
+  // Crashed a few minutes ago: shown as Exited for a while.
+  {
+    source: 'wsl-Ubuntu-beau',
+    pid: 51733,
+    sessionId: '5d4c3b2a-1f0e-4d9c-8b7a-6f5e4d3c2b1a',
+    cwd: '/home/beau/dotfiles',
+    status: 'busy',
+    started: 30,
+    changed: 8
+  },
+  // Left behind days ago (a stale file): not shown.
+  {
+    source: 'windows',
+    pid: 39001,
+    sessionId: '2b6d8e4f-1a3c-4e5f-8a7b-9c0d1e2f3a4b',
+    cwd: 'C:\\Users\\beau\\code\\acme-web',
+    status: 'idle',
+    started: 4400,
+    changed: 4300
+  }
+]
+
+function runningFile(r: FixtureRun, t: number, status = r.status): string {
+  const at = t - r.changed * 60_000
+  return `${JSON.stringify(
+    {
+      pid: r.pid,
+      sessionId: r.sessionId,
+      cwd: r.cwd,
+      startedAt: t - r.started * 60_000,
+      version: '2.1.316',
+      kind: 'interactive',
+      entrypoint: 'cli',
+      ...(r.name ? { name: r.name, nameSource: 'user' } : {}),
+      status,
+      ...(r.waitingFor && status === 'waiting' ? { waitingFor: r.waitingFor } : {}),
+      updatedAt: at,
+      statusUpdatedAt: at,
+      ...(r.bridgeSessionId ? { bridgeSessionId: r.bridgeSessionId } : {})
+    },
+    null,
+    2
+  )}\n`
+}
+
+/**
+ * "Running now" in fixtures mode: session alerts on for the sample homes,
+ * running-session files and a hook event, written fresh on every start (they
+ * live in `.fixtures-data`). One session keeps switching between working and
+ * finished, so alerts can be seen.
+ */
+export async function seedFixtureLive(
+  dataDir: string,
+  sessions: SessionService,
+  hooks: HooksInstaller
+): Promise<void> {
+  const marker = join(dataDir, '.hooks-seeded')
+  if (!(await exists(marker))) {
+    for (const id of ['windows', 'wsl-Ubuntu-beau']) {
+      const src = sessions.source(id)
+      if (!src) continue
+      const plan = await hooks.plan(src, 'install')
+      if (!plan.error && !plan.noop) await hooks.apply(src, 'install', plan.token)
+    }
+    await writeFile(marker, `${new Date().toISOString()}\n`).catch(() => undefined)
+  }
+  const t = now()
+  const real = (appMs: number): Date => new Date(appMs - clockOffset())
+  const dirOf = (source: string): string | undefined => {
+    const settings = sessions.source(source)?.claudeSettingsPath
+    return settings ? dirname(settings) : undefined
+  }
+  for (const r of FIXTURE_RUNS) {
+    const claude = dirOf(r.source)
+    if (!claude) continue
+    const dir = join(claude, 'sessions')
+    await mkdir(dir, { recursive: true })
+    const file = join(dir, `${r.pid}.json`)
+    await writeFile(file, runningFile(r, t))
+    const when = real(t - r.changed * 60_000)
+    await utimes(file, when, when).catch(() => undefined)
+  }
+  // The waiting session's hook event says what it waits for.
+  const win = dirOf('windows')
+  if (win) {
+    const events = join(dirname(win), BRIDGE_DIR_NAME, 'events')
+    await mkdir(events, { recursive: true })
+    const r = FIXTURE_RUNS[1]
+    const file = join(events, `${r.sessionId}.Notification.json`)
+    await writeFile(
+      file,
+      `${JSON.stringify({
+        session_id: r.sessionId,
+        cwd: r.cwd,
+        hook_event_name: 'Notification',
+        notification_type: 'permission_prompt',
+        message: 'Claude needs your permission to use Bash'
+      })}\n`
+    )
+    const when = real(t - r.changed * 60_000)
+    await utimes(file, when, when).catch(() => undefined)
+  }
+  // Working ⇄ finished, every 45 seconds.
+  const busy = FIXTURE_RUNS[0]
+  const claude = dirOf(busy.source)
+  if (!claude) return
+  let working = true
+  setInterval(() => {
+    working = !working
+    const at = now()
+    void writeFile(
+      join(claude, 'sessions', `${busy.pid}.json`),
+      runningFile({ ...busy, changed: 0 }, at, working ? 'busy' : 'idle')
+    ).catch(() => undefined)
+  }, 45_000).unref()
 }

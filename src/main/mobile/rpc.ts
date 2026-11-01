@@ -15,6 +15,7 @@ import type {
 import type { LimitsState } from '@shared/usage/limits'
 import type { CreditsState } from '@shared/usage/credits'
 import { MOBILE_SAFE_SETTINGS } from '@shared/mobile'
+import type { LiveSnapshot } from '@shared/live'
 
 export type RpcKind = 'read' | 'write'
 
@@ -31,7 +32,7 @@ const str = (v: unknown, max = 1000): string => {
   return v.slice(0, max)
 }
 
-/** The fields a phone may edit: name, description, tags, pinned, hidden, launch model and effort. */
+/** The fields a phone may edit: name, description, tags, pinned, hidden, alert mute, launch model and effort. */
 export function phoneMetaPatch(v: unknown): Partial<SessionMeta> {
   const o = (v && typeof v === 'object' ? v : {}) as Record<string, unknown>
   const out: Partial<SessionMeta> = {}
@@ -42,6 +43,7 @@ export function phoneMetaPatch(v: unknown): Partial<SessionMeta> {
     out.tags = o.tags.filter((t): t is string => typeof t === 'string').slice(0, 50)
   if ('pinned' in o) out.pinned = o.pinned === true
   if ('hidden' in o) out.hidden = o.hidden === true
+  if ('muteAlerts' in o) out.muteAlerts = o.muteAlerts === true
   // Validated (or cleared) by cleanMetaPatch like the desktop's own edits.
   if ('model' in o) out.model = typeof o.model === 'string' ? o.model.slice(0, 200) : undefined
   if ('effort' in o)
@@ -84,6 +86,11 @@ export function phoneLimits(l: LimitsState): LimitsState {
     ...l,
     envs: l.envs.map((e) => ({ ...e, settingsPath: '', bridgeDir: '', chained: undefined }))
   }
+}
+
+/** Running now, without where settings.json lives on the PC. */
+export function phoneLive(s: LiveSnapshot): LiveSnapshot {
+  return { ...s, hooks: s.hooks.map((h) => ({ ...h, settingsPath: '' })) }
 }
 
 export const RPC: Record<string, RpcMethod> = {
@@ -147,6 +154,14 @@ export const RPC: Record<string, RpcMethod> = {
   // Terminal access: where the phone's SSH app connects (host, user, port,
   // shell), and whether it's set up. Never the setup itself.
   getTerminalAccess: { channel: 'terminal:phoneInfo', kind: 'read', args: none },
+  // Running now: the same list as the desktop's (no settings.json locations).
+  // Never the hook setup. (A tapped push alert is resolved by /api/live/resolve.)
+  getLive: {
+    channel: 'live:state',
+    kind: 'read',
+    args: none,
+    result: (r) => phoneLive(r as LiveSnapshot)
+  },
   getCredits: {
     channel: 'credits:state',
     kind: 'read',

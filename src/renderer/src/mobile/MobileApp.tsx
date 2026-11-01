@@ -3,10 +3,11 @@
 
 import { useEffect, useState } from 'react'
 import { toast, Toaster } from 'sonner'
-import { ChartNoAxesColumn, MessagesSquare, Settings2 } from 'lucide-react'
+import { ChartNoAxesColumn, MessagesSquare, Settings2, Zap } from 'lucide-react'
 import { setClockOffset } from '@shared/clock'
 import { api } from '@/lib/api'
 import { useLiveData } from '@/lib/live'
+import { useLiveCounts, useLiveSessions } from '@/lib/live-sessions'
 import { useApp } from '@/lib/store'
 import { useThemeEffect } from '@/lib/theme'
 import { cn } from '@/lib/utils'
@@ -17,6 +18,8 @@ import { PairScreen } from './PairScreen'
 import { SessionsTab } from './SessionsTab'
 import { SessionScreen } from './SessionScreen'
 import { SettingsTab } from './SettingsTab'
+import { RunningTab } from './RunningTab'
+import { useOpenLive } from './open-live'
 import { bootstrap } from './bootstrap'
 import { useMobile } from './state'
 
@@ -95,6 +98,7 @@ function useBootstrap(paired: boolean): void {
 
 const TABS = [
   { id: 'sessions', label: 'Sessions', icon: MessagesSquare },
+  { id: 'running', label: 'Running', icon: Zap },
   { id: 'usage', label: 'Usage', icon: ChartNoAxesColumn },
   { id: 'settings', label: 'Settings', icon: Settings2 }
 ] as const
@@ -106,6 +110,10 @@ export function MobileApp() {
   useEffect(() => phone.onAuth(setPaired), [])
   useBootstrap(paired)
   useLiveData(useApp((s) => s.info !== null) && paired)
+  useLiveSessions(useApp((s) => s.info !== null) && paired)
+  const live = useLiveCounts()
+  // A tapped push alert: Running now, then its session once it can be shown.
+  useOpenLive(paired)
   const view = useApp((s) => s.view)
   const set = useApp((s) => s.set)
   const openKey = useApp((s) => s.selectedKey)
@@ -122,6 +130,11 @@ export function MobileApp() {
             <div className={cn('absolute inset-0', view !== 'sessions' && 'hidden')}>
               <SessionsTab />
             </div>
+            {view === 'running' && (
+              <div className="absolute inset-0">
+                <RunningTab />
+              </div>
+            )}
             {view === 'usage' && (
               <div className="absolute inset-0 pt-[env(safe-area-inset-top)]">
                 <UsageView />
@@ -152,7 +165,19 @@ export function MobileApp() {
                     active ? 'text-primary' : 'text-muted-foreground'
                   )}
                 >
-                  <t.icon className="size-[22px]" strokeWidth={active ? 2.2 : 1.8} />
+                  <span className="relative">
+                    <t.icon className="size-[22px]" strokeWidth={active ? 2.2 : 1.8} />
+                    {t.id === 'running' && live.running > 0 && (
+                      <span
+                        className={cn(
+                          'absolute -top-1.5 -right-2.5 flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-semibold text-white tabular-nums',
+                          live.approval ? 'bg-warning' : 'bg-primary'
+                        )}
+                      >
+                        {live.running}
+                      </span>
+                    )}
+                  </span>
                   {t.label}
                 </button>
               )

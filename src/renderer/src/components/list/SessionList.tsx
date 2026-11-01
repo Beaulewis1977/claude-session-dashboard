@@ -19,6 +19,7 @@ import { ListToolbar } from './ListToolbar'
 import { ROW_HEIGHT, SessionRow } from './SessionRow'
 import { RowMenu } from './RowMenu'
 import { BulkBar } from './BulkBar'
+import { RunningSection } from '../live/RunningNow'
 
 function EmptyList({ kind }: { kind: 'none' | 'filtered' | 'search' }) {
   const set = useApp((s) => s.set)
@@ -186,6 +187,8 @@ export function SessionList({
     if (index >= 0) virtualizer.scrollToIndex(index, { align: 'auto' })
   }, [index, virtualizer])
 
+  const query = useApp((s) => s.query)
+  const visibility = useApp((s) => s.filters.visibility)
   const scanning = scan.phase !== 'ready'
   const emptyKind = total === 0 ? 'none' : hits ? 'search' : 'filtered'
 
@@ -193,6 +196,7 @@ export function SessionList({
     <div className="flex h-full min-h-0 flex-col bg-surface">
       <ListToolbar count={items.length} />
       {picked.length > 1 && <BulkBar picked={picked} />}
+      {!query.trim() && visibility === 'visible' && <RunningSection />}
       {scanning && scan.total > 0 && (
         <div className="h-0.5 shrink-0 bg-border">
           <div

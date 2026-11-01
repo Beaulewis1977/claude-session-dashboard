@@ -34,6 +34,7 @@ import { LiveLimitsSettings } from './settings/LiveLimitsSettings'
 import { UsageSettings } from './settings/UsageSettings'
 import { HealthSettings } from './settings/HealthSettings'
 import { MobileSettingsSection } from './settings/MobileSettings'
+import { AlertsSettings } from './settings/AlertsSettings'
 import { TerminalAccessBlock } from './settings/TerminalAccessSettings'
 import { DefaultModelPickers } from './ModelPicker'
 import { choiceLabel, DEFAULT_CHOICE, isEffortLevel, projectKeyLabel } from '@shared/model-choice'
@@ -323,6 +324,8 @@ export function SettingsView() {
             </div>
           )}
         </Section>
+
+        <AlertsSettings update={update} />
 
         <MobileSettingsSection />
 

@@ -14,6 +14,7 @@ Everything stays on your PC and your own private network.
     <td><img src="docs/mobile/sessions.png" width="200" alt="Phone: session list" /></td>
     <td><img src="docs/mobile/session.png" width="200" alt="Phone: a session as chat bubbles" /></td>
     <td><img src="docs/mobile/resumed.png" width="200" alt="Phone: a session started on the PC with Remote Control" /></td>
+    <td><img src="docs/mobile/running.png" width="200" alt="Phone: Running now, with push alerts" /></td>
     <td><img src="docs/terminal/phone-terminal-sheet.png" width="200" alt="Phone: Open terminal here, with an ssh link and command" /></td>
   </tr>
 </table>
@@ -87,6 +88,23 @@ Everything stays on your PC and your own private network.
 - **At a glance:** gauges in the title bar, a tray icon with the 5-hour %, and an always-on-top mini
   meter.
 
+### Running now and session alerts
+
+![Running now: sessions that need approval, wait for you, work or just ended](docs/running-now-light.png)
+
+- **Running now** (sidebar, with a count badge, and a section at the top of the session list): every
+  Claude Code session that's running on Windows and in WSL, with its state: **Working**, **Needs
+  approval**, **Waiting for you** (finished, ready for your next message) or **Exited**, plus how
+  long it has been running and "waiting for you since …".
+- **Focus terminal** brings the session's Windows Terminal window forward and selects its tab (found
+  by the session's name), **Open on phone** shows a QR code of its Remote Control link, and **Copy
+  resume command**.
+- **Alerts** when a session needs your approval or finishes: Windows notifications, and **push
+  alerts on your phone** (opt-in per phone). Pick which events alert, set quiet hours, and mute single
+  sessions.
+- Works without any setup from Claude Code's own session files. **Enable session alerts** for exact,
+  instant states: it adds a few hooks to Claude Code's `settings.json`, after you review the diff.
+
 ### Phone companion
 
 - The same app in a phone layout: search and read sessions, rename, describe, tag, pin and hide
@@ -98,6 +116,8 @@ Everything stays on your PC and your own private network.
 - A phone **can't** run any other command, change security or pairing settings, see API keys, or use
   Ask Claude. Phone launches always use your subscription and keep permission prompts on.
 - Optional read-only mode, confirm-on-PC for launches, and an activity log of every phone action.
+- **Running now** on the phone too, with push alerts that work when the app is closed. A push says
+  only what happened ("A session needs your approval"); tapping it loads the details from your PC.
 
 ### Terminal access (SSH)
 
@@ -229,6 +249,19 @@ change.
 
 **Disable** in the same place puts your previous `statusLine` back exactly.
 
+### Turn on session alerts
+
+1. Open Settings → **Session alerts**.
+2. Click **Enable session alerts** next to each environment you use (Windows, and each WSL user).
+3. Check the diff: the app's hooks are added at the end of each event's list, and your own hooks stay
+   exactly as they are. Confirm.
+4. Sessions started or resumed from now on send their events. Pick which events alert, and quiet
+   hours, in the same section.
+5. On each phone that should get alerts: Running now → **Turn on push alerts** (on an iPhone, add the
+   app to the Home Screen first and open it from there).
+
+**Disable** takes out exactly the app's hooks. Your other hooks stay as they are.
+
 ### Keyboard shortcuts
 
 | Keys                                              | Action                  |
@@ -257,7 +290,7 @@ The full rules are in [`CLAUDE.md`](CLAUDE.md). In short:
 - **No network calls.** Outgoing requests from the window are blocked, remote images in
   transcripts aren't loaded, and spellcheck is off.
 
-Four opt-in exceptions, each only after you approve it in the app:
+Six opt-in exceptions, each only after you approve it in the app:
 
 1. **Live limits** changes only the `statusLine` key in Claude Code's `settings.json`. You see the
    diff first, the file is backed up, and Disable restores the old value exactly.
@@ -270,6 +303,14 @@ Four opt-in exceptions, each only after you approve it in the app:
    Tailscale, the default shell, your key, and optionally password login). Each change shows its
    exact script first, is logged, and can be undone; your existing keys and settings are never
    removed. The dashboard never runs commands for the phone: Windows' OpenSSH does the logins.
+5. **Session alerts** add the app's hooks to the `hooks` key in Claude Code's `settings.json`
+   (appended, never replacing yours). You see the diff first, the file is backed up, and Disable
+   takes out exactly the app's hooks. The hook script only saves each event in the app's own
+   `~/.claude-session-dashboard/events` folder.
+6. **Phone push alerts** are off until you turn them on, on each phone. The PC then sends an
+   end-to-end encrypted Web Push message to that phone's browser push service (Google, Apple,
+   Mozilla or Microsoft), which can't read it. It holds only the kind of alert and a random
+   reference: no session names, folders or text. Nothing else leaves the PC.
 
 API keys are encrypted with Windows (DPAPI) and never shown, logged or put on a command line. See
 [More details](docs/DETAILS.md#safety-in-full) for the full list.

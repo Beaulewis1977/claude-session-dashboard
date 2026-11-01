@@ -24,6 +24,18 @@
   unencrypted behind the app's back pauses backups until you choose; retention runs under the same
   lock as a backup; a remembered password works again as soon as the drive is back; a newly chosen
   folder gets its first backup right away.
+- **One PC per backup folder:** the folder records which PC backs up into it. Another PC can
+  restore from it and backs up only after **Take over**. The backup lock is claimed atomically,
+  never taken from a backup still running, renewed while it runs, and checked before anything is
+  saved or deleted. A folder whose backup set was replaced, or turned unencrypted, outside the app
+  pauses backups until you choose (choosing the folder again isn't enough); backup files without
+  their `backup-set.json` are never started over; a set folder that is a link is refused; retention
+  deletes nothing when the snapshots can't be listed.
+- **Reconnect key…** for restored API accounts accepts only the exact key they used (checked by a
+  fingerprint of the key, never the key itself), and merges an account you'd already added with
+  that key into the restored one, so sessions and credits stay together.
+- API keys and the remembered backup password now use Electron's asynchronous `safeStorage` API
+  (existing keys keep working).
 
 ## 1.5.0 (November 1, 2026)
 

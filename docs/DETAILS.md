@@ -204,12 +204,27 @@ settings backups can hold secrets from Claude's `env`), caches, and `backup.json
 
 **The backup folder** (`<folder you picked>\ClaudeSessionDashboard Backup\`):
 
-| Path                         | What it is                                                                      |
-| ---------------------------- | ------------------------------------------------------------------------------- |
-| `backup-set.json`            | Which passwords exist (scrypt salt and a check value only) and which is current |
-| `objects\ab\ab12…`           | One file per distinct content: gzip, encrypted when a password is set           |
-| `snapshots\<time>-<id>.json` | One manifest per snapshot: every file, its size, hash and object                |
-| `README.txt`, `lock.json`    | A note for anyone who opens the folder; present while a backup runs             |
+| Path                         | What it is                                                                                                        |
+| ---------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `backup-set.json`            | Which passwords exist (scrypt salt and a check value only), which is current, and which install writes to the set |
+| `objects\ab\ab12…`           | One file per distinct content: gzip, encrypted when a password is set                                             |
+| `snapshots\<time>-<id>.json` | One manifest per snapshot: every file, its size, hash and object                                                  |
+| `README.txt`                 | A note for anyone who opens the folder                                                                            |
+| `lock\owner.json`            | Present while a backup or retention runs                                                                          |
+
+- **One writer, one lock:** the set records the one install that backs up into it. Another PC that
+  chooses the same folder can restore from it, but backs up only after you click **Take over**
+  (the first PC then stops). A synced folder can't give two PCs a real lock, so this is the
+  coordination. On top of it, backups and retention take a lock: a `lock` folder claimed with
+  `mkdir` (exactly one claimer wins, on any drive), never taken from a process still running on
+  this PC however long it runs, renewed every minute, and respected for 30 minutes after another
+  PC's last renewal. A stale lock is taken over in place by one taker only, and a backup checks it
+  still holds the lock right before saving a snapshot or deleting anything (and stops if not).
+- **No silent changes:** the app remembers, per folder, which set it had and whether it was
+  encrypted (in `backup.json`, kept after **Stop using it**). A different set in the folder, or one
+  that turned unencrypted, pauses backups until you choose; choosing the folder again is not
+  enough. Backup files without a readable `backup-set.json` are never started over. A set folder
+  that is itself a link or junction is refused.
 
 - **Incremental:** objects are named after their content (SHA-256, or with a password an HMAC of it,
   so the names don't give the content away). Content already in the folder is never copied again,
@@ -238,9 +253,9 @@ settings backups can hold secrets from Claude's `env`), caches, and `backup.json
   folder gets its first backup at the next check.
 - **Retention:** keep the last N snapshots (default 14, up to 365). Older manifests are deleted, then
   objects no remaining snapshot uses, once they're 12 hours old (so another PC still writing into a
-  shared folder keeps its new files). If any manifest can't be read (still syncing), no object is
-  deleted. Retention runs under the same lock as a backup, so it never removes an object a backup
-  is reusing. Only the app's own files, by their exact names, inside its own subfolder, are ever
+  shared folder keeps its new files). If any manifest can't be read (still syncing), if the
+  snapshots can't be listed, or if no snapshot is left, no object is deleted. Retention runs under
+  the same lock as a backup, so it never removes an object a backup is reusing. Only the app's own files, by their exact names, inside its own subfolder, are ever
   deleted.
 - **Restore:** pick a snapshot and see what would change, per kind of data. Files are restored only
   to the app's own data folder, and only paths on the backup's allow-list (a crafted manifest can't
@@ -251,8 +266,12 @@ settings backups can hold secrets from Claude's `env`), caches, and `backup.json
   keys added since), keeps the window and phone companion settings, and moves archive paths from
   another PC or Windows user to this one. These rules apply even when the file didn't exist here
   yet (a new PC never gets the old PC's phone server switched on). API accounts come back without
-  their keys and show **Key not on this PC**: add the same key again and it reconnects to the
-  restored account, with its credits and history.
+  their keys and show **Key not on this PC**. **Reconnect key…** on that account takes only the key
+  it used: `accounts.json` keeps a SHA-256 fingerprint of each key (never the key), so a different
+  key with the same masked form is refused. Adding the same key as a new account attaches it to
+  the restored one only when the fingerprints match. If you'd already added the key on this PC
+  before restoring, Reconnect merges that account into the restored one: its credit grants move
+  over, and sessions and project defaults that used it point to the restored account.
 
 ## Running now and session alerts
 

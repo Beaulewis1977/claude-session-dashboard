@@ -1,6 +1,7 @@
 // Launches requested from a paired phone.
 //
-// A phone can only ask for Resume, Fork or Branch of a session the app knows.
+// A phone can only ask for Resume, Fork, Branch or Continue fresh of a
+// session the app knows.
 // The options are fixed here, whatever the phone sends: Remote Control on,
 // the Claude subscription (never an API key), permission prompts kept
 // (never --dangerously-skip-permissions), the session's own folder, and the
@@ -36,7 +37,14 @@ export interface RemoteLaunchDeps {
   now?: () => number
 }
 
-const KINDS = ['resume', 'fork', 'branch'] as const
+const KINDS = ['resume', 'fork', 'branch', 'continue'] as const
+
+const VERB: Record<RemoteLaunchRequest['kind'], string> = {
+  resume: 'Resume',
+  fork: 'Fork',
+  branch: 'Branch',
+  continue: 'Continue fresh'
+}
 
 /** Validate what the phone sent; anything unexpected is refused, not fixed up. */
 export function parseLaunchRequest(v: unknown): RemoteLaunchRequest | { error: string } {
@@ -66,7 +74,9 @@ export function remoteLaunchOptions(
     askPermissions: true,
     remoteControl: true,
     terminal,
-    ...(req.kind === 'branch' && req.branch ? { branch: { ...req.branch } } : {})
+    ...(req.kind === 'branch' && req.branch ? { branch: { ...req.branch } } : {}),
+    // A new id is picked on the PC; the phone can't choose one.
+    ...(req.kind === 'continue' ? { continueFresh: {} } : {})
   }
 }
 
@@ -93,6 +103,10 @@ export class RemoteLauncher {
       return {
         error:
           'Use "Branch from here" once on your PC first: it explains what it adds to Claude’s project folder.'
+      }
+    if (req.kind === 'continue' && !s.meta.aiSummary)
+      return {
+        error: 'Summarize this session on your PC first: Continue fresh starts from its summary.'
       }
     return { s }
   }
@@ -123,6 +137,7 @@ export class RemoteLauncher {
     const problem =
       p.launchError ??
       p.branchError ??
+      p.continueError ??
       (!p.cwd
         ? 'No working folder is recorded for this session.'
         : !p.cwdExists
@@ -141,7 +156,8 @@ export class RemoteLauncher {
       remoteControlName: p.remoteControlName,
       confirmOnPc: st.confirmOnPc,
       willRestore: p.willRestore,
-      modelChoice: p.modelChoice
+      modelChoice: p.modelChoice,
+      ...(p.continueFresh ? { newSinceSummary: p.continueFresh.newSince } : {})
     }
   }
 
@@ -152,7 +168,7 @@ export class RemoteLauncher {
       this.deps.log({ device, action: 'launch', detail: req.error, ok: false })
       return { ok: false, error: req.error }
     }
-    const what = `${req.kind[0].toUpperCase()}${req.kind.slice(1)}`
+    const what = VERB[req.kind]
     if (st.readOnly) {
       this.deps.log({
         device,
@@ -218,7 +234,12 @@ export class RemoteLauncher {
       error: res.error,
       // A fork gets a new session id Claude Code picks itself: the phone finds
       // it by folder and start time instead of watching the parent.
-      key: req.kind === 'fork' ? undefined : (res.branch?.key ?? s.key),
+      key:
+        req.kind === 'fork'
+          ? undefined
+          : req.kind === 'continue'
+            ? res.continuedKey
+            : (res.branch?.key ?? s.key),
       fork:
         req.kind === 'fork' ? { parentKey: s.key, sourceId: s.sourceId, cwd: s.cwd } : undefined,
       simulated: res.simulated

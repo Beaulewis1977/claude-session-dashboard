@@ -297,8 +297,8 @@ describe('interrupted backups', () => {
     )
   })
 
-  it('ignores a half-written manifest and refuses a second backup while one runs', async () => {
-    const set = await createSet(setDir, new Date(clock).toISOString())
+  it('ignores a half-written manifest (locking is covered in backup-lock.test.ts)', async () => {
+    await createSet(setDir, new Date(clock).toISOString())
     await mkdir(join(setDir, 'snapshots'), { recursive: true })
     await writeFile(
       join(setDir, 'snapshots', '20261101T115900Z-0000abcd.json'),
@@ -308,21 +308,6 @@ describe('interrupted backups', () => {
     const list = await listSnapshots(setDir)
     expect(list.snapshots).toEqual([])
     expect(list.damaged).toEqual(['20261101T115900Z-0000abcd.json'])
-
-    // Locks use the real clock.
-    const lock = (body: object) => writeFile(join(setDir, 'lock.json'), JSON.stringify(body))
-    await lock({ at: new Date().toISOString(), pid: process.pid })
-    await expect(backup(set, null)).rejects.toThrow(/running/)
-    // This install's own lock from a process that has ended (it quit mid-backup) doesn't block it.
-    await lock({ at: new Date().toISOString(), owner: 'me', pid: 2 ** 22 + 7 })
-    await expect(backup(set, null, {}, { owner: 'someone-else' })).rejects.toThrow(/running/)
-    await expect(backup(set, null, {}, { owner: 'me' })).resolves.toBeTruthy()
-    // ...but one held by this very process does.
-    await lock({ at: new Date().toISOString(), owner: 'me', pid: process.pid })
-    await expect(backup(set, null, {}, { owner: 'me' })).rejects.toThrow(/running/)
-    // A lock from a crash hours ago doesn't block.
-    await lock({ at: new Date(Date.now() - 4 * 60 * 60_000).toISOString() })
-    await expect(backup(set, null)).resolves.toBeTruthy()
   })
 })
 
@@ -679,8 +664,8 @@ describe('restore', () => {
 describe('BackupService', () => {
   const encryptor = {
     available: () => true,
-    encrypt: (t: string) => Buffer.from(`dpapi:${t}`),
-    decrypt: (b: Buffer) => b.toString().slice('dpapi:'.length)
+    encrypt: async (t: string) => Buffer.from(`dpapi:${t}`),
+    decrypt: async (b: Buffer) => b.toString().slice('dpapi:'.length)
   }
 
   async function service() {

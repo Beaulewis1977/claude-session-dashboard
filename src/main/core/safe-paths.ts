@@ -174,6 +174,9 @@ export async function assertRealBackupWrite(target: string, setDir: string): Pro
   ) {
     throw new UnsafeWriteError(`Refusing to write outside the backup folder: ${target}`)
   }
+  // The set's own folder is the boundary: it must not itself be a link.
+  if ((await lstat(setDir).catch(() => undefined))?.isSymbolicLink())
+    throw new UnsafeWriteError(`Refusing a backup folder that is a link or junction: ${setDir}`)
   const [dir, base, st] = await Promise.all([
     realExisting(dirname(target)),
     realExisting(setDir),

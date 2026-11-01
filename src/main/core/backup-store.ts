@@ -6,7 +6,7 @@
 //     README.txt
 //     objects/ab/ab12…            one file per distinct content (gzip, maybe encrypted)
 //     snapshots/20261101T120000Z-1a2b3c4d.json   one per complete snapshot
-//     lock.json                   while a backup runs
+//     lock/owner.json             while a backup or retention runs (see backup-lock.ts)
 //
 // Incremental: an object is named after its content, so content that is
 // already in the set is never copied again; a snapshot's manifest lists every
@@ -22,18 +22,8 @@
 
 import { createHash, randomBytes } from 'node:crypto'
 import { createReadStream, createWriteStream } from 'node:fs'
-import {
-  lstat,
-  mkdir,
-  open,
-  readdir,
-  readFile,
-  realpath,
-  rename,
-  stat,
-  unlink
-} from 'node:fs/promises'
-import { basename, dirname, join, resolve } from 'node:path'
+import { mkdir, open, readdir, readFile, rename, stat, unlink } from 'node:fs/promises'
+import { dirname, join } from 'node:path'
 import { Readable } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
 import { createGunzip, createGzip } from 'node:zlib'
@@ -52,17 +42,22 @@ import {
   type KeyEntry
 } from './backup-crypto'
 import type { SourceFile } from './backup-files'
-import { assertRealBackupWrite, isInside, isInsideClaudeDir, UnsafeWriteError } from './safe-paths'
+import {
+  assertSetRoot,
+  deleteInSet,
+  exists,
+  OBJECT_RE,
+  rand,
+  SNAPSHOT_RE,
+  TMP_RE,
+  writeInSet
+} from './backup-fs'
+import { acquireLock, BackupBusyError, type LockHandle } from './backup-lock'
+import { assertRealBackupWrite } from './safe-paths'
+
+export { BackupBusyError, deleteInSet }
 
 export const SET_FILE = 'backup-set.json'
-const LOCK_FILE = 'lock.json'
-const SNAPSHOT_RE = /^(\d{8}T\d{6}Z)-([0-9a-f]{8})\.json$/
-const OBJECT_RE = /^[0-9a-f]{64}$/
-const TMP_RE =
-  /^[0-9a-f]{64}\.[0-9a-f]{8}\.tmp$|^\d{8}T\d{6}Z-[0-9a-f]{8}\.json\.[0-9a-f]{8}\.tmp$|^backup-set\.json\.[0-9a-f]{8}\.tmp$|^lock\.json\.[0-9a-f]{8}\.tmp$/
-/** A lock older than this is from a backup that crashed. */
-const STALE_LOCK_MS = 3 * 60 * 60_000
-
 export interface SetFile {
   format: 'csd-backup-set'
   version: 1
@@ -71,6 +66,12 @@ export interface SetFile {
   /** The password new snapshots use; null = not encrypted. */
   current: string | null
   keys: KeyEntry[]
+  /**
+   * The one install that backs up into this set (a synced folder can't give
+   * two PCs a real lock). Another install can restore from it, and backs up
+   * only after taking over explicitly.
+   */
+  writer?: { installId: string; since: string }
 }
 
 export interface ManifestFile {
@@ -105,67 +106,11 @@ export interface Manifest {
   sealed?: string
 }
 
-export class BackupBusyError extends Error {}
-
-const rand = (): string => randomBytes(4).toString('hex')
-
 function stampOf(t: number): string {
   return new Date(t)
     .toISOString()
     .replace(/[-:]/g, '')
     .replace(/\.\d{3}/, '')
-}
-
-/** Write `data` to `path` inside the set: temp file, flush, rename. */
-async function writeInSet(path: string, data: Buffer | string, setDir: string): Promise<void> {
-  await assertRealBackupWrite(path, setDir)
-  await mkdir(dirname(path), { recursive: true })
-  const tmp = `${path}.${rand()}.tmp`
-  const fh = await open(tmp, 'wx')
-  try {
-    await fh.writeFile(data)
-    await fh.sync()
-  } finally {
-    await fh.close()
-  }
-  try {
-    await rename(tmp, path)
-  } catch (err) {
-    await unlink(tmp).catch(() => undefined)
-    throw err
-  }
-}
-
-/**
- * The only way the app deletes anything in a backup set: a snapshot manifest,
- * an object, one of its own temp files or its lock, by exact name and folder,
- * never a link, and only where the real folder is inside the set.
- */
-export async function deleteInSet(
-  target: string,
-  setDir: string,
-  kind: 'snapshot' | 'object' | 'tmp' | 'lock'
-): Promise<void> {
-  const t = resolve(target)
-  const set = resolve(setDir)
-  const name = basename(t)
-  const parent = dirname(t)
-  const ok =
-    kind === 'snapshot'
-      ? SNAPSHOT_RE.test(name) && parent === join(set, 'snapshots')
-      : kind === 'object'
-        ? OBJECT_RE.test(name) && parent === join(set, 'objects', name.slice(0, 2))
-        : kind === 'lock'
-          ? name === LOCK_FILE && parent === set
-          : TMP_RE.test(name) &&
-            (parent === set ||
-              parent === join(set, 'snapshots') ||
-              (dirname(parent) === join(set, 'objects') && /^[0-9a-f]{2}$/.test(basename(parent))))
-  if (!ok || isInsideClaudeDir(t)) throw new UnsafeWriteError(`Refusing to delete ${target}`)
-  const [realParent, realSet, st] = await Promise.all([realpath(parent), realpath(set), lstat(t)])
-  if (!isInside(realParent, realSet) || !st.isFile())
-    throw new UnsafeWriteError(`Refusing to delete ${target}`)
-  await unlink(t)
 }
 
 // ------------------------------------------------------------------ the set
@@ -197,13 +142,18 @@ export async function readSet(setDir: string): Promise<SetFile | undefined> {
     !(typeof v.current === 'string' && keys.some((k) => k.id === v.current))
   )
     throw new DamagedBackupError(`${SET_FILE} is damaged (its current password can't be found)`)
+  const w = v.writer as SetFile['writer'] | undefined
   return {
     format: v.format,
     version: 1,
     id: v.id,
     createdAt: String(v.createdAt),
     current: v.current,
-    keys
+    keys,
+    writer:
+      w && typeof w.installId === 'string' && /^[0-9a-f]{16}$/.test(w.installId)
+        ? { installId: w.installId, since: String(w.since) }
+        : undefined
   }
 }
 
@@ -218,16 +168,37 @@ If the backups are encrypted, they can't be read without the password.
 Nobody can recover a lost password.
 `
 
-export async function createSet(setDir: string, at: string, key?: KeyEntry): Promise<SetFile> {
+/**
+ * Backup files without a readable set file: a damaged or partly synced set.
+ * A new set is never started over them (it could hide damage to an
+ * encrypted set, or start writing in the clear next to it).
+ */
+export async function hasSetArtifacts(setDir: string): Promise<boolean> {
+  for (const n of ['objects', 'snapshots', 'lock']) if (await exists(join(setDir, n))) return true
+  return false
+}
+
+export async function createSet(
+  setDir: string,
+  at: string,
+  key?: KeyEntry,
+  writer?: string
+): Promise<SetFile> {
   const set: SetFile = {
     format: 'csd-backup-set',
     version: 1,
     id: randomBytes(8).toString('hex'),
     createdAt: at,
     current: key?.id ?? null,
-    keys: key ? [key] : []
+    keys: key ? [key] : [],
+    writer: writer ? { installId: writer, since: at } : undefined
   }
   await mkdir(setDir, { recursive: true })
+  await assertSetRoot(setDir)
+  if (await hasSetArtifacts(setDir))
+    throw new DamagedBackupError(
+      'This folder already has backup files, but no readable backup-set.json. The app won’t start a new backup set over them.'
+    )
   await assertRealBackupWrite(join(setDir, SET_FILE), setDir)
   // Never over an existing set (created exclusively).
   const fh = await open(join(setDir, SET_FILE), 'wx')
@@ -251,82 +222,10 @@ export async function writeSet(setDir: string, set: SetFile): Promise<void> {
   await writeInSet(join(setDir, SET_FILE), JSON.stringify(set, null, 2), setDir)
 }
 
-// ------------------------------------------------------------------ lock
-
-/**
- * One backup at a time per set. A lock left by this same install (the app
- * quit or crashed mid-backup; it never runs two at once) or older than a few
- * hours is taken over; another PC's recent lock is respected.
- */
-async function acquireLock(setDir: string, owner?: string): Promise<string> {
-  // Locks are about real time (never the app's display clock).
-  const now = Date.now()
-  const path = join(setDir, LOCK_FILE)
-  const nonce = randomBytes(8).toString('hex')
-  const body = JSON.stringify({ at: new Date(now).toISOString(), pid: process.pid, nonce, owner })
-  await assertRealBackupWrite(path, setDir)
-  try {
-    const fh = await open(path, 'wx')
-    await fh.writeFile(body)
-    await fh.close()
-    return nonce
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err
-  }
-  let at = 0
-  let mine = false
-  try {
-    const v = JSON.parse(await readFile(path, 'utf8')) as {
-      at: string
-      owner?: string
-      pid?: number
-    }
-    at = Date.parse(v.at) || 0
-    // This install's lock from a process that has ended (the app quit or
-    // crashed mid-backup). Never one this process holds right now.
-    mine = !!owner && v.owner === owner && v.pid !== process.pid && !alive(v.pid)
-  } catch {
-    // Unreadable: treat as stale.
-  }
-  if (!mine && now - at < STALE_LOCK_MS)
-    throw new BackupBusyError('Another backup into this folder is running right now.')
-  await writeInSet(path, body, setDir)
-  return nonce
-}
-
-function alive(pid: unknown): boolean {
-  if (typeof pid !== 'number' || !Number.isInteger(pid) || pid <= 0) return false
-  try {
-    process.kill(pid, 0)
-    return true
-  } catch (err) {
-    return (err as NodeJS.ErrnoException).code === 'EPERM'
-  }
-}
-
-async function releaseLock(setDir: string, nonce: string): Promise<void> {
-  const path = join(setDir, LOCK_FILE)
-  try {
-    const v = JSON.parse(await readFile(path, 'utf8')) as { nonce?: string }
-    if (v.nonce === nonce) await deleteInSet(path, setDir, 'lock')
-  } catch {
-    // Gone already.
-  }
-}
-
 // ------------------------------------------------------------------ objects
 
 const objectPath = (setDir: string, id: string): string =>
   join(setDir, 'objects', id.slice(0, 2), id)
-
-async function exists(p: string): Promise<boolean> {
-  try {
-    await stat(p)
-    return true
-  } catch {
-    return false
-  }
-}
 
 async function hashFile(f: SourceFile): Promise<{ sha: string; size: number }> {
   const hash = createHash('sha256')
@@ -450,15 +349,27 @@ export async function listSnapshots(setDir: string): Promise<SnapshotList> {
   let names: string[]
   try {
     names = await readdir(dir)
-  } catch {
-    return { snapshots: [], damaged: [] }
+  } catch (err) {
+    // No folder yet: no snapshots. Any other error is never "no snapshots"
+    // (retention would then see every object as unused).
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return { snapshots: [], damaged: [] }
+    throw err
   }
   const snapshots: Manifest[] = []
   const damaged: string[] = []
   for (const name of names) {
     if (!SNAPSHOT_RE.test(name)) continue
+    let text: string
     try {
-      const v: unknown = JSON.parse(await readFile(join(dir, name), 'utf8'))
+      text = await readFile(join(dir, name), 'utf8')
+    } catch (err) {
+      // Removed since the folder was listed (retention elsewhere): not damage.
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') continue
+      damaged.push(name)
+      continue
+    }
+    try {
+      const v: unknown = JSON.parse(text)
       if (validManifest(v, name)) snapshots.push(v)
       else damaged.push(name)
     } catch {
@@ -543,7 +454,8 @@ export interface RunResult {
 
 export async function runBackup(o: RunOptions): Promise<RunResult> {
   if ((o.set.current ?? null) !== (o.keys?.keyId ?? null)) throw new WrongPasswordError()
-  const nonce = await acquireLock(o.setDir, o.owner)
+  await assertSetRoot(o.setDir)
+  const lock = await acquireLock(o.setDir, o.owner)
   try {
     await cleanTemp(o.setDir)
     const cache: Record<string, CacheEntry> = {}
@@ -622,7 +534,9 @@ export async function runBackup(o: RunOptions): Promise<RunResult> {
         o.keys
       ).toString('base64')
     else manifest.files = entries
-    // The snapshot counts from here on, and only if this write completes.
+    // Fencing: only while this is still the set's lock. The snapshot counts
+    // from here on, and only if this write completes.
+    await lock.assertHeld()
     await writeInSet(
       join(o.setDir, 'snapshots', `${snapId}.json`),
       JSON.stringify(manifest),
@@ -633,14 +547,14 @@ export async function runBackup(o: RunOptions): Promise<RunResult> {
     // that retention is about to remove.
     if (o.retention) {
       try {
-        result.retention = await retainLocked(o.setDir, o.retention.keep, o.retention)
+        result.retention = await retainLocked(o.setDir, o.retention.keep, lock, o.retention)
       } catch (err) {
         result.retentionError = (err as Error).message
       }
     }
     return result
   } finally {
-    await releaseLock(o.setDir, nonce)
+    await lock.release()
   }
 }
 
@@ -684,26 +598,35 @@ export async function applyRetention(
   opts: { minObjectAgeMs?: number; protect?: string[]; owner?: string } = {}
 ): Promise<RetentionResult> {
   // The same lock as a backup: never while a backup may be reusing objects.
-  const nonce = await acquireLock(setDir, opts.owner)
+  await assertSetRoot(setDir)
+  const lock = await acquireLock(setDir, opts.owner)
   try {
-    return await retainLocked(setDir, keep, opts)
+    return await retainLocked(setDir, keep, lock, opts)
   } finally {
-    await releaseLock(setDir, nonce)
+    await lock.release()
   }
 }
 
 async function retainLocked(
   setDir: string,
   keep: number,
+  lock: LockHandle,
   opts: { minObjectAgeMs?: number; protect?: string[] }
 ): Promise<RetentionResult> {
   const keepN = Math.max(1, Math.floor(keep))
+  // Throws if the snapshots can't be listed: nothing is deleted then.
   const { snapshots, damaged } = await listSnapshots(setDir)
   const protect = new Set(opts.protect ?? [])
   const old = snapshots.slice(keepN).filter((s) => !protect.has(s.id))
+  await lock.assertHeld()
   for (const s of old)
     await deleteInSet(join(setDir, 'snapshots', `${s.id}.json`), setDir, 'snapshot')
   const result: RetentionResult = { removedSnapshots: old.length, removedObjects: 0 }
+  if (snapshots.length - old.length === 0) {
+    // No snapshot left to say what's in use: delete no object.
+    result.skippedObjects = 'no snapshot is left to check them against'
+    return result
+  }
   if (damaged.length) {
     result.skippedObjects = `${damaged.length} snapshot file${damaged.length === 1 ? '' : 's'} couldn't be read`
     return result
@@ -720,6 +643,8 @@ async function retainLocked(
       const p = join(objects, d, n)
       const st = await stat(p).catch(() => undefined)
       if (!st || Date.now() - st.mtimeMs < minAge) continue
+      // Fencing, now and then while deleting.
+      if (result.removedObjects % 25 === 0) await lock.assertHeld()
       await deleteInSet(p, setDir, 'object')
       result.removedObjects++
     }

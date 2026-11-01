@@ -11,6 +11,7 @@ and the decisions behind it.
 - [Using it: more detail](#using-it-more-detail)
 - [Branching](#branching)
 - [Keeping sessions longer in Claude Code itself](#keeping-sessions-longer-in-claude-code-itself)
+- [Backups](#backups)
 - [Running now and session alerts](#running-now-and-session-alerts)
 - [Phone companion](#phone-companion)
 - [Terminal access (SSH)](#terminal-access-ssh)
@@ -33,7 +34,8 @@ The app is built around these rules (see [`CLAUDE.md`](../CLAUDE.md)):
    session file next to the session it branches from (see [Branching](#branching)). It never
    changes or deletes an existing file.
 2. The app's own data lives only in `%APPDATA%\ClaudeSessionDashboard\` (metadata, settings, archive,
-   cache, and Chromium's own files).
+   cache, and Chromium's own files). If you turn on [backups](#backups), it also writes, and
+   retention deletes, inside its own subfolder of the one backup folder you pick, and nowhere else.
 3. There is no "delete session" feature. **Hide** is only a flag in the app's metadata.
 4. **No network calls.** All outgoing requests from the window are blocked, remote images in
    transcripts aren't loaded, fonts are bundled, and spellcheck (which would download dictionaries)
@@ -186,6 +188,57 @@ anyway, but if you also want Claude Code to keep them, add this to `%USERPROFILE
 ```json
 { "cleanupPeriodDays": 3650 }
 ```
+
+## Backups
+
+Settings → **Backup** copies the app's own data to a folder you pick. Since Claude Code deletes old
+sessions, the archive is often the only copy of older work; a backup on another drive or in a cloud
+folder keeps it safe if the PC fails.
+
+**What's in a backup:** the session archive, `metadata.json` (your names, descriptions, tags, pins),
+usage and limit history, Ask Claude history, the app's settings, and `accounts.json` with the API
+keys taken out (nicknames, credit grants and Admin reports stay). **Never in a backup:** API keys,
+paired phones and push keys (`mobile.json`), the status line / session alert / terminal access
+records and their backups of Claude's or OpenSSH's settings (they belong to this PC, and the
+settings backups can hold secrets from Claude's `env`), caches, and `backup.json` itself.
+
+**The backup folder** (`<folder you picked>\ClaudeSessionDashboard Backup\`):
+
+| Path                         | What it is                                                                      |
+| ---------------------------- | ------------------------------------------------------------------------------- |
+| `backup-set.json`            | Which passwords exist (scrypt salt and a check value only) and which is current |
+| `objects\ab\ab12…`           | One file per distinct content: gzip, encrypted when a password is set           |
+| `snapshots\<time>-<id>.json` | One manifest per snapshot: every file, its size, hash and object                |
+| `README.txt`, `lock.json`    | A note for anyone who opens the folder; present while a backup runs             |
+
+- **Incremental:** objects are named after their content (SHA-256, or with a password an HMAC of it,
+  so the names don't give the content away). Content already in the folder is never copied again,
+  and a file whose size and modified time haven't changed isn't even read. Each snapshot still lists
+  every file, so any one of them restores in full.
+- **Atomic:** objects and manifests are written to a temp file, flushed, and renamed into place. A
+  snapshot exists only once its manifest does: an interrupted backup (the app closed, the drive was
+  unplugged) leaves at most some objects the next backup reuses.
+- **Encryption:** scrypt (N = 2^17, r = 8, p = 1, Node's built-in crypto, no native module) turns
+  the password into a key; each file is AES-256-GCM with its own random IV, and a restore checks
+  every file against its name, so a changed or damaged file is refused. The password is never
+  stored. **Remember on this PC** keeps the derived key, encrypted with Windows (DPAPI) through
+  Electron safeStorage, in `backup.json`. Changing the password applies to new snapshots (the first
+  one copies everything again); older snapshots need the password they were made with.
+- **Schedule:** daily or weekly while the app is open (checked every 15 minutes), plus **Back up
+  now**. A failed backup (drive missing, folder full) is tried again after an hour.
+- **Retention:** keep the last N snapshots (default 14, up to 365). Older manifests are deleted, then
+  objects no remaining snapshot uses, once they're 12 hours old (so another PC still writing into a
+  shared folder keeps its new files). If any manifest can't be read (still syncing), no object is
+  deleted. Only the app's own files, by their exact names, inside its own subfolder, are ever
+  deleted.
+- **Restore:** pick a snapshot and see what would change, per kind of data. Files are restored only
+  to the app's own data folder, and only paths on the backup's allow-list (a crafted manifest can't
+  point anywhere else, `.claude` included). Every file is decrypted and checked into
+  `restore-pending\` first; the app then restarts and, before any data loads, copies each file it
+  replaces to `restore-backups\<time>\` and puts the restored one in place. A restore never deletes a
+  file, never replaces an archived session with a smaller copy, keeps API keys saved on this PC (and
+  keys added since), keeps the window and phone companion settings, and moves archive paths from
+  another PC or Windows user to this one.
 
 ## Running now and session alerts
 

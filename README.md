@@ -105,6 +105,18 @@ Everything stays on your PC and your own private network.
 - Works without any setup from Claude Code's own session files. **Enable session alerts** for exact,
   instant states: it adds a few hooks to Claude Code's `settings.json`, after you review the diff.
 
+### Backups
+
+- **Back up everything the app keeps** (the archive, your names, descriptions and tags, usage and
+  limit history, and its settings) to a folder you choose, such as OneDrive, an external drive or a
+  NAS. Your cloud app syncs it; the dashboard makes no network calls.
+- **Daily or weekly** while the app is open, plus **Back up now**. Only new or changed files are
+  copied (compressed), and it keeps the last 14 snapshots (you choose how many).
+- **Optional password** (AES-256). Remember it on this PC, or enter it once per start. API keys are
+  never in a backup.
+- **Restore** any snapshot: you see what would change first, it only ever writes to the app's own
+  data folder (never `.claude`), and it keeps a copy of every file it replaces.
+
 ### Phone companion
 
 - The same app in a phone layout: search and read sessions, rename, describe, tag, pin and hide
@@ -262,6 +274,21 @@ change.
 
 **Disable** takes out exactly the app's hooks. Your other hooks stay as they are.
 
+### Set up backups
+
+1. Open Settings → **Backup** and click **Choose folder…** (for example a folder in OneDrive, or on an
+   external drive). The app creates a `ClaudeSessionDashboard Backup` folder there and writes only
+   inside it.
+2. Choose whether to encrypt with a password (recommended for a cloud folder: backups hold your full
+   session transcripts). **If you lose the password, the backups can't be read.** Tick **Remember on
+   this PC** so scheduled backups run without asking.
+3. Pick **Daily** or **Weekly** and how many snapshots to keep, or click **Back up now**.
+
+**To restore** (also on a new PC: install the app, then choose the same backup folder): Settings →
+Backup → **Restore…**, pick a snapshot, check what would change, then **Restore and restart**. Files
+that aren't in the snapshot stay, archived sessions are never replaced by an older (smaller) copy,
+and the files it replaces are kept in `%APPDATA%\ClaudeSessionDashboard\restore-backups\`.
+
 ### Keyboard shortcuts
 
 | Keys                                              | Action                  |
@@ -285,7 +312,8 @@ The full rules are in [`CLAUDE.md`](CLAUDE.md). In short:
 - **It never deletes or changes anything in a `.claude` folder.** It only reads. The one built-in
   exception: when you resume a session whose file is missing, it copies the archived copy back, and
   it can never overwrite a file. **Branch from here** only ever adds one new session file.
-- **Its own data** lives only in `%APPDATA%\ClaudeSessionDashboard\`.
+- **Its own data** lives only in `%APPDATA%\ClaudeSessionDashboard\`, plus, if you turn on backups,
+  the one backup folder you pick (the app writes and deletes only inside its own subfolder there).
 - **There is no delete.** Hide is only a flag.
 - **No network calls.** Outgoing requests from the window are blocked, remote images in
   transcripts aren't loaded, and spellcheck is off.

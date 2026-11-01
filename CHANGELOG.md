@@ -1,5 +1,23 @@
 # Changelog
 
+## Unreleased
+
+- **Backups.** Settings → Backup copies the archive, names, descriptions and tags, usage and limit
+  history, and the app's settings to a folder you choose (OneDrive, an external drive, a NAS), daily
+  or weekly while the app is open, or with **Back up now**. Only new or changed content is copied
+  (content-addressed and compressed), every snapshot has its own manifest, and a snapshot counts only
+  once that manifest is written, so an interrupted backup never leaves a broken one. Keeps the last
+  14 snapshots by default; retention deletes only the app's own files inside its own backup
+  subfolder. API keys are never included. No network calls: your cloud app syncs the folder.
+- **Optional password:** scrypt + AES-256-GCM per file, with every file checked on restore. The
+  password is never stored; **Remember on this PC** keeps the derived key protected by Windows
+  (DPAPI). The app warns that a lost password means unreadable backups.
+- **Restore:** pick a snapshot, see what would change, then restore into the app's own data folder
+  (never `.claude`). It finishes on restart before any data loads, copies every file it replaces to
+  `restore-backups\` first, never deletes a file, never replaces an archived session with a smaller
+  copy, and keeps this PC's API keys, phone pairing and window and phone settings. Works across PCs
+  and Windows users (archive paths are moved to the new data folder).
+
 ## 1.5.0 (November 1, 2026)
 
 **Running now: every live Claude Code session at a glance, with alerts on your PC and phone.**

@@ -1,6 +1,14 @@
 # Changelog
 
-## Unreleased
+## 1.6.0 (November 1, 2026)
+
+**Backups of everything the app keeps, to a folder you choose, plus Running now, session alerts and
+phone push alerts.**
+
+- **Running now, session alerts and phone push alerts** (PR #18) first shipped in 1.5.0 and are part
+  of this release too; see 1.5.0 below for the details.
+
+### Backups (PR #20)
 
 - **Backups.** Settings → Backup copies the archive, names, descriptions and tags, usage and limit
   history, and the app's settings to a folder you choose (OneDrive, an external drive, a NAS), daily

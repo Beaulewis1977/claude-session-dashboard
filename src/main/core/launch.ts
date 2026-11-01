@@ -58,6 +58,16 @@ export interface LaunchInput {
   askPermissions?: boolean
   /** `--model` / `--effort` (validated; nothing for Claude Code's default). */
   modelChoice?: ModelChoice
+  /** Continue fresh: a new session with this id whose first message is `prompt`. */
+  continueFresh?: ContinueFreshArgs
+}
+
+export interface ContinueFreshArgs {
+  newSessionId: string
+  /** The short first message pointing at the handoff file (see handoffPrompt). */
+  prompt: string
+  /** The handoff file's folder, when the message asks Claude to read it (`--add-dir`). */
+  addDir?: string
 }
 
 export type ModelChoice = Pick<ResolvedModel, 'model' | 'effort'>
@@ -205,6 +215,30 @@ function remoteControlArgs(rc: RemoteControl | undefined): string[] {
 /** The prompting mode ("Manual"): asks before edits and commands. */
 export const ASK_PERMISSION_ARGS = ['--permission-mode', 'default']
 
+/**
+ * What the first message and the handoff folder of Continue fresh may hold:
+ * they reach cmd, PowerShell, Windows Terminal and bash, so letters, digits,
+ * spaces and `_ . - , @ \ / : ~` only, never starting with "-" (a flag) or a space.
+ */
+const CONTINUE_ARG_RE = /^[\p{L}\p{N}_.,@\\/:~][\p{L}\p{N} _.,@\\/:~-]*$/u
+
+export function isSafeContinueArg(v: string): boolean {
+  return v.length <= 1000 && CONTINUE_ARG_RE.test(v)
+}
+
+function continueArgs(c: ContinueFreshArgs): { prompt: string; rest: string[] } {
+  if (!isValidSessionId(c.newSessionId)) throw new Error(`Invalid session id: ${c.newSessionId}`)
+  if (!isSafeContinueArg(c.prompt))
+    throw new Error("The handoff file's location can't be passed to Claude Code safely.")
+  if (c.addDir !== undefined && !isSafeContinueArg(c.addDir))
+    throw new Error("The handoff folder's location can't be passed to Claude Code safely.")
+  return {
+    prompt: c.prompt,
+    // --add-dir takes several folders: the option after it ends the list.
+    rest: [...(c.addDir ? ['--add-dir', c.addDir] : []), '--session-id', c.newSessionId]
+  }
+}
+
 export function claudeArgs(
   sessionId: string,
   skipPermissions: boolean,
@@ -212,7 +246,8 @@ export function claudeArgs(
   newSession = false,
   remoteControl?: RemoteControl,
   askPermissions = false,
-  modelChoice?: ModelChoice
+  modelChoice?: ModelChoice,
+  continueFresh?: ContinueFreshArgs
 ): string[] {
   if (askPermissions && skipPermissions)
     throw new Error("Can't both skip and ask for permission prompts.")
@@ -220,6 +255,18 @@ export function claudeArgs(
   const ask = askPermissions ? ASK_PERMISSION_ARGS : []
   // Validated again here: these reach every shell on the way to Claude.
   const model = modelArgs(modelChoice?.model, modelChoice?.effort)
+  if (continueFresh) {
+    // The first message goes first, before any option that takes a value.
+    const c = continueArgs(continueFresh)
+    return [
+      c.prompt,
+      ...rc,
+      ...ask,
+      ...model,
+      ...c.rest,
+      ...(skipPermissions ? ['--dangerously-skip-permissions'] : [])
+    ]
+  }
   if (newSession)
     return [...rc, ...ask, ...model, ...(skipPermissions ? ['--dangerously-skip-permissions'] : [])]
   if (!isValidSessionId(sessionId)) throw new Error(`Invalid session id: ${sessionId}`)
@@ -345,7 +392,8 @@ function build(input: LaunchInput): Omit<LaunchCommand, 'commandLine'> {
     input.newSession,
     input.remoteControl,
     input.askPermissions,
-    input.modelChoice
+    input.modelChoice,
+    input.continueFresh
   )
   const claudeCommand = claudeCommandLine(cArgs)
   // Remote Control refuses API-key auth: remove the keys in the final shell

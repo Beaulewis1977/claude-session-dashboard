@@ -10,6 +10,7 @@ and the decisions behind it.
 - [Safety in full](#safety-in-full)
 - [Using it: more detail](#using-it-more-detail)
 - [Branching](#branching)
+- [Summaries and Continue fresh](#summaries-and-continue-fresh)
 - [Keeping sessions longer in Claude Code itself](#keeping-sessions-longer-in-claude-code-itself)
 - [Backups](#backups)
 - [Running now and session alerts](#running-now-and-session-alerts)
@@ -178,6 +179,74 @@ or cmd as your preferred terminal; they open in a new console window of their ow
   branches sit under their parent (turn this off in the sort menu: **Group branches under parent**).
 
 ![Branches panel and branch point](branches.png)
+
+## Summaries and Continue fresh
+
+A **summary** shows a session at a glance: a suggested title, what was done, files changed,
+decisions, open to-dos and where to pick up. It sits at the top of the viewer, and its "where to pick
+up" line (or the first thing done) shows on the session's card when it has no description.
+
+**Writing one.** **Summarize** (on the session, in the right-click menu, the ⋯ menu or the command
+palette), **Summarize selected** for several, or opt-in auto-summarize. One runs at a time, in the
+background; a panel in the corner shows the queue, with Cancel for one or all.
+
+- **What is sent:** your messages and Claude's replies as plain text, and one line per tool call
+  (`[tool] Edit src/app.ts`, `[tool] Bash: npm test`). Never tool results, thinking, images, slash
+  commands or their output. API keys, tokens, passwords, private keys and credentials in URLs are
+  masked first. One very long message keeps its start and end (6,000 characters), and a session
+  longer than the limit (120,000 characters by default, Settings → Summaries) keeps its first quarter
+  and its last three quarters, with a note of how many messages were left out in the middle.
+- **How it's sent:** the same way as [Ask Claude](#ask-claude), through your own Claude Code on your
+  subscription (the same allowlisted environment and `claude auth status` check), with
+  `claude -p --output-format json --tools "" --strict-mcp-config --safe-mode --setting-sources ""
+--no-session-persistence --model sonnet` and the text on stdin. `--no-session-persistence` means
+  Claude Code doesn't save the run as a session (if a version did, the marker at the start of the
+  prompt hides it like Ask Claude's). The first time, a notice explains all of this and **Show
+  exactly what is sent** shows the full text; Settings → Summaries → **Show again** brings the notice
+  back.
+- **Model:** Sonnet by default; Haiku uses the least of your limits, Opus writes the most careful
+  summaries, Default adds no `--model`. The summary records the model that answered.
+- **Stored** in the app's `metadata.json` with the date, the model, the message count at the time
+  (the viewer shows "N new messages since" when the session has gone on) and the cost Claude Code
+  reported. Edit it (⋯ → **Edit summary**), regenerate it, use its title as the session's name, copy
+  it as Markdown, or remove it. It's part of the full-text search and of backups. Nothing is ever
+  written to Claude's files.
+- **Usage:** each run's tokens are read from Claude Code's JSON answer and recorded under
+  **Summaries (dashboard)** in `usage\dashboard-runs.ndjson`, so they show in the Usage view and
+  count in limit health like any other use. **Recalculate** keeps them.
+
+**The limits guard.** Before **Summarize selected**, the dialog shows the characters sent, the
+approximate tokens (characters ÷ 4, plus about 3,500 per run for Claude Code's own prompt and 1,200
+for the answer) and, once [limit health](#limit-health-did-my-limits-get-smaller) has a baseline,
+roughly what share of your 5-hour window that is (estimated cost ÷ the baseline's dollars per 1% at
+your plan). Before each summary the live 5-hour % is checked: above the pause line (80% by default)
+the queue stops and says so, and **Resume anyway** goes on until the queue is done. Without a live
+reading the queue isn't held up.
+
+**Auto-summarize** (off by default, Settings → Summaries) summarizes sessions with at least 200
+messages (your choice) once they've been idle for 30 minutes, and writes a summary again when a
+session has grown by half that many messages since, unless you edited it. At most six an hour,
+never above the pause line, and never for hidden sessions or Ask Claude runs. Settings shows how
+many sessions would be summarized now and what that would use.
+
+**Continue fresh** starts a new Claude Code session in the same folder and environment whose first
+message is the summary, instead of reloading the whole history with Resume. Use it from the summary,
+the ⋯ menu, the right-click menu or the phone.
+
+- It uses the same launch dialog and options as Resume: terminal, billing, model and effort, Remote
+  Control, and skip permission prompts. The dialog shows the handoff text, its file, and a warning
+  when the session has new messages since the summary.
+- The app picks the new session's id (`claude --session-id <new-id>`) and writes the handoff to
+  `%APPDATA%\ClaudeSessionDashboard\handoffs\<new-id>.md` (a new file only; it never replaces
+  one). The first message is a short fixed line: `@<handoff file> Continue from this handoff of an
+earlier session.` Claude Code attaches the file itself (it works with no tools). In WSL the file
+  is reached as `/mnt/c/…`. If the path has a space (a Windows user name with a space), the line
+  asks Claude to read the file instead, and the handoffs folder is added with `--add-dir`. Either
+  way, the summary never goes on a command line.
+- The handoff ends by asking Claude to say where you left off and wait for your go-ahead.
+- The new session is named "<title> — continued", keeps the original's model and effort choice,
+  and is linked to it in the [Branches](#branching) panel ("Continued fresh from a summary").
+  Nothing is written to `.claude`: Claude Code creates the new session file itself.
 
 ## Keeping sessions longer in Claude Code itself
 
@@ -348,14 +417,16 @@ updates over a self-signed certificate; the app then refreshes every 20 seconds 
 
 - **Can:** read sessions and usage, search, rename, describe, tag, pin and hide sessions, change a
   safe subset of settings (terminal, Remote Control default, alerts, week start; theme is per phone),
-  and Resume / Fork / Branch sessions on the PC.
-- **Launches** run only the fixed resume / fork / branch commands, for sessions the app knows, always
+  read and edit summaries, and Resume / Fork / Branch / Continue fresh sessions on the PC.
+- **Launches** run only the fixed resume / fork / branch / continue-fresh commands (Continue fresh
+  needs a summary written on the PC, and the PC picks the new session's id), for sessions the app knows, always
   with Remote Control on your Claude subscription and with permission prompts on (never
   `--dangerously-skip-permissions`), in the session's own folder, at most one every 10 seconds.
   After launching, **Open in Claude app** links to the session (or to claude.ai/code until Claude
   Code has recorded the link).
 - **Can't:** run any other command, change security or pairing, see or add API keys, change
-  Tailscale, the firewall or the companion itself, pick folders, or use Ask Claude.
+  Tailscale, the firewall or the companion itself, pick folders, use Ask Claude, or write or
+  remove summaries (that sends session text to Claude, so it stays on the PC).
 - **Your controls** (Settings → Phone): read-only mode, **Confirm launches on this PC** (a dialog
   you must allow within a minute), revoke any phone, and an **activity log** of every action from a
   phone. Phones not seen for 30 days are forgotten.
@@ -722,6 +793,8 @@ records of sessions whose files are gone are kept as they were.
 | `usage\usage-readings.ndjson`                           | Limit readings found in `/usage` output in transcripts (backfill)                                                |
 | `mobile.json`                                           | Paired phones (token hashes only), the activity log, the app's own serve / firewall rule, home Wi-Fi certificate |
 | `ask-history.json`                                      | Ask Claude questions and answers                                                                                 |
+| `usage\dashboard-runs.ndjson`                           | Token usage of summary runs ("Summaries (dashboard)"), from Claude Code's answers                                |
+| `handoffs\<id>.md`                                      | Continue fresh: the summary each new session started from                                                        |
 | `archive\claude-ai\`                                    | Conversations imported from a claude.ai data export                                                              |
 | `accounts.json`                                         | API keys (encrypted), credit grants, cached Admin reports                                                        |
 | `bridge.json`, `backups\settings\`                      | What the installer changed, and the `settings.json` backups                                                      |

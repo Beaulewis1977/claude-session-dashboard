@@ -58,6 +58,7 @@ import { FindBar } from '@/components/viewer/FindBar'
 import { SessionUsageStrip } from '@/components/viewer/SessionUsage'
 import { Transcript, type OnBranch } from '@/components/viewer/Transcript'
 import { useFind } from '@/components/viewer/useFind'
+import { SummaryBlock } from '@/components/summary/SummaryBlock'
 import { LaunchSheet, type LaunchTarget } from './LaunchSheet'
 import { SessionModelControls } from '@/components/ModelPicker'
 import { useModelChoice } from '@/lib/model-choice'
@@ -288,6 +289,11 @@ export function SessionScreen({ session }: { session: SessionSummary }) {
               focusNonce={0}
             />
           </div>
+          <SummaryBlock
+            session={session}
+            readOnly={readOnly}
+            onContinue={viewOnly ? undefined : () => setLaunch({ kind: 'continue' })}
+          />
           <div className="mt-3 flex flex-wrap items-center gap-1.5">
             {!viewOnly && <EnvBadge env={session.env} distro={session.distro} />}
             <RemoteBadge session={session} />

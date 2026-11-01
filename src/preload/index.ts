@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type { CsdApi } from '@shared/api'
 import type { SessionsPayload } from '@shared/types'
+import type { SummaryQueueState } from '@shared/summary-queue'
 
 function on(channel: string, cb: () => void): () => void {
   const listener = (): void => cb()
@@ -71,6 +72,22 @@ const api: CsdApi = {
   askRun: (id) => ipcRenderer.invoke('ask:run', id),
   askCancel: (id) => ipcRenderer.invoke('ask:cancel', id),
   askHistory: () => ipcRenderer.invoke('ask:history'),
+
+  summaryState: () => ipcRenderer.invoke('summaries:state'),
+  onSummariesChanged: (cb) => {
+    const listener = (_e: unknown, st: SummaryQueueState): void => cb(st)
+    ipcRenderer.on('summaries:changed', listener)
+    return () => ipcRenderer.removeListener('summaries:changed', listener)
+  },
+  summaryPreview: (key) => ipcRenderer.invoke('summaries:preview', key),
+  summaryEstimate: (keys) => ipcRenderer.invoke('summaries:estimate', keys),
+  summarize: (keys, origin) => ipcRenderer.invoke('summaries:enqueue', keys, origin),
+  summaryCancel: (key) => ipcRenderer.invoke('summaries:cancel', key),
+  summaryResume: () => ipcRenderer.invoke('summaries:resume'),
+  summaryClearFinished: () => ipcRenderer.invoke('summaries:clear'),
+  saveSummary: (key, patch) => ipcRenderer.invoke('summaries:save', key, patch),
+  removeSummary: (key) => ipcRenderer.invoke('summaries:remove', key),
+  summaryAutoPreview: () => ipcRenderer.invoke('summaries:autoPreview'),
 
   toggleMiniMeter: () => ipcRenderer.invoke('mini:toggle'),
   closeMiniMeter: () => ipcRenderer.invoke('mini:close'),

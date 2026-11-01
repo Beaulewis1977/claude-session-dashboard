@@ -12,7 +12,8 @@ import {
   Smartphone,
   Sparkles,
   SquareTerminal,
-  TriangleAlert
+  TriangleAlert,
+  Zap
 } from 'lucide-react'
 import type { RemoteLaunchPreview, RemoteLaunchRequest, RemoteLaunchResult } from '@shared/mobile'
 import { CLAUDE_CODE_WEB_URL } from '@shared/mobile'
@@ -26,7 +27,10 @@ import { Button } from '@/components/ui/button'
 import { Sheet, SheetContent } from '@/components/ui/sheet'
 
 export type LaunchTarget =
-  { kind: 'resume' } | { kind: 'fork' } | { kind: 'branch'; at: string; mode: 'include' | 'before' }
+  | { kind: 'resume' }
+  | { kind: 'fork' }
+  | { kind: 'continue' }
+  | { kind: 'branch'; at: string; mode: 'include' | 'before' }
 
 const TERMINAL: Record<string, string> = {
   wt: 'Windows Terminal',
@@ -34,7 +38,12 @@ const TERMINAL: Record<string, string> = {
   cmd: 'Command Prompt'
 } satisfies Record<TerminalPref, string>
 
-const VERB = { resume: 'Resume', fork: 'Fork', branch: 'Branch' } as const
+const VERB = {
+  resume: 'Resume',
+  fork: 'Fork',
+  branch: 'Branch',
+  continue: 'Continue fresh'
+} as const
 
 /**
  * Wait for Claude Code to record the session's Remote Control link (a few
@@ -103,7 +112,14 @@ export function LaunchSheet({
     }
   }
 
-  const Icon = target.kind === 'branch' ? GitBranchPlus : target.kind === 'fork' ? GitFork : Play
+  const Icon =
+    target.kind === 'branch'
+      ? GitBranchPlus
+      : target.kind === 'fork'
+        ? GitFork
+        : target.kind === 'continue'
+          ? Zap
+          : Play
   const title =
     target.kind === 'branch'
       ? target.mode === 'before'
@@ -154,8 +170,9 @@ export function LaunchSheet({
             </div>
             {!result.simulated && (
               <p className="rounded-lg bg-secondary/70 px-3 py-2.5 text-[12.5px] leading-relaxed text-muted-foreground">
-                Claude has the whole conversation, but the Claude app only shows messages from now
-                on. The earlier ones are here in the dashboard.
+                {target.kind === 'continue'
+                  ? 'The new session starts from the summary, not the whole history. The earlier conversation is here in the dashboard.'
+                  : 'Claude has the whole conversation, but the Claude app only shows messages from now on. The earlier ones are here in the dashboard.'}
               </p>
             )}
             <Button variant="ghost" className="h-11 w-full" onClick={onClose}>
@@ -224,6 +241,21 @@ export function LaunchSheet({
                     <GitFork className="mt-0.5 size-4 shrink-0" />
                     <span>
                       A new session continues from this one; the original stays untouched.
+                    </span>
+                  </li>
+                )}
+                {target.kind === 'continue' && (
+                  <li className="flex items-start gap-2.5 text-muted-foreground">
+                    <Zap className="mt-0.5 size-4 shrink-0" />
+                    <span>
+                      A new session that starts from this session’s summary instead of reloading the
+                      whole history; the original stays untouched.
+                      {!!preview.newSinceSummary && (
+                        <span className="mt-0.5 block text-warning">
+                          {preview.newSinceSummary} new message
+                          {preview.newSinceSummary === 1 ? '' : 's'} since the summary was written.
+                        </span>
+                      )}
                     </span>
                   </li>
                 )}

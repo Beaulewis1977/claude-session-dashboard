@@ -11,6 +11,7 @@ import {
 import type { CreditsState } from '@shared/usage/credits'
 import type { LimitsState } from '@shared/usage/limits'
 import type { LiveSnapshot } from '@shared/live'
+import { EMPTY_SUMMARY_QUEUE, type SummaryQueueState } from '@shared/summary-queue'
 import { EMPTY_FILTERS, type Filters, type SortKey } from './filters'
 
 export type FocusField = 'name' | 'description' | 'tags' | 'find' | 'search' | null
@@ -28,6 +29,16 @@ interface ResumeRequest {
   newSession?: boolean
   /** Branch from a message (creates a new session file first). */
   branch?: BranchTarget
+  /** Continue fresh: a new session started from this session's summary. */
+  continueFresh?: boolean
+}
+
+/** The Summarize dialog: the one-time notice, the estimate and the preview. */
+export interface SummarizeRequest {
+  keys: string[]
+  origin: 'manual' | 'bulk'
+  /** Open on "what is sent" (the preview). */
+  preview?: boolean
 }
 
 const GROUP_KEY = 'csd.groupBranches'
@@ -80,6 +91,9 @@ interface State {
   resume: ResumeRequest | null
   /** First "Branch from here": explain what it writes before going on. */
   branchIntro: { key: string; branch: BranchTarget } | null
+  summarize: SummarizeRequest | null
+  /** Session summaries being written (and recently finished). */
+  summaryQueue: SummaryQueueState
   /** Show branches under their parent in the session list. */
   groupBranches: boolean
   focus: { field: FocusField; nonce: number }
@@ -120,6 +134,8 @@ export const useApp = create<State>((set) => ({
   shortcutsOpen: false,
   resume: null,
   branchIntro: null,
+  summarize: null,
+  summaryQueue: EMPTY_SUMMARY_QUEUE,
   groupBranches: readGroupBranches(),
   focus: { field: null, nonce: 0 },
 

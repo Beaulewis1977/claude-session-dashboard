@@ -37,6 +37,7 @@ import { MobileSettingsSection } from './settings/MobileSettings'
 import { AlertsSettings } from './settings/AlertsSettings'
 import { TerminalAccessBlock } from './settings/TerminalAccessSettings'
 import { BackupSettings } from './settings/BackupSettings'
+import { SummariesSettings } from './settings/SummariesSettings'
 import { DefaultModelPickers } from './ModelPicker'
 import { choiceLabel, DEFAULT_CHOICE, isEffortLevel, projectKeyLabel } from '@shared/model-choice'
 
@@ -325,6 +326,8 @@ export function SettingsView() {
             </div>
           )}
         </Section>
+
+        <SummariesSettings update={update} />
 
         <AlertsSettings update={update} />
 

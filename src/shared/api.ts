@@ -23,6 +23,8 @@ import type {
 import type { BridgeApplyResult, BridgePlan, LimitsState } from './usage/limits'
 import type { CompareRange, HealthCompare } from './usage/health'
 import type { AskHistoryItem } from './ask'
+import type { AiSummary, SummaryEstimate } from './summary'
+import type { SummaryBatchEstimate, SummaryPreview, SummaryQueueState } from './summary-queue'
 import type { Account, CreditGrant, CreditsState } from './usage/credits'
 import type { CompareResult, CompareSide, TrendGroupBy, TrendsReport } from './usage/trends'
 import type {
@@ -156,6 +158,29 @@ export interface CsdApi {
   askRun(previewId: string): Promise<AskHistoryItem>
   askCancel(previewId: string): Promise<void>
   askHistory(): Promise<AskHistoryItem[]>
+
+  // Session summaries (claude -p on the subscription; desktop only, except reading and editing)
+  summaryState(): Promise<SummaryQueueState>
+  onSummariesChanged(cb: (state: SummaryQueueState) => void): () => void
+  /** Exactly what would be sent for one session, with an estimate. */
+  summaryPreview(key: string): Promise<SummaryPreview>
+  /** What summarizing these sessions would send and use, roughly. */
+  summaryEstimate(keys: string[]): Promise<SummaryBatchEstimate>
+  /** Queue sessions to summarize. Returns how many were added. */
+  summarize(keys: string[], origin?: 'manual' | 'bulk'): Promise<number>
+  /** Cancel one session's summary, or all of them. */
+  summaryCancel(key?: string): Promise<void>
+  /** Go on with a queue paused by the limits guard. */
+  summaryResume(): Promise<void>
+  summaryClearFinished(): Promise<void>
+  /** Save a summary edited by hand. */
+  saveSummary(
+    key: string,
+    patch: Partial<Pick<AiSummary, 'title' | 'done' | 'files' | 'decisions' | 'todos' | 'pickUp'>>
+  ): Promise<SessionSummary | null>
+  removeSummary(key: string): Promise<SessionSummary | null>
+  /** Sessions auto-summarize would pick now, and what that would use. */
+  summaryAutoPreview(): Promise<{ count: number; estimate: SummaryEstimate }>
 
   // Tray and mini meter
   toggleMiniMeter(): Promise<boolean>

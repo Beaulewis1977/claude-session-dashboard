@@ -12,6 +12,8 @@ import { useThemeEffect } from '@/lib/theme'
 import { cn, MOD } from '@/lib/utils'
 import { ClaudeMark } from './components/brand'
 import { BranchIntroDialog } from './components/BranchIntroDialog'
+import { SummarizeDialog } from './components/summary/SummarizeDialog'
+import { SummaryQueuePanel } from './components/summary/SummaryQueuePanel'
 import { CommandPalette } from './components/CommandPalette'
 import { SessionList } from './components/list/SessionList'
 import { ResumeDialog } from './components/ResumeDialog'
@@ -53,8 +55,10 @@ function useBootstrap(): void {
         })
       }
     )
+    void api.summaryState().then((summaryQueue) => set({ summaryQueue }))
     const offs = [
       api.onSessionsChanged((p) => set({ sessions: p.sessions, sources: p.sources, scan: p.scan })),
+      api.onSummariesChanged((summaryQueue) => set({ summaryQueue })),
       // Tray icon or limit notification clicked.
       api.onShowUsage(() => set({ view: 'usage' })),
       // A session alert clicked: that session, if the list knows it; else Running now.
@@ -316,6 +320,8 @@ export function App() {
       <CommandPalette />
       <ResumeDialog />
       <BranchIntroDialog />
+      <SummarizeDialog />
+      <SummaryQueuePanel />
       <ShortcutsDialog />
       <TrayPainter dark={resolvedTheme === 'dark'} />
       <Toaster

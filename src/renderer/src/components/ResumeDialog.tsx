@@ -14,6 +14,7 @@ import {
   Smartphone,
   TriangleAlert
 } from 'lucide-react'
+import { ContinueFreshCard, ContinueIcon } from './summary/ContinueFreshCard'
 import type { LaunchPreview, TerminalPref } from '@shared/types'
 import { api } from '@/lib/api'
 import { showNewSession } from '@/lib/actions'
@@ -90,7 +91,7 @@ export function ResumeDialog() {
   if (!resume) return null
   return (
     <ResumeDialogBody
-      key={`${resume.key}:${resume.fork}:${!!resume.newSession}:${resume.branch?.at}:${resume.branch?.mode}`}
+      key={`${resume.key}:${resume.fork}:${!!resume.newSession}:${!!resume.continueFresh}:${resume.branch?.at}:${resume.branch?.mode}`}
       resume={resume}
     />
   )
@@ -99,7 +100,13 @@ export function ResumeDialog() {
 function ResumeDialogBody({
   resume
 }: {
-  resume: { key: string; fork: boolean; newSession?: boolean; branch?: BranchTarget }
+  resume: {
+    key: string
+    fork: boolean
+    newSession?: boolean
+    branch?: BranchTarget
+    continueFresh?: boolean
+  }
 }) {
   const sessions = useApp((s) => s.sessions)
   const settings = useApp((s) => s.settings)
@@ -138,6 +145,10 @@ function ResumeDialogBody({
   const branchAt = resume.branch
   // Keep the new session id stable across previews, so the copied command matches.
   const branchId = useRef<string | undefined>(undefined)
+  const continueFresh = resume.continueFresh === true
+  // The new session's id, kept across previews like a branch's.
+  const continueId = useRef<string | undefined>(undefined)
+  const continueReq = () => (continueFresh ? { newSessionId: continueId.current } : undefined)
   const branchReq = (createOnly = false) =>
     branchAt
       ? { ...branchAt, newSessionId: branchId.current, ...(createOnly ? { createOnly } : {}) }
@@ -155,11 +166,13 @@ function ResumeDialogBody({
         billingAccountId,
         newSession,
         branch: branchReq(),
+        continueFresh: continueReq(),
         remoteControl
       })
       .then((p) => {
         if (cancelled) return
         if (p.branch) branchId.current = p.branch.newSessionId
+        if (p.continueFresh) continueId.current = p.continueFresh.newSessionId
         setPreview(p)
       })
       .catch((err: Error) =>
@@ -168,7 +181,7 @@ function ResumeDialogBody({
     return () => {
       cancelled = true
     }
-    // branchReq reads a ref; resume.branch is covered by `resume`.
+    // branchReq / continueReq read refs; resume.branch is covered by `resume`.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     resume,
@@ -192,7 +205,9 @@ function ResumeDialogBody({
   const choice = preview?.modelChoice ? choiceLabel(preview.modelChoice) : ''
   const fork = resume.fork
   const branchBlocked = !!branchAt && (!preview?.branch || !!preview.branchError)
+  const continueBlocked = continueFresh && (!preview?.continueFresh || !!preview.continueError)
   const blocked =
+    continueBlocked ||
     !preview ||
     !preview.cwd ||
     !preview.cwdExists ||
@@ -212,6 +227,7 @@ function ResumeDialogBody({
       billingAccountId,
       newSession,
       branch: branchReq(createOnly),
+      continueFresh: continueReq(),
       remoteControl
     })
     // Per-project default ("always use API credits for this project").
@@ -233,11 +249,13 @@ function ResumeDialogBody({
           ? 'Branch created, but the terminal could not be opened'
           : branchAt
             ? 'Could not create the branch'
-            : newSession
-              ? 'Could not start the session'
-              : fork
-                ? 'Could not fork the session'
-                : 'Could not resume the session',
+            : continueFresh
+              ? 'Could not continue in a new session'
+              : newSession
+                ? 'Could not start the session'
+                : fork
+                  ? 'Could not fork the session'
+                  : 'Could not resume the session',
         {
           description: res.error
         }
@@ -261,11 +279,13 @@ function ResumeDialogBody({
       toast.success(
         branchAt
           ? 'Branched in a new terminal'
-          : newSession
-            ? 'Started in a new terminal'
-            : fork
-              ? 'Forked in a new terminal'
-              : 'Resumed in a new terminal',
+          : continueFresh
+            ? 'Continued fresh in a new terminal'
+            : newSession
+              ? 'Started in a new terminal'
+              : fork
+                ? 'Forked in a new terminal'
+                : 'Resumed in a new terminal',
         {
           description: `${TERMINAL_LABEL[preview?.terminal ?? terminal]} · ${preview?.billingLabel ?? ''}${
             remoteControl
@@ -285,7 +305,7 @@ function ResumeDialogBody({
   return (
     <Dialog open onOpenChange={(o) => !o && close()}>
       <DialogContent
-        className="max-w-[560px]"
+        className="flex max-h-[calc(100vh-2rem)] max-w-[560px] flex-col"
         // A new branch takes focus (its rename box), so don't send focus back.
         onCloseAutoFocus={branchAt ? (e) => e.preventDefault() : undefined}
         onKeyDown={(e) => {
@@ -300,6 +320,8 @@ function ResumeDialogBody({
             <div className="flex size-8 items-center justify-center rounded-lg bg-accent-soft text-primary">
               {branchAt ? (
                 <GitBranchPlus className="size-4" />
+              ) : continueFresh ? (
+                <ContinueIcon className="size-4" />
               ) : newSession ? (
                 <Plus className="size-4" />
               ) : fork ? (
@@ -314,11 +336,13 @@ function ResumeDialogBody({
               ? branchAt.mode === 'before'
                 ? 'Branch from before this message'
                 : 'Branch from here'
-              : newSession
-                ? 'New session'
-                : fork
-                  ? 'Fork session'
-                  : 'Resume session'
+              : continueFresh
+                ? 'Continue fresh'
+                : newSession
+                  ? 'New session'
+                  : fork
+                    ? 'Fork session'
+                    : 'Resume session'
           }
           description={
             <span className="line-clamp-1 text-foreground/80" title={session.title}>
@@ -327,11 +351,18 @@ function ResumeDialogBody({
           }
         />
 
-        <div className="space-y-4 px-5 pt-3 pb-5">
+        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 pt-3 pb-5">
           {newSession && (
             <p className="text-xs leading-relaxed text-muted-foreground">
               Starts a fresh Claude Code session in this session&apos;s folder.
             </p>
+          )}
+          {continueFresh && (
+            <ContinueFreshCard
+              preview={preview?.continueFresh}
+              error={preview?.continueError}
+              messageCount={session.messageCount}
+            />
           )}
           {fork && (
             <p className="text-xs leading-relaxed text-muted-foreground">
@@ -574,6 +605,8 @@ function ResumeDialogBody({
               <Loader2 className="animate-spin" />
             ) : branchAt ? (
               <GitBranchPlus />
+            ) : continueFresh ? (
+              <ContinueIcon />
             ) : newSession ? (
               <Plus />
             ) : fork ? (
@@ -581,7 +614,15 @@ function ResumeDialogBody({
             ) : (
               <Play className="fill-current" />
             )}
-            {branchAt ? 'Branch' : newSession ? 'Start' : fork ? 'Fork' : 'Resume'}
+            {branchAt
+              ? 'Branch'
+              : continueFresh
+                ? 'Continue fresh'
+                : newSession
+                  ? 'Start'
+                  : fork
+                    ? 'Fork'
+                    : 'Resume'}
             {choice && <span className="font-normal opacity-85">· {choice}</span>}
             <Kbd className="ml-1 border-white/25 bg-white/15 text-primary-foreground">↵</Kbd>
           </Button>

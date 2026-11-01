@@ -256,6 +256,7 @@ export const webApi: CsdApi = {
   addAccount: onPc('API keys'),
   renameAccount: onPc('API keys'),
   removeAccount: onPc('API keys'),
+  reconnectAccount: onPc('API keys'),
   addGrant: onPc('Credits'),
   removeGrant: onPc('Credits'),
   refreshAdmin: onPc('Admin reports'),
@@ -313,7 +314,25 @@ export const webApi: CsdApi = {
   planHooks: onPc('Session alerts setup'),
   applyHooks: onPc('Session alerts setup'),
   mobilePushOff: onPc('Phone settings'),
-  mobilePushTest: onPc('Phone settings')
+  mobilePushTest: onPc('Phone settings'),
+
+  // Backups are desktop only.
+  backupStatus: onPc('Backups'),
+  onBackupChanged: () => () => undefined,
+  backupPickFolder: onPc('Backups'),
+  backupConnect: onPc('Backups'),
+  backupTakeOver: onPc('Backups'),
+  backupDisconnect: onPc('Backups'),
+  backupUpdate: onPc('Backups'),
+  backupRun: onPc('Backups'),
+  backupSetPassword: onPc('Backups'),
+  backupUnlock: onPc('Backups'),
+  backupForget: onPc('Backups'),
+  backupSnapshots: onPc('Backups'),
+  backupPreview: onPc('Backups'),
+  backupRestore: onPc('Backups'),
+  backupOpenFolder: onPc('Backups'),
+  backupOpenSafety: onPc('Backups')
 }
 
 function pushSupported(): boolean {

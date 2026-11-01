@@ -727,8 +727,8 @@ describe('removing an API account (SEC-08)', () => {
     }
     const enc = {
       available: () => true,
-      encrypt: (t: string) => Buffer.from(t, 'utf8').reverse(),
-      decrypt: (b: Buffer) => Buffer.from(b).reverse().toString('utf8')
+      encrypt: async (t: string) => Buffer.from(t, 'utf8').reverse(),
+      decrypt: async (b: Buffer) => Buffer.from(b).reverse().toString('utf8')
     }
     const svc = new AccountsService(store, enc, {
       fetcher,

@@ -32,7 +32,7 @@ import type { SessionService } from './sessions'
 /** API-credit launches (Phase 5). */
 export interface LaunchBilling {
   /** Decrypted key for an API account (main process only). */
-  keyFor(accountId: string): string | undefined
+  keyFor(accountId: string): string | undefined | Promise<string | undefined>
   /** "API · Personal credits", or undefined for an unknown account. */
   label(accountId: string): string | undefined
   /** "Subscription (Max 5x)". */
@@ -365,7 +365,7 @@ export class Launcher {
     // API billing: the key, decrypted only now and passed only to the child process.
     let apiKey: string | undefined
     if (opts.billingAccountId) {
-      apiKey = this.billing?.keyFor(opts.billingAccountId)
+      apiKey = await this.billing?.keyFor(opts.billingAccountId)
       if (!apiKey && this.platform.canLaunch) {
         return fail(
           "The API key for this account isn't available. Add it again in Settings → Accounts."

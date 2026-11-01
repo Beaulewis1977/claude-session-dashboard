@@ -112,8 +112,8 @@ describe('API-billed launches', () => {
 /** A stand-in for safeStorage: reversible, and never contains the plain text. */
 const fakeEncryptor = (available = true): Encryptor => ({
   available: () => available,
-  encrypt: (t) => Buffer.from([...Buffer.from(t, 'utf8')].map((b) => b ^ 0x5a).reverse()),
-  decrypt: (b) => Buffer.from([...b].reverse().map((x) => x ^ 0x5a)).toString('utf8')
+  encrypt: async (t) => Buffer.from([...Buffer.from(t, 'utf8')].map((b) => b ^ 0x5a).reverse()),
+  decrypt: async (b) => Buffer.from([...b].reverse().map((x) => x ^ 0x5a)).toString('utf8')
 })
 
 let root: string
@@ -169,7 +169,7 @@ describe('API key storage', () => {
     expect(disk).not.toContain(KEY)
     expect(disk).not.toContain('SECRETsecret')
     expect(JSON.stringify(svc.list())).not.toContain('SECRET')
-    expect(svc.keyFor(res.account!.id)).toBe(KEY)
+    expect(await svc.keyFor(res.account!.id)).toBe(KEY)
   })
 
   it('refuses to store a key when encryption is unavailable, and never writes it', async () => {

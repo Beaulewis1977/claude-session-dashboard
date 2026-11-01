@@ -1,5 +1,42 @@
 # Changelog
 
+## Unreleased
+
+- **Backups.** Settings → Backup copies the archive, names, descriptions and tags, usage and limit
+  history, and the app's settings to a folder you choose (OneDrive, an external drive, a NAS), daily
+  or weekly while the app is open, or with **Back up now**. Only new or changed content is copied
+  (content-addressed and compressed), every snapshot has its own manifest, and a snapshot counts only
+  once that manifest is written, so an interrupted backup never leaves a broken one. Keeps the last
+  14 snapshots by default; retention deletes only the app's own files inside its own backup
+  subfolder. API keys are never included. No network calls: your cloud app syncs the folder.
+- **Optional password:** scrypt + AES-256-GCM per file, with every file checked on restore. The
+  password is never stored; **Remember on this PC** keeps the derived key protected by Windows
+  (DPAPI). The app warns that a lost password means unreadable backups.
+- **Restore:** pick a snapshot, see what would change, then restore into the app's own data folder
+  (never `.claude`). It finishes on restart before any data loads, copies every file it replaces to
+  `restore-backups\` first, never deletes a file, never replaces an archived session with a smaller
+  copy, and keeps this PC's API keys, phone pairing and window and phone settings. Works across PCs
+  and Windows users (archive paths are moved to the new data folder), including on a new PC where
+  those files don't exist yet. Restored API accounts show **Key not on this PC**; adding the same
+  key again reconnects it, keeping its credits and history.
+- **Safety details:** a backup that can't read a file that exists fails instead of making a partial
+  snapshot; damaged password details in the backup folder are refused, and a folder that turns
+  unencrypted behind the app's back pauses backups until you choose; retention runs under the same
+  lock as a backup; a remembered password works again as soon as the drive is back; a newly chosen
+  folder gets its first backup right away.
+- **One PC per backup folder:** the folder records which PC backs up into it. Another PC can
+  restore from it and backs up only after **Take over**. The backup lock is claimed atomically,
+  never taken from a backup still running, renewed while it runs, and checked before anything is
+  saved or deleted. A folder whose backup set was replaced, or turned unencrypted, outside the app
+  pauses backups until you choose (choosing the folder again isn't enough); backup files without
+  their `backup-set.json` are never started over; a set folder that is a link is refused; retention
+  deletes nothing when the snapshots can't be listed.
+- **Reconnect key…** for restored API accounts accepts only the exact key they used (checked by a
+  fingerprint of the key, never the key itself), and merges an account you'd already added with
+  that key into the restored one, so sessions and credits stay together.
+- API keys and the remembered backup password now use Electron's asynchronous `safeStorage` API
+  (existing keys keep working).
+
 ## 1.5.0 (November 1, 2026)
 
 **Running now: every live Claude Code session at a glance, with alerts on your PC and phone.**

@@ -11,6 +11,7 @@ and the decisions behind it.
 - [Using it: more detail](#using-it-more-detail)
 - [Branching](#branching)
 - [Keeping sessions longer in Claude Code itself](#keeping-sessions-longer-in-claude-code-itself)
+- [Backups](#backups)
 - [Running now and session alerts](#running-now-and-session-alerts)
 - [Phone companion](#phone-companion)
 - [Terminal access (SSH)](#terminal-access-ssh)
@@ -33,7 +34,8 @@ The app is built around these rules (see [`CLAUDE.md`](../CLAUDE.md)):
    session file next to the session it branches from (see [Branching](#branching)). It never
    changes or deletes an existing file.
 2. The app's own data lives only in `%APPDATA%\ClaudeSessionDashboard\` (metadata, settings, archive,
-   cache, and Chromium's own files).
+   cache, and Chromium's own files). If you turn on [backups](#backups), it also writes, and
+   retention deletes, inside its own subfolder of the one backup folder you pick, and nowhere else.
 3. There is no "delete session" feature. **Hide** is only a flag in the app's metadata.
 4. **No network calls.** All outgoing requests from the window are blocked, remote images in
    transcripts aren't loaded, fonts are bundled, and spellcheck (which would download dictionaries)
@@ -186,6 +188,90 @@ anyway, but if you also want Claude Code to keep them, add this to `%USERPROFILE
 ```json
 { "cleanupPeriodDays": 3650 }
 ```
+
+## Backups
+
+Settings → **Backup** copies the app's own data to a folder you pick. Since Claude Code deletes old
+sessions, the archive is often the only copy of older work; a backup on another drive or in a cloud
+folder keeps it safe if the PC fails.
+
+**What's in a backup:** the session archive, `metadata.json` (your names, descriptions, tags, pins),
+usage and limit history, Ask Claude history, the app's settings, and `accounts.json` with the API
+keys taken out (nicknames, credit grants and Admin reports stay). **Never in a backup:** API keys,
+paired phones and push keys (`mobile.json`), the status line / session alert / terminal access
+records and their backups of Claude's or OpenSSH's settings (they belong to this PC, and the
+settings backups can hold secrets from Claude's `env`), caches, and `backup.json` itself.
+
+**The backup folder** (`<folder you picked>\ClaudeSessionDashboard Backup\`):
+
+| Path                         | What it is                                                                                                        |
+| ---------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `backup-set.json`            | Which passwords exist (scrypt salt and a check value only), which is current, and which install writes to the set |
+| `objects\ab\ab12…`           | One file per distinct content: gzip, encrypted when a password is set                                             |
+| `snapshots\<time>-<id>.json` | One manifest per snapshot: every file, its size, hash and object                                                  |
+| `README.txt`                 | A note for anyone who opens the folder                                                                            |
+| `lock\owner.json`            | Present while a backup or retention runs                                                                          |
+
+- **One writer, one lock:** the set records the one install that backs up into it. Another PC that
+  chooses the same folder can restore from it, but backs up only after you click **Take over**
+  (the first PC then stops). A synced folder can't give two PCs a real lock, so this is the
+  coordination. On top of it, backups and retention take a lock: a `lock` folder claimed with
+  `mkdir` (exactly one claimer wins, on any drive), never taken from a process still running on
+  this PC however long it runs, renewed every minute, and respected for 30 minutes after another
+  PC's last renewal. A stale lock is taken over in place by one taker only, and a backup checks it
+  still holds the lock right before saving a snapshot or deleting anything (and stops if not).
+- **No silent changes:** the app remembers, per folder, which set it had and whether it was
+  encrypted (in `backup.json`, kept after **Stop using it**). A different set in the folder, or one
+  that turned unencrypted, pauses backups until you choose; choosing the folder again is not
+  enough. Backup files without a readable `backup-set.json` are never started over. A set folder
+  that is itself a link or junction is refused.
+
+- **Incremental:** objects are named after their content (SHA-256, or with a password an HMAC of it,
+  so the names don't give the content away). Content already in the folder is never copied again,
+  and a file whose size and modified time haven't changed isn't even read. Each snapshot still lists
+  every file, so any one of them restores in full.
+- **Atomic:** objects and manifests are written to a temp file, flushed, and renamed into place. A
+  snapshot exists only once its manifest does: an interrupted backup (the app closed, the drive was
+  unplugged) leaves at most some objects the next backup reuses. Right before the manifest is
+  written, every object it names is checked to be there (and written again if not).
+- **Complete or failed, never quietly partial:** if a file or folder that exists can't be read
+  (permissions, a disk error), the backup fails and no snapshot is made. Only a file that vanished
+  while being listed is left out. A file a backup can't hold (an odd name) is named in the result.
+- **Encryption:** scrypt (N = 2^17, r = 8, p = 1, Node's built-in crypto, no native module) turns
+  the password into a key; each file is AES-256-GCM with its own random IV, and a restore checks
+  every file against its name, so a changed or damaged file is refused. The password is never
+  stored. **Remember on this PC** keeps the derived key, encrypted with Windows (DPAPI) through
+  Electron safeStorage, in `backup.json`. Changing the password applies to new snapshots (the first
+  one copies everything again); older snapshots need the password they were made with. A
+  `backup-set.json` whose password details are damaged, or whose current password can't be found,
+  is refused (never read as "not encrypted"). If an encrypted folder says it isn't any more without
+  the app having changed it (edited, or an old copy back from a sync conflict), backups pause until
+  you set a password again or choose to back up without one. A remembered password is picked up
+  as soon as the drive is back, without a restart.
+- **Schedule:** daily or weekly while the app is open (checked every 15 minutes), plus **Back up
+  now**. A failed backup (drive missing, folder full) is tried again after an hour. A newly chosen
+  folder gets its first backup at the next check.
+- **Retention:** keep the last N snapshots (default 14, up to 365). Older manifests are deleted, then
+  objects no remaining snapshot uses, once they're 12 hours old (so another PC still writing into a
+  shared folder keeps its new files). If any manifest can't be read (still syncing), if the
+  snapshots can't be listed, or if no snapshot is left, no object is deleted. Retention runs under
+  the same lock as a backup, so it never removes an object a backup is reusing. Only the app's own files, by their exact names, inside its own subfolder, are ever
+  deleted.
+- **Restore:** pick a snapshot and see what would change, per kind of data. Files are restored only
+  to the app's own data folder, and only paths on the backup's allow-list (a crafted manifest can't
+  point anywhere else, `.claude` included). Every file is decrypted and checked into
+  `restore-pending\` first; the app then restarts and, before any data loads, copies each file it
+  replaces to `restore-backups\<time>\` and puts the restored one in place. A restore never deletes a
+  file, never replaces an archived session with a smaller copy, keeps API keys saved on this PC (and
+  keys added since), keeps the window and phone companion settings, and moves archive paths from
+  another PC or Windows user to this one. These rules apply even when the file didn't exist here
+  yet (a new PC never gets the old PC's phone server switched on). API accounts come back without
+  their keys and show **Key not on this PC**. **Reconnect key…** on that account takes only the key
+  it used: `accounts.json` keeps a SHA-256 fingerprint of each key (never the key), so a different
+  key with the same masked form is refused. Adding the same key as a new account attaches it to
+  the restored one only when the fingerprints match. If you'd already added the key on this PC
+  before restoring, Reconnect merges that account into the restored one: its credit grants move
+  over, and sessions and project defaults that used it point to the restored account.
 
 ## Running now and session alerts
 

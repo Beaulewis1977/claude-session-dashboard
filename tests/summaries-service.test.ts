@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { cp, mkdtemp, readFile, readdir, rm, stat } from 'node:fs/promises'
+import { appendFile, cp, mkdtemp, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -94,7 +94,7 @@ function fakeRunner(opts: { out?: () => string; hold?: boolean } = {}) {
 async function setup(
   over: {
     settings?: Partial<SummarySettings>
-    pct?: () => number | undefined
+    pct?: () => number | undefined | Promise<number | undefined>
     runner?: AskRunner
   } = {}
 ) {
@@ -192,7 +192,7 @@ describe('SummaryService (fixtures)', { timeout: 30_000 }, () => {
     const t = await setup()
     const before = await snapshot(t.layout.sourcesDir)
     const s = t.sessions.list().find((x) => x.sessionId === SAFARI)!
-    expect(t.summaries.enqueue([s.key])).toBe(1)
+    expect(await t.summaries.enqueue([s.key])).toBe(1)
     await settle(t.summaries)
 
     // One run: fixed flags only, the prompt on stdin.
@@ -238,7 +238,7 @@ describe('SummaryService (fixtures)', { timeout: 30_000 }, () => {
   it('sends nothing before the notice is accepted', async () => {
     const t = await setup({ settings: { noticeAccepted: false } })
     const s = t.sessions.list()[0]
-    expect(() => t.summaries.enqueue([s.key])).toThrow(NOT_ACCEPTED)
+    await expect(t.summaries.enqueue([s.key])).rejects.toThrow(NOT_ACCEPTED)
     expect(t.fake.calls).toHaveLength(0)
   })
 
@@ -262,7 +262,7 @@ describe('SummaryService (fixtures)', { timeout: 30_000 }, () => {
       .list()
       .filter((x) => x.sessionId === SAFARI || x.sessionId === ORDERS)
       .map((x) => x.key)
-    t.summaries.enqueue(keys, 'bulk')
+    await t.summaries.enqueue(keys, 'bulk')
     await settle(t.summaries)
     expect(t.summaries.state().paused).toEqual({ pct: 85, limit: 80 })
     expect(t.fake.calls).toHaveLength(0)
@@ -274,7 +274,7 @@ describe('SummaryService (fixtures)', { timeout: 30_000 }, () => {
     expect(t.summaries.state().override).toBe(false)
 
     // A new request is a new decision: it pauses again above the line.
-    t.summaries.enqueue([keys[0]], 'bulk')
+    await t.summaries.enqueue([keys[0]], 'bulk')
     await settle(t.summaries)
     expect(t.summaries.state().paused).toBeDefined()
     pct = 10
@@ -333,7 +333,7 @@ describe('SummaryService (fixtures)', { timeout: 30_000 }, () => {
     const held = fakeRunner({ hold: true })
     const t = await setup({ runner: held.runner })
     const s = t.sessions.list().find((x) => x.sessionId === SAFARI)!
-    t.summaries.enqueue([s.key])
+    await t.summaries.enqueue([s.key])
     for (let i = 0; i < 100 && !held.calls.length; i++) await new Promise((r) => setTimeout(r, 5))
     expect(t.summaries.state().running).toBe(s.key)
     t.summaries.cancel(s.key)
@@ -346,7 +346,7 @@ describe('SummaryService (fixtures)', { timeout: 30_000 }, () => {
     const bad = fakeRunner({ out: () => cliOutput('I would rather not.') })
     const t = await setup({ runner: bad.runner })
     const s = t.sessions.list().find((x) => x.sessionId === SAFARI)!
-    t.summaries.enqueue([s.key])
+    await t.summaries.enqueue([s.key])
     await settle(t.summaries)
     expect(t.summaries.state().jobs[0]).toMatchObject({ status: 'failed' })
     expect(t.summaries.state().jobs[0].error).toMatch(/wasn't a summary/)
@@ -358,7 +358,7 @@ describe('SummaryService (fixtures)', { timeout: 30_000 }, () => {
   it('saves edits by hand and removes a summary, in the metadata only', async () => {
     const t = await setup()
     const s = t.sessions.list().find((x) => x.sessionId === SAFARI)!
-    t.summaries.enqueue([s.key])
+    await t.summaries.enqueue([s.key])
     await settle(t.summaries)
     const edited = t.summaries.save(s.key, {
       pickUp: 'Ship it.',
@@ -373,6 +373,103 @@ describe('SummaryService (fixtures)', { timeout: 30_000 }, () => {
     expect(edited.meta.aiSummary!.editedAt).toBeTruthy()
     expect(t.summaries.remove(s.key)!.meta.aiSummary).toBeUndefined()
     expect(t.metadata.value.sessions[SAFARI].aiSummary).toBeUndefined()
+  })
+})
+
+/** A user message appended to a session file, as Claude Code writes them. */
+function userLine(sessionId: string, cwd: string, text: string): string {
+  return (
+    JSON.stringify({
+      type: 'user',
+      message: { role: 'user', content: text },
+      uuid: '9e9e9e9e-9e9e-4e9e-8e9e-9e9e9e9e9e9e',
+      parentUuid: null,
+      timestamp: '2026-10-21T14:00:00.000Z',
+      sessionId,
+      cwd
+    }) + '\n'
+  )
+}
+
+describe('What is sent is what was approved', { timeout: 30_000 }, () => {
+  it('a cancel that comes while the limit is being read sends nothing', async () => {
+    let release!: (v: number) => void
+    let asked = 0
+    const t = await setup({
+      pct: () => {
+        asked++
+        return new Promise<number>((r) => (release = r))
+      }
+    })
+    const s = t.sessions.list().find((x) => x.sessionId === SAFARI)!
+    await t.summaries.enqueue([s.key])
+    for (let i = 0; i < 100 && !asked; i++) await new Promise((r) => setTimeout(r, 5))
+    expect(asked).toBe(1)
+    t.summaries.cancel(s.key)
+    release(10)
+    await settle(t.summaries)
+    expect(t.fake.calls).toHaveLength(0)
+    expect(t.summaries.state().jobs[0].status).toBe('cancelled')
+    expect(t.recorded).toHaveLength(0)
+  })
+
+  it('sends exactly the previewed text, even after new messages and a settings change', async () => {
+    const t = await setup()
+    const s = t.sessions.list().find((x) => x.sessionId === SAFARI)!
+    const p = await t.summaries.preview(s.key)
+    await appendFile(s.filePath, userLine(SAFARI, s.cwd!, 'ADDED-AFTER-THE-PREVIEW'))
+    await t.sessions.fileChanged(s.sourceId, s.filePath)
+    t.setSettings({ maxChars: 10_000, model: 'haiku' })
+    expect(await t.summaries.enqueue([s.key], 'manual', p.id)).toBe(1)
+    await settle(t.summaries)
+    expect(t.fake.calls).toHaveLength(1)
+    expect(t.fake.calls[0].stdin).toBe(p.prompt)
+    // The previewed model, not the one chosen since.
+    expect(t.fake.calls[0].cmd.args).toEqual(expect.arrayContaining(['--model', 'sonnet']))
+    expect(t.sessions.get(s.key)!.meta.aiSummary!.messageCount).toBe(s.messageCount)
+  })
+
+  it('sends nothing when the previewed text can no longer be rebuilt', async () => {
+    const t = await setup()
+    const s = t.sessions.list().find((x) => x.sessionId === SAFARI)!
+    const p = await t.summaries.preview(s.key)
+    // An earlier message changes (the file was rewritten).
+    const text = await readFile(s.filePath, 'utf8')
+    await writeFile(s.filePath, text.replace(/redirect loop/g, 'REWRITTEN'))
+    await t.sessions.fileChanged(s.sourceId, s.filePath)
+    await t.summaries.enqueue([s.key], 'manual', p.id)
+    await settle(t.summaries)
+    expect(t.fake.calls).toHaveLength(0)
+    expect(t.summaries.state().jobs[0]).toMatchObject({ status: 'failed' })
+    expect(t.summaries.state().jobs[0].error).toMatch(/changed since you saw what is sent/)
+  })
+
+  it('refuses an unknown or expired preview', async () => {
+    const t = await setup()
+    const s = t.sessions.list().find((x) => x.sessionId === SAFARI)!
+    await expect(t.summaries.enqueue([s.key], 'manual', 'ffffffffffffffff')).rejects.toThrow(
+      /preview has expired/
+    )
+    const p = await t.summaries.preview(s.key)
+    await t.summaries.enqueue([s.key], 'manual', p.id)
+    await settle(t.summaries)
+    // A preview is used once.
+    await expect(t.summaries.enqueue([s.key], 'manual', p.id)).rejects.toThrow(/expired/)
+  })
+
+  it('a queued session sends what it had when it was queued', async () => {
+    let release!: (v: number) => void
+    const t = await setup({ pct: () => new Promise<number>((r) => (release = r)) })
+    const s = t.sessions.list().find((x) => x.sessionId === SAFARI)!
+    await t.summaries.enqueue([s.key])
+    await appendFile(s.filePath, userLine(SAFARI, s.cwd!, 'ARRIVED-WHILE-QUEUED'))
+    await t.sessions.fileChanged(s.sourceId, s.filePath)
+    for (let i = 0; i < 100 && !release; i++) await new Promise((r) => setTimeout(r, 5))
+    release(10)
+    await settle(t.summaries)
+    expect(t.fake.calls).toHaveLength(1)
+    expect(t.fake.calls[0].stdin).not.toContain('ARRIVED-WHILE-QUEUED')
+    expect(t.sessions.get(s.key)!.meta.aiSummary!.messageCount).toBe(s.messageCount)
   })
 })
 

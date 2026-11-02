@@ -15,7 +15,8 @@
 
 import type { ChatMessage } from './types'
 import { SUMMARY_PROMPT_MARKER } from './source-label'
-import { estimateCost, type ModelPrice } from './usage/pricing'
+import { estimateCost, recordCost, type ModelPrice } from './usage/pricing'
+import { weightedTokens, type CapacityWeights } from './usage/limits'
 import type { UsageRecord } from './usage/types'
 
 /** Start of every summary prompt, so a run that does get saved is recognised and hidden. */
@@ -105,6 +106,10 @@ export function sanitizeSummarySettings(v: unknown): SummarySettings {
 
 // ------------------------------------------------------------- secrets
 
+/** A setting or variable name that holds a secret (DB_PASSWORD, apiKey, client_secret, …). */
+const SECRET_NAME =
+  '[A-Za-z0-9_.-]*(?:password|passwd|pwd|secret|token|api[_-]?key|apikey|access[_-]?key|private[_-]?key|client[_-]?secret|auth[_-]?key)[A-Za-z0-9_.-]*'
+
 const SECRET_PATTERNS: [RegExp, string | ((...m: string[]) => string)][] = [
   // Private keys (whole block).
   [
@@ -136,10 +141,20 @@ const SECRET_PATTERNS: [RegExp, string | ((...m: string[]) => string)][] = [
     (_m, name: string, sep: string) => `${name}${sep}[removed]`
   ],
   [/\bbearer\s+[A-Za-z0-9._~+/=-]{16,}/gi, 'Bearer [removed]'],
-  // name = value / name: value for secret-looking names.
+  // name = "value" / name: 'value' for secret-looking names: the whole quoted
+  // value, spaces included (escaped quotes too).
   [
-    /\b([A-Za-z0-9_.-]*(?:password|passwd|pwd|secret|token|api[_-]?key|apikey|access[_-]?key|private[_-]?key|client[_-]?secret|auth[_-]?key)[A-Za-z0-9_.-]*)(["']?\s*[:=]\s*)(["']?)([^\s"'`,;]{6,})\3/gi,
+    new RegExp(
+      `\\b(${SECRET_NAME})(["']?\\s*[:=]\\s*)(["'\`])((?:\\\\.|(?!\\3)[^\\\\\\n])*)\\3`,
+      'gi'
+    ),
     (_m, name: string, sep: string, q: string) => `${name}${sep}${q}[removed]${q}`
+  ],
+  // Unquoted (or a quote that never closes): everything to the end of the
+  // line, so "password: correct horse battery staple" (YAML) goes whole.
+  [
+    new RegExp(`\\b(${SECRET_NAME})(["']?\\s*[:=]\\s*)(?!["'\`]?\\[removed\\])(\\S[^\\n]*)`, 'gi'),
+    (_m, name: string, sep: string) => `${name}${sep}[removed]`
   ]
 ]
 
@@ -569,6 +584,41 @@ export function continuedName(parentTitle: string, taken: Iterable<string>): str
     const candidate = `${base} ${n}`
     if (!names.has(candidate.toLowerCase())) return candidate
   }
+}
+
+// ------------------------------------------------------------ limits guard
+
+/**
+ * The 5-hour % the limits guard goes by: the latest live reading, plus what
+ * this app's own summary runs have used since it. The reading comes from
+ * Claude Code's status line, which summary runs (claude -p) don't update, so
+ * without this a batch that starts below the pause line would never see
+ * itself cross it. Their share comes from the limit-health baseline ($ per 1%
+ * at the plan) or, without one, from this window's own % per weighted token.
+ * Undefined when there's no current reading.
+ */
+export function guardPct(i: {
+  reading?: { pct: number; at: number; windowStart?: number }
+  records: UsageRecord[]
+  prices: ModelPrice[]
+  weights: CapacityWeights
+  dollarsPerPct?: number
+}): number | undefined {
+  const r = i.reading
+  if (!r) return undefined
+  const inWindow = (ts: number): boolean => r.windowStart === undefined || ts >= r.windowStart
+  const own = i.records.filter((x) => x.key === SUMMARY_USAGE_KEY && x.ts > r.at && inWindow(x.ts))
+  if (!own.length) return r.pct
+  if (i.dollarsPerPct && i.dollarsPerPct > 0)
+    return r.pct + own.reduce((n, x) => n + recordCost(x, i.prices), 0) / i.dollarsPerPct
+  let before = 0
+  for (const x of i.records)
+    if (x.ts <= r.at && inWindow(x.ts)) before += weightedTokens(x, i.weights)
+  if (before > 0 && r.pct > 0) {
+    const ownWeighted = own.reduce((n, x) => n + weightedTokens(x, i.weights), 0)
+    return r.pct + (ownWeighted * r.pct) / before
+  }
+  return r.pct
 }
 
 // --------------------------------------------------------------- estimates

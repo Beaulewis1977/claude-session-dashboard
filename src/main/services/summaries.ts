@@ -10,7 +10,7 @@
 // Summaries are stored in the app's metadata only, never in Claude's files.
 
 import { EventEmitter } from 'node:events'
-import { randomBytes } from 'node:crypto'
+import { createHash, randomBytes } from 'node:crypto'
 import { join } from 'node:path'
 import { parseAskOutput, printCommand, tooOldForAsk } from '@shared/ask'
 import { now } from '@shared/clock'
@@ -25,7 +25,9 @@ import {
   transcriptForSummary,
   type AiSummary,
   type SummaryEstimate,
-  type SummarySettings
+  type SummaryModel,
+  type SummarySettings,
+  type SummarySubject
 } from '@shared/summary'
 import type { SummaryJob, SummaryPreview, SummaryQueueState } from '@shared/summary-queue'
 import type { SessionSummary } from '@shared/types'
@@ -66,6 +68,31 @@ const KEEP_FINISHED = 50
 export const NOT_ACCEPTED =
   'Read and accept the notice about what is sent to Claude first (Summarize shows it).'
 
+/** What a job sends, fixed when it's queued (or previewed). */
+interface Snapshot {
+  subject: SummarySubject
+  /** The transcript messages it covers (the first n). */
+  messages: number
+  maxChars: number
+  model: SummaryModel
+  /** SHA-256 of the prompt shown in a preview: what is sent must match it. */
+  approvedHash?: string
+}
+
+interface Prepared {
+  s: SessionSummary
+  prompt: string
+  hash: string
+  chars: number
+  kept: number
+  total: number
+  snapshot: Snapshot
+}
+
+const PREVIEW_TTL = 30 * 60_000
+
+const sha256 = (t: string): string => createHash('sha256').update(t).digest('hex')
+
 function isFinished(j: SummaryJob): boolean {
   return j.status === 'done' || j.status === 'failed' || j.status === 'cancelled'
 }
@@ -102,6 +129,9 @@ export class SummaryService extends EventEmitter<{ changed: [] }> {
   private autoRuns: number[] = []
   private autoFailed = new Map<string, number>()
   private autoTimer: NodeJS.Timeout | undefined
+  /** What each queued job sends (fixed when it was queued or previewed), by job id. */
+  private snapshots = new Map<string, Snapshot>()
+  private previews = new Map<string, { key: string; at: number; snapshot: Snapshot }>()
 
   constructor(private readonly deps: SummaryServiceDeps) {
     super()
@@ -123,42 +153,63 @@ export class SummaryService extends EventEmitter<{ changed: [] }> {
 
   // ------------------------------------------------------------ preparing
 
-  /** The exact prompt for a session, and the size of what's sent. */
-  private async prepare(
-    key: string
-  ): Promise<{ s: SessionSummary; prompt: string; chars: number; kept: number; total: number }> {
+  /**
+   * The exact prompt for a session. With a snapshot, the same prompt as when
+   * the snapshot was taken: only the messages there were then, with the
+   * session details, size limit and model of that moment.
+   */
+  private async prepare(key: string, snap?: Snapshot): Promise<Prepared> {
     const d = await this.deps.sessions.detail(key)
     if (!d) throw new Error("This session's file can't be read right now.")
-    const t = transcriptForSummary(d.messages, this.deps.settings().maxChars)
-    if (!t.total) throw new Error('This session has no conversation to summarize yet.')
+    const settings = this.deps.settings()
     const s = d.summary
-    const prompt = buildSummaryPrompt(
-      {
-        title: s.title,
-        cwd: s.cwd,
-        gitBranch: s.gitBranch,
-        startedAt: s.startedAt,
-        lastActivityAt: s.lastActivityAt,
-        messageCount: s.messageCount
-      },
-      t
-    )
-    return { s, prompt, chars: prompt.length, kept: t.kept, total: t.total }
+    const messages = snap ? d.messages.slice(0, snap.messages) : d.messages
+    const maxChars = snap?.maxChars ?? settings.maxChars
+    const t = transcriptForSummary(messages, maxChars)
+    if (!t.total) throw new Error('This session has no conversation to summarize yet.')
+    const subject: SummarySubject = snap?.subject ?? {
+      title: s.title,
+      cwd: s.cwd,
+      gitBranch: s.gitBranch,
+      startedAt: s.startedAt,
+      lastActivityAt: s.lastActivityAt,
+      messageCount: s.messageCount
+    }
+    const prompt = buildSummaryPrompt(subject, t)
+    return {
+      s,
+      prompt,
+      hash: sha256(prompt),
+      chars: prompt.length,
+      kept: t.kept,
+      total: t.total,
+      snapshot: {
+        subject,
+        messages: messages.length,
+        maxChars,
+        model: snap?.model ?? settings.model,
+        ...(snap?.approvedHash ? { approvedHash: snap.approvedHash } : {})
+      }
+    }
   }
 
-  private estimateFor(chars: number[]): SummaryEstimate {
-    return estimateSummaries(
-      chars,
-      this.deps.settings().model,
-      this.deps.prices(),
-      this.deps.dollarsPerPct()
-    )
+  private estimateFor(chars: number[], model = this.deps.settings().model): SummaryEstimate {
+    return estimateSummaries(chars, model, this.deps.prices(), this.deps.dollarsPerPct())
   }
 
-  /** Exactly what would be sent for one session, with an estimate. */
+  /**
+   * Exactly what would be sent for one session, with an estimate. Summarizing
+   * with the preview's id sends this very text, whatever happens to the
+   * session or the settings meanwhile (or nothing, if it can't be rebuilt).
+   */
   async preview(key: string): Promise<SummaryPreview> {
     const p = await this.prepare(key)
+    const id = randomBytes(8).toString('hex')
+    const t = Date.now()
+    for (const [k, v] of this.previews) if (t - v.at > PREVIEW_TTL) this.previews.delete(k)
+    this.previews.set(id, { key, at: t, snapshot: { ...p.snapshot, approvedHash: p.hash } })
     return {
+      id,
       key,
       prompt: p.prompt,
       bytes: Buffer.byteLength(p.prompt),
@@ -192,23 +243,46 @@ export class SummaryService extends EventEmitter<{ changed: [] }> {
 
   // --------------------------------------------------------------- queue
 
-  /** Queue sessions to summarize (one at a time, in order). Returns how many were added. */
-  enqueue(keys: string[], origin: SummaryJob['origin'] = 'manual'): number {
+  /**
+   * Queue sessions to summarize (one at a time, in order). What each one
+   * sends is fixed now: the messages there are at this moment (or, with a
+   * preview's id, exactly the previewed text). Returns how many were added.
+   */
+  async enqueue(
+    keys: string[],
+    origin: SummaryJob['origin'] = 'manual',
+    previewId?: string
+  ): Promise<number> {
     if (!this.deps.settings().noticeAccepted) throw new Error(NOT_ACCEPTED)
+    const preview = previewId ? this.previews.get(previewId) : undefined
+    if (previewId && !preview)
+      throw new Error('That preview has expired. Show what is sent again, then summarize.')
+    const list = [...new Set(keys)].slice(0, MAX_BATCH)
+    const snaps = new Map<string, Snapshot>()
+    for (const key of list) {
+      if (preview?.key === key) {
+        snaps.set(key, preview.snapshot)
+        continue
+      }
+      try {
+        snaps.set(key, (await this.prepare(key)).snapshot)
+      } catch {
+        // Nothing to send (no conversation yet, or the file can't be read).
+      }
+    }
+    if (previewId) this.previews.delete(previewId)
     let added = 0
     const active = new Set(this.jobs.filter((j) => !isFinished(j)).map((j) => j.key))
-    for (const key of [...new Set(keys)].slice(0, MAX_BATCH)) {
+    for (const key of list) {
       const s = this.deps.sessions.get(key)
-      if (!s || active.has(key)) continue
+      const snap = snaps.get(key)
+      if (!s || !snap || active.has(key)) continue
       // A key queued again replaces its finished entry.
+      for (const j of this.jobs) if (j.key === key) this.snapshots.delete(j.id)
       this.jobs = this.jobs.filter((j) => j.key !== key)
-      this.jobs.push({
-        id: randomBytes(6).toString('hex'),
-        key,
-        title: s.title,
-        origin,
-        status: 'queued'
-      })
+      const id = randomBytes(6).toString('hex')
+      this.snapshots.set(id, snap)
+      this.jobs.push({ id, key, title: s.title, origin, status: 'queued' })
       added++
     }
     // A new manual request is a new decision about the limit.
@@ -227,6 +301,7 @@ export class SummaryService extends EventEmitter<{ changed: [] }> {
     if (finished.length <= KEEP_FINISHED) return
     const drop = new Set(finished.slice(0, finished.length - KEEP_FINISHED).map((j) => j.id))
     this.jobs = this.jobs.filter((j) => !drop.has(j.id))
+    for (const id of drop) this.snapshots.delete(id)
   }
 
   /** Cancel one session's job (queued or running), or all of them. */
@@ -255,6 +330,7 @@ export class SummaryService extends EventEmitter<{ changed: [] }> {
   }
 
   clearFinished(): void {
+    for (const j of this.jobs) if (isFinished(j)) this.snapshots.delete(j.id)
     this.jobs = this.jobs.filter((j) => !isFinished(j))
     this.changed()
   }
@@ -269,6 +345,8 @@ export class SummaryService extends EventEmitter<{ changed: [] }> {
         if (this.paused) break
         const limit = this.deps.settings().pauseAbovePct
         const pct = await this.deps.fiveHourPct().catch(() => undefined)
+        // Cancel (or a pause) may have come while the limit was being read.
+        if (job.status !== 'queued' || this.paused) continue
         if (pct !== undefined && pct > limit) {
           if (job.origin === 'auto') {
             // Auto-summarize never goes above the threshold.
@@ -326,12 +404,21 @@ export class SummaryService extends EventEmitter<{ changed: [] }> {
     job: SummaryJob,
     req: PrintRequest
   ): Promise<{ ok: boolean; error?: string }> {
-    const p = await this.prepare(job.key)
+    const snap = this.snapshots.get(job.id)
+    if (!snap) return { ok: false, error: 'Nothing to send for this session.' }
+    const p = await this.prepare(job.key, snap)
+    // A previewed prompt is sent exactly as shown, or not at all.
+    if (snap.approvedHash && p.hash !== snap.approvedHash)
+      return {
+        ok: false,
+        error:
+          'The session changed since you saw what is sent, so nothing was sent. Show what is sent again, then summarize.'
+      }
     // Shown in the queue before anything is sent (auto-summarize included).
-    job.estimate = this.estimateFor([p.chars])
+    job.estimate = this.estimateFor([p.chars], snap.model)
     this.changed()
     if (req.cancelled) return { ok: false, error: 'Cancelled.' }
-    const settings = this.deps.settings()
+    const model = snap.model
     const ranAt = now()
     if (this.deps.simulate) {
       await this.deps.runner.until(req, new Promise((r) => setTimeout(r, 1200)))
@@ -339,14 +426,12 @@ export class SummaryService extends EventEmitter<{ changed: [] }> {
       this.store(p.s, sampleSummary(p.s), {
         model: 'claude-sonnet-5-5 (sample)',
         at: ranAt,
-        chars: p.chars
+        chars: p.chars,
+        messageCount: snap.subject.messageCount
       })
       return { ok: true }
     }
-    const extra = [
-      '--no-session-persistence',
-      ...(settings.model === 'default' ? [] : ['--model', settings.model])
-    ]
+    const extra = ['--no-session-persistence', ...(model === 'default' ? [] : ['--model', model])]
     const out = await this.deps.runner.run(req, p.prompt, {
       cwd: join(this.deps.dataDir, 'ask'),
       timeoutMs: this.deps.timeoutSec() * 1000,
@@ -360,7 +445,7 @@ export class SummaryService extends EventEmitter<{ changed: [] }> {
       runId: randomBytes(8).toString('hex'),
       ts: ranAt,
       env: out.cli.kind === 'wsl' ? 'wsl' : 'windows',
-      fallbackModel: settings.model
+      fallbackModel: model
     })
     if (records.length) this.deps.recordUsage(records)
     if (res.cancelled) return { ok: false, error: 'Cancelled.' }
@@ -383,7 +468,8 @@ export class SummaryService extends EventEmitter<{ changed: [] }> {
       model: answeringModel(records),
       at: ranAt,
       chars: p.chars,
-      costUsd: parsed.costUsd
+      costUsd: parsed.costUsd,
+      messageCount: snap.subject.messageCount
     })
     return { ok: true }
   }
@@ -391,13 +477,14 @@ export class SummaryService extends EventEmitter<{ changed: [] }> {
   private store(
     s: SessionSummary,
     fields: ReturnType<typeof cleanSummaryFields>,
-    run: { model?: string; at: number; chars: number; costUsd?: number }
+    run: { model?: string; at: number; chars: number; costUsd?: number; messageCount: number }
   ): void {
     const summary: AiSummary = {
       ...fields,
       ...(run.model ? { model: run.model } : {}),
       generatedAt: new Date(run.at).toISOString(),
-      messageCount: s.messageCount,
+      // The messages it covers (the session may have gone on since it was queued).
+      messageCount: run.messageCount,
       sentChars: run.chars,
       ...(run.costUsd !== undefined ? { costUsd: run.costUsd } : {})
     }

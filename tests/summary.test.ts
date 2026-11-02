@@ -6,6 +6,7 @@ import {
   cleanSummaryFields,
   continuedName,
   estimateSummaries,
+  guardPct,
   handoffPrompt,
   messageForSummary,
   newSinceSummary,
@@ -107,6 +108,28 @@ describe('secrets are masked before anything is sent', () => {
     expect(out).toContain('ANTHROPIC_API_KEY=')
     expect(out).toContain('password = "[removed]"')
     expect(out).toContain('postgres://[removed]@db.example.com')
+  })
+
+  it('masks whole quoted values, spaces and escaped quotes included', () => {
+    const cases = [
+      'password="correct horse battery staple"',
+      "db_password: 'correct horse battery staple'",
+      '{"apiKey": "correct horse battery staple", "user": "bob"}',
+      'SECRET=`correct horse battery staple`',
+      'token = "correct \\"horse\\" battery staple"',
+      'password: correct horse battery staple',
+      'password="correct horse battery staple'
+    ]
+    for (const c of cases) {
+      const out = redactSecrets(c)
+      expect(out, c).not.toMatch(/horse|battery|staple/)
+      expect(out, c).toContain('[removed]')
+    }
+    // What follows a closed quote stays.
+    expect(redactSecrets('{"apiKey": "a b c", "user": "bob"}')).toBe(
+      '{"apiKey": "[removed]", "user": "bob"}'
+    )
+    expect(redactSecrets('password: "x y"\nnext line')).toBe('password: "[removed]"\nnext line')
   })
 
   it('leaves ordinary text alone', () => {
@@ -366,6 +389,48 @@ describe('estimates', () => {
   it('prices an alias with a real model', () => {
     expect(priceModelFor('haiku', DEFAULT_PRICES)).toMatch(/haiku/)
     expect(priceModelFor('default', DEFAULT_PRICES)).toMatch(/opus/)
+  })
+})
+
+describe('the limits guard counts its own runs', () => {
+  const rec = (ts: number, key: string, output = 1000) => ({
+    id: `${key}:${ts}`,
+    ts,
+    key,
+    project: 'p',
+    env: 'windows' as const,
+    model: 'claude-sonnet-5-5',
+    input: 0,
+    output,
+    cacheRead: 0,
+    cacheWrite: 0,
+    loggedCost: output / 1000
+  })
+  const weights = { input: 1, output: 1, cacheRead: 0, cacheWrite: 0 }
+  const reading = { pct: 70, at: 10_000, windowStart: 1_000 }
+
+  it('adds summary runs since the reading, at the baseline rate', () => {
+    const records = [
+      rec(5_000, SUMMARY_USAGE_KEY), // before the reading: already in its %
+      rec(500, SUMMARY_USAGE_KEY), // before the window
+      rec(12_000, SUMMARY_USAGE_KEY, 2000), // $2
+      rec(13_000, SUMMARY_USAGE_KEY, 3000), // $3
+      rec(14_000, 'w:other', 9000) // not ours: the next reading will have it
+    ]
+    expect(
+      guardPct({ reading, records, prices: DEFAULT_PRICES, weights, dollarsPerPct: 0.5 })
+    ).toBe(70 + 5 / 0.5)
+  })
+
+  it("without a baseline, uses the window's own % per token", () => {
+    const records = [rec(5_000, 'w:a', 7000), rec(12_000, SUMMARY_USAGE_KEY, 1000)]
+    // 70% for 7000 weighted tokens: 1000 more is 10%.
+    expect(guardPct({ reading, records, prices: DEFAULT_PRICES, weights })).toBeCloseTo(80, 6)
+  })
+
+  it('is the reading alone with no runs since, and undefined without a reading', () => {
+    expect(guardPct({ reading, records: [], prices: DEFAULT_PRICES, weights })).toBe(70)
+    expect(guardPct({ records: [], prices: DEFAULT_PRICES, weights })).toBeUndefined()
   })
 })
 

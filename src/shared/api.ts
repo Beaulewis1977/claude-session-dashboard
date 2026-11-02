@@ -167,7 +167,7 @@ export interface CsdApi {
   /** What summarizing these sessions would send and use, roughly. */
   summaryEstimate(keys: string[]): Promise<SummaryBatchEstimate>
   /** Queue sessions to summarize. Returns how many were added. */
-  summarize(keys: string[], origin?: 'manual' | 'bulk'): Promise<number>
+  summarize(keys: string[], origin?: 'manual' | 'bulk', previewId?: string): Promise<number>
   /** Cancel one session's summary, or all of them. */
   summaryCancel(key?: string): Promise<void>
   /** Go on with a queue paused by the limits guard. */

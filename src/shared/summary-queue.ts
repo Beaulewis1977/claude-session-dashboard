@@ -28,6 +28,8 @@ export interface SummaryQueueState {
 }
 
 export interface SummaryPreview {
+  /** Pass to summarize() to send exactly this text. */
+  id: string
   key: string
   /** The exact text sent on stdin. */
   prompt: string

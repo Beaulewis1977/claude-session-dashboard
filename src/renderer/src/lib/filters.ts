@@ -4,7 +4,7 @@ import type { SearchHit } from '@shared/api'
 import type { SessionSummary } from '@shared/types'
 import { SOURCE_LABELS, type SourceLabel } from '@shared/source-label'
 
-export type SortKey = 'activity' | 'started' | 'name' | 'relevance'
+export type SortKey = 'activity' | 'started' | 'name' | 'context' | 'relevance'
 export type Visibility = 'visible' | 'hidden' | 'archived' | 'all'
 
 export interface DateRange {
@@ -128,6 +128,9 @@ export function sortSessions(
     )
   } else if (sort === 'started') {
     out.sort((a, b) => time(b.startedAt) - time(a.startedAt))
+  } else if (sort === 'context') {
+    // Largest context first; sessions whose size isn't known go last.
+    out.sort((a, b) => (b.context?.tokens ?? -1) - (a.context?.tokens ?? -1) || byActivity(a, b))
   } else if (sort === 'name') {
     out.sort((a, b) =>
       a.title.localeCompare(b.title, undefined, { sensitivity: 'base', numeric: true })

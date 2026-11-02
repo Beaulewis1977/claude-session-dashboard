@@ -21,6 +21,9 @@ import type { SessionSummary, TerminalPref } from '@shared/types'
 import { now } from '@shared/clock'
 import { effortLabel, modelLabel } from '@shared/model-choice'
 import { freshRemoteUrl } from '@/lib/remote'
+import { DEFAULT_CONTEXT_WARNING, shouldWarn } from '@shared/context'
+import { updateMeta } from '@/lib/actions'
+import { ContextLine, ContextWarning } from '@/components/context/ContextSize'
 import { useApp } from '@/lib/store'
 import { phone } from '@/lib/web-api'
 import { Button } from '@/components/ui/button'
@@ -59,12 +62,19 @@ function useFreshRemoteUrl(result: Launched | null, since: number): string | und
 export function LaunchSheet({
   session,
   target,
-  onClose
+  onClose,
+  onSwitch
 }: {
   session: SessionSummary
   target: LaunchTarget
   onClose: () => void
+  /** Open the sheet for another launch (the large-session warning's choices). */
+  onSwitch?: (t: LaunchTarget) => void
 }) {
+  const settings = useApp((st) => st.settings)
+  // "Don't warn for this session": saved right away; the warning stays while the sheet is open.
+  const [warnOffAtOpen] = useState(() => session.meta.noContextWarning === true)
+  const [dontWarn, setDontWarnState] = useState(warnOffAtOpen)
   const req: RemoteLaunchRequest =
     target.kind === 'branch'
       ? { key: session.key, kind: 'branch', branch: { at: target.at, mode: target.mode } }
@@ -110,6 +120,19 @@ export function LaunchSheet({
     } finally {
       setBusy(false)
     }
+  }
+
+  const warn =
+    target.kind === 'resume' &&
+    shouldWarn({
+      kind: 'resume',
+      tokens: preview?.context?.tokens,
+      settings: settings.contextWarning ?? DEFAULT_CONTEXT_WARNING,
+      sessionOff: warnOffAtOpen
+    })
+  const setDontWarn = (v: boolean): void => {
+    setDontWarnState(v)
+    void updateMeta(session.key, { noContextWarning: v }).catch(() => undefined)
   }
 
   const Icon =
@@ -281,6 +304,26 @@ export function LaunchSheet({
                 )}
               </ul>
             )}
+            {preview?.context &&
+              (warn ? (
+                <ContextWarning
+                  phone
+                  estimate={preview.context}
+                  onContinueFresh={
+                    session.meta.aiSummary && onSwitch
+                      ? () => onSwitch({ kind: 'continue' })
+                      : undefined
+                  }
+                  noSummaryText="summarize on your PC first"
+                  onFork={() => onSwitch?.({ kind: 'fork' })}
+                  dontWarn={dontWarn}
+                  onDontWarn={setDontWarn}
+                />
+              ) : (
+                (target.kind === 'resume' || target.kind === 'fork') && (
+                  <ContextLine estimate={preview.context} />
+                )
+              ))}
             {(error || (preview && !preview.ok && preview.error)) && (
               <div
                 role="alert"
@@ -305,7 +348,11 @@ export function LaunchSheet({
                 ) : (
                   <Icon className={target.kind === 'resume' ? 'fill-current' : ''} />
                 )}
-                {busy && preview?.confirmOnPc ? 'Waiting for the PC…' : VERB[target.kind]}
+                {busy && preview?.confirmOnPc
+                  ? 'Waiting for the PC…'
+                  : warn
+                    ? 'Resume anyway'
+                    : VERB[target.kind]}
               </Button>
             </div>
           </div>

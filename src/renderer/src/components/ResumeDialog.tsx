@@ -15,6 +15,10 @@ import {
   TriangleAlert
 } from 'lucide-react'
 import { ContinueFreshCard, ContinueIcon } from './summary/ContinueFreshCard'
+import { ContextLine, ContextWarning } from './context/ContextSize'
+import { DEFAULT_CONTEXT_WARNING, shouldWarn } from '@shared/context'
+import { updateMeta } from '@/lib/actions'
+import { summarize } from '@/lib/summaries'
 import type { LaunchPreview, TerminalPref } from '@shared/types'
 import { api } from '@/lib/api'
 import { showNewSession } from '@/lib/actions'
@@ -120,6 +124,11 @@ function ResumeDialogBody({
   const [preview, setPreview] = useState<LaunchPreview | null>(null)
   const [launching, setLaunching] = useState(false)
   const [copied, setCopied] = useState(false)
+  // "Don't warn for this session": saved right away, but the warning stays until the dialog closes.
+  const [warnOffAtOpen] = useState(
+    () => sessions.find((s) => s.key === resume.key)?.meta.noContextWarning === true
+  )
+  const [dontWarn, setDontWarnState] = useState(warnOffAtOpen)
   const accounts = useApp((s) => s.credits?.accounts) ?? []
   // Same project keys as the model defaults: WSL by distro and exact path.
   const projectKey = projectDefaultKey(session)
@@ -201,6 +210,20 @@ function ResumeDialogBody({
   ])
 
   const close = (): void => set({ resume: null })
+  // Plain Resume warns above the threshold; Fork and the rest only show the size.
+  const plainResume = !resume.fork && !newSession && !branchAt && !continueFresh
+  const warn =
+    plainResume &&
+    shouldWarn({
+      kind: 'resume',
+      tokens: preview?.context?.tokens,
+      settings: settings.contextWarning ?? DEFAULT_CONTEXT_WARNING,
+      sessionOff: warnOffAtOpen
+    })
+  const setDontWarn = (v: boolean): void => {
+    setDontWarnState(v)
+    void updateMeta(resume.key, { noContextWarning: v })
+  }
   if (!session) return null
   const choice = preview?.modelChoice ? choiceLabel(preview.modelChoice) : ''
   const fork = resume.fork
@@ -369,6 +392,23 @@ function ResumeDialogBody({
               Starts a new session that continues from this conversation. The original session stays
               untouched.
             </p>
+          )}
+          {warn && preview?.context ? (
+            <ContextWarning
+              estimate={preview.context}
+              onContinueFresh={() =>
+                set({ resume: { key: resume.key, fork: false, continueFresh: true } })
+              }
+              onSummarize={() => {
+                close()
+                summarize([resume.key])
+              }}
+              onFork={() => set({ resume: { key: resume.key, fork: true } })}
+              dontWarn={dontWarn}
+              onDontWarn={setDontWarn}
+            />
+          ) : (
+            (plainResume || fork) && preview?.context && <ContextLine estimate={preview.context} />
           )}
           {branchAt && (
             <>
@@ -633,7 +673,9 @@ function ResumeDialogBody({
                   ? 'Start'
                   : fork
                     ? 'Fork'
-                    : 'Resume'}
+                    : warn
+                      ? 'Resume anyway'
+                      : 'Resume'}
             {choice && <span className="font-normal opacity-85">· {choice}</span>}
             <Kbd className="ml-1 border-white/25 bg-white/15 text-primary-foreground">↵</Kbd>
           </Button>

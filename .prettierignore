@@ -5,3 +5,4 @@ node_modules
 fixtures
 .fixtures-data
 CLAUDE.md
+tests/golden/*.json

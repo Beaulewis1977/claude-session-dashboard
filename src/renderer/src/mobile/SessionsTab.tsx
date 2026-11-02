@@ -96,7 +96,8 @@ function Group({ title, children }: { title: string; children: ReactNode }) {
 const SORTS: [SortKey, string][] = [
   ['activity', 'Last activity'],
   ['started', 'Start time'],
-  ['name', 'Name']
+  ['name', 'Name'],
+  ['context', 'Context size']
 ]
 
 const DATES: [NonNullable<DateRange['preset']>, string][] = [

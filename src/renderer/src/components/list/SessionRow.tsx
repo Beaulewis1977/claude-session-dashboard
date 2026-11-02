@@ -20,6 +20,7 @@ import { cn } from '@/lib/utils'
 import { EnvDot } from '../EnvBadge'
 import { BillingBadge } from '../BillingPicker'
 import { RemoteBadge } from '../RemoteBadge'
+import { ContextBadge } from '../context/ContextSize'
 import { ModelChoiceBadge } from '../ModelPicker'
 import { useModelChoice } from '@/lib/model-choice'
 
@@ -177,6 +178,7 @@ export const SessionRow = memo(function SessionRow({
               {branches}
             </span>
           )}
+          <ContextBadge context={s.context} />
           <RemoteBadge session={s} compact />
           {s.availability !== 'imported' && <ModelChoiceBadge choice={choice} compact />}
           <SourceBadge source={s.source} reason={s.sourceReason} compact />

@@ -41,6 +41,7 @@ const api: CsdApi = {
 
   getUsageReport: (q) => ipcRenderer.invoke('usage:report', q),
   getSessionUsage: (key) => ipcRenderer.invoke('usage:session', key),
+  getContextEstimate: (key) => ipcRenderer.invoke('context:estimate', key),
   getUsageStatus: () => ipcRenderer.invoke('usage:status'),
   onUsageChanged: (cb) => on('usage:changed', cb),
   recalculateUsage: () => ipcRenderer.invoke('usage:recalculate'),

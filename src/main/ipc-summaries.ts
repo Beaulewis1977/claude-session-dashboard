@@ -1,9 +1,7 @@
 // IPC for session summaries (claude -p on the subscription) and their queue.
 
 import { BrowserWindow } from 'electron'
-import { now } from '@shared/clock'
 import { guardPct, sanitizeSummarySettings } from '@shared/summary'
-import { planAt } from '@shared/usage/health'
 import type { JsonStore } from './core/json-store'
 import { handle } from './ipc-guard'
 import type { LimitsService } from './services/limits'
@@ -23,11 +21,7 @@ export function registerSummaryIpc(deps: {
   simulate: boolean
 }): SummaryService {
   const { settings, limits } = deps
-  const dollarsPerPct = (): number | undefined => {
-    const h = limits.health('five_hour')
-    if (!h.baseline) return undefined
-    return h.baseline.value * planAt(h.plans, now()).mult
-  }
+  const dollarsPerPct = (): number | undefined => limits.dollarsPerPct()
   const summaries = new SummaryService({
     sessions: deps.sessions,
     dataDir: deps.dataDir,

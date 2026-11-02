@@ -23,7 +23,7 @@ import { Row, Section } from '../SettingsView'
 import { SummaryNotice } from '../summary/SummarizeDialog'
 import { estimateText } from '@/lib/summary-format'
 
-function NumberField({
+export function NumberField({
   value,
   min,
   max,

@@ -73,6 +73,7 @@ import { SessionModelControls } from '../ModelPicker'
 import { useModelChoice } from '@/lib/model-choice'
 import { choiceLabel } from '@shared/model-choice'
 import { SessionUsageStrip } from './SessionUsage'
+import { ContextStrip } from '../context/ContextSize'
 import { DescriptionEditor, EditableTitle, TagEditor, TitleSourceLine } from './MetaEditors'
 import { FindBar } from './FindBar'
 import { BranchesPanel, type BranchMark } from './Branches'
@@ -357,6 +358,10 @@ function Header({
         )}
 
         <SessionUsageStrip sessionKey={session.key} version={session.sizeBytes} />
+        <ContextStrip
+          sessionKey={session.key}
+          version={`${session.sizeBytes}:${session.context?.tokens ?? ''}:${session.context?.at ?? ''}:${session.context?.windowSize ?? ''}:${session.billing?.mode ?? ''}:${session.meta.aiSummary?.generatedAt ?? ''}:${session.meta.aiSummary?.editedAt ?? ''}:${session.meta.model ?? ''}`}
+        />
 
         <div className="mt-3">
           <TagEditor

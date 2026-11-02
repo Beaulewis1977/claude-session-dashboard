@@ -8,6 +8,7 @@ import { EventEmitter } from 'node:events'
 import { readdir, readFile, stat } from 'node:fs/promises'
 import { basename, join } from 'node:path'
 import { analyzeEvents, buildMessages, isUuid, parseJsonl } from '@shared/jsonl'
+import { analyzeContext, withStatusLine, type StatusContext } from '@shared/context'
 import { now } from '@shared/clock'
 import { baseName } from '@shared/format'
 import { computeTitle } from '@shared/title'
@@ -48,7 +49,10 @@ type BaseSummary = Omit<
 // v5: statuses copied into a branch no longer count as the branch's own link.
 // v6: the name given in Claude Code (custom-title / agent-name) and ai-title.
 // v7: summaries in the search index (a new field).
-const CACHE_VERSION = 7
+// v8: the context size (last reply's usage, compactions, cache lifetime).
+// v9: the cache lifetime as a 1-hour share (mixed 5-minute / 1-hour caches).
+// v10: the 1-hour share of what is cached now (not of all writes).
+const CACHE_VERSION = 10
 
 interface CacheFile {
   version: number
@@ -134,6 +138,7 @@ export function parseSessionText(
 ): { base: BaseSummary; searchText: string } {
   const { events, malformedLines } = parseJsonl(text)
   const a = analyzeEvents(events, { sessionId: file.sessionId })
+  const context = analyzeContext(events)
   return {
     searchText: a.searchText,
     base: {
@@ -172,7 +177,8 @@ export function parseSessionText(
           : undefined,
       sourceHints: a.sourceHints,
       remoteUrl: a.remoteUrl,
-      remoteUrlAt: a.remoteUrlAt
+      remoteUrlAt: a.remoteUrlAt,
+      ...(context ? { context } : {})
     }
   }
 }
@@ -468,6 +474,8 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
 
   /** Resolves billing for a session (set by the app: tags + bridge inference). */
   billingResolver?: (sessionId: string, meta: SessionMeta) => SessionBilling | undefined
+  /** The status line's latest context reading for a session (see LimitsService). */
+  contextResolver?: (sessionId: string) => StatusContext | undefined
   /** Resolves where a session was branched from (set by the lineage service). */
   lineageResolver?: (key: string) => SessionLineage | undefined
 
@@ -505,7 +513,8 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
       billing: this.billingResolver?.(base.sessionId, meta),
       source: manual?.label ?? det!.label,
       sourceReason: manual ? 'Set by hand' : det!.reason,
-      lineage: this.lineageResolver?.(base.key)
+      lineage: this.lineageResolver?.(base.key),
+      context: withStatusLine(base.context, this.contextResolver?.(base.sessionId))
     }
   }
 

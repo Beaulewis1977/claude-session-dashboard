@@ -15,11 +15,16 @@ import {
   TriangleAlert
 } from 'lucide-react'
 import { ContinueFreshCard, ContinueIcon } from './summary/ContinueFreshCard'
+import { ContextLine, ContextWarning } from './context/ContextSize'
+import { useWarmExpiry } from '@/lib/use-warm-expiry'
+import { DEFAULT_CONTEXT_WARNING, shouldWarn } from '@shared/context'
+import { updateMeta } from '@/lib/actions'
+import { summarize } from '@/lib/summaries'
 import type { LaunchPreview, TerminalPref } from '@shared/types'
 import { api } from '@/lib/api'
 import { showNewSession } from '@/lib/actions'
 import { launchesOnEnter } from '@/lib/dialog-keys'
-import { useApp, type BranchTarget } from '@/lib/store'
+import { useApp, type ResumeRequest } from '@/lib/store'
 import { cn } from '@/lib/utils'
 import { Button } from './ui/button'
 import { Checkbox } from './ui/checkbox'
@@ -97,41 +102,41 @@ export function ResumeDialog() {
   )
 }
 
-function ResumeDialogBody({
-  resume
-}: {
-  resume: {
-    key: string
-    fork: boolean
-    newSession?: boolean
-    branch?: BranchTarget
-    continueFresh?: boolean
-  }
-}) {
+function ResumeDialogBody({ resume }: { resume: ResumeRequest }) {
   const sessions = useApp((s) => s.sessions)
   const settings = useApp((s) => s.settings)
   const info = useApp((s) => s.info)
   const set = useApp((s) => s.set)
   const session = sessions.find((s) => s.key === resume.key)
 
-  const [skip, setSkip] = useState(settings.skipPermissionsDefault)
-  const [terminal, setTerminal] = useState<TerminalPref>(settings.terminal)
-  const [cwdOverride, setCwdOverride] = useState<string | undefined>()
+  const carry = resume.carry
+  const [skip, setSkip] = useState(carry?.skip ?? settings.skipPermissionsDefault)
+  const [terminal, setTerminal] = useState<TerminalPref>(carry?.terminal ?? settings.terminal)
+  const [cwdOverride, setCwdOverride] = useState<string | undefined>(carry?.cwdOverride)
   const [preview, setPreview] = useState<LaunchPreview | null>(null)
   const [launching, setLaunching] = useState(false)
   const [copied, setCopied] = useState(false)
+  // "Don't warn for this session": saved right away, but the warning stays until the dialog closes.
+  const [warnOffAtOpen] = useState(
+    () => sessions.find((s) => s.key === resume.key)?.meta.noContextWarning === true
+  )
+  const [dontWarn, setDontWarnState] = useState(warnOffAtOpen)
   const accounts = useApp((s) => s.credits?.accounts) ?? []
   // Same project keys as the model defaults: WSL by distro and exact path.
   const projectKey = projectDefaultKey(session)
   const projectBillingNow = projectDefault(settings.projectBilling, session)
   const [billing, setBilling] = useState(() =>
-    validBilling(projectBillingNow ?? settings.defaultBilling, accounts)
+    validBilling(carry?.billing ?? projectBillingNow ?? settings.defaultBilling, accounts)
   )
-  const [rememberProject, setRememberProject] = useState(() => projectBillingNow !== undefined)
+  const [rememberProject, setRememberProject] = useState(
+    () => carry?.rememberProject ?? projectBillingNow !== undefined
+  )
   // Remote Control runs only on the subscription: turning one on turns the other off.
   const [remoteControl, setRemoteControlState] = useState(
-    () => settings.remoteControlDefault && billing === 'subscription'
+    () => (carry?.remoteControl ?? settings.remoteControlDefault) && billing === 'subscription'
   )
+  // The estimate goes up when a warm cache runs out: preview again then.
+  const [expired, setExpired] = useState(0)
   const setRemoteControl = (on: boolean): void => {
     setRemoteControlState(on)
     if (on) setBilling('subscription')
@@ -192,6 +197,11 @@ function ResumeDialogBody({
     billingAccountId,
     newSession,
     remoteControl,
+    expired,
+    // The session's context changed (it grew, shrank or was compacted): a new estimate.
+    session?.sizeBytes,
+    session?.context?.tokens,
+    session?.context?.at,
     // The model / effort pickers save right away; the command follows them.
     session?.meta.model,
     session?.meta.effort,
@@ -200,7 +210,32 @@ function ResumeDialogBody({
     settings.projectModels
   ])
 
+  useWarmExpiry(preview?.context?.warmUntil, () => setExpired((n) => n + 1))
   const close = (): void => set({ resume: null })
+  // Switch to another launch of the same session, keeping the choices made here.
+  const switchTo = (next: Partial<ResumeRequest>): void =>
+    set({
+      resume: {
+        key: resume.key,
+        fork: false,
+        ...next,
+        carry: { skip, terminal, cwdOverride, billing, rememberProject, remoteControl }
+      }
+    })
+  // Plain Resume warns above the threshold; Fork and the rest only show the size.
+  const plainResume = !resume.fork && !newSession && !branchAt && !continueFresh
+  const warn =
+    plainResume &&
+    shouldWarn({
+      kind: 'resume',
+      tokens: preview?.context?.tokens,
+      settings: settings.contextWarning ?? DEFAULT_CONTEXT_WARNING,
+      sessionOff: warnOffAtOpen
+    })
+  const setDontWarn = (v: boolean): void => {
+    setDontWarnState(v)
+    void updateMeta(resume.key, { noContextWarning: v })
+  }
   if (!session) return null
   const choice = preview?.modelChoice ? choiceLabel(preview.modelChoice) : ''
   const fork = resume.fork
@@ -369,6 +404,21 @@ function ResumeDialogBody({
               Starts a new session that continues from this conversation. The original session stays
               untouched.
             </p>
+          )}
+          {warn && preview?.context ? (
+            <ContextWarning
+              estimate={preview.context}
+              onContinueFresh={() => switchTo({ continueFresh: true })}
+              onSummarize={() => {
+                close()
+                summarize([resume.key])
+              }}
+              onFork={() => switchTo({ fork: true })}
+              dontWarn={dontWarn}
+              onDontWarn={setDontWarn}
+            />
+          ) : (
+            (plainResume || fork) && preview?.context && <ContextLine estimate={preview.context} />
           )}
           {branchAt && (
             <>
@@ -633,7 +683,9 @@ function ResumeDialogBody({
                   ? 'Start'
                   : fork
                     ? 'Fork'
-                    : 'Resume'}
+                    : warn
+                      ? 'Resume anyway'
+                      : 'Resume'}
             {choice && <span className="font-normal opacity-85">· {choice}</span>}
             <Kbd className="ml-1 border-white/25 bg-white/15 text-primary-foreground">↵</Kbd>
           </Button>

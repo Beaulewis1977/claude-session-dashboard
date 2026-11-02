@@ -157,7 +157,8 @@ export class RemoteLauncher {
       confirmOnPc: st.confirmOnPc,
       willRestore: p.willRestore,
       modelChoice: p.modelChoice,
-      ...(p.continueFresh ? { newSinceSummary: p.continueFresh.newSince } : {})
+      ...(p.continueFresh ? { newSinceSummary: p.continueFresh.newSince } : {}),
+      ...(p.context ? { context: p.context } : {})
     }
   }
 

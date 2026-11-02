@@ -31,6 +31,7 @@ const SORT_LABELS: Record<SortKey, string> = {
   activity: 'Last activity',
   started: 'Start time',
   name: 'Name',
+  context: 'Context size',
   relevance: 'Relevance'
 }
 
@@ -278,8 +279,8 @@ export function ListToolbar({ count }: { count: number }) {
             <DropdownMenuLabel>Sort by</DropdownMenuLabel>
             <DropdownMenuRadioGroup value={sort} onValueChange={(v) => set({ sort: v as SortKey })}>
               {(query.trim()
-                ? (['relevance', 'activity', 'started', 'name'] as SortKey[])
-                : (['activity', 'started', 'name'] as SortKey[])
+                ? (['relevance', 'activity', 'started', 'name', 'context'] as SortKey[])
+                : (['activity', 'started', 'name', 'context'] as SortKey[])
               ).map((k) => (
                 <DropdownMenuRadioItem key={k} value={k}>
                   {SORT_LABELS[k]}

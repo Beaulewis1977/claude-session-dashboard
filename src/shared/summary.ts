@@ -18,6 +18,7 @@ import { SUMMARY_PROMPT_MARKER } from './source-label'
 import { estimateCost, recordCost, type ModelPrice } from './usage/pricing'
 import { weightedTokens, type CapacityWeights } from './usage/limits'
 import type { UsageRecord } from './usage/types'
+import { pctPerWeightedToken } from './context'
 
 /** Start of every summary prompt, so a run that does get saved is recognised and hidden. */
 export const SUMMARY_MARKER = SUMMARY_PROMPT_MARKER
@@ -640,12 +641,15 @@ export function guardPct(i: {
   if (!own.length) return { pct: r.pct }
   if (i.dollarsPerPct && i.dollarsPerPct > 0)
     return { pct: r.pct + own.reduce((n, x) => n + recordCost(x, i.prices), 0) / i.dollarsPerPct }
-  let before = 0
-  for (const x of i.records)
-    if (x.ts <= r.at && inWindow(x.ts) && sub(x.key)) before += weightedTokens(x, i.weights)
-  if (before > 0 && r.pct > 0) {
+  const rate = pctPerWeightedToken({
+    reading: r,
+    records: i.records,
+    weights: i.weights,
+    isSubscription: sub
+  })
+  if (rate !== undefined) {
     const ownWeighted = own.reduce((n, x) => n + weightedTokens(x, i.weights), 0)
-    return { pct: r.pct + (ownWeighted * r.pct) / before }
+    return { pct: r.pct + ownWeighted * rate }
   }
   return { pct: r.pct, unknown: true }
 }

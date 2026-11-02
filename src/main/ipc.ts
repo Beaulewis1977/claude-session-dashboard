@@ -18,6 +18,7 @@ import { cleanEffortChoice, cleanModelChoice, sanitizeProjectModels } from '@sha
 import { normalizeProjectKey } from '@shared/project-key'
 import { sanitizeLiveAlerts } from '@shared/live-alerts'
 import { sanitizeSummarySettings } from '@shared/summary'
+import { sanitizeContextWarning } from '@shared/context'
 import type {
   AppInfo,
   AppSettings,
@@ -90,7 +91,8 @@ function publicSettings(s: SettingsFile): AppSettings {
       Object.entries(s.projectModels ?? {}).map(([k, v]) => [k, { ...v }])
     ),
     liveAlerts: sanitizeLiveAlerts(s.liveAlerts),
-    summaries: sanitizeSummarySettings(s.summaries)
+    summaries: sanitizeSummarySettings(s.summaries),
+    contextWarning: sanitizeContextWarning(s.contextWarning)
   }
 }
 
@@ -263,6 +265,11 @@ export function registerIpc(deps: IpcDeps): void {
         s.summaries = sanitizeSummarySettings({
           ...sanitizeSummarySettings(s.summaries),
           ...((p.summaries ?? {}) as object)
+        })
+      if ('contextWarning' in p)
+        s.contextWarning = sanitizeContextWarning({
+          ...sanitizeContextWarning(s.contextWarning),
+          ...((p.contextWarning ?? {}) as object)
         })
       if (typeof p.adminRefreshMinutes === 'number' && p.adminRefreshMinutes >= 0)
         s.adminRefreshMinutes = Math.min(1440, Math.round(p.adminRefreshMinutes))

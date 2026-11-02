@@ -56,6 +56,7 @@ import {
 import { canUseClaudeName } from '@shared/title'
 import { FindBar } from '@/components/viewer/FindBar'
 import { SessionUsageStrip } from '@/components/viewer/SessionUsage'
+import { ContextStrip } from '@/components/context/ContextSize'
 import { Transcript, type OnBranch } from '@/components/viewer/Transcript'
 import { useFind } from '@/components/viewer/useFind'
 import { SummaryBlock } from '@/components/summary/SummaryBlock'
@@ -345,6 +346,10 @@ export function SessionScreen({ session }: { session: SessionSummary }) {
             </div>
           )}
           <SessionUsageStrip sessionKey={session.key} version={session.sizeBytes} />
+          <ContextStrip
+            sessionKey={session.key}
+            version={`${session.sizeBytes}:${session.context?.tokens ?? ''}:${session.context?.at ?? ''}:${session.context?.windowSize ?? ''}:${session.billing?.mode ?? ''}:${session.meta.aiSummary?.generatedAt ?? ''}:${session.meta.aiSummary?.editedAt ?? ''}:${session.meta.model ?? ''}`}
+          />
           <div className="mt-3">
             <TagEditor
               tags={session.meta.tags ?? []}
@@ -451,7 +456,15 @@ export function SessionScreen({ session }: { session: SessionSummary }) {
           onClose={() => setTerminalOpen(false)}
         />
       )}
-      {launch && <LaunchSheet session={session} target={launch} onClose={() => setLaunch(null)} />}
+      {launch && (
+        <LaunchSheet
+          key={launch.kind}
+          session={session}
+          target={launch}
+          onSwitch={setLaunch}
+          onClose={() => setLaunch(null)}
+        />
+      )}
     </div>
   )
 }

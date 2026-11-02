@@ -160,6 +160,8 @@ window.csd = {
   copyText: writeClipboard,
   getSession: async () => ({ summary: session, messages: fixtures[fixture] }),
   getSessionUsage: async () => null,
+  getContextEstimate: async () => null,
+  onLimitsChanged: () => () => {},
   onUsageChanged: () => () => {}
 }
 useApp.setState({ sessions: [session] })

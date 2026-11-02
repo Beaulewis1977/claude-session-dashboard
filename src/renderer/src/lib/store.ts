@@ -6,7 +6,8 @@ import {
   type AppSettings,
   type ScanState,
   type SessionSummary,
-  type SourceInfo
+  type SourceInfo,
+  type TerminalPref
 } from '@shared/types'
 import type { CreditsState } from '@shared/usage/credits'
 import type { LimitsState } from '@shared/usage/limits'
@@ -22,7 +23,17 @@ export interface BranchTarget {
   mode: 'include' | 'before'
 }
 
-interface ResumeRequest {
+/** Choices made in the launch dialog, kept when it switches to another launch (e.g. Resume → Fork). */
+export interface LaunchCarry {
+  skip: boolean
+  terminal: TerminalPref
+  cwdOverride?: string
+  billing: string
+  rememberProject: boolean
+  remoteControl: boolean
+}
+
+export interface ResumeRequest {
   key: string
   fork: boolean
   /** Start a new session in the same folder. */
@@ -31,6 +42,8 @@ interface ResumeRequest {
   branch?: BranchTarget
   /** Continue fresh: a new session started from this session's summary. */
   continueFresh?: boolean
+  /** Start with these choices instead of the defaults. */
+  carry?: LaunchCarry
 }
 
 /** The Summarize dialog: the one-time notice, the estimate and the preview. */

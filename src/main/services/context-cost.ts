@@ -11,10 +11,45 @@ import type { AppSettings, SessionSummary } from '@shared/types'
 import type { LimitsService } from './limits'
 import type { UsageService } from './usage'
 
+/**
+ * The launch bills the same account the session's prompt cache belongs to.
+ * Caches aren't shared across organizations, so another account (or a
+ * session whose billing isn't known) starts cold.
+ */
+export function sameCacheScope(s: SessionSummary, billingAccountId: string | undefined): boolean {
+  const b = s.billing
+  if (!b) return false
+  if (billingAccountId) return b.mode === 'api' && b.accountId === billingAccountId
+  return b.mode === 'subscription'
+}
+
+/**
+ * A newer status line context reading changes badges, sorting and the
+ * viewer: tell the session list (its change event reaches the renderer and
+ * paired phones) whenever the newest reading's time moves.
+ */
+export function publishContextReadings(
+  limits: Pick<LimitsService, 'lastContextAt'> & {
+    on(event: 'changed', cb: () => void): unknown
+  },
+  sessions: { touch(): void }
+): void {
+  let seen = limits.lastContextAt()
+  limits.on('changed', () => {
+    const at = limits.lastContextAt()
+    if (at === seen) return
+    seen = at
+    sessions.touch()
+  })
+}
+
 export class ContextCost {
   constructor(
     private readonly deps: {
-      limits: Pick<LimitsService, 'dollarsPerPct' | 'state' | 'isSubscription'>
+      limits: Pick<
+        LimitsService,
+        'dollarsPerPct' | 'state' | 'isSubscription' | 'latestModel' | 'windowSizes'
+      >
       usage: Pick<UsageService, 'allRecords'>
       settings: () => AppSettings
     }
@@ -49,16 +84,19 @@ export class ContextCost {
       ctx: s.context,
       modelChoice: launch.modelChoice,
       billing: sub ? 'subscription' : 'api',
+      sameScope: sameCacheScope(s, launch.billingAccountId),
       prices: st.prices,
       weights: st.capacityWeights,
       dollarsPerPct,
       pctPerWeighted,
       handoffChars: summary ? summaryMarkdown(summary).length : undefined,
+      defaultModel: this.deps.limits.latestModel(),
+      windowSizes: this.deps.limits.windowSizes(),
       now: now()
     })
   }
 
-  /** With the session's default billing (its project's, else Settings'): the session stats. */
+  /** With the session's default billing (its project's, else Settings'): the desktop's stats. */
   defaultBilling(s: SessionSummary): string | undefined {
     const st = this.deps.settings()
     const b = projectDefault(st.projectBilling, s) ?? st.defaultBilling

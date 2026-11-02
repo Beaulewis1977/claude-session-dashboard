@@ -11,7 +11,8 @@ import {
   sanitizeContextWarning,
   shouldWarn,
   sizeBand,
-  warmUntil,
+  firstMessage,
+  modelKey,
   withStatusLine,
   type SessionContext
 } from '@shared/context'
@@ -63,7 +64,7 @@ describe('analyzeContext', () => {
     expect(c.tokens).toBe(20_005)
     expect(c.from).toBe('usage')
     expect(c.baseTokens).toBe(18_010)
-    expect(c.cacheTtl).toBe('1h')
+    expect(c.cache1hShare).toBe(1)
     expect(c.lastReplyAt).toBe(at(3))
     expect(c.compactions).toBe(0)
     expect(c.model).toBe('claude-opus-4-5')
@@ -88,10 +89,33 @@ describe('analyzeContext', () => {
         cache_creation: { ephemeral_5m_input_tokens: 50, ephemeral_1h_input_tokens: 0 }
       })
     ])!
-    expect(five.cacheTtl).toBe('5m')
+    expect(five.cache1hShare).toBe(0)
     const old = analyzeContext([reply(1, { input_tokens: 100, cache_creation_input_tokens: 50 })])!
     expect(old.tokens).toBe(150)
-    expect(old.cacheTtl).toBeUndefined()
+    expect(old.cache1hShare).toBeUndefined()
+  })
+
+  it('mixed cache lifetimes: the 1-hour share of writes since the last compaction', () => {
+    const mixed = (cw5: number, cw1h: number) => ({
+      input_tokens: 1,
+      cache_creation_input_tokens: cw5 + cw1h,
+      cache_creation: { ephemeral_5m_input_tokens: cw5, ephemeral_1h_input_tokens: cw1h }
+    })
+    const c = analyzeContext([
+      reply(1, mixed(0, 20_000)),
+      // Streamed parts of one reply count once.
+      reply(2, mixed(50_000, 0)),
+      reply(2, mixed(50_000, 0)),
+      reply(3, mixed(50_000, 0))
+    ])!
+    expect(c.cache1hShare).toBeCloseTo(20_000 / 120_000)
+    // A compaction starts over.
+    const after = analyzeContext([
+      reply(1, mixed(90_000, 0)),
+      { type: 'system', subtype: 'compact_boundary', compactMetadata: { preTokens: 1 } },
+      reply(5, mixed(0, 30_000))
+    ])!
+    expect(after.cache1hShare).toBe(1)
   })
 
   it('missing usage: unknown', () => {
@@ -195,9 +219,44 @@ describe('size', () => {
   it('context window: status line, [1m], or past 200k', () => {
     const c: SessionContext = { tokens: 50_000, from: 'usage', compactions: 0 }
     expect(contextWindowSize(c)).toBe(200_000)
-    expect(contextWindowSize(c, 'sonnet[1m]')).toBe(1_000_000)
+    expect(contextWindowSize(c, { choice: 'sonnet[1m]' })).toBe(1_000_000)
     expect(contextWindowSize({ ...c, tokens: 250_000 })).toBe(1_000_000)
     expect(contextWindowSize({ ...c, windowSize: 500_000 })).toBe(500_000)
+  })
+
+  it('the window of the model the launch uses', () => {
+    const c: SessionContext = {
+      tokens: 180_000,
+      from: 'usage',
+      compactions: 0,
+      model: 'claude-sonnet-4-5-20250929',
+      windowSize: 200_000,
+      windowModel: 'claude-sonnet-4-5-20250929'
+    }
+    // An explicit [1m] launch isn't held to the old 200k reading.
+    expect(contextWindowSize(c, { choice: 'sonnet[1m]', modelId: 'claude-sonnet-4-5' })).toBe(
+      1_000_000
+    )
+    // The same model (dates aside) keeps the session's reading; no choice too.
+    expect(
+      contextWindowSize(c, { choice: 'claude-sonnet-4-5', modelId: 'claude-sonnet-4-5' })
+    ).toBe(200_000)
+    expect(contextWindowSize(c)).toBe(200_000)
+    // Another model: what the status line reported for it elsewhere (a native 1M window).
+    const learned = { [modelKey('claude-opus-5-5')]: 1_000_000 }
+    expect(contextWindowSize(c, { choice: 'opus', modelId: 'claude-opus-5-5', learned })).toBe(
+      1_000_000
+    )
+    // A session without a reading, on a model seen with 1M elsewhere.
+    expect(
+      contextWindowSize(
+        { tokens: 50_000, from: 'usage', compactions: 0, model: 'claude-opus-5-5-20261001' },
+        { learned }
+      )
+    ).toBe(1_000_000)
+    // Another model, never seen: the standard window.
+    expect(contextWindowSize(c, { choice: 'haiku', modelId: 'claude-haiku-4-5' })).toBe(200_000)
+    expect(modelKey('Claude-Opus-4-5-20251101')).toBe('claude-opus-4-5')
   })
 })
 
@@ -241,13 +300,14 @@ describe('estimateResume', () => {
     at: at(0),
     lastReplyAt: at(0),
     model: 'claude-opus-4-5',
-    cacheTtl: '1h',
+    cache1hShare: 1,
     baseTokens: 20_000,
     compactions: 0
   }
   const base = {
     ctx,
     billing: 'subscription' as const,
+    sameScope: true,
     prices: DEFAULT_PRICES,
     weights: DEFAULT_WEIGHTS
   }
@@ -270,7 +330,7 @@ describe('estimateResume', () => {
   it('a 5-minute cache writes at the 5-minute price', () => {
     const e = estimateResume({
       ...base,
-      ctx: { ...ctx, cacheTtl: '5m' },
+      ctx: { ...ctx, cache1hShare: 0 },
       dollarsPerPct: 0.5,
       now: cold
     })
@@ -288,22 +348,101 @@ describe('estimateResume', () => {
 
   it('warm needs the cache still alive, the same model, and a real reply', () => {
     // 5-minute cache, 10 minutes later: cold.
-    expect(warmUntil({ ...ctx, cacheTtl: '5m' }, T0 + 10 * 60_000)).toBeUndefined()
-    expect(warmUntil({ ...ctx, cacheTtl: '5m' }, T0 + 4 * 60_000)).toBe(T0 + 5 * 60_000)
-    // Unknown lifetime: 5 minutes.
-    expect(warmUntil({ ...ctx, cacheTtl: undefined }, T0 + 10 * 60_000)).toBeUndefined()
-    expect(warmUntil({ ...ctx, from: 'compaction' }, T0 + 60_000)).toBeUndefined()
+    expect(firstMessage({ ...ctx, cache1hShare: 0 }, T0 + 10 * 60_000, true, 0).warmUntil).toBe(
+      undefined
+    )
+    expect(firstMessage({ ...ctx, cache1hShare: 0 }, T0 + 4 * 60_000, true, 0)).toEqual({
+      read: 100_000,
+      write5m: 0,
+      write1h: 0,
+      warmUntil: T0 + 5 * 60_000
+    })
+    // Unknown lifetime counts as 5 minutes.
+    const unknownTtl = estimateResume({
+      ...base,
+      ctx: { ...ctx, cache1hShare: undefined },
+      now: T0 + 10 * 60_000
+    })
+    expect(unknownTtl.warmUntil).toBeUndefined()
+    expect(firstMessage({ ...ctx, from: 'compaction' }, T0 + 60_000, true, 1).warmUntil).toBe(
+      undefined
+    )
     const other = estimateResume({ ...base, modelChoice: 'sonnet', now: T0 + 60_000 })
     expect(other.warmUntil).toBeUndefined()
   })
 
-  it('Continue fresh: the setup plus the handoff', () => {
-    const e = estimateResume({ ...base, dollarsPerPct: 0.5, handoffChars: 3_100, now: cold })
+  it('mixed lifetimes: after 5 minutes only the 1-hour part is still cached', () => {
+    // 100k written to the 5-minute cache, 20k to the 1-hour one.
+    const mixed: SessionContext = { ...ctx, tokens: 120_000, cache1hShare: 20_000 / 120_000 }
+    const early = estimateResume({ ...base, ctx: mixed, now: T0 + 2 * 60_000 })
+    expect(early.cache).toBe('mixed')
+    expect(early.warmUntil).toBe(T0 + 5 * 60_000)
+    expect(early.resume.costUsd).toBeCloseTo(0.06)
+    // 10 minutes: 20k read ($0.01) + 100k written again at the 5-minute rate ($0.625).
+    const later = estimateResume({ ...base, ctx: mixed, now: T0 + 10 * 60_000 })
+    expect(later.resume.costUsd).toBeCloseTo(0.635)
+    expect(later.warmUntil).toBe(T0 + 60 * 60_000)
+    // Past the hour: all of it written again.
+    const cold2 = estimateResume({ ...base, ctx: mixed, now: T0 + 61 * 60_000 })
+    expect(cold2.warmUntil).toBeUndefined()
+    expect(cold2.resume.costUsd).toBeCloseTo(0.2 + 0.625)
+  })
+
+  it('another billing account: no shared cache, written at the 1-hour rate', () => {
+    const e = estimateResume({
+      ...base,
+      ctx: { ...ctx, cache1hShare: 0 },
+      billing: 'api',
+      sameScope: false,
+      now: T0 + 60_000
+    })
+    expect(e.warmUntil).toBeUndefined()
+    expect(e.otherScope).toBe(true)
+    expect(e.cache).toBe('1h')
+    expect(e.resume.costUsd).toBeCloseTo(1.0)
+  })
+
+  it("Continue fresh: the setup plus the handoff, at the new session's model", () => {
+    const e = estimateResume({
+      ...base,
+      dollarsPerPct: 0.5,
+      handoffChars: 3_100,
+      defaultModel: 'claude-opus-4-5',
+      now: cold
+    })
     // 20k + (3100 + 900) / 4 = 21k tokens, 1h write.
     expect(e.fresh?.tokens).toBe(21_000)
     expect(e.fresh?.costUsd).toBeCloseTo(0.21)
+    expect(e.freshModel).toBe('claude-opus-4-5')
     expect(e.fresh!.pct5h!).toBeLessThan(e.resume.pct5h!)
     expect(estimateResume({ ...base, now: cold }).fresh).toBeUndefined()
+  })
+
+  it("Continue fresh with no model chosen uses Claude Code's current default, else tokens only", () => {
+    // The session ran on Opus; Claude Code's default is Haiku now.
+    const e = estimateResume({
+      ...base,
+      handoffChars: 3_100,
+      defaultModel: 'claude-haiku-4-5',
+      dollarsPerPct: 0.5,
+      now: cold
+    })
+    expect(e.freshModel).toBe('claude-haiku-4-5')
+    expect(e.model).toBe('claude-opus-4-5')
+    const unknown = estimateResume({ ...base, handoffChars: 3_100, dollarsPerPct: 0.5, now: cold })
+    expect(unknown.fresh).toMatchObject({ tokens: 21_000, unpriced: true })
+    expect(unknown.fresh?.pct5h).toBeUndefined()
+    expect(unknown.freshModel).toBeUndefined()
+    // An explicit model choice prices both with it.
+    const chosen = estimateResume({
+      ...base,
+      modelChoice: 'sonnet',
+      handoffChars: 3_100,
+      defaultModel: 'claude-haiku-4-5',
+      now: cold
+    })
+    expect(chosen.freshModel).toBe(chosen.model)
+    expect(chosen.model).toMatch(/sonnet/)
   })
 
   it("no baseline: this window's rate from subscription use only", () => {

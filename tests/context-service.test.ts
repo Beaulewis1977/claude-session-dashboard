@@ -4,9 +4,15 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { DEFAULT_SETTINGS } from '@shared/types'
 import { fixturesLayout, prepareFixtures } from '../src/main/fixtures'
-import { phoneMetaPatch } from '../src/main/mobile/rpc'
+import { EventEmitter } from 'node:events'
+import type { SessionSummary } from '@shared/types'
+import { phoneMetaPatch, RPC } from '../src/main/mobile/rpc'
 import { createFixturesPlatform } from '../src/main/platform'
-import { ContextCost } from '../src/main/services/context-cost'
+import {
+  ContextCost,
+  publishContextReadings,
+  sameCacheScope
+} from '../src/main/services/context-cost'
 import { Launcher } from '../src/main/services/launcher'
 import { SessionService } from '../src/main/services/sessions'
 import {
@@ -120,7 +126,7 @@ describe('context size (fixtures)', { timeout: 30_000 }, () => {
     expect(s.context).toMatchObject({
       tokens: 180_000,
       from: 'usage',
-      cacheTtl: '1h',
+      cache1hShare: 1,
       baseTokens: 21_004,
       compactions: 0
     })
@@ -143,7 +149,9 @@ describe('context size (fixtures)', { timeout: 30_000 }, () => {
       limits: {
         dollarsPerPct: () => 0.5,
         state: async () => ({}) as never,
-        isSubscription: () => true
+        isSubscription: () => true,
+        latestModel: () => 'claude-opus-4-5-20251101',
+        windowSizes: () => ({})
       },
       usage: { allRecords: () => [] },
       settings: () => DEFAULT_SETTINGS
@@ -182,6 +190,8 @@ describe('context size (fixtures)', { timeout: 30_000 }, () => {
     })
     const withSummary = await launcher.preview(opts)
     expect(withSummary.context?.fresh?.tokens).toBeGreaterThan(21_004)
+    // No model chosen: the new session is priced at Claude Code's current model.
+    expect(withSummary.context?.freshModel).toBe('claude-opus-4-5-20251101')
     expect(withSummary.context!.fresh!.pct5h!).toBeLessThan(withSummary.context!.resume.pct5h!)
   })
 
@@ -194,6 +204,51 @@ describe('context size (fixtures)', { timeout: 30_000 }, () => {
     const p = await launcher.preview({ key, fork: false, skipPermissions: false })
     expect(p.context).toBeUndefined()
     expect(p.claudeCommand).toContain(BIG)
+  })
+})
+
+describe('cache scope', () => {
+  const s = (billing?: SessionSummary['billing']) => ({ billing }) as SessionSummary
+  it('the same account shares the cache; another or an unknown one does not', () => {
+    expect(sameCacheScope(s({ mode: 'subscription', source: 'bridge' }), undefined)).toBe(true)
+    expect(sameCacheScope(s({ mode: 'subscription', source: 'launch' }), 'acct-1')).toBe(false)
+    expect(
+      sameCacheScope(s({ mode: 'api', accountId: 'acct-1', source: 'launch' }), 'acct-1')
+    ).toBe(true)
+    expect(
+      sameCacheScope(s({ mode: 'api', accountId: 'acct-1', source: 'launch' }), 'acct-2')
+    ).toBe(false)
+    expect(
+      sameCacheScope(s({ mode: 'api', accountId: 'acct-1', source: 'launch' }), undefined)
+    ).toBe(false)
+    expect(sameCacheScope(s({ mode: 'unknown', source: 'none' }), undefined)).toBe(false)
+    expect(sameCacheScope(s(undefined), undefined)).toBe(false)
+  })
+})
+
+describe('the phone', () => {
+  it("prices its stats as its launches run: on the subscription, whatever the PC's default", () => {
+    // The phone can't choose: the RPC always adds { phone: true }.
+    expect(RPC.getContextEstimate.args(['browser:s0', { phone: false }])).toEqual([
+      'browser:s0',
+      { phone: true }
+    ])
+  })
+})
+
+describe('status line context readings', () => {
+  it('reach the session list when a newer one arrives', () => {
+    let at = 100
+    const limits = Object.assign(new EventEmitter(), { lastContextAt: () => at })
+    let touched = 0
+    publishContextReadings(limits, { touch: () => touched++ })
+    limits.emit('changed') // e.g. a limits-only reading
+    expect(touched).toBe(0)
+    at = 200
+    limits.emit('changed')
+    expect(touched).toBe(1)
+    limits.emit('changed')
+    expect(touched).toBe(1)
   })
 })
 

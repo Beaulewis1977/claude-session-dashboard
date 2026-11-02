@@ -50,7 +50,8 @@ type BaseSummary = Omit<
 // v6: the name given in Claude Code (custom-title / agent-name) and ai-title.
 // v7: summaries in the search index (a new field).
 // v8: the context size (last reply's usage, compactions, cache lifetime).
-const CACHE_VERSION = 8
+// v9: the cache lifetime as a 1-hour share (mixed 5-minute / 1-hour caches).
+const CACHE_VERSION = 9
 
 interface CacheFile {
   version: number

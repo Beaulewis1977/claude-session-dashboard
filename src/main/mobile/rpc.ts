@@ -166,7 +166,12 @@ export const RPC: Record<string, RpcMethod> = {
   },
   getUsageReport: { channel: 'usage:report', kind: 'read', args: ([q]) => [q] },
   getSessionUsage: { channel: 'usage:session', kind: 'read', args: ([k]) => [str(k, 300)] },
-  getContextEstimate: { channel: 'context:estimate', kind: 'read', args: ([k]) => [str(k, 300)] },
+  // Priced as the phone launches: always on the subscription.
+  getContextEstimate: {
+    channel: 'context:estimate',
+    kind: 'read',
+    args: ([k]) => [str(k, 300), { phone: true }]
+  },
   getUsageStatus: { channel: 'usage:status', kind: 'read', args: none },
   getTrends: { channel: 'usage:trends', kind: 'read', args: ([g]) => [g] },
   compareTrends: { channel: 'usage:compare', kind: 'read', args: ([a, b]) => [a, b] },

@@ -66,7 +66,7 @@ import { registerAccountsIpc } from './ipc-accounts'
 import { registerAskIpc } from './ipc-ask'
 import { registerSummaryIpc } from './ipc-summaries'
 import { registerContextIpc } from './ipc-context'
-import { ContextCost } from './services/context-cost'
+import { ContextCost, publishContextReadings } from './services/context-cost'
 import { sanitizeContextWarning } from '@shared/context'
 import { PrintRunner } from './services/print-runner'
 import { sanitizeSummarySettings, SUMMARY_USAGE_KEY, SUMMARY_USAGE_LABEL } from '@shared/summary'
@@ -431,6 +431,7 @@ async function main(): Promise<void> {
   )
   bridgeGuess = (sid) => limits.billingOf(sid)
   sessions.contextResolver = (sid) => limits.contextOf(sid)
+  publishContextReadings(limits, sessions)
   const contextCost = new ContextCost({ limits, usage, settings: () => settings.value })
   launcher.contextEstimate = (s, l) => contextCost.estimate(s, l)
   registerContextIpc({ sessions, launcher, cost: contextCost })

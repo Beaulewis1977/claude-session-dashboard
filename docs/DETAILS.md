@@ -843,6 +843,7 @@ src/
     core/      Small, tested building blocks: WSL decoding, launch commands, finding programs by
                full path (which.ts), archive, restore, atomic JSON store, write guards
     services/  Source detection, the session catalogue, search index, watcher, launcher
+    providers/ One provider per coding agent (claude/ so far): see "Providers" below
     platform.ts  Everything that touches the OS (wsl.exe, wt.exe, spawn), with a fixtures version
     ipc.ts     The API the window can call (every handler goes through ipc-guard.ts)
   preload/     Exposes that API as window.csd (context isolation, sandboxed)
@@ -868,6 +869,43 @@ tests/         Vitest unit and integration tests
   A failed write (a locked file, a full disk) is retried and never blocks later saves, and a junction
   or link can't send a write outside the app's data folder. Search uses MiniSearch (pure JS). A startup cache of
   summaries and the search index means only changed files are re-parsed at launch.
+
+### Providers
+
+Everything that depends on one coding agent's files and commands sits behind a **provider**
+(`src/main/providers/types.ts`). The generic services (the catalogue, watcher, archive,
+launcher, branching, lineage, usage, live limits, Running now and summaries) ask the session's
+provider instead of reading Claude Code's formats themselves. Claude Code is the only provider so
+far (`providers/claude/`); it wires in the existing Claude modules (`shared/jsonl.ts`,
+`shared/branch.ts`, `shared/usage/parse.ts`, `core/launch.ts`, the status line and hook bridges)
+unchanged. Codex will be a second provider (roadmap feature 5).
+
+A provider supplies:
+
+| Part                   | What it gives                                                                                                                                                                                                   |
+| ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Discovery              | Where its sessions live (`detectSources`), the session files in a source, which paths the watcher should react to                                                                                               |
+| Parsing                | A session's summary, messages, search text and message starts; which product ran it; titles for the dashboard's own runs                                                                                        |
+| Archive                | The archive copy's extension, and the folder name an archived session came from                                                                                                                                 |
+| Launch                 | The full launch command (terminal, folder, environment, the agent's own command), the agent's command line alone, whether it's installed, the Continue fresh first message, where a new session's file would be |
+| Branching              | Planning a cut, the new file's path and content, writing it exclusively                                                                                                                                         |
+| Usage                  | Extra files with a session's usage (Claude Code: subagent transcripts), where their archive copies go, reading usage from a file                                                                                |
+| Live limits (optional) | Where a home's status line bridge is, reading a reading                                                                                                                                                         |
+| Running now (optional) | Where a home's running-session files and hook events are, reading them, whether session alerts can be turned on                                                                                                 |
+| Capabilities           | Fork, Branch from here, Continue fresh, Remote Control, API billing: an action a provider can't do is refused                                                                                                   |
+
+Every session and source carries its `provider`. Stored data doesn't: a record without a provider
+is Claude Code's, which is everything written before providers existed. So `metadata.json` keys,
+archive paths, the session cache, usage data and backups are exactly as before. A Claude Code
+archive record never gets a `provider` field; another provider's would. An archive record of a
+provider the running version doesn't have is left alone (kept, not shown).
+
+`tests/provider-parity.test.ts` runs the whole main-process pipeline on the fixtures (sessions,
+archive, every launch variant, usage, limits, limit health, Running now, context size, summaries,
+the phone API, backup) and compares it with a snapshot taken before providers existed
+(`tests/golden/`, America/Chicago and UTC, with a frozen clock and machine-independent paths).
+`UPDATE_GOLDEN=1 npx vitest run tests/provider-parity.test.ts` rewrites the snapshot; do that only
+for an intended change, and check the diff.
 
 ## Decisions and notes
 

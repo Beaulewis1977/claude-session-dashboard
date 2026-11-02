@@ -81,8 +81,9 @@ const api: CsdApi = {
   },
   summaryPreview: (key) => ipcRenderer.invoke('summaries:preview', key),
   summaryEstimate: (keys) => ipcRenderer.invoke('summaries:estimate', keys),
-  summarize: (keys, origin, previewId) =>
-    ipcRenderer.invoke('summaries:enqueue', keys, origin, previewId),
+  summarize: (keys, origin, previewId, prepId) =>
+    ipcRenderer.invoke('summaries:enqueue', keys, origin, previewId, prepId),
+  summaryCancelPrep: (prepId) => ipcRenderer.invoke('summaries:cancelPrep', prepId),
   summaryCancel: (key) => ipcRenderer.invoke('summaries:cancel', key),
   summaryResume: () => ipcRenderer.invoke('summaries:resume'),
   summaryClearFinished: () => ipcRenderer.invoke('summaries:clear'),

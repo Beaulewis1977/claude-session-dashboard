@@ -24,6 +24,7 @@ import {
   runUsageRecords,
   transcriptForSummary,
   type AiSummary,
+  type GuardReading,
   type SummaryEstimate,
   type SummaryModel,
   type SummarySettings,
@@ -44,8 +45,8 @@ export interface SummaryServiceDeps {
   /** Seconds before a run is given up. */
   timeoutSec: () => number
   prices: () => ModelPrice[]
-  /** The live 5-hour %, if there's a current reading. */
-  fiveHourPct: () => Promise<number | undefined>
+  /** The 5-hour % the guard goes by (see guardPct), if there's a current reading. */
+  fiveHourPct: () => Promise<GuardReading | undefined>
   /** Limit-health baseline: $ per 1% of the 5-hour window at the current plan, if known. */
   dollarsPerPct: () => number | undefined
   /** Record a run's usage in the app's usage data. */
@@ -67,6 +68,12 @@ const KEEP_FINISHED = 50
 
 export const NOT_ACCEPTED =
   'Read and accept the notice about what is sent to Claude first (Summarize shows it).'
+
+interface Preparation {
+  done: number
+  total: number
+  cancelled: boolean
+}
 
 /** What a job sends, fixed when it's queued (or previewed). */
 interface Snapshot {
@@ -132,6 +139,10 @@ export class SummaryService extends EventEmitter<{ changed: [] }> {
   /** What each queued job sends (fixed when it was queued or previewed), by job id. */
   private snapshots = new Map<string, Snapshot>()
   private previews = new Map<string, { key: string; at: number; snapshot: Snapshot }>()
+  /** Summarize requests reading their sessions, by the id the dialog gave them. */
+  private preparing = new Map<string, Preparation>()
+  /** Cancels that arrived before their request did. */
+  private cancelledEarly = new Set<string>()
 
   constructor(private readonly deps: SummaryServiceDeps) {
     super()
@@ -143,6 +154,7 @@ export class SummaryService extends EventEmitter<{ changed: [] }> {
       running: this.running?.job.key,
       paused: this.paused ? { ...this.paused } : undefined,
       override: this.override,
+      preparing: [...this.preparing].map(([id, p]) => ({ id, done: p.done, total: p.total })),
       simulated: this.deps.simulate === true
     }
   }
@@ -217,7 +229,7 @@ export class SummaryService extends EventEmitter<{ changed: [] }> {
       kept: p.kept,
       total: p.total,
       estimate: this.estimateFor([p.chars]),
-      fiveHourPct: await this.deps.fiveHourPct().catch(() => undefined)
+      fiveHourPct: (await this.deps.fiveHourPct().catch(() => undefined))?.pct
     }
   }
 
@@ -237,7 +249,7 @@ export class SummaryService extends EventEmitter<{ changed: [] }> {
     return {
       ...this.estimateFor(chars),
       skipped,
-      fiveHourPct: await this.deps.fiveHourPct().catch(() => undefined)
+      fiveHourPct: (await this.deps.fiveHourPct().catch(() => undefined))?.pct
     }
   }
 
@@ -251,26 +263,67 @@ export class SummaryService extends EventEmitter<{ changed: [] }> {
   async enqueue(
     keys: string[],
     origin: SummaryJob['origin'] = 'manual',
-    previewId?: string
+    previewId?: string,
+    /** Lets cancelPreparation() stop this request while it reads the sessions. */
+    prepId?: string
   ): Promise<number> {
     if (!this.deps.settings().noticeAccepted) throw new Error(NOT_ACCEPTED)
     const preview = previewId ? this.previews.get(previewId) : undefined
     if (previewId && !preview)
       throw new Error('That preview has expired. Show what is sent again, then summarize.')
     const list = [...new Set(keys)].slice(0, MAX_BATCH)
-    const snaps = new Map<string, Snapshot>()
-    for (const key of list) {
-      if (preview?.key === key) {
-        snaps.set(key, preview.snapshot)
-        continue
+    const prep: Preparation = {
+      done: 0,
+      total: list.length,
+      cancelled: prepId ? this.cancelledEarly.delete(prepId) : false
+    }
+    if (prepId) this.preparing.set(prepId, prep)
+    this.changed()
+    try {
+      const snaps = new Map<string, Snapshot>()
+      for (const key of list) {
+        if (prep.cancelled) return 0
+        if (preview?.key === key) snaps.set(key, preview.snapshot)
+        else {
+          try {
+            snaps.set(key, (await this.prepare(key)).snapshot)
+          } catch {
+            // Nothing to send (no conversation yet, or the file can't be read).
+          }
+        }
+        prep.done++
+        this.changed()
       }
-      try {
-        snaps.set(key, (await this.prepare(key)).snapshot)
-      } catch {
-        // Nothing to send (no conversation yet, or the file can't be read).
+      // Cancelled while the last session was read: nothing is queued.
+      if (prep.cancelled) return 0
+      if (previewId) this.previews.delete(previewId)
+      return this.register(list, snaps, origin)
+    } finally {
+      if (prepId) this.preparing.delete(prepId)
+      this.changed()
+    }
+  }
+
+  /** Stop a Summarize request that is still reading its sessions: nothing of it is queued. */
+  cancelPreparation(prepId: string): void {
+    const p = this.preparing.get(prepId)
+    if (p) p.cancelled = true
+    else {
+      this.cancelledEarly.add(prepId)
+      if (this.cancelledEarly.size > 100) {
+        const first = this.cancelledEarly.values().next().value
+        if (first !== undefined) this.cancelledEarly.delete(first)
       }
     }
-    if (previewId) this.previews.delete(previewId)
+    this.changed()
+  }
+
+  /** Add the prepared jobs (synchronous: nothing can come in between). */
+  private register(
+    list: string[],
+    snaps: Map<string, Snapshot>,
+    origin: SummaryJob['origin']
+  ): number {
     let added = 0
     const active = new Set(this.jobs.filter((j) => !isFinished(j)).map((j) => j.key))
     for (const key of list) {
@@ -344,9 +397,23 @@ export class SummaryService extends EventEmitter<{ changed: [] }> {
         if (!job) break
         if (this.paused) break
         const limit = this.deps.settings().pauseAbovePct
-        const pct = await this.deps.fiveHourPct().catch(() => undefined)
+        const guard = await this.deps.fiveHourPct().catch(() => undefined)
         // Cancel (or a pause) may have come while the limit was being read.
         if (job.status !== 'queued' || this.paused) continue
+        const pct = guard?.pct
+        // Summaries ran since the reading and their share can't be worked out:
+        // don't pretend the % is unchanged. Stop until I say go on.
+        if (guard?.unknown && (job.origin === 'auto' || !this.override)) {
+          if (job.origin === 'auto') {
+            job.status = 'cancelled'
+            job.error = "Skipped: can't tell how much of the 5-hour limit the last summaries used."
+            this.changed()
+            continue
+          }
+          this.paused = { pct: guard.pct, limit, unknown: true }
+          this.changed()
+          break
+        }
         if (pct !== undefined && pct > limit) {
           if (job.origin === 'auto') {
             // Auto-summarize never goes above the threshold.
@@ -443,7 +510,9 @@ export class SummaryService extends EventEmitter<{ changed: [] }> {
     // Whatever happened, the tokens used are counted.
     const records = runUsageRecords(res.stdout, {
       runId: randomBytes(8).toString('hex'),
-      ts: ranAt,
+      // Counted when the run finished (that's when its tokens are billed).
+      ts: now(),
+      startTs: ranAt,
       env: out.cli.kind === 'wsl' ? 'wsl' : 'windows',
       fallbackModel: model
     })
@@ -554,8 +623,9 @@ export class SummaryService extends EventEmitter<{ changed: [] }> {
     const st = this.deps.settings()
     if (!st.autoEnabled || !st.noticeAccepted) return 0
     if (this.jobs.some((j) => !isFinished(j))) return 0
-    const pct = await this.deps.fiveHourPct().catch(() => undefined)
-    if (pct !== undefined && pct > st.pauseAbovePct) return 0
+    const guard = await this.deps.fiveHourPct().catch(() => undefined)
+    // Above the pause line, or its own last runs can't be counted: not now.
+    if (guard && (guard.unknown || guard.pct > st.pauseAbovePct)) return 0
     const t = Date.now()
     this.autoRuns = this.autoRuns.filter((x) => t - x < 3600_000)
     const room = AUTO_PER_HOUR - this.autoRuns.length

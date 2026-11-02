@@ -269,12 +269,13 @@ export const webApi: CsdApi = {
 
   // Summaries are written on the PC (they send session text to Claude);
   // a phone reads them with the session and can edit them.
-  summaryState: async () => ({ jobs: [], override: false, simulated: false }),
+  summaryState: async () => ({ jobs: [], preparing: [], override: false, simulated: false }),
   onSummariesChanged: () => () => undefined,
   summaryPreview: onPc('Summarizing'),
   summaryEstimate: onPc('Summarizing'),
   summarize: onPc('Summarizing'),
   summaryCancel: onPc('Summarizing'),
+  summaryCancelPrep: onPc('Summarizing'),
   summaryResume: onPc('Summarizing'),
   summaryClearFinished: onPc('Summarizing'),
   saveSummary: (key, patch) => rpc('saveSummary', key, patch),

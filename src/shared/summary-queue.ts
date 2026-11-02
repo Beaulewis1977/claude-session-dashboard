@@ -20,7 +20,14 @@ export interface SummaryQueueState {
   /** Key of the session being summarized now. */
   running?: string
   /** The queue stopped because the live 5-hour limit is above the threshold. */
-  paused?: { pct: number; limit: number }
+  paused?: {
+    pct: number
+    limit: number
+    /** How much the last summaries used can't be worked out (pct is the reading alone). */
+    unknown?: boolean
+  }
+  /** Summarize requests still reading their sessions (before anything is queued). */
+  preparing: { id: string; done: number; total: number }[]
   /** Resume was clicked: going on above the threshold until the queue is empty. */
   override: boolean
   /** Fixtures mode: sample summaries, nothing is run. */
@@ -47,6 +54,7 @@ export type SummaryBatchEstimate = SummaryEstimate & { skipped: number; fiveHour
 
 export const EMPTY_SUMMARY_QUEUE: SummaryQueueState = {
   jobs: [],
+  preparing: [],
   override: false,
   simulated: false
 }

@@ -47,7 +47,8 @@ export function registerSummaryIpc(deps: {
         records: deps.usage.allRecords(),
         prices: settings.value.prices,
         weights: settings.value.capacityWeights,
-        dollarsPerPct: dollarsPerPct()
+        dollarsPerPct: dollarsPerPct(),
+        isSubscription: limits.isSubscription
       })
     },
     dollarsPerPct,
@@ -68,13 +69,20 @@ export function registerSummaryIpc(deps: {
   handle('summaries:state', () => summaries.state())
   handle('summaries:preview', (_e, k) => summaries.preview(key(k)))
   handle('summaries:estimate', (_e, ks) => summaries.estimate(keys(ks)))
-  handle('summaries:enqueue', (_e, ks, origin, previewId) =>
+  const hexId = (v: unknown): string | undefined =>
+    typeof v === 'string' && /^[0-9a-f]{16}$/.test(v) ? v : undefined
+  handle('summaries:enqueue', (_e, ks, origin, previewId, prepId) =>
     summaries.enqueue(
       keys(ks),
       origin === 'bulk' ? 'bulk' : 'manual',
-      typeof previewId === 'string' && /^[0-9a-f]{16}$/.test(previewId) ? previewId : undefined
+      hexId(previewId),
+      hexId(prepId)
     )
   )
+  handle('summaries:cancelPrep', (_e, prepId) => {
+    const id = hexId(prepId)
+    if (id) summaries.cancelPreparation(id)
+  })
   handle('summaries:cancel', (_e, k) => summaries.cancel(k === undefined ? undefined : key(k)))
   handle('summaries:resume', () => summaries.resume())
   handle('summaries:clear', () => summaries.clearFinished())

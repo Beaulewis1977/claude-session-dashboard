@@ -8,6 +8,7 @@ import {
   DEFAULT_SUMMARY_SETTINGS,
   SUMMARY_MARKER,
   SUMMARY_USAGE_KEY,
+  type GuardReading,
   type SummarySettings
 } from '@shared/summary'
 import type { UsageRecord } from '@shared/usage/types'
@@ -94,7 +95,7 @@ function fakeRunner(opts: { out?: () => string; hold?: boolean } = {}) {
 async function setup(
   over: {
     settings?: Partial<SummarySettings>
-    pct?: () => number | undefined | Promise<number | undefined>
+    pct?: () => number | GuardReading | undefined | Promise<number | GuardReading | undefined>
     runner?: AskRunner
   } = {}
 ) {
@@ -131,7 +132,10 @@ async function setup(
     settings: () => settings,
     timeoutSec: () => 60,
     prices: () => DEFAULT_PRICES,
-    fiveHourPct: async () => over.pct?.(),
+    fiveHourPct: async () => {
+      const v = await over.pct?.()
+      return v === undefined ? undefined : typeof v === 'number' ? { pct: v } : v
+    },
     dollarsPerPct: () => 0.25,
     recordUsage: (r) => recorded.push(...r)
   })
@@ -470,6 +474,81 @@ describe('What is sent is what was approved', { timeout: 30_000 }, () => {
     expect(t.fake.calls).toHaveLength(1)
     expect(t.fake.calls[0].stdin).not.toContain('ARRIVED-WHILE-QUEUED')
     expect(t.sessions.get(s.key)!.meta.aiSummary!.messageCount).toBe(s.messageCount)
+  })
+})
+
+describe('Preparation can be cancelled', { timeout: 30_000 }, () => {
+  it('cancel while reading the sessions queues nothing and sends nothing', async () => {
+    const t = await setup()
+    const keys = t.sessions
+      .list()
+      .slice(0, 4)
+      .map((x) => x.key)
+    const PREP = 'aaaaaaaaaaaaaaaa'
+    let seen = 0
+    t.summaries.on('changed', () => {
+      const p = t.summaries.state().preparing.find((x) => x.id === PREP)
+      if (p && p.done >= 1 && !seen++) {
+        expect(p.total).toBe(4)
+        t.summaries.cancelPreparation(PREP)
+      }
+    })
+    expect(await t.summaries.enqueue(keys, 'bulk', undefined, PREP)).toBe(0)
+    await settle(t.summaries)
+    expect(seen).toBeGreaterThan(0)
+    expect(t.summaries.state().jobs).toEqual([])
+    expect(t.summaries.state().preparing).toEqual([])
+    expect(t.fake.calls).toHaveLength(0)
+  })
+
+  it('a cancel that arrives before its request still stops it', async () => {
+    const t = await setup()
+    const PREP = 'bbbbbbbbbbbbbbbb'
+    t.summaries.cancelPreparation(PREP)
+    const keys = t.sessions
+      .list()
+      .slice(0, 2)
+      .map((x) => x.key)
+    expect(await t.summaries.enqueue(keys, 'bulk', undefined, PREP)).toBe(0)
+    expect(t.fake.calls).toHaveLength(0)
+  })
+
+  it('records when the run started and when it finished (counted at the finish)', async () => {
+    const t = await setup()
+    const s = t.sessions.list().find((x) => x.sessionId === SAFARI)!
+    await t.summaries.enqueue([s.key])
+    await settle(t.summaries)
+    const r = t.recorded[0]
+    expect(r.startTs).toBeTypeOf('number')
+    expect(r.ts).toBeGreaterThanOrEqual(r.startTs!)
+  })
+})
+
+describe('When its own usage is unknown', { timeout: 30_000 }, () => {
+  it('pauses the bulk queue after the current job until Continue', async () => {
+    let calls = 0
+    // First check: a plain reading. Later: summaries ran and can't be counted.
+    const t = await setup({ pct: () => (calls++ === 0 ? { pct: 0 } : { pct: 0, unknown: true }) })
+    const keys = t.sessions
+      .list()
+      .filter((x) => x.sessionId === SAFARI || x.sessionId === ORDERS)
+      .map((x) => x.key)
+    await t.summaries.enqueue(keys, 'bulk')
+    await settle(t.summaries)
+    expect(t.fake.calls).toHaveLength(1)
+    expect(t.summaries.state().paused).toEqual({ pct: 0, limit: 80, unknown: true })
+    t.summaries.resume()
+    await settle(t.summaries)
+    expect(t.fake.calls).toHaveLength(2)
+  })
+
+  it('auto-summarize skips', async () => {
+    const t = await setup({
+      pct: () => ({ pct: 10, unknown: true }),
+      settings: { autoEnabled: true, autoMinMessages: 2 }
+    })
+    expect(await t.summaries.autoTick()).toBe(0)
+    expect(t.fake.calls).toHaveLength(0)
   })
 })
 

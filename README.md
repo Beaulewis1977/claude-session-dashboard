@@ -55,6 +55,12 @@ Everything stays on your PC and your own private network.
   app, the SDK, or a cloud session).
 - **claude.ai conversations:** import a claude.ai data export to read and search those
   conversations next to your sessions (view only).
+- **OpenAI Codex sessions too** (read only, from `~/.codex` on Windows and in WSL, plain or
+  compressed): the same viewer, names (including Codex's own thread names), tags, pins, search and
+  export, with an **All / Claude / Codex** switch at the top of the sidebar and on the phone.
+  Resume and Fork run `codex resume` / `codex fork` with Codex's own model and effort options.
+  Codex's login file is never opened. Either agent can be turned off in Settings → Providers.
+  Details: [docs/DETAILS.md](docs/DETAILS.md#codex).
 
 ### Resume, fork and branch
 

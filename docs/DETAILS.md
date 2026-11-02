@@ -875,10 +875,10 @@ tests/         Vitest unit and integration tests
 Everything that depends on one coding agent's files and commands sits behind a **provider**
 (`src/main/providers/types.ts`). The generic services (the catalogue, watcher, archive,
 launcher, branching, lineage, usage, live limits, Running now and summaries) ask the session's
-provider instead of reading Claude Code's formats themselves. Claude Code is the only provider so
-far (`providers/claude/`); it wires in the existing Claude modules (`shared/jsonl.ts`,
-`shared/branch.ts`, `shared/usage/parse.ts`, `core/launch.ts`, the status line and hook bridges)
-unchanged. Codex will be a second provider (roadmap feature 5).
+provider instead of reading Claude Code's formats themselves. There are two providers:
+`providers/claude/` wires in the existing Claude modules (`shared/jsonl.ts`, `shared/branch.ts`,
+`shared/usage/parse.ts`, `core/launch.ts`, the status line and hook bridges) unchanged, and
+`providers/codex/` reads OpenAI Codex sessions (roadmap feature 5; see "Codex" below).
 
 A provider supplies:
 
@@ -905,7 +905,63 @@ archive, every launch variant, usage, limits, limit health, Running now, context
 the phone API, backup) and compares it with a snapshot taken before providers existed
 (`tests/golden/`, America/Chicago and UTC, with a frozen clock and machine-independent paths).
 `UPDATE_GOLDEN=1 npx vitest run tests/provider-parity.test.ts` rewrites the snapshot; do that only
-for an intended change, and check the diff.
+for an intended change, and check the diff. The snapshot runs Claude Code only (`defaultProviders()`);
+the app itself registers both providers.
+
+**Metadata keys.** `metadata.json` keeps a Claude Code session under its bare session id (as
+always) and a Codex session under `codex:<id>` (`metaKey()` in `shared/provider.ts`). A Claude
+Code id can't contain ":", so the two can never collide, and nothing stored before Codex changes.
+
+**Capabilities** live in one table (`PROVIDER_CAPABILITIES` in `shared/provider.ts`) that the main
+process enforces and the renderer uses to hide what a provider can't do.
+
+**Settings → Providers** turns Claude Code or Codex off (never both). A provider that's off isn't
+scanned, watched, archived or shown (desktop, switch and phone); its metadata and archive copies
+stay, so turning it back on brings everything back. The All / Claude / Codex switch is separate: it
+only filters what's shown (desktop: kept in the app's settings; phone: kept on each phone).
+
+### Codex
+
+Read only, from every Codex home: `%USERPROFILE%\.codex` and `~/.codex` of every WSL user (and
+root), plus Codex folders added in Settings → Scan sources.
+
+| What         | Where                                                                                                                                                                                                                     |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Sessions     | `sessions/YYYY/MM/DD/rollout-<time>-<uuid>.jsonl`, or `.jsonl.zst` once Codex has compressed it, plus `archived_sessions/` (`codex archive`)                                                                              |
+| Thread names | `session_index.jsonl` (`{id, thread_name, updated_at}` per line; per id the newest wins, an empty name clears it). They compete with names set in the dashboard by the same "newest wins" rule as Claude Code's `/rename` |
+| Never opened | `auth.json` and anything credential-like (the reader refuses such paths; `tests/codex-auth.test.ts` watches every file call), the SQLite databases, config                                                                |
+
+- **Reading** (`providers/codex/read.ts`): rollouts are streamed, decompressed with
+  [fzstd](https://github.com/101arrowz/fzstd) (pure JS), split into lines and compacted: the
+  instructions repeated in every turn (`world_state`, `base_instructions`), tool lists,
+  encrypted reasoning and duplicated progress events are dropped, and very long strings are cut.
+  Real rollouts can be more than 500 MB decompressed (more than a JavaScript string can hold);
+  the compact text stops growing at 48 MB, and the viewer then says the history may be
+  incomplete. It says the same when the rollout's own entry numbers (`ordinal`) don't start at 0
+  or skip. Codex's newer "paginated" history keeps the whole conversation in the rollout
+  (`thread_history_*.sqlite` is a projection of it), so the label alone doesn't trigger the note.
+- **Parsing** (`providers/codex/parse.ts`): `session_meta` (id, cwd, originator, CLI version,
+  source, subagent parent, fork parent, git commit/branch/remote), `turn_context` (model, reasoning
+  effort), `response_item` messages, reasoning summaries and tool calls with their outputs, and the
+  older `event_msg` messages. Context Codex adds as user text (environment, AGENTS.md,
+  instructions) is never a prompt. Source labels come from `originator` (the desktop app records
+  `source: "vscode"`): Codex CLI, Codex · VS Code, Codex desktop app, Codex exec, Codex subagent,
+  Codex · from Claude Code (Claude Code's Codex plugin).
+- **Launching** (`providers/codex/launch.ts`, checked with `codex --help` 0.163/0.164):
+  `codex resume <id>` / `codex fork <id>` in the session's folder (Windows Terminal + cmd with
+  `codex.cmd` by full path; WSL via `wsl.exe --cd … -- bash -lic`), `-m <model>`,
+  `-c model_reasoning_effort=<level>` (low … xhigh, max, ultra), and
+  `--dangerously-bypass-approvals-and-sandbox` when "Skip permission prompts" is on. Phone launches
+  never bypass: they add `-a on-request -s workspace-write`. Codex has its own model and effort
+  defaults (Settings → Resume) and project defaults, apart from Claude Code's.
+- **Not for Codex** (hidden): Branch from here (it would write into `~/.codex`), Continue fresh and
+  summaries (later phase), New session in this folder, Remote Control, API billing, Running now,
+  usage and limits (Phase C). A Codex session whose file is gone can be read but not resumed: the
+  app never copies files back into `~/.codex`.
+- **Archive**: Settings → Archive → "Archive Codex sessions": Off (default; Codex doesn't delete
+  old sessions itself), Named, pinned or tagged, or All. The size it would copy, and about what a
+  backup grows by, are shown before it's turned on. Copies go to `archive\codex-<source>\` as they
+  are (compressed files stay compressed); a session Codex later compresses keeps its plain copy.
 
 ## Decisions and notes
 

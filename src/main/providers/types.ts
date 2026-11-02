@@ -5,6 +5,7 @@
 
 import type { ProviderId } from '@shared/provider'
 import type { BranchMode, BranchPlanOk } from '@shared/branch'
+import type { MessageStart } from '@shared/lineage'
 import type { HookEvent, RunningFile } from '@shared/live'
 import type { HandoffMode } from '@shared/summary'
 import type { DetectedSource, SourceContext } from '@shared/source-label'
@@ -116,6 +117,8 @@ export interface SessionProvider {
   buildMessages(text: string, base: BaseSummary): ChatMessage[]
   /** The text indexed for full-text search. */
   searchText(text: string): string
+  /** Where each message starts (ids and times), to tell forks and branches apart. */
+  messageStarts(text: string): MessageStart[]
   /** Which product ran it (terminal, VS Code, …). */
   detectSource(base: BaseSummary, ctx: SourceContext): DetectedSource
   /** A title for the dashboard's own runs (Ask, summaries), from their first prompt. */
@@ -129,8 +132,8 @@ export interface SessionProvider {
 
   // --------------------------------------------------------------- launch
   launch: {
-    /** Why the agent can't be started on Windows, or undefined if it can. */
-    cliMissing(env: EnvKind, tools: LaunchTools): string | undefined
+    /** The agent's command can't be found (it isn't installed, or not on PATH). */
+    cliMissing(env: EnvKind, tools: LaunchTools): boolean
     /** The full launch: terminal, folder, environment and the agent's command. */
     buildCommand(input: LaunchInput): LaunchCommand
     /** Just the agent's command line, for display when the full one can't be built. */

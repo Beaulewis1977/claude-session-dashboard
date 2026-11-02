@@ -4,7 +4,7 @@
 
 import { providerOf, type ProviderId } from '@shared/provider'
 import { claudeProvider } from './claude'
-import type { SessionProvider } from './types'
+import type { BaseSummary, SessionProvider } from './types'
 
 type HasProvider = { provider?: ProviderId } | undefined | null
 
@@ -43,4 +43,27 @@ export class ProviderRegistry {
 /** Claude Code only: the app as it is today. */
 export function defaultProviders(): ProviderRegistry {
   return new ProviderRegistry([claudeProvider])
+}
+
+let fallback: ProviderRegistry | undefined
+
+/**
+ * The providers of a catalogue. Stand-ins for the catalogue (in tests) that
+ * have none get the default: Claude Code only.
+ */
+export function catalogueProviders(sessions: { providers?: ProviderRegistry }): ProviderRegistry {
+  return sessions.providers ?? (fallback ??= defaultProviders())
+}
+
+/** A session's provider, from the catalogue (or its own field, for stand-ins). */
+export function sessionProvider(
+  sessions: {
+    providers?: ProviderRegistry
+    providerOf?: (base: Pick<BaseSummary, 'key' | 'sourceId'>) => SessionProvider
+  },
+  s: Pick<BaseSummary, 'key' | 'sourceId'> & { provider?: ProviderId }
+): SessionProvider {
+  return typeof sessions.providerOf === 'function'
+    ? sessions.providerOf(s)
+    : catalogueProviders(sessions).of(s)
 }

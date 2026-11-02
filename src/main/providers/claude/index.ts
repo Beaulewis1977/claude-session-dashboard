@@ -6,7 +6,7 @@
 import { dirname } from 'node:path'
 import { askQuestionOf } from '@shared/ask'
 import { buildBranchFile, planBranch } from '@shared/branch'
-import { analyzeEvents, buildMessages, parseJsonl } from '@shared/jsonl'
+import { analyzeEvents, buildMessages, isUuid, parseJsonl } from '@shared/jsonl'
 import { parseHookEvent, parseRunningFile } from '@shared/live'
 import { detectSource } from '@shared/source-label'
 import { handoffPrompt, SUMMARY_MARKER } from '@shared/summary'
@@ -15,7 +15,6 @@ import { analyzeUsage } from '@shared/usage/parse'
 import { branchFilePath, writeNewSessionFile } from '../../core/branch-write'
 import { buildLaunchCommand, claudeArgs, claudeCommandLine } from '../../core/launch'
 import { envPaths } from '../../services/bridge'
-import { CLAUDE_NOT_FOUND } from '../../services/launcher'
 import { detectSources } from '../../services/sources'
 import type { SessionProvider } from '../types'
 import { liveDirs } from './live'
@@ -53,6 +52,10 @@ export const claudeProvider: SessionProvider = {
   parseSession: parseSessionText,
   buildMessages: (text, base) => buildMessages(parseJsonl(text).events, base.cwd),
   searchText: (text) => analyzeEvents(parseJsonl(text).events).searchText,
+  messageStarts: (text) =>
+    buildMessages(parseJsonl(text).events)
+      .filter((m) => (m.role === 'user' || m.role === 'assistant') && isUuid(m.id))
+      .map((m) => ({ uuid: m.id, t: m.timestamp })),
   detectSource: (base, ctx) => detectSource(base.sourceHints, ctx),
   ownRunTitle(firstPrompt) {
     // The dashboard's own `claude -p` runs: Ask Claude by its question, summaries by name.
@@ -66,7 +69,8 @@ export const claudeProvider: SessionProvider = {
   projectDirOf,
 
   launch: {
-    cliMissing: (env, tools) => (env === 'windows' && !tools.claude ? CLAUDE_NOT_FOUND : undefined),
+    // On Windows the absolute path is used; WSL finds `claude` on the login shell's PATH.
+    cliMissing: (env, tools) => env === 'windows' && !tools.claude,
     buildCommand: buildLaunchCommand,
     commandLine: (i) =>
       claudeCommandLine(

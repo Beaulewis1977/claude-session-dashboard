@@ -28,7 +28,6 @@ import {
 } from '../core/launch'
 import { restoreIfMissing } from '../core/restore'
 import { handoffPath, writeHandoff } from '../core/handoff'
-import { windowsPathToWsl } from '../core/wsl'
 import { isUuid } from '@shared/jsonl'
 import { buildHandoff, continuedName, handoffPrompt, newSinceSummary } from '@shared/summary'
 import { resolveModelChoice, type ModelSettings, type ResolvedModel } from '@shared/model-choice'
@@ -182,6 +181,26 @@ export class Launcher {
     }
   }
 
+  /** Per distro: where it sees the app's data folder (checked readable), and when. */
+  private wslRoots = new Map<string, { path: string; at: number }>()
+
+  /**
+   * The app's data folder as a distro sees it, asked inside the distro
+   * (`wslpath`, then `test -r`), so a custom automount root works and
+   * unmounted drives are caught. Kept for a few minutes (the dialog asks often).
+   */
+  private async wslDataDir(distro: string, dataDir: string): Promise<string | undefined> {
+    const hit = this.wslRoots.get(distro)
+    if (hit && Date.now() - hit.at < 5 * 60_000) return hit.path
+    const path = await this.platform.wslPath(distro, dataDir)
+    if (!path || !(await this.platform.wslCanRead(distro, path))) {
+      this.wslRoots.delete(distro)
+      return undefined
+    }
+    this.wslRoots.set(distro, { path, at: Date.now() })
+    return path
+  }
+
   /** A new session id that no session file or handoff uses yet (the one asked for, if free). */
   private async freeContinueId(
     s: SessionSummary,
@@ -216,9 +235,18 @@ export class Launcher {
     if (!summary) throw new Error(NO_SUMMARY)
     const id = await this.freeContinueId(s, dataDir, req.newSessionId)
     const path = handoffPath(dataDir, id)
-    const sessionPath = s.env === 'wsl' ? windowsPathToWsl(path) : path
-    const prompt = sessionPath ? handoffPrompt(sessionPath) : undefined
-    if (!sessionPath || !prompt)
+    let sessionPath: string | undefined = path
+    if (s.env === 'wsl') {
+      // Where this distro mounts the app's data folder (its own automount root).
+      const root = s.distro ? await this.wslDataDir(s.distro, dataDir) : undefined
+      if (!root)
+        throw new Error(
+          `${s.sourceLabel} can't read the app's data folder, where the handoff goes. Check that Windows drives are mounted in this distro ([automount] in /etc/wsl.conf), and that it's running.`
+        )
+      sessionPath = `${root}/handoffs/${id}.md`
+    }
+    const prompt = handoffPrompt(sessionPath)
+    if (!prompt)
       throw new Error(
         "The app's data folder has characters in its path that can't be passed to Claude Code safely."
       )
@@ -600,6 +628,19 @@ export class Launcher {
               : `Couldn't write the handoff file: ${(err as Error).message}`
           ),
           commandLine: cmd.commandLine
+        }
+      }
+      // WSL: the distro must really see the file before Claude is told to read it.
+      if (s.env === 'wsl' && s.distro) {
+        const seen = await this.platform.wslCanRead(s.distro, cont.preview.sessionPath)
+        if (!seen) {
+          this.wslRoots.delete(s.distro)
+          return {
+            ...fail(
+              `${s.sourceLabel} can't read the handoff file at ${cont.preview.sessionPath}, so nothing was started. Check that Windows drives are mounted in this distro ([automount] in /etc/wsl.conf).`
+            ),
+            commandLine: cmd.commandLine
+          }
         }
       }
     }

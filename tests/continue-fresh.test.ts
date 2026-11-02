@@ -172,7 +172,12 @@ describe('Continue fresh: the claude command', () => {
 let root: string
 let busy: SessionService[] = []
 
-async function setup() {
+async function setup(
+  wsl: {
+    path?: (distro: string, p: string) => string | undefined
+    canRead?: (distro: string, p: string) => boolean
+  } = {}
+) {
   await cp(FIXTURES, join(root, 'fixtures'), { recursive: true })
   await prepareFixtures(root)
   const layout = fixturesLayout(root)
@@ -184,7 +189,9 @@ async function setup() {
     canLaunch: true,
     spawnDetached: async (cmd: LaunchCommand) => {
       spawned.push(cmd)
-    }
+    },
+    wslPath: async (d: string, p: string) => (wsl.path ? wsl.path(d, p) : base.wslPath(d, p)),
+    wslCanRead: async (d: string, p: string) => (wsl.canRead ? wsl.canRead(d, p) : true)
   }
   const paths = appPaths(layout.dataDir)
   const metadata = createMetadataStore(paths)
@@ -335,6 +342,54 @@ describe('Continue fresh (fixtures)', { timeout: 30_000 }, () => {
     expect(path.startsWith('/')).toBe(true)
     expect(path).not.toContain('\\')
     expect(p.claudeCommand).toContain(path)
+  })
+})
+
+describe('Continue fresh in WSL: the path as the distro sees it', { timeout: 30_000 }, () => {
+  it("uses the distro's own mount root", async () => {
+    const { sessions, launcher, paths } = await setup({
+      path: (_d, p) => (p === paths.dataDir ? '/c/appdata' : undefined)
+    })
+    const s = sessions.list().find((x) => x.sessionId === ORDERS)!
+    sessions.setAiSummary(s.key, SUMMARY)
+    const p = await launcher.preview({
+      key: s.key,
+      fork: false,
+      skipPermissions: false,
+      continueFresh: { newSessionId: NEW_ID }
+    })
+    expect(p.continueError).toBeUndefined()
+    expect(p.continueFresh!.sessionPath).toBe(`/c/appdata/handoffs/${NEW_ID}.md`)
+    expect(p.claudeCommand).toContain(`@/c/appdata/handoffs/${NEW_ID}.md`)
+  })
+
+  it('refuses when the distro cannot reach the data folder', async () => {
+    const { sessions, launcher, spawned } = await setup({ path: () => undefined })
+    const s = sessions.list().find((x) => x.sessionId === ORDERS)!
+    sessions.setAiSummary(s.key, SUMMARY)
+    const opts = { key: s.key, fork: false, skipPermissions: false, continueFresh: {} }
+    expect((await launcher.preview(opts)).continueError).toMatch(/can't read the app's data folder/)
+    expect((await launcher.launch(opts)).ok).toBe(false)
+    expect(spawned).toHaveLength(0)
+  })
+
+  it('starts nothing if the distro cannot read the written handoff', async () => {
+    const { sessions, launcher, spawned } = await setup({
+      canRead: (_d, p) => !p.endsWith('.md')
+    })
+    const s = sessions.list().find((x) => x.sessionId === ORDERS)!
+    sessions.setAiSummary(s.key, SUMMARY)
+    const r = await launcher.launch({
+      key: s.key,
+      fork: false,
+      skipPermissions: false,
+      // A folder that exists in the sample distro.
+      cwdOverride: '/home/beau',
+      continueFresh: {}
+    })
+    expect(r.ok).toBe(false)
+    expect(r.error).toMatch(/can't read the handoff file/)
+    expect(spawned).toHaveLength(0)
   })
 })
 

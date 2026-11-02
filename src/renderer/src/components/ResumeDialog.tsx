@@ -555,20 +555,31 @@ function ResumeDialogBody({
           <div>
             <div className="mb-1.5 flex items-center justify-between">
               <span className="text-xs font-medium">PowerShell command</span>
-              <button
-                type="button"
-                onClick={() => {
-                  if (!preview?.commandLine) return
-                  void api.copyText(preview.commandLine)
-                  setCopied(true)
-                  setTimeout(() => setCopied(false), 1200)
-                }}
-                className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-2xs font-medium text-muted-foreground hover:bg-hover hover:text-foreground"
-              >
-                {copied ? <Check className="size-3" /> : <Copy className="size-3" />}
-                {copied ? 'Copied' : 'Copy'}
-              </button>
+              {/* Continue fresh writes its handoff file and links the new session only
+                  when launched from here: a copied command would point at no file. */}
+              {!continueFresh && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!preview?.commandLine) return
+                    void api.copyText(preview.commandLine)
+                    setCopied(true)
+                    setTimeout(() => setCopied(false), 1200)
+                  }}
+                  className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-2xs font-medium text-muted-foreground hover:bg-hover hover:text-foreground"
+                >
+                  {copied ? <Check className="size-3" /> : <Copy className="size-3" />}
+                  {copied ? 'Copied' : 'Copy'}
+                </button>
+              )}
             </div>
+            {continueFresh && (
+              <div className="mb-1.5 flex items-start gap-1.5 text-xs text-muted-foreground">
+                <Info className="mt-px size-3.5 shrink-0" />
+                Not for copying: the handoff file is written, and the new session linked, only when
+                you click Continue fresh.
+              </div>
+            )}
             <pre className="selectable max-h-28 overflow-auto rounded-lg border border-code-border bg-code-bg px-3 py-2 font-mono text-[11.5px] leading-relaxed break-all whitespace-pre-wrap text-foreground/90">
               {preview ? preview.commandLine || '—' : '…'}
             </pre>

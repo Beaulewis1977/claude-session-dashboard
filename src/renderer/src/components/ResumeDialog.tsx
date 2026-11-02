@@ -198,6 +198,10 @@ function ResumeDialogBody({ resume }: { resume: ResumeRequest }) {
     newSession,
     remoteControl,
     expired,
+    // The session's context changed (it grew, shrank or was compacted): a new estimate.
+    session?.sizeBytes,
+    session?.context?.tokens,
+    session?.context?.at,
     // The model / effort pickers save right away; the command follows them.
     session?.meta.model,
     session?.meta.effort,

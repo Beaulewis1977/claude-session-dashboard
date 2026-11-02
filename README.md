@@ -106,9 +106,10 @@ Everything stays on your PC and your own private network.
   (5-minute and 1-hour parts are counted separately) is priced as a cheaper cache read, and the
   estimate updates by itself when it runs out. Only for the same model and the same billing account
   (caches aren't shared between accounts).
-- Continue fresh is priced at the model the new session will use: the one you chose, else Claude
-  Code's current model from the status line, else tokens only. The context window follows the
-  launch's model too (`[1m]`, or the size the status line reported for that model).
+- Continue fresh is priced at the model you chose for the launch. With no model chosen, the new
+  session gets Claude Code's own default (which the app can't see), so both are compared in tokens.
+  The context window follows the launch's model too: `[1m]` variants and models with a native 1M
+  window (Opus 4.7+, Sonnet 5+, Haiku 5.5, Fable 5+) count 1M, others 200k.
 
 ### Usage and limits
 

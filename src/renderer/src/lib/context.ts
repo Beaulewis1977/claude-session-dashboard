@@ -84,7 +84,7 @@ export function estimateExplainer(e: ResumeEstimate): string {
   if (e.unknown) lines.push(e.unknown)
   if (e.fresh)
     lines.push(
-      `Continue fresh starts a new session with only Claude Code's setup and the summary handoff: about ${formatTokens(e.fresh.tokens)} tokens${e.freshModel ? `, priced as ${e.freshModel}` : " (tokens only: the new session uses Claude Code's default model, which isn't known yet)"}.`
+      `Continue fresh starts a new session with only Claude Code's setup and the summary handoff: about ${formatTokens(e.fresh.tokens)} tokens${e.freshModel ? `, priced as ${e.freshModel}` : " (in tokens: with no model chosen, the new session uses Claude Code's default model, which the app can't see; pick a model to compare in %)"}.`
     )
   return lines.join(' ')
 }

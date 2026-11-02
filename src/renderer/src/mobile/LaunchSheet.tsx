@@ -99,9 +99,10 @@ export function LaunchSheet({
     return () => {
       cancelled = true
     }
-    // The request is fixed for the sheet's lifetime.
+    // The request is fixed for the sheet's lifetime; preview again when the
+    // cache runs out or the session's context changes (grew, shrank, compacted).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [expired])
+  }, [expired, session.sizeBytes, session.context?.tokens, session.context?.at])
 
   useEffect(() => {
     if (!result?.ok || fresh) return

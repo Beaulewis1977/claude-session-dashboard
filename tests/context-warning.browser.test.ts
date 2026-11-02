@@ -86,6 +86,8 @@ window.csd = {
   previewLaunch: async (o) => {
     window.previews++
     if (o.continueFresh) return { ...preview, context: undefined }
+    const now = useApp.getState().sessions[0].context?.tokens
+    if (now !== undefined && now !== preview.context.tokens) return { ...preview, context: est(now) }
     if (expire && window.previews > 1) {
       const { warmUntil, cold, ...rest } = preview.context
       return { ...preview, context: { ...rest, resume: cold } }
@@ -104,7 +106,9 @@ window.csd = {
   copyText: async () => {},
   pickCwd: async () => null
 }
-useApp.setState({ sessions: [${JSON.stringify(session)}], loaded: true, resume: { key: 'browser:s0', fork: false } })
+const start = ${JSON.stringify(session)}
+if (small) start.context = { ...start.context, tokens: 60000 }
+useApp.setState({ sessions: [start], loaded: true, resume: { key: 'browser:s0', fork: false } })
 window.store = useApp
 
 createRoot(document.getElementById('root')).render(
@@ -308,6 +312,48 @@ describe('large-session warning', () => {
         .getByText(/Cache may still be warm/)
         .waitFor({ state: 'detached' })
       expect((await warning(page).innerText()).replace(/\s+/g, ' ')).toContain('Resume ≈ 3.6%')
+    } finally {
+      await page.close()
+    }
+  }, 60_000)
+
+  it('an open dialog follows the session when its context changes', async ({ skip }) => {
+    if (!browser) skip(unavailableReason)
+    const page = await open()
+    const setTokens = (tokens: number, size: number) =>
+      page.evaluate(
+        ([tokens, size]) => {
+          const store = (
+            globalThis as unknown as {
+              store: {
+                getState: () => {
+                  sessions: Record<string, unknown>[]
+                  patchSession: (s: unknown) => void
+                }
+              }
+            }
+          ).store
+          const s = store.getState().sessions[0]
+          store.getState().patchSession({
+            ...s,
+            sizeBytes: size,
+            context: { ...(s.context as object), tokens, at: new Date().toISOString() }
+          })
+        },
+        [tokens, size]
+      )
+    try {
+      await warning(page).waitFor()
+      // Compacted down to 1k: the warning goes away.
+      await setTokens(1_000, 200)
+      await page.getByText(/Context ≈ 1K tokens/).waitFor()
+      expect(await warning(page).count()).toBe(0)
+      // Grown past the threshold again: it comes back.
+      await setTokens(170_000, 300)
+      await warning(page)
+        .getByText(/about 170K tokens/)
+        .waitFor()
+      expect(await page.getByRole('button', { name: /Resume anyway/ }).count()).toBe(1)
     } finally {
       await page.close()
     }

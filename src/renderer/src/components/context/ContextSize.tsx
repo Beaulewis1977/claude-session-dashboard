@@ -77,11 +77,21 @@ export function ResumeComparison({
   noSummaryText?: string
 }) {
   // Highlight Continue fresh only when it's the cheaper one (a warm cache can make Resume cheaper).
+  // Unpriced (no model chosen): both in tokens, so the comparison is like for like.
+  const fresh = estimate.fresh
   const freshCheaper =
-    !!estimate.fresh && !estimate.fresh.unpriced && estimate.fresh.costUsd < estimate.resume.costUsd
+    !!fresh &&
+    (fresh.unpriced
+      ? fresh.tokens < estimate.resume.tokens && !estimate.warmUntil
+      : fresh.costUsd < estimate.resume.costUsd)
   return (
     <span className="tabular-nums">
-      <b className="font-semibold">Resume {costShort(estimate.resume, estimate.billing)}</b>
+      <b className="font-semibold">
+        Resume{' '}
+        {estimate.fresh?.unpriced
+          ? `≈ ${formatTokens(estimate.resume.tokens)} tokens`
+          : costShort(estimate.resume, estimate.billing)}
+      </b>
       <span className="text-muted-foreground"> · </span>
       {estimate.fresh ? (
         <b className={cn('font-semibold', freshCheaper && 'text-success')}>
@@ -246,10 +256,20 @@ export function ContextStrip({
         .catch(() => undefined)
     }
     load()
-    const off = api.onUsageChanged(load)
+    // Usage and limits (the baseline, the live window) change the %; limits
+    // update often while sessions run, so wait for a quiet moment.
+    let timer: number | undefined
+    const soon = (): void => {
+      window.clearTimeout(timer)
+      timer = window.setTimeout(load, 1500)
+    }
+    const offUsage = api.onUsageChanged(soon)
+    const offLimits = api.onLimitsChanged(soon)
     return () => {
       cancelled = true
-      off()
+      window.clearTimeout(timer)
+      offUsage()
+      offLimits()
     }
   }, [sessionKey, version, expired])
 

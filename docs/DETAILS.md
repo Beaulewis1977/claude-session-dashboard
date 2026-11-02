@@ -226,7 +226,11 @@ your plan). Before each summary the live 5-hour % is checked: above the pause li
 the queue stops and says so, and **Resume anyway** goes on until the queue is done. The live % comes
 from Claude Code's status line, which doesn't see summary runs, so the summaries run since the
 latest reading are added to it (at the baseline rate, or without a baseline at the window's own %
-per token): a batch that starts below the line still stops once its own runs take it over. Without
+per token): a batch that starts below the line still stops once its own runs take it over. A run counts from
+when it finished, so one still going when a reading came counts too; without a baseline, only
+subscription use (not API-billed use) sets the rate. When their share can't be worked out at all
+(a 0% reading, or no earlier subscription use in the window), the queue pauses after the current
+summary and says why, until you click **Continue**; auto-summarize skips. Without
 a live reading the queue isn't held up. The Summarize button waits for the estimate; if it can't be
 worked out, you can still go ahead by ticking **Summarize anyway, without an estimate**.
 

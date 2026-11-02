@@ -28,6 +28,10 @@
   each job sends what the session held when it was queued, and Cancel works up to the moment
   anything is sent. The limits guard counts the summaries' own usage since the latest live reading,
   and Summarize waits for the estimate.
+- Cancel works while a request is still reading its sessions ("Preparing… (n/N)"); a text you
+  previewed stays the one that's sent even if you hide it; and a summary run counts from when it
+  finished. If the guard can't tell what the last summaries used, the queue pauses until you click
+  **Continue**. A phone launch is checked again right before the terminal opens.
 - Continue fresh in WSL asks the distro where it sees the handoff file (custom automount roots
   work) and starts nothing if the distro can't read it. Its command can't be copied, since the
   handoff exists only when the app launches it.

@@ -203,7 +203,10 @@ background; a panel in the corner shows the queue, with Cancel for one or all.
   Claude Code doesn't save the run as a session (if a version did, the marker at the start of the
   prompt hides it like Ask Claude's). The first time, a notice explains all of this and **Show
   exactly what is sent** shows the full text; Settings → Summaries → **Show again** brings the notice
-  back.
+  back. A previewed text is sent exactly as shown, even if the session goes on or the settings change
+  before it runs; if it can't be rebuilt (an earlier message changed), nothing is sent and you're
+  asked to look again. Any job sends what the session held when it was queued, never what arrived
+  later.
 - **Model:** Sonnet by default; Haiku uses the least of your limits, Opus writes the most careful
   summaries, Default adds no `--model`. The summary records the model that answered.
 - **Stored** in the app's `metadata.json` with the date, the model, the message count at the time
@@ -220,8 +223,12 @@ approximate tokens (characters ÷ 4, plus about 3,500 per run for Claude Code's 
 for the answer) and, once [limit health](#limit-health-did-my-limits-get-smaller) has a baseline,
 roughly what share of your 5-hour window that is (estimated cost ÷ the baseline's dollars per 1% at
 your plan). Before each summary the live 5-hour % is checked: above the pause line (80% by default)
-the queue stops and says so, and **Resume anyway** goes on until the queue is done. Without a live
-reading the queue isn't held up.
+the queue stops and says so, and **Resume anyway** goes on until the queue is done. The live % comes
+from Claude Code's status line, which doesn't see summary runs, so the summaries run since the
+latest reading are added to it (at the baseline rate, or without a baseline at the window's own %
+per token): a batch that starts below the line still stops once its own runs take it over. Without
+a live reading the queue isn't held up. The Summarize button waits for the estimate; if it can't be
+worked out, you can still go ahead by ticking **Summarize anyway, without an estimate**.
 
 **Auto-summarize** (off by default, Settings → Summaries) summarizes sessions with at least 200
 messages (your choice) once they've been idle for 30 minutes, and writes a summary again when a
@@ -239,11 +246,15 @@ the ⋯ menu, the right-click menu or the phone.
 - The app picks the new session's id (`claude --session-id <new-id>`) and writes the handoff to
   `%APPDATA%\ClaudeSessionDashboard\handoffs\<new-id>.md` (a new file only; it never replaces
   one). The first message is a short fixed line: `@<handoff file> Continue from this handoff of an
-earlier session.` Claude Code attaches the file itself (it works with no tools). In WSL the file
-  is reached as `/mnt/c/…`. If the path has a space (a Windows user name with a space), the line
+earlier session.` Claude Code attaches the file itself (it works with no tools). In WSL the path is
+  asked of the distro itself (`wslpath -u`, so a custom automount root in `/etc/wsl.conf` works),
+  and after the file is written the distro must be able to read it (`test -r`) before anything
+  starts. If the path has a space (a Windows user name with a space), the line
   asks Claude to read the file instead, and the handoffs folder is added with `--add-dir`. Either
   way, the summary never goes on a command line.
 - The handoff ends by asking Claude to say where you left off and wait for your go-ahead.
+- The command can't be copied for Continue fresh: the handoff file is written, and the new session
+  linked, only when the app launches it.
 - The new session is named "<title> — continued", keeps the original's model and effort choice,
   and is linked to it in the [Branches](#branching) panel ("Continued fresh from a summary").
   Nothing is written to `.claude`: Claude Code creates the new session file itself.

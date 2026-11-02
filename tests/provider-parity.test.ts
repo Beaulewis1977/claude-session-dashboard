@@ -40,6 +40,21 @@ afterEach(async () => {
   else await rm(root, { recursive: true, force: true, maxRetries: 5 })
 })
 
+describe('differences (the snapshot comparison)', () => {
+  it('finds nothing only when the values are equal', () => {
+    expect(differences({ a: [1, { b: 'x' }] }, { a: [1, { b: 'x' }] })).toEqual([])
+    expect(differences({ a: 1 }, { a: 2 })).toEqual(['.a: 1 -> 2'])
+    expect(differences({ a: 1 }, {})).toEqual(['.a: 1 -> undefined'])
+  })
+
+  it('tells arrays from objects with the same keys', () => {
+    expect(differences([], {})).toEqual([': [] -> {}'])
+    expect(differences(['a'], { 0: 'a' })).toEqual([': ["a"] -> {"0":"a"}'])
+    expect(differences({ x: { 0: 'a' } }, { x: ['a'] })).toEqual(['.x: {"0":"a"} -> ["a"]'])
+    expect(differences(null, {})).toEqual([': null -> {}'])
+  })
+})
+
 describe.runIf(process.platform === 'win32')('provider parity (golden snapshot)', () => {
   for (const [name, tz] of ZONES) {
     it(`matches the pre-refactor snapshot (${tz})`, { timeout: 120_000 }, async () => {

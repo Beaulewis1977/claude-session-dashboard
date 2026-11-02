@@ -763,14 +763,25 @@ function sameOrDiff(a: unknown, b: unknown, norm: (s: string) => string): string
 /** Where two snapshots differ: "path: want -> got", at most `max` of them. */
 export function differences(want: unknown, got: unknown, max = 40): string[] {
   const out: string[] = []
+  const show = (v: unknown): string => JSON.stringify(v)?.slice(0, 300) ?? 'undefined'
   const walk = (a: unknown, b: unknown, path: string): void => {
     if (out.length >= max || JSON.stringify(a) === JSON.stringify(b)) return
-    if (a && b && typeof a === 'object' && typeof b === 'object') {
+    // Only descend into two arrays or two objects: [] and {} (or ['a'] and
+    // {0: 'a'}) have the same keys but are different values.
+    const both =
+      !!a &&
+      !!b &&
+      typeof a === 'object' &&
+      typeof b === 'object' &&
+      Array.isArray(a) === Array.isArray(b)
+    if (both) {
+      const before = out.length
       for (const k of new Set([...Object.keys(a), ...Object.keys(b)]))
         walk((a as Record<string, unknown>)[k], (b as Record<string, unknown>)[k], `${path}.${k}`)
-      return
+      // Different, but no child said why: report the node itself, so a
+      // difference can never come back as "none".
+      if (out.length > before) return
     }
-    const show = (v: unknown): string => JSON.stringify(v)?.slice(0, 300) ?? 'undefined'
     out.push(`${path}: ${show(a)} -> ${show(b)}`)
   }
   walk(want, got, '')

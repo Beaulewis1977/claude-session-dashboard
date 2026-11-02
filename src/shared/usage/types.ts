@@ -46,6 +46,8 @@ export interface UsageRecord extends TokenCounts {
   speed?: string
   /** Other ids this response was logged under (copies that matched it). */
   aka?: string[]
+  /** The app's own runs (summaries): when the run started; `ts` is when it finished. */
+  startTs?: number
 }
 
 /** One user turn: a prompt and everything Claude did until the next prompt. */

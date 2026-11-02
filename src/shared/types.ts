@@ -16,6 +16,7 @@ import { DEFAULT_PACE, type PaceSettings } from './usage/pace'
 import type { SourceHints, SourceLabel } from './source-label'
 import type { EffortChoice, ProjectModelDefault, ResolvedModel } from './model-choice'
 import { DEFAULT_LIVE_ALERTS, type LiveAlertSettings } from './live-alerts'
+import { DEFAULT_SUMMARY_SETTINGS, type AiSummary, type SummarySettings } from './summary'
 
 export type EnvKind = 'windows' | 'wsl'
 
@@ -71,6 +72,8 @@ export interface SessionMeta {
   model?: string
   /** Effort for launches (`--effort`); unset = the project / Settings default. */
   effort?: EffortChoice
+  /** The AI summary of the session (written with `claude -p`, editable). */
+  aiSummary?: AiSummary
   updatedAt?: string
 }
 
@@ -84,8 +87,11 @@ export interface RemoteTag {
 export interface BranchRecord {
   parentSessionId: string
   parentKey?: string
-  /** 'app': Branch from here (a new file). 'fork': `--fork-session` from the app. */
-  via: 'app' | 'fork'
+  /**
+   * 'app': Branch from here (a new file). 'fork': `--fork-session` from the app.
+   * 'continue': Continue fresh (a new session started from the parent's summary).
+   */
+  via: 'app' | 'fork' | 'continue'
   /** Transcript message the branch ends with (for 'app'). */
   atMessageId?: string
   atPreview?: string
@@ -281,6 +287,8 @@ export interface AppSettings {
   projectModels: Record<string, ProjectModelDefault>
   /** Running now: which session events alert, quiet hours, where. */
   liveAlerts: LiveAlertSettings
+  /** Session summaries: model, auto-summarize, the limits guard. */
+  summaries: SummarySettings
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -309,7 +317,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   defaultModel: 'default',
   defaultEffort: 'default',
   projectModels: {},
-  liveAlerts: DEFAULT_LIVE_ALERTS
+  liveAlerts: DEFAULT_LIVE_ALERTS,
+  summaries: DEFAULT_SUMMARY_SETTINGS
 }
 
 export interface ScanState {
@@ -353,6 +362,28 @@ export interface LaunchOptions {
   remoteControl?: boolean
   /** Force the prompting permission mode (launches from a phone). */
   askPermissions?: boolean
+  /** Continue fresh: a new session whose first message is this session's summary. */
+  continueFresh?: ContinueFreshRequest
+}
+
+export interface ContinueFreshRequest {
+  /** The id shown in the preview, so the copied command matches what gets started. */
+  newSessionId?: string
+}
+
+export interface ContinueFreshPreview {
+  newSessionId: string
+  /** Where the handoff file will be written (the app's data folder). */
+  handoffPath: string
+  /** The same path as the new session sees it (a /mnt/… path in WSL). */
+  sessionPath: string
+  /** "mention": @-mention in the first message; "read": "read this file" (path with spaces). */
+  mode: 'mention' | 'read'
+  /** The handoff text that will be written. */
+  handoff: string
+  /** New messages in the session since the summary was written. */
+  newSince: number
+  name: string
 }
 
 export interface BranchRequest {
@@ -408,6 +439,9 @@ export interface LaunchPreview {
   remoteControlName?: string
   /** The model and effort the launch uses, and where they come from. */
   modelChoice?: ResolvedModel
+  /** For Continue fresh: the handoff, or why there is none. */
+  continueFresh?: ContinueFreshPreview
+  continueError?: string
 }
 
 export interface LaunchResult {
@@ -418,6 +452,8 @@ export interface LaunchResult {
   simulated?: boolean
   /** The new branch (created even if opening the terminal then failed). */
   branch?: SessionSummary
+  /** Continue fresh: the key the new session will have once Claude Code writes it. */
+  continuedKey?: string
 }
 
 export interface SessionsPayload {

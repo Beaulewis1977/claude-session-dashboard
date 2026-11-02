@@ -1,5 +1,43 @@
 # Changelog
 
+## Unreleased
+
+### Session summaries and Continue fresh
+
+- **Summaries.** A short summary per session (suggested title, what was done, files changed,
+  decisions, open to-dos, where to pick up) at the top of the viewer and as one line on each card,
+  on the desktop and the phone. Written by Claude through your own Claude Code (`claude -p`, the
+  same isolated, subscription-only runner as Ask Claude, plus `--no-session-persistence`), only
+  when you ask: **Summarize**, **Summarize selected**, or opt-in auto-summarize for big idle
+  sessions (off by default). Editable, regenerable, part of search and backups, stored only in the
+  app's metadata, never in Claude's files.
+- **What is sent:** user and assistant text plus one line per tool call, never tool output,
+  thinking or images, with common secrets masked, cut to a size limit keeping the start and the end.
+  A one-time notice explains it, with the exact text on request.
+- **Limits guard:** Summarize selected shows an estimate first (tokens, and roughly the share of
+  your 5-hour window from the limit-health baseline). The queue pauses when the live 5-hour limit
+  is above 80% (Settings → Summaries), with **Resume anyway**; auto-summarize skips while above it.
+- **Usage:** each summary run's tokens are recorded from Claude Code's answer as "Summaries
+  (dashboard)", so they show in Usage and count in limit health.
+- **Continue fresh** starts a new session in the same folder from the summary instead of reloading
+  the whole history, with the same options as Resume. The summary goes into a handoff file in the
+  app's data folder that the first message @-mentions, so it never goes on a command line. The new
+  session shows as "continued from" in the Branches panel. Also from a phone (a fourth fixed launch,
+  with the same rules as Resume, Fork and Branch).
+- **What you approve is what is sent:** a previewed text is sent exactly as shown (or not at all),
+  each job sends what the session held when it was queued, and Cancel works up to the moment
+  anything is sent. The limits guard counts the summaries' own usage since the latest live reading,
+  and Summarize waits for the estimate.
+- Cancel works while a request is still reading its sessions ("Preparing… (n/N)"); a text you
+  previewed stays the one that's sent even if you hide it; and a summary run counts from when it
+  finished. If the guard can't tell what the last summaries used, the queue pauses until you click
+  **Continue**. A phone launch is checked again right before the terminal opens.
+- Continue fresh in WSL asks the distro where it sees the handoff file (custom automount roots
+  work) and starts nothing if the distro can't read it. Its command can't be copied, since the
+  handoff exists only when the app launches it.
+- The launch and Summarize dialogs scroll when they're taller than the window, instead of hiding
+  their buttons.
+
 ## 1.6.0 (November 1, 2026)
 
 **Backups of everything the app keeps, to a folder you choose, plus Running now, session alerts and

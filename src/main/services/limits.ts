@@ -445,7 +445,8 @@ export class LimitsService extends EventEmitter<{ changed: [] }> {
     }
   }
 
-  private isSubscription = (key: string): boolean => {
+  /** Billed to the subscription (what the limit gauge counts; API-billed use is left out). */
+  isSubscription = (key: string): boolean => {
     const o = this.billingOverride(key)
     if (o) return o === 'subscription'
     const sid = key.split(':').pop() ?? key

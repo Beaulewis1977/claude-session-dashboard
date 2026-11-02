@@ -8,10 +8,13 @@ import {
   Pin,
   PinOff,
   Play,
+  Sparkles,
   SquareTerminal,
   TextCursorInput,
-  X
+  X,
+  Zap
 } from 'lucide-react'
+import { openContinueFresh, summarize } from '@/lib/summaries'
 import type { SessionSummary } from '@shared/types'
 import { canUseClaudeName } from '@shared/title'
 import {
@@ -69,6 +72,12 @@ function SingleItems({ session: s }: { session: SessionSummary }) {
       <ContextMenuItem disabled={viewOnly} onSelect={() => openResume(s.key, true)}>
         <GitFork /> Fork
       </ContextMenuItem>
+      <ContextMenuItem disabled={viewOnly} onSelect={() => openContinueFresh(s.key)}>
+        <Zap /> Continue fresh…
+      </ContextMenuItem>
+      <ContextMenuItem onSelect={() => summarize([s.key])}>
+        <Sparkles /> {s.meta.aiSummary ? 'Regenerate summary' : 'Summarize'}
+      </ContextMenuItem>
       <ContextMenuSeparator />
       <ContextMenuItem onSelect={rename} shortcut="F2">
         <Pencil /> Rename…
@@ -116,6 +125,16 @@ function BulkItems({ picked }: { picked: SessionSummary[] }) {
       >
         <TextCursorInput /> Use Claude Code names
         {named.length > 0 && named.length < picked.length && ` (${named.length})`}
+      </ContextMenuItem>
+      <ContextMenuItem
+        onSelect={() =>
+          summarize(
+            picked.map((s) => s.key),
+            'bulk'
+          )
+        }
+      >
+        <Sparkles /> Summarize selected
       </ContextMenuItem>
       <ContextMenuSeparator />
       <ContextMenuItem onSelect={() => useApp.getState().set({ checked: [] })}>

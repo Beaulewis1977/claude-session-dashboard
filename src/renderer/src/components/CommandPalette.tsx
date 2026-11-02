@@ -24,9 +24,12 @@ import {
   Settings,
   SquareTerminal,
   Sun,
+  Sparkles,
   Tag,
-  Text
+  Text,
+  Zap
 } from 'lucide-react'
+import { openContinueFresh, summarize } from '@/lib/summaries'
 import { formatRelative } from '@shared/format'
 import { api } from '@/lib/api'
 import {
@@ -169,6 +172,22 @@ function PaletteBody() {
             >
               New session in this folder…
             </Item>
+            <Item
+              value="summarize session summary ai"
+              icon={<Sparkles />}
+              onSelect={run(() => summarize([selected.key]))}
+            >
+              {selected.meta.aiSummary ? 'Regenerate summary' : 'Summarize'}
+            </Item>
+            {selected.availability !== 'imported' && (
+              <Item
+                value="continue fresh new session from summary handoff"
+                icon={<Zap />}
+                onSelect={run(() => openContinueFresh(selected.key))}
+              >
+                Continue fresh from summary…
+              </Item>
+            )}
             <Item
               value="rename session name"
               icon={<Pencil />}

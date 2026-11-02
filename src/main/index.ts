@@ -64,6 +64,9 @@ import { createMeter } from './meter'
 import { registerUsageIpc } from './ipc-usage'
 import { registerAccountsIpc } from './ipc-accounts'
 import { registerAskIpc } from './ipc-ask'
+import { registerSummaryIpc } from './ipc-summaries'
+import { PrintRunner } from './services/print-runner'
+import { sanitizeSummarySettings, SUMMARY_USAGE_KEY, SUMMARY_USAGE_LABEL } from '@shared/summary'
 import { AccountsService, createAccountsStore, type Encryptor } from './services/accounts'
 import { httpsFetcher } from './services/anthropic-api'
 import { BillingService } from './services/billing'
@@ -265,6 +268,7 @@ async function main(): Promise<void> {
     s.defaultEffort = cleanEffortChoice(s.defaultEffort) ?? DEFAULT_CHOICE
     s.projectModels = sanitizeProjectModels(s.projectModels)
     s.liveAlerts = sanitizeLiveAlerts(s.liveAlerts)
+    s.summaries = sanitizeSummarySettings(s.summaries)
   })
   if (FIXTURES) {
     await seedFixtureData(appRoot, paths.archiveDir, metadata)
@@ -358,7 +362,8 @@ async function main(): Promise<void> {
         if (opts.fork) lineage.expectFork(s)
       }
     },
-    () => settings.value
+    () => settings.value,
+    paths.dataDir
   )
   const usage = new UsageService(sessions, usagePaths(paths.dataDir, paths.archiveDir), () => ({
     weekStart: settings.value.weekStart,
@@ -386,6 +391,7 @@ async function main(): Promise<void> {
     gitBash: () => platform.gitBash()
   })
   const sourceOf = (key: string): string => {
+    if (key === SUMMARY_USAGE_KEY) return SUMMARY_USAGE_LABEL
     const ses = sessions.get(key)
     return ses ? SOURCE_LABELS[ses.source] : SOURCE_LABELS.unknown
   }
@@ -435,6 +441,8 @@ async function main(): Promise<void> {
     weekStart: () => settings.value.weekStart,
     sourceOf,
     billingOf: (key) => {
+      // Summaries only ever run on the subscription.
+      if (key === SUMMARY_USAGE_KEY) return PLAN_LABEL[settings.value.plan]
       const b = sessions.get(key)?.billing
       if (!b || b.mode === 'unknown') return 'Unknown'
       if (b.mode === 'subscription') return PLAN_LABEL[settings.value.plan]
@@ -454,11 +462,23 @@ async function main(): Promise<void> {
     })
   }
   registerAccountsIpc(creditsDeps)
+  // One claude -p runner (CLI lookup, subscription check) for Ask Claude and summaries.
+  const printRunner = new PrintRunner()
   const askIpc = await registerAskIpc({
     dataDir: paths.dataDir,
     usage,
     limits,
     settings,
+    runner: printRunner,
+    simulate: FIXTURES
+  })
+  const summaries = registerSummaryIpc({
+    dataDir: paths.dataDir,
+    sessions,
+    usage,
+    limits,
+    settings,
+    runner: printRunner,
     simulate: FIXTURES
   })
   limits.on('changed', () => accounts.emit('changed'))
@@ -690,6 +710,8 @@ async function main(): Promise<void> {
       await usage.idle().catch(() => undefined)
       limits.stop()
       live.stop()
+      summaries.stopAuto()
+      summaries.cancel()
       await hooksStore.flush().catch(() => undefined)
       accounts.stop()
       await accountsStore.flush().catch(() => undefined)

@@ -267,6 +267,21 @@ export const webApi: CsdApi = {
   askCancel: async () => undefined,
   askHistory: async () => [],
 
+  // Summaries are written on the PC (they send session text to Claude);
+  // a phone reads them with the session and can edit them.
+  summaryState: async () => ({ jobs: [], preparing: [], override: false, simulated: false }),
+  onSummariesChanged: () => () => undefined,
+  summaryPreview: onPc('Summarizing'),
+  summaryEstimate: onPc('Summarizing'),
+  summarize: onPc('Summarizing'),
+  summaryCancel: onPc('Summarizing'),
+  summaryCancelPrep: onPc('Summarizing'),
+  summaryResume: onPc('Summarizing'),
+  summaryClearFinished: onPc('Summarizing'),
+  saveSummary: (key, patch) => rpc('saveSummary', key, patch),
+  removeSummary: onPc('Removing a summary'),
+  summaryAutoPreview: onPc('Auto-summarize'),
+
   toggleMiniMeter: onPc('The mini meter'),
   rescanLimits: onPc('Rescanning'),
   closeMiniMeter: async () => undefined,

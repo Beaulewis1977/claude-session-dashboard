@@ -1,9 +1,12 @@
 // Resume / Fork: restore a missing session file from the archive, check the
 // working directory, then open a terminal running `claude --resume`.
 
-import { join } from 'node:path'
+import { randomUUID } from 'node:crypto'
+import { dirname, join } from 'node:path'
 import type {
   BranchPreview,
+  ContinueFreshPreview,
+  ContinueFreshRequest,
   LaunchOptions,
   LaunchPreview,
   LaunchResult,
@@ -18,13 +21,17 @@ import {
   cwdProblem,
   remoteControlName,
   REMOTE_CONTROL_API_ERROR,
+  type ContinueFreshArgs,
   type LaunchCommand,
   type LaunchTools,
   type RemoteControl
 } from '../core/launch'
 import { restoreIfMissing } from '../core/restore'
+import { handoffPath, writeHandoff } from '../core/handoff'
+import { isUuid } from '@shared/jsonl'
+import { buildHandoff, continuedName, handoffPrompt, newSinceSummary } from '@shared/summary'
 import { resolveModelChoice, type ModelSettings, type ResolvedModel } from '@shared/model-choice'
-import { isAbsoluteWindowsPath } from '../core/which'
+import { fileExists, isAbsoluteWindowsPath } from '../core/which'
 import type { Platform } from '../platform'
 import { BranchService } from './branches'
 import type { SessionService } from './sessions'
@@ -55,6 +62,16 @@ export interface LaunchContext {
 
 const DESKTOP: LaunchContext = { via: 'desktop' }
 
+export const NO_SUMMARY =
+  'Summarize this session first: Continue fresh starts the new session from its summary.'
+
+interface ContinuePlan {
+  preview: ContinueFreshPreview
+  args: ContinueFreshArgs
+  /** The new session, as far as it's known before Claude Code writes its file. */
+  target: SessionSummary
+}
+
 export const CLAUDE_NOT_FOUND =
   "Claude Code wasn't found on this computer's PATH. Install it (or open a new terminal once after installing), then try again."
 
@@ -69,7 +86,9 @@ export class Launcher {
     private readonly defaultTerminal: () => TerminalPref,
     private readonly billing?: LaunchBilling,
     /** Settings → Resume defaults and per-project defaults for model / effort. */
-    private readonly modelSettings: () => Partial<ModelSettings> = () => ({})
+    private readonly modelSettings: () => Partial<ModelSettings> = () => ({}),
+    /** The app's data folder, for Continue fresh's handoff files (none: Continue fresh is off). */
+    private readonly dataDir?: string
   ) {
     this.branches = new BranchService(sessions, (p) => platform.pathExists(p))
   }
@@ -127,9 +146,11 @@ export class Launcher {
     cwd: string,
     terminal: TerminalPref,
     tools: LaunchTools,
-    apiKey?: string
+    apiKey?: string,
+    continueFresh?: ContinueFreshArgs
   ): LaunchCommand {
     return buildLaunchCommand({
+      continueFresh,
       remoteControl: this.remoteControl(s, opts),
       askPermissions: opts.askPermissions === true,
       modelChoice: this.modelChoice(s),
@@ -157,6 +178,119 @@ export class Launcher {
       return { cmd: this.command(...args) }
     } catch (err) {
       return { error: (err as Error).message }
+    }
+  }
+
+  /** Per distro: where it sees the app's data folder (checked readable), and when. */
+  private wslRoots = new Map<string, { path: string; at: number }>()
+
+  /**
+   * The app's data folder as a distro sees it, asked inside the distro
+   * (`wslpath`, then `test -r`), so a custom automount root works and
+   * unmounted drives are caught. Kept for a few minutes (the dialog asks often).
+   */
+  private async wslDataDir(distro: string, dataDir: string): Promise<string | undefined> {
+    const hit = this.wslRoots.get(distro)
+    if (hit && Date.now() - hit.at < 5 * 60_000) return hit.path
+    const path = await this.platform.wslPath(distro, dataDir)
+    if (!path || !(await this.platform.wslCanRead(distro, path))) {
+      this.wslRoots.delete(distro)
+      return undefined
+    }
+    this.wslRoots.set(distro, { path, at: Date.now() })
+    return path
+  }
+
+  /** A new session id that no session file or handoff uses yet (the one asked for, if free). */
+  private async freeContinueId(
+    s: SessionSummary,
+    dataDir: string,
+    wanted?: string
+  ): Promise<string> {
+    const dir = dirname(s.originalPath)
+    // The handoff is in the app's own folder: checked directly, not through the platform.
+    const free = async (id: string): Promise<boolean> =>
+      !(await this.platform.pathExists(join(dir, `${id}.jsonl`))) &&
+      !(await fileExists(handoffPath(dataDir, id)))
+    if (wanted && isUuid(wanted) && (await free(wanted))) return wanted
+    for (let i = 0; i < 20; i++) {
+      const id = randomUUID()
+      if (await free(id)) return id
+    }
+    throw new Error("Couldn't find a free id for the new session.")
+  }
+
+  /**
+   * Continue fresh: the new session's id, its handoff file (where it goes and
+   * what it says) and the first message pointing at it.
+   */
+  private async continuePlan(s: SessionSummary, req: ContinueFreshRequest): Promise<ContinuePlan> {
+    const dataDir = this.dataDir
+    if (!dataDir) throw new Error("Continue fresh isn't available here.")
+    if (s.availability === 'imported')
+      throw new Error(
+        'Conversations imported from claude.ai can be read and searched, not continued.'
+      )
+    const summary = s.meta.aiSummary
+    if (!summary) throw new Error(NO_SUMMARY)
+    const id = await this.freeContinueId(s, dataDir, req.newSessionId)
+    const path = handoffPath(dataDir, id)
+    let sessionPath: string | undefined = path
+    if (s.env === 'wsl') {
+      // Where this distro mounts the app's data folder (its own automount root).
+      const root = s.distro ? await this.wslDataDir(s.distro, dataDir) : undefined
+      if (!root)
+        throw new Error(
+          `${s.sourceLabel} can't read the app's data folder, where the handoff goes. Check that Windows drives are mounted in this distro ([automount] in /etc/wsl.conf), and that it's running.`
+        )
+      sessionPath = `${root}/handoffs/${id}.md`
+    }
+    const prompt = handoffPrompt(sessionPath)
+    if (!prompt)
+      throw new Error(
+        "The app's data folder has characters in its path that can't be passed to Claude Code safely."
+      )
+    const addDir =
+      prompt.mode === 'read'
+        ? s.env === 'wsl'
+          ? sessionPath.slice(0, sessionPath.lastIndexOf('/'))
+          : dirname(path)
+        : undefined
+    const names = this.sessions
+      .list()
+      .map((x) => x.meta.name)
+      .filter((n): n is string => !!n)
+    const name = continuedName(s.title, names)
+    const handoff = buildHandoff(
+      {
+        title: s.title,
+        sessionId: s.sessionId,
+        cwd: s.cwd,
+        gitBranch: s.gitBranch,
+        lastActivityAt: s.lastActivityAt,
+        envLabel: s.sourceLabel
+      },
+      summary
+    )
+    const target: SessionSummary = {
+      ...s,
+      key: `${s.sourceId}:${id}`,
+      sessionId: id,
+      // Remote Control is named after the new session.
+      meta: { ...s.meta, name }
+    }
+    return {
+      preview: {
+        newSessionId: id,
+        handoffPath: path,
+        sessionPath,
+        mode: prompt.mode,
+        handoff,
+        newSince: newSinceSummary(summary, s.messageCount),
+        name
+      },
+      args: { newSessionId: id, prompt: prompt.prompt, ...(addDir ? { addDir } : {}) },
+      target
     }
   }
 
@@ -240,6 +374,46 @@ export class Launcher {
           branch ? { ...s, meta: { ...s.meta, name: s.meta.name || branch.name } } : s,
           opts
         )?.name,
+        modelChoice: this.modelChoice(s)
+      }
+    }
+    if (opts.continueFresh) {
+      let plan: ContinuePlan | undefined
+      let continueError: string | undefined
+      try {
+        plan = await this.continuePlan(s, opts.continueFresh)
+      } catch (err) {
+        continueError = (err as Error).message
+      }
+      const target = plan?.target ?? s
+      const cOpts = { ...opts, fork: false, newSession: false }
+      const built = plan
+        ? this.tryCommand(
+            target,
+            cOpts,
+            cwd ?? this.placeholderCwd(s),
+            terminal,
+            tools,
+            undefined,
+            plan.args
+          )
+        : {}
+      return {
+        commandLine: built.cmd?.commandLine ?? '',
+        claudeCommand: built.cmd?.claudeCommand ?? '',
+        fellBack,
+        cwd,
+        cwdExists: state === 'exists',
+        willRestore: false,
+        restoreImpossible: false,
+        originalPath: s.originalPath,
+        terminal: built.cmd?.terminal ?? terminal,
+        terminalReason: built.cmd?.terminalReason,
+        billingLabel: this.billingLabel(opts),
+        continueFresh: plan?.preview,
+        continueError,
+        launchError: built.error ?? folderError,
+        remoteControlName: this.remoteControl(target, opts)?.name,
         modelChoice: this.modelChoice(s)
       }
     }
@@ -396,17 +570,30 @@ export class Launcher {
       return { ...res, branch: this.sessions.get(created.key) ?? created }
     }
 
+    // Continue fresh: a new session (its id picked now) that starts from the summary.
+    let cont: ContinuePlan | undefined
+    if (opts.continueFresh) {
+      try {
+        cont = await this.continuePlan(s, opts.continueFresh)
+      } catch (err) {
+        return fail((err as Error).message)
+      }
+      opts = { ...opts, fork: false, newSession: false, branch: undefined }
+    }
+    const target = cont?.target ?? s
+
     let { terminal } = this.resolveTerminal(opts.terminal ?? this.defaultTerminal(), tools)
     let cmd: LaunchCommand
     try {
-      cmd = this.command(s, opts, cwd, terminal, tools, apiKey)
+      cmd = this.command(target, opts, cwd, terminal, tools, apiKey, cont?.args)
     } catch (err) {
       return fail((err as Error).message)
     }
+    const continued = cont ? { continuedKey: cont.target.key } : {}
 
     // 1. Restore the original file from the archive if it's missing. Never overwrite.
     let restored = false
-    if (!opts.newSession && !(await this.platform.pathExists(s.originalPath))) {
+    if (!opts.newSession && !cont && !(await this.platform.pathExists(s.originalPath))) {
       const rec = this.sessions.archiveRecord(s.key)
       if (rec) {
         const stop = ctx.stillAllowed?.()
@@ -423,18 +610,52 @@ export class Launcher {
 
     // 2. Launch.
     if (!this.platform.canLaunch) {
-      this.billing?.launched(s, opts, cwd, ctx)
-      return { ok: true, restored, commandLine: cmd.commandLine, simulated: true }
+      if (!cont) this.billing?.launched(s, opts, cwd, ctx)
+      return { ok: true, restored, commandLine: cmd.commandLine, simulated: true, ...continued }
     }
     const stop = ctx.stillAllowed?.()
     if (stop)
       return { ok: false, restored, commandLine: cmd.commandLine, error: `Not launched: ${stop}.` }
+    if (cont) {
+      // A new file only: never overwrites (a clash means another id next time).
+      try {
+        await writeHandoff(this.dataDir!, cont.preview.newSessionId, cont.preview.handoff)
+      } catch (err) {
+        return {
+          ...fail(
+            (err as NodeJS.ErrnoException).code === 'EEXIST'
+              ? 'A handoff for this new session already exists. Try again.'
+              : `Couldn't write the handoff file: ${(err as Error).message}`
+          ),
+          commandLine: cmd.commandLine
+        }
+      }
+      // WSL: the distro must really see the file before Claude is told to read it.
+      if (s.env === 'wsl' && s.distro) {
+        const seen = await this.platform.wslCanRead(s.distro, cont.preview.sessionPath)
+        if (!seen) {
+          this.wslRoots.delete(s.distro)
+          return {
+            ...fail(
+              `${s.sourceLabel} can't read the handoff file at ${cont.preview.sessionPath}, so nothing was started. Check that Windows drives are mounted in this distro ([automount] in /etc/wsl.conf).`
+            ),
+            commandLine: cmd.commandLine
+          }
+        }
+      }
+    }
+    // Asked again right before starting anything: the checks above take time
+    // (writing the handoff, asking WSL), and a phone can be revoked or
+    // read-only mode turned on meanwhile.
+    const late = ctx.stillAllowed?.()
+    if (late)
+      return { ok: false, restored, commandLine: cmd.commandLine, error: `Not launched: ${late}.` }
     try {
       await this.platform.spawnDetached(cmd)
     } catch (err) {
       if (terminal === 'wt' && (err as NodeJS.ErrnoException).code === 'ENOENT') {
         terminal = 'powershell'
-        cmd = this.command(s, opts, cwd, terminal, tools, apiKey)
+        cmd = this.command(target, opts, cwd, terminal, tools, apiKey, cont?.args)
         // The first attempt took time: ask again before the second.
         const again = ctx.stillAllowed?.()
         if (again)
@@ -463,7 +684,22 @@ export class Launcher {
         }
       }
     }
-    this.billing?.launched(s, opts, cwd, ctx)
-    return { ok: true, restored, commandLine: cmd.commandLine }
+    if (cont) {
+      // Where the new session came from (the app's metadata only), named and
+      // with the parent's own model / effort, before Claude Code writes its file.
+      this.sessions.recordBranch(
+        cont.target.sessionId,
+        {
+          parentSessionId: s.sessionId,
+          parentKey: s.key,
+          via: 'continue',
+          createdAt: new Date().toISOString()
+        },
+        cont.preview.name,
+        { model: s.meta.model, effort: s.meta.effort }
+      )
+    }
+    this.billing?.launched(target, opts, cwd, ctx)
+    return { ok: true, restored, commandLine: cmd.commandLine, ...continued }
   }
 }

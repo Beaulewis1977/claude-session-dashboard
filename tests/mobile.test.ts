@@ -349,6 +349,12 @@ describe('what a phone may call', () => {
       'accounts:add',
       'bridge:apply',
       'ask:run',
+      // Writing a summary sends session text to Claude: PC only.
+      'summaries:enqueue',
+      'summaries:preview',
+      'summaries:estimate',
+      'summaries:remove',
+      'summaries:resume',
       'import:claudeAi',
       'shell:openExternal',
       'mobile:pair',
@@ -364,7 +370,7 @@ describe('what a phone may call', () => {
       Object.values(RPC)
         .filter((m) => m.kind === 'write')
         .map((m) => m.channel)
-    ).toEqual(['sessions:updateMeta', 'settings:update'])
+    ).toEqual(['sessions:updateMeta', 'summaries:save', 'settings:update'])
   })
 
   it('narrows edits to the safe fields', () => {

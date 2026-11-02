@@ -402,94 +402,101 @@ async function fixtureLimits() {
 }
 
 describe('LimitsService (fixtures)', () => {
-  it('shows live gauges, detects the October limit cut and enables the bridge', async () => {
-    await cp(FIXTURES, join(root, 'fixtures'), { recursive: true })
-    await prepareFixtures(root, { usageHistory: true })
-    const layout = fixturesLayout(root)
-    const platform = createFixturesPlatform(layout.fixturesDir, layout.sourcesDir)
-    const paths = appPaths(layout.dataDir)
-    const metadata = createMetadataStore(paths)
-    const settings = createSettingsStore(paths)
-    await metadata.load()
-    await settings.load()
-    await seedFixtureData(root, paths.archiveDir, metadata)
-    await seedFixtureUsage(root, paths.dataDir)
-    const sessions = new SessionService(platform, paths, metadata, settings)
-    await sessions.start()
-    await sessions.idle()
-    const usage = new UsageService(sessions, usagePaths(paths.dataDir, paths.archiveDir), () => ({
-      weekStart: 'monday',
-      prices: DEFAULT_PRICES
-    }))
-    await usage.start()
-    const store = createBridgeStore(paths.dataDir)
-    await store.load()
-    const installer = new BridgeInstaller(store, {
-      dataDir: paths.dataDir,
-      scriptsDir: join(__dirname, '..', 'resources', 'bridge'),
-      gitBash: async () => undefined
-    })
-    const notes: string[] = []
-    const limits = new LimitsService(
-      sessions,
-      usage,
-      installer,
-      store,
-      join(paths.dataDir, 'limits-history.ndjson'),
-      paths.dataDir,
-      () => ({
-        plan: 'max5',
-        alertsEnabled: true,
-        alertThresholds: [75, 90],
-        weights: DEFAULT_WEIGHTS,
-        prices: DEFAULT_PRICES,
-        health: { ...DEFAULT_HEALTH, baselineFrom: '2026-09-01', baselineTo: '2026-09-30' },
-        planHistory: [],
-        pace: DEFAULT_PACE,
-        elsewhere: []
-      }),
-      (t) => notes.push(t)
-    )
-    await limits.start()
-    limits.stop()
-    await seedFixtureBridge(paths.dataDir, sessions, installer)
+  // Copies and scans the whole fixture history: slow when other test files run alongside.
+  it(
+    'shows live gauges, detects the October limit cut and enables the bridge',
+    { timeout: 30_000 },
+    async () => {
+      await cp(FIXTURES, join(root, 'fixtures'), { recursive: true })
+      await prepareFixtures(root, { usageHistory: true })
+      const layout = fixturesLayout(root)
+      const platform = createFixturesPlatform(layout.fixturesDir, layout.sourcesDir)
+      const paths = appPaths(layout.dataDir)
+      const metadata = createMetadataStore(paths)
+      const settings = createSettingsStore(paths)
+      await metadata.load()
+      await settings.load()
+      await seedFixtureData(root, paths.archiveDir, metadata)
+      await seedFixtureUsage(root, paths.dataDir)
+      const sessions = new SessionService(platform, paths, metadata, settings)
+      await sessions.start()
+      await sessions.idle()
+      const usage = new UsageService(sessions, usagePaths(paths.dataDir, paths.archiveDir), () => ({
+        weekStart: 'monday',
+        prices: DEFAULT_PRICES
+      }))
+      await usage.start()
+      const store = createBridgeStore(paths.dataDir)
+      await store.load()
+      const installer = new BridgeInstaller(store, {
+        dataDir: paths.dataDir,
+        scriptsDir: join(__dirname, '..', 'resources', 'bridge'),
+        gitBash: async () => undefined
+      })
+      const notes: string[] = []
+      const limits = new LimitsService(
+        sessions,
+        usage,
+        installer,
+        store,
+        join(paths.dataDir, 'limits-history.ndjson'),
+        paths.dataDir,
+        () => ({
+          plan: 'max5',
+          alertsEnabled: true,
+          alertThresholds: [75, 90],
+          weights: DEFAULT_WEIGHTS,
+          prices: DEFAULT_PRICES,
+          health: { ...DEFAULT_HEALTH, baselineFrom: '2026-09-01', baselineTo: '2026-09-30' },
+          planHistory: [],
+          pace: DEFAULT_PACE,
+          elsewhere: []
+        }),
+        (t) => notes.push(t)
+      )
+      await limits.start()
+      limits.stop()
+      await seedFixtureBridge(paths.dataDir, sessions, installer)
 
-    const s = await limits.state()
-    expect(s.hasBridgeData).toBe(true)
-    expect(s.fiveHour?.pct).toBeCloseTo(47.1)
-    expect(s.fiveHour?.expired).toBe(false)
-    expect(s.fiveHour?.tokens).toBeGreaterThan(1_000_000)
-    expect(s.sevenDay?.pct).toBeCloseTo(29.8)
-    expect(s.stale).toBe(false)
-    expect(s.change5h?.flagged).toBe(true)
-    expect(s.change5h?.changePct).toBeLessThan(-18)
-    expect(s.change5h?.changePct).toBeGreaterThan(-32)
-    expect(s.capacity5h.length).toBeGreaterThan(30)
-    // Limit health: baseline from September, the Oct 1 cut (~25%) shows as ~0.8x,
-    // under the default flag line (1 ÷ 1.5 = 0.67x), so the verdict stays normal.
-    expect(s.health5h?.baseline?.n).toBeGreaterThan(10)
-    const oct = s.health5h!.windows.filter((w) => w.closed && w.resetsAt > Date.parse('2026-10-02'))
-    const avg = oct.reduce((a, w) => a + w.ratio!, 0) / oct.length
-    expect(avg).toBeGreaterThan(0.68)
-    expect(avg).toBeLessThan(0.88)
-    expect(s.health5h?.verdict.status).toBe('normal')
-    expect(s.health7d?.windows.length).toBeGreaterThan(8)
-    expect(s.pace7d?.status).toBe('behind')
-    expect(s.split5h?.pct).toBeCloseTo(47.1)
-    expect(s.limitHits.length).toBeGreaterThan(0)
-    expect(s.envs.find((e) => e.sourceId === 'wsl-Ubuntu-beau')?.installed).toBe(true)
-    expect(s.envs.find((e) => e.sourceId === 'windows')).toMatchObject({
-      installed: true,
-      chained: '~/.claude/statusline.sh'
-    })
-    expect(s.envs.find((e) => e.sourceId === 'wsl-Ubuntu-root')?.installed).toBe(false)
-    // API-billed fixture sessions are recognised from their payloads (cost, no rate_limits).
-    const apiSession = limits.readings().find((r) => r.costUsd && !r.fiveHour)
-    expect(apiSession && limits.billingOf(apiSession.sessionId!)).toBe('api')
-    expect(notes).toEqual([]) // nothing over 75% right now
-    await sessions.idle()
-    await usage.idle()
-  })
+      const s = await limits.state()
+      expect(s.hasBridgeData).toBe(true)
+      expect(s.fiveHour?.pct).toBeCloseTo(47.1)
+      expect(s.fiveHour?.expired).toBe(false)
+      expect(s.fiveHour?.tokens).toBeGreaterThan(1_000_000)
+      expect(s.sevenDay?.pct).toBeCloseTo(29.8)
+      expect(s.stale).toBe(false)
+      expect(s.change5h?.flagged).toBe(true)
+      expect(s.change5h?.changePct).toBeLessThan(-18)
+      expect(s.change5h?.changePct).toBeGreaterThan(-32)
+      expect(s.capacity5h.length).toBeGreaterThan(30)
+      // Limit health: baseline from September, the Oct 1 cut (~25%) shows as ~0.8x,
+      // under the default flag line (1 ÷ 1.5 = 0.67x), so the verdict stays normal.
+      expect(s.health5h?.baseline?.n).toBeGreaterThan(10)
+      const oct = s.health5h!.windows.filter(
+        (w) => w.closed && w.resetsAt > Date.parse('2026-10-02')
+      )
+      const avg = oct.reduce((a, w) => a + w.ratio!, 0) / oct.length
+      expect(avg).toBeGreaterThan(0.68)
+      expect(avg).toBeLessThan(0.88)
+      expect(s.health5h?.verdict.status).toBe('normal')
+      expect(s.health7d?.windows.length).toBeGreaterThan(8)
+      expect(s.pace7d?.status).toBe('behind')
+      expect(s.split5h?.pct).toBeCloseTo(47.1)
+      expect(s.limitHits.length).toBeGreaterThan(0)
+      expect(s.envs.find((e) => e.sourceId === 'wsl-Ubuntu-beau')?.installed).toBe(true)
+      expect(s.envs.find((e) => e.sourceId === 'windows')).toMatchObject({
+        installed: true,
+        chained: '~/.claude/statusline.sh'
+      })
+      expect(s.envs.find((e) => e.sourceId === 'wsl-Ubuntu-root')?.installed).toBe(false)
+      // API-billed fixture sessions are recognised from their payloads (cost, no rate_limits).
+      const apiSession = limits.readings().find((r) => r.costUsd && !r.fiveHour)
+      expect(apiSession && limits.billingOf(apiSession.sessionId!)).toBe('api')
+      expect(notes).toEqual([]) // nothing over 75% right now
+      await sessions.idle()
+      await usage.idle()
+    }
+  )
 
   // Regression: statusline.ps1 left every update after a session's first one
   // behind as .tmp.<pid>.<name>.json (the first payload has no limits), so the

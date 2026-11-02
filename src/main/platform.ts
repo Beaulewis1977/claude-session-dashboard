@@ -14,7 +14,7 @@ import {
   systemExe,
   systemRoot
 } from './core/which'
-import { parseDistroList, wslRoots } from './core/wsl'
+import { isValidDistroName, parseDistroList, windowsPathToWsl, wslRoots } from './core/wsl'
 
 export interface Platform {
   fixtures: boolean
@@ -36,6 +36,27 @@ export interface Platform {
   runCcusage(): Promise<string | undefined>
   /** Git Bash (Claude Code on Windows runs status line commands with it when installed). */
   gitBash(): Promise<string | undefined>
+  /**
+   * A Windows path as this distro sees it: `wslpath -u` run inside it, so its
+   * own automount root (/etc/wsl.conf) counts. Undefined when the distro
+   * can't map it (drives not mounted, distro unreachable).
+   */
+  wslPath(distro: string, windowsPath: string): Promise<string | undefined>
+  /** Can this distro read the path? (`test -r` run inside it.) */
+  wslCanRead(distro: string, linuxPath: string): Promise<boolean>
+}
+
+/** Run one program inside a distro (no shell); stdout on exit code 0, else undefined. */
+function inDistro(distro: string, args: string[]): Promise<string | undefined> {
+  if (process.platform !== 'win32' || !isValidDistroName(distro)) return Promise.resolve(undefined)
+  return new Promise((resolve) =>
+    execFile(
+      systemExe('wsl.exe'),
+      ['-d', distro, '-e', ...args],
+      { encoding: 'utf8', windowsHide: true, timeout: 20_000 },
+      (err, stdout) => resolve(err ? undefined : String(stdout))
+    )
+  )
 }
 
 function runWsl(args: string[]): Promise<Buffer | undefined> {
@@ -205,6 +226,13 @@ export function createRealPlatform(): Platform {
     spawnDetached(cmd) {
       return cmd.terminal === 'wt' ? spawnWindow(cmd) : openConsole(cmd)
     },
+    async wslPath(distro, windowsPath) {
+      const out = (await inDistro(distro, ['wslpath', '-u', windowsPath]))?.trim()
+      return out && out.startsWith('/') && !out.includes('\n') ? out : undefined
+    },
+    async wslCanRead(distro, linuxPath) {
+      return (await inDistro(distro, ['test', '-r', linuxPath])) !== undefined
+    },
     async gitBash() {
       if (!isWindows) return undefined
       const candidates = [
@@ -283,6 +311,13 @@ export function createFixturesPlatform(fixturesDir: string, sourcesDir: string):
     },
     async spawnDetached() {
       // Never spawn anything in fixtures mode.
+    },
+    // Sample distros use the default /mnt automount.
+    async wslPath(_distro, windowsPath) {
+      return windowsPathToWsl(windowsPath)
+    },
+    async wslCanRead() {
+      return true
     },
     async runCcusage() {
       return undefined

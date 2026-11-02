@@ -13,7 +13,9 @@ import {
   costShort,
   estimateExplainer,
   pctText,
-  resumeSentence
+  resumeSentence,
+  windowLabel,
+  windowSource
 } from '@/lib/context'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -130,9 +132,11 @@ export function ContextLine({ estimate }: { estimate: ResumeEstimate }) {
       <div className="flex items-start gap-1.5">
         <Gauge className="mt-px size-3.5 shrink-0" />
         <span className="min-w-0 leading-relaxed">
-          Context ≈ {formatTokens(estimate.tokens)} tokens ({pctText(estimate.windowPct)} of{' '}
-          {formatTokens(estimate.windowSize)}).{' '}
-          {resumeSentence(estimate).replace(/^Resuming/, 'Reloading it')}.{' '}
+          Context ≈ {formatTokens(estimate.tokens)} tokens (
+          <span title={windowSource(estimate)}>
+            {pctText(estimate.windowPct)} of {windowLabel(estimate)}
+          </span>
+          ). {resumeSentence(estimate).replace(/^Resuming/, 'Reloading it')}.{' '}
           <EstimateInfo estimate={estimate} />
         </span>
       </div>
@@ -182,9 +186,8 @@ export function ContextWarning({
         <div className="min-w-0 space-y-1 leading-relaxed">
           <div className="font-medium text-foreground">
             Large session: about {formatTokens(estimate.tokens)} tokens{' '}
-            <span className="font-normal text-muted-foreground">
-              ({pctText(estimate.windowPct)} of the {formatTokens(estimate.windowSize)} context
-              window)
+            <span className="font-normal text-muted-foreground" title={windowSource(estimate)}>
+              ({pctText(estimate.windowPct)} of the {windowLabel(estimate)} context window)
             </span>
           </div>
           <div>
@@ -298,8 +301,8 @@ export function ContextStrip({
             style={{ width: `${fill}%` }}
           />
         </div>
-        <span className="shrink-0 text-muted-foreground tabular-nums">
-          {pctText(e.windowPct)} of {formatTokens(e.windowSize)}
+        <span className="shrink-0 text-muted-foreground tabular-nums" title={windowSource(e)}>
+          {pctText(e.windowPct)} of {windowLabel(e)}
         </span>
       </div>
       <div className="flex flex-wrap items-center gap-x-1.5">

@@ -296,15 +296,35 @@ export function nativeWindow(modelId: string | undefined): number {
   return m[1] in at && v >= at[m[1]] ? LONG_WINDOW : STANDARD_WINDOW
 }
 
+/** Where a context window size comes from. */
+export type WindowFrom =
+  /** An explicit `[1m]` choice. */
+  | 'variant'
+  /** Claude Code's status line, for the same model the session last used. */
+  | 'status-line'
+  /** The model's own window (Claude Code's model configuration). */
+  | 'model'
+  /** The context is already bigger than 200k, so it must be a 1M window. */
+  | 'size'
+
+export interface ContextWindow {
+  size: number
+  from: WindowFrom
+  /** The model the size is for, when known. */
+  model?: string
+}
+
 /**
- * The context window of the model a launch uses:
+ * The context window of the model a launch uses, per model:
  * - an explicit `[1m]` choice: 1M;
- * - another explicit model: that model's own window (a reading of the
- *   session's can't tell a `[1m]` variant from the standard one);
- * - no choice: the session's status line reading, else its model's own
- *   window, else 1M when the context is already past 200k.
+ * - another explicit model: that model's own window (a session's reading
+ *   can't tell a `[1m]` variant from the standard one);
+ * - no choice: the status line's reading when it was taken for the model the
+ *   session last used (what Claude Code really runs, e.g. a plan without the
+ *   1M variant), else that model's own window. A context already past 200k
+ *   is always on a 1M window.
  */
-export function contextWindowSize(
+export function contextWindow(
   ctx: SessionContext,
   launch: {
     /** The launch's model choice (undefined / "default": Claude Code's). */
@@ -312,14 +332,29 @@ export function contextWindowSize(
     /** The model id it resolves to. */
     modelId?: string
   } = {}
-): number {
+): ContextWindow {
   const choice = launch.choice?.toLowerCase()
-  if (choice?.endsWith('[1m]')) return LONG_WINDOW
+  if (choice?.endsWith('[1m]')) return { size: LONG_WINDOW, from: 'variant', model: launch.modelId }
   const explicit = !!choice && choice !== 'default'
-  if (explicit) return nativeWindow(launch.modelId)
-  if (ctx.windowSize) return ctx.windowSize
-  if (ctx.tokens > STANDARD_WINDOW) return LONG_WINDOW
-  return nativeWindow(ctx.model)
+  const model = explicit ? launch.modelId : ctx.model
+  let w: ContextWindow
+  if (
+    !explicit &&
+    ctx.windowSize &&
+    (!ctx.model || !ctx.windowModel || modelKey(ctx.windowModel) === modelKey(ctx.model))
+  )
+    w = { size: ctx.windowSize, from: 'status-line', model: ctx.windowModel ?? ctx.model }
+  else w = { size: nativeWindow(model), from: 'model', model }
+  if (ctx.tokens > w.size && w.size < LONG_WINDOW) return { size: LONG_WINDOW, from: 'size', model }
+  return w
+}
+
+/** Just the size (see `contextWindow`). */
+export function contextWindowSize(
+  ctx: SessionContext,
+  launch: { choice?: string; modelId?: string } = {}
+): number {
+  return contextWindow(ctx, launch).size
 }
 
 export type SizeBand = 'S' | 'M' | 'L' | 'XL'
@@ -522,6 +557,9 @@ export interface ResumeEstimate {
   tokens: number
   from: SessionContext['from']
   windowSize: number
+  /** Where the window size comes from, and the model it's for. */
+  windowFrom: WindowFrom
+  windowModel?: string
   /** % of the model's context window. */
   windowPct: number
   band: SizeBand
@@ -618,7 +656,8 @@ export function estimateResume(i: {
       : { tokens: t, costUsd: 0, unpriced: true }
   }
   const priced = !!findPrice(model.replace(/-fast$/, ''), prices)
-  const windowSize = contextWindowSize(ctx, { choice: i.modelChoice, modelId: model })
+  const win = contextWindow(ctx, { choice: i.modelChoice, modelId: model })
+  const windowSize = win.size
   const basisUsed: ResumeEstimate['basis'] =
     sub && resume.pct5h !== undefined
       ? i.dollarsPerPct && i.dollarsPerPct > 0 && priced
@@ -639,6 +678,8 @@ export function estimateResume(i: {
     tokens: N,
     from: ctx.from,
     windowSize,
+    windowFrom: win.from,
+    ...(win.model ? { windowModel: win.model } : {}),
     windowPct: (N / windowSize) * 100,
     band: sizeBand(N),
     compactions: ctx.compactions,

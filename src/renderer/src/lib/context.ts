@@ -2,6 +2,7 @@
 
 import type { CostEstimate, ResumeEstimate, SessionContext } from '@shared/context'
 import { formatInt, formatTokens, formatUsd } from '@shared/format'
+import { modelLabel } from '@shared/model-choice'
 
 /** "12%", "4.5%", "< 0.1%". */
 export function pctText(p: number): string {
@@ -38,6 +39,25 @@ export function compactionNote(
   return `Compacted ${times}${c.preCompactTokens ? ` (${formatTokens(c.preCompactTokens)} before the last)` : ''}`
 }
 
+/** "1M · Opus 5.5": the window and the model it belongs to. */
+export function windowLabel(e: Pick<ResumeEstimate, 'windowSize' | 'windowModel'>): string {
+  return `${formatTokens(e.windowSize)}${e.windowModel ? ` · ${modelLabel(e.windowModel)}` : ''}`
+}
+
+const WINDOW_FROM: Record<ResumeEstimate['windowFrom'], string> = {
+  variant: 'the [1m] variant chosen for the launch',
+  'status-line': "Claude Code's status line for this session",
+  model: "the model's own window in Claude Code's model configuration",
+  size: 'the context is already past 200k, so it runs on a 1M window'
+}
+
+/** Where the window size comes from (hover text). */
+export function windowSource(
+  e: Pick<ResumeEstimate, 'windowSize' | 'windowModel' | 'windowFrom'>
+): string {
+  return `${formatInt(e.windowSize)}-token context window${e.windowModel ? ` of ${modelLabel(e.windowModel)}` : ''}, from ${WINDOW_FROM[e.windowFrom] ?? 'the model'}.`
+}
+
 /** Hover text of the size badge. */
 export function contextTitle(c: SessionContext): string {
   const parts = [`≈ ${formatInt(c.tokens)} tokens in context`]
@@ -63,7 +83,7 @@ const SOURCE: Record<ResumeEstimate['from'], string> = {
 /** The ⓘ text: how the estimate is worked out. */
 export function estimateExplainer(e: ResumeEstimate): string {
   const lines = [
-    `Estimate. The context size (${formatInt(e.tokens)} tokens) comes from ${SOURCE[e.from]}.`,
+    `Estimate. The context size (${formatInt(e.tokens)} tokens) comes from ${SOURCE[e.from]}. The window: ${windowSource(e)}`,
     `Resuming sends the whole conversation again. Priced as ${e.model} at API list prices: the first message writes it to the prompt cache (${CACHE[e.cache]}), and each later message reads it from the cache.`
   ]
   if (e.otherScope)

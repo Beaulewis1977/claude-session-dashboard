@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   analyzeContext,
+  contextWindow,
   contextWindowSize,
   DEFAULT_BASE_TOKENS,
   DEFAULT_CONTEXT_WARNING,
@@ -296,6 +297,51 @@ describe('size', () => {
     expect(nativeWindow('claude-opus-4-6[1m]')).toBe(1_000_000)
     expect(nativeWindow(undefined)).toBe(200_000)
     expect(modelKey('Claude-Opus-4-5-20251101')).toBe('claude-opus-4-5')
+  })
+
+  it('a status line reading counts only for the model it was taken for', () => {
+    const base: SessionContext = { tokens: 90_000, from: 'usage', compactions: 0 }
+    // Read while on Sonnet 4.6 (200k), then switched to Opus 5.5 (native 1M).
+    const switched = contextWindow({
+      ...base,
+      model: 'claude-opus-5-5',
+      windowSize: 200_000,
+      windowModel: 'claude-sonnet-4-6'
+    })
+    expect(switched).toEqual({ size: 1_000_000, from: 'model', model: 'claude-opus-5-5' })
+    // Read on the same model (dates aside): Claude Code's number wins.
+    const same = contextWindow({
+      ...base,
+      model: 'claude-opus-5-5-20261001',
+      windowSize: 200_000,
+      windowModel: 'claude-opus-5-5'
+    })
+    expect(same).toMatchObject({ size: 200_000, from: 'status-line' })
+    // No reading: the model's own window.
+    expect(contextWindow({ ...base, model: 'claude-sonnet-4-6' })).toMatchObject({
+      size: 200_000,
+      from: 'model'
+    })
+    // Past 200k on a 200k model: it must be running a 1M window.
+    expect(contextWindow({ ...base, tokens: 300_000, model: 'claude-sonnet-4-6' })).toMatchObject({
+      size: 1_000_000,
+      from: 'size'
+    })
+    // The estimate says where its window came from.
+    const e = estimateResume({
+      ctx: { ...base, model: 'claude-opus-5-5' },
+      billing: 'subscription',
+      sameScope: true,
+      prices: DEFAULT_PRICES,
+      weights: DEFAULT_WEIGHTS,
+      now: T0
+    })
+    expect(e).toMatchObject({
+      windowSize: 1_000_000,
+      windowFrom: 'model',
+      windowModel: 'claude-opus-5-5'
+    })
+    expect(e.windowPct).toBeCloseTo(9)
   })
 
   it('the window of the model the launch uses', () => {

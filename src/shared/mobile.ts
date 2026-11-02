@@ -133,7 +133,8 @@ export interface ClaudeCheck {
 /** What a phone asks the PC to launch. Only these three, only for known sessions. */
 export interface RemoteLaunchRequest {
   key: string
-  kind: 'resume' | 'fork' | 'branch'
+  /** 'continue': Continue fresh, a new session started from the session's summary. */
+  kind: 'resume' | 'fork' | 'branch' | 'continue'
   branch?: { at: string; mode: 'include' | 'before' }
 }
 
@@ -149,6 +150,8 @@ export interface RemoteLaunchPreview {
   willRestore: boolean
   /** The model and effort the launch will use. */
   modelChoice?: ResolvedModel
+  /** Continue fresh: new messages since the summary was written. */
+  newSinceSummary?: number
 }
 
 export interface RemoteLaunchResult {

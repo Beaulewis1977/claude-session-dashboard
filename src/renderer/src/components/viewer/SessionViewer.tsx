@@ -26,9 +26,13 @@ import {
   Search,
   SquareTerminal,
   Terminal,
+  Sparkles,
   TextCursorInput,
-  WifiOff
+  WifiOff,
+  Zap
 } from 'lucide-react'
+import { openContinueFresh, summarize } from '@/lib/summaries'
+import { SummaryBlock } from '../summary/SummaryBlock'
 import type { SessionDetail, SessionSummary } from '@shared/types'
 import { formatBytes, formatDateTime } from '@shared/format'
 import { messagePreview } from '@shared/branch'
@@ -205,6 +209,15 @@ function Header({
                   <Plus /> New session in this folder…
                 </DropdownMenuItem>
                 <DropdownMenuItem
+                  disabled={session.availability === 'imported'}
+                  onSelect={() => openContinueFresh(session.key)}
+                >
+                  <Zap /> Continue fresh from summary…
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => summarize([session.key])}>
+                  <Sparkles /> {session.meta.aiSummary ? 'Regenerate summary' : 'Summarize'}
+                </DropdownMenuItem>
+                <DropdownMenuItem
                   disabled={session.availability === 'imported' || !session.cwd}
                   onSelect={() => void openTerminalHere(session.key)}
                 >
@@ -267,6 +280,8 @@ function Header({
             focusNonce={nonce('description')}
           />
         </div>
+
+        <SummaryBlock session={session} />
 
         <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5">
           {session.availability !== 'imported' && (

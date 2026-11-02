@@ -1,4 +1,5 @@
-import { TextCursorInput, X } from 'lucide-react'
+import { Sparkles, TextCursorInput, X } from 'lucide-react'
+import { summarize } from '@/lib/summaries'
 import type { SessionSummary } from '@shared/types'
 import { canUseClaudeName } from '@shared/title'
 import { applyClaudeNames } from '@/lib/actions'
@@ -34,6 +35,20 @@ export function BulkBar({ picked }: { picked: SessionSummary[] }) {
             {named.length > 0 && named.length < picked.length && ` (${named.length})`}
           </Button>
         </span>
+      </Tooltip>
+      <Tooltip content="Write a summary for each, one at a time (shows what it would use first)">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() =>
+            summarize(
+              picked.map((s) => s.key),
+              'bulk'
+            )
+          }
+        >
+          <Sparkles /> Summarize selected
+        </Button>
       </Tooltip>
       <Button
         variant="ghost"

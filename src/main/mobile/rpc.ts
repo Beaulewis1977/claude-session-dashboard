@@ -1,7 +1,8 @@
 // What a paired phone may call: an allow-list of the desktop app's own IPC
 // handlers, with their arguments narrowed further. Everything not listed here
-// (dialogs, folders, API keys, the status line bridge, Ask Claude, archive
-// import, the mobile server's own settings…) is unreachable from a phone.
+// (dialogs, folders, API keys, the status line bridge, Ask Claude, writing
+// summaries, archive import, the mobile server's own settings…) is
+// unreachable from a phone.
 
 import type {
   AppInfo,
@@ -48,6 +49,26 @@ export function phoneMetaPatch(v: unknown): Partial<SessionMeta> {
   if ('model' in o) out.model = typeof o.model === 'string' ? o.model.slice(0, 200) : undefined
   if ('effort' in o)
     out.effort = typeof o.effort === 'string' ? (o.effort as SessionMeta['effort']) : undefined
+  return out
+}
+
+/** A summary edited on a phone: its text fields only (cleaned again on the PC). */
+export function phoneSummaryPatch(v: unknown): Record<string, unknown> {
+  const o = (v && typeof v === 'object' ? v : {}) as Record<string, unknown>
+  const out: Record<string, unknown> = {}
+  const list = (x: unknown): string[] | undefined =>
+    Array.isArray(x)
+      ? x
+          .filter((t): t is string => typeof t === 'string')
+          .slice(0, 40)
+          .map((t) => t.slice(0, 600))
+      : undefined
+  if (typeof o.title === 'string') out.title = o.title.slice(0, 200)
+  if (typeof o.pickUp === 'string') out.pickUp = o.pickUp.slice(0, 2000)
+  for (const k of ['done', 'files', 'decisions', 'todos'] as const) {
+    const l = list(o[k])
+    if (l) out[k] = l
+  }
   return out
 }
 
@@ -121,6 +142,13 @@ export const RPC: Record<string, RpcMethod> = {
     channel: 'sessions:updateMeta',
     kind: 'write',
     args: ([k, p]) => [str(k, 300), phoneMetaPatch(p)],
+    result: (r) => (r ? phoneSession(r as SessionSummary) : r)
+  },
+  // Edit a session's summary (text only). Writing or removing one is PC-only.
+  saveSummary: {
+    channel: 'summaries:save',
+    kind: 'write',
+    args: ([k, p]) => [str(k, 300), phoneSummaryPatch(p)],
     result: (r) => (r ? phoneSession(r as SessionSummary) : r)
   },
   getSettings: {

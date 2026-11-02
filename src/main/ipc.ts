@@ -17,6 +17,7 @@ import { sanitizePace } from '@shared/usage/pace'
 import { cleanEffortChoice, cleanModelChoice, sanitizeProjectModels } from '@shared/model-choice'
 import { normalizeProjectKey } from '@shared/project-key'
 import { sanitizeLiveAlerts } from '@shared/live-alerts'
+import { sanitizeSummarySettings } from '@shared/summary'
 import type {
   AppInfo,
   AppSettings,
@@ -88,7 +89,8 @@ function publicSettings(s: SettingsFile): AppSettings {
     projectModels: Object.fromEntries(
       Object.entries(s.projectModels ?? {}).map(([k, v]) => [k, { ...v }])
     ),
-    liveAlerts: sanitizeLiveAlerts(s.liveAlerts)
+    liveAlerts: sanitizeLiveAlerts(s.liveAlerts),
+    summaries: sanitizeSummarySettings(s.summaries)
   }
 }
 
@@ -123,8 +125,15 @@ function launchOpts(v: unknown): LaunchOptions {
     terminal: TERMINALS.includes(o.terminal as TerminalPref)
       ? (o.terminal as TerminalPref)
       : undefined,
-    remoteControl: o.remoteControl === true
+    remoteControl: o.remoteControl === true,
+    continueFresh: continueRequest(o.continueFresh)
   }
+}
+
+function continueRequest(v: unknown): LaunchOptions['continueFresh'] {
+  if (!v || typeof v !== 'object') return undefined
+  const c = v as Record<string, unknown>
+  return { newSessionId: isUuid(c.newSessionId) ? c.newSessionId : undefined }
 }
 
 function safeFileName(title: string): string {
@@ -249,6 +258,12 @@ export function registerIpc(deps: IpcDeps): void {
           cur
         )
       }
+      // A partial change (one toggle) keeps the rest.
+      if ('summaries' in p)
+        s.summaries = sanitizeSummarySettings({
+          ...sanitizeSummarySettings(s.summaries),
+          ...((p.summaries ?? {}) as object)
+        })
       if (typeof p.adminRefreshMinutes === 'number' && p.adminRefreshMinutes >= 0)
         s.adminRefreshMinutes = Math.min(1440, Math.round(p.adminRefreshMinutes))
     })

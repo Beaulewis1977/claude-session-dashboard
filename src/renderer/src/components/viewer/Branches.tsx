@@ -17,6 +17,7 @@ import { Tooltip } from '../ui/tooltip'
 const VIA_LABEL: Record<LineageVia, string> = {
   app: 'Branched in this app',
   fork: 'Forked in this app',
+  continue: 'Continued fresh from a summary',
   'claude-branch': "Claude Code's /branch",
   copy: 'Copied by Claude Code',
   'shared-history': 'Fork found from shared messages'
@@ -224,7 +225,9 @@ export function BranchesPanel({
           <CornerLeftUp className="mt-px size-3.5 shrink-0 text-muted-foreground" />
           <div className="min-w-0 flex-1">
             <div className="flex min-w-0 items-center gap-1.5">
-              <span className="shrink-0 text-muted-foreground">Branched from</span>
+              <span className="shrink-0 text-muted-foreground">
+                {lineage.via === 'continue' ? 'Continued from' : 'Branched from'}
+              </span>
               {parent ? (
                 <button
                   type="button"

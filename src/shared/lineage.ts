@@ -1,7 +1,7 @@
 // Session lineage: which session was branched or forked from which.
 //
 // Sources of truth, strongest first:
-//  1. The app's own record (Branch from here, Fork from the app).
+//  1. The app's own record (Branch from here, Fork and Continue fresh from the app).
 //  2. `forkedFrom` markers in the file (Claude Code's `/branch`, and the app's branches).
 //  3. Entries that still carry another session's id (older Claude Code copies).
 //  4. Shared history: forks keep the original message uuids, so sessions that
@@ -18,13 +18,13 @@ export interface MessageStart {
   t?: string
 }
 
-export type LineageVia = 'app' | 'fork' | 'claude-branch' | 'copy' | 'shared-history'
+export type LineageVia = 'app' | 'fork' | 'continue' | 'claude-branch' | 'copy' | 'shared-history'
 
 export interface RecordedBranch {
   parentSessionId: string
   parentKey?: string
   atMessageId?: string
-  via: 'app' | 'fork'
+  via: 'app' | 'fork' | 'continue'
 }
 
 export interface LineageInput {

@@ -10,17 +10,19 @@ export interface SearchDoc {
   name: string
   description: string
   tags: string
+  /** The AI summary's text. */
+  summary: string
   project: string
   text: string
 }
 
-const FIELDS = ['title', 'name', 'description', 'tags', 'project', 'text'] as const
+const FIELDS = ['title', 'name', 'description', 'tags', 'summary', 'project', 'text'] as const
 
 const OPTIONS: Options<SearchDoc> = {
   fields: [...FIELDS],
   storeFields: [],
   searchOptions: {
-    boost: { name: 4, title: 3, tags: 3, description: 2, project: 1.5 },
+    boost: { name: 4, title: 3, tags: 3, description: 2, summary: 2, project: 1.5 },
     prefix: true,
     fuzzy: (term) => (term.length > 4 ? 0.2 : false),
     combineWith: 'AND'

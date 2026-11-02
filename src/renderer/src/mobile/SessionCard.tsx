@@ -2,6 +2,7 @@ import { memo, useRef, useState } from 'react'
 import { Archive, EyeOff, GitBranch, MessageSquare, Pin, PinOff, Eye } from 'lucide-react'
 import type { SessionSummary } from '@shared/types'
 import { formatRelative } from '@shared/format'
+import { summaryLine } from '@shared/summary'
 import { tagColor } from '@/lib/filters'
 import { cn } from '@/lib/utils'
 import { EnvDot } from '@/components/EnvBadge'
@@ -14,6 +15,9 @@ const ACTIONS_WIDTH = 144
 
 function preview(s: SessionSummary): string {
   if (s.meta.description) return s.meta.description.split('\n')[0]
+  // The AI summary's one line (where to pick up, else what was done).
+  const line = s.meta.aiSummary ? summaryLine(s.meta.aiSummary) : ''
+  if (line) return line
   if (s.titleSource !== 'first-prompt' && s.firstPrompt) return s.firstPrompt
   if (s.titleSource !== 'summary' && s.summary) return s.summary
   return ''
@@ -135,7 +139,9 @@ export const SessionCard = memo(function SessionCard({
         <div
           className={cn(
             'line-clamp-2 w-full pl-3.5 text-[13px] leading-snug',
-            s.meta.description ? 'text-muted-foreground' : 'text-subtle-foreground'
+            s.meta.description || s.meta.aiSummary
+              ? 'text-muted-foreground'
+              : 'text-subtle-foreground'
           )}
         >
           {text || <span className="italic">No description</span>}

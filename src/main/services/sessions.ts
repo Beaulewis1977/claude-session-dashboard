@@ -14,6 +14,7 @@ import { computeTitle } from '@shared/title'
 import type { SessionLineage } from '@shared/lineage'
 import { detectSource, type DetectedSource } from '@shared/source-label'
 import { askQuestionOf } from '@shared/ask'
+import { SUMMARY_MARKER, summarySearchText, type AiSummary } from '@shared/summary'
 import type {
   ArchiveRecord,
   Availability,
@@ -46,7 +47,8 @@ type BaseSummary = Omit<
 // v4: the Remote Control link (remoteUrl) from `bridge_status` entries.
 // v5: statuses copied into a branch no longer count as the branch's own link.
 // v6: the name given in Claude Code (custom-title / agent-name) and ai-title.
-const CACHE_VERSION = 6
+// v7: summaries in the search index (a new field).
+const CACHE_VERSION = 7
 
 interface CacheFile {
   version: number
@@ -494,6 +496,8 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
     // The dashboard's own Ask Claude runs: title them by the question.
     const asked = title.titleSource === 'first-prompt' ? askQuestionOf(base.firstPrompt) : undefined
     if (asked) title.title = `Ask Claude: ${asked}`
+    else if (title.titleSource === 'first-prompt' && base.firstPrompt?.startsWith(SUMMARY_MARKER))
+      title.title = 'Session summary (dashboard)'
     return {
       ...base,
       meta,
@@ -517,6 +521,25 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
         source: { label: det.label, by: 'auto', reason: det.reason }
       }
     })
+  }
+
+  /**
+   * Store (or with undefined, remove) a session's AI summary, in the app's
+   * metadata only. Never written to Claude's files.
+   */
+  setAiSummary(key: string, summary: AiSummary | undefined): SessionSummary | null {
+    const e = this.entries.get(key)
+    if (!e) return null
+    this.metadata.update((d) => {
+      const next: SessionMeta = { ...(d.sessions[e.base.sessionId] ?? {}) }
+      if (summary) next.aiSummary = summary
+      else delete next.aiSummary
+      next.updatedAt = new Date().toISOString()
+      d.sessions[e.base.sessionId] = next
+    })
+    void this.reindex(key)
+    this.emitChanged()
+    return this.get(key) ?? null
   }
 
   /**
@@ -821,6 +844,7 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
       name: [s.meta.name, base.claudeName].filter(Boolean).join(' '),
       description: s.meta.description ?? '',
       tags: (s.meta.tags ?? []).join(' '),
+      summary: summarySearchText(s.meta.aiSummary),
       project: `${base.projectName} ${base.cwd ?? ''} ${base.gitBranch ?? ''}`,
       text: searchText
     })

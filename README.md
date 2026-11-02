@@ -73,6 +73,20 @@ Everything stays on your PC and your own private network.
   logs, or any model ID) and the effort level. Every launch adds `--model` / `--effort`; Default
   adds nothing, so Claude Code decides.
 
+### Summaries and Continue fresh
+
+- **A summary per session:** what was done, files changed, decisions, open to-dos and where to pick
+  up, at the top of the viewer and as one line on each card. Written by Claude through your own
+  Claude Code on your subscription, only when you ask (one session, or **Summarize selected**), or
+  automatically for big idle sessions if you turn that on. Editable, regenerable, searchable, and
+  kept only in the app's data.
+- **Continue fresh** starts a new session in the same folder from the summary instead of reloading
+  the whole history, which is much lighter on your 5-hour window. It uses the same options as Resume
+  and shows in the Branches panel as "continued from".
+- **Limits guard:** Summarize selected shows the tokens and roughly how much of your 5-hour window
+  it would use first, and pauses (with a Resume button) if the live 5-hour limit goes above 80%.
+  Summary runs show in Usage as "Summaries (dashboard)".
+
 ### Usage and limits
 
 - **Live limits:** your real 5-hour and weekly plan percentages (the same ones `/usage` shows), with
@@ -121,12 +135,13 @@ Everything stays on your PC and your own private network.
 
 - The same app in a phone layout: search and read sessions, rename, describe, tag, pin and hide
   them, and check usage and limits. It updates live and installs to your home screen.
-- **Resume, fork or branch a session on your PC** from the phone, with Remote Control on, then
-  continue it in the Claude app.
+- **Resume, fork, branch or continue fresh** a session on your PC from the phone, with Remote
+  Control on, then continue it in the Claude app. Summaries show on the phone and can be edited
+  there (they are written on the PC).
 - Connect over **Tailscale** (private, works from anywhere) or **home Wi-Fi only**. Each phone is
   paired with a QR code and has its own key, which you can revoke.
-- A phone **can't** run any other command, change security or pairing settings, see API keys, or use
-  Ask Claude. Phone launches always use your subscription and keep permission prompts on.
+- A phone **can't** run any other command, change security or pairing settings, see API keys, use
+  Ask Claude or write summaries. Phone launches always use your subscription and keep permission prompts on.
 - Optional read-only mode, confirm-on-PC for launches, and an activity log of every phone action.
 - **Running now** on the phone too, with push alerts that work when the app is closed. A push says
   only what happened ("A session needs your approval"); tapping it loads the details from your PC.
@@ -289,6 +304,21 @@ Backup → **Restore…**, pick a snapshot, check what would change, then **Rest
 that aren't in the snapshot stay, archived sessions are never replaced by an older (smaller) copy,
 and the files it replaces are kept in `%APPDATA%\ClaudeSessionDashboard\restore-backups\`.
 
+### Summarize and continue fresh
+
+- Click **Summarize** at the top of a session (or right-click it in the list). The first time, the
+  app shows what is sent and asks before sending: the conversation's text and one line per tool call
+  (never tool output, thinking or images), with common secrets masked, cut to 120,000 characters
+  keeping the start and the end. **Show exactly what is sent** shows the full text.
+- To summarize many at once, pick them with <kbd>Ctrl</kbd>+click or <kbd>Shift</kbd>+click and
+  click **Summarize selected**. You see the estimate first; a panel in the corner shows progress,
+  and Cancel stops it.
+- **Continue fresh** (on the summary, or ⋯ → **Continue fresh from summary…**) opens the launch
+  dialog with the handoff it will start from. The summary is written to a file in the app's data
+  folder, and the new session's first message points Claude Code at it.
+- Settings → Summaries: the model (Sonnet by default), the size limit, the pause line and
+  auto-summarize (off by default).
+
 ### Keyboard shortcuts
 
 | Keys                                              | Action                  |
@@ -316,7 +346,8 @@ The full rules are in [`CLAUDE.md`](CLAUDE.md). In short:
   the one backup folder you pick (the app writes and deletes only inside its own subfolder there).
 - **There is no delete.** Hide is only a flag.
 - **No network calls.** Outgoing requests from the window are blocked, remote images in
-  transcripts aren't loaded, and spellcheck is off.
+  transcripts aren't loaded, and spellcheck is off. Ask Claude and summaries go to Claude only
+  through your own Claude Code (`claude -p`), on your subscription, after showing you what is sent.
 
 Six opt-in exceptions, each only after you approve it in the app:
 

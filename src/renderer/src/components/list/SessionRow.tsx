@@ -8,8 +8,10 @@ import {
   GitFork,
   MessageSquare,
   Pin,
+  Sparkles,
   WifiOff
 } from 'lucide-react'
+import { summaryLine } from '@shared/summary'
 import type { SearchHit } from '@shared/api'
 import type { SessionSummary } from '@shared/types'
 import { formatDateTime, formatRelative } from '@shared/format'
@@ -33,8 +35,13 @@ function dateSpan(s: SessionSummary): string {
   return `${start} → ${sameDay ? end.replace(/^.*?\d{4} /, '') : end}`
 }
 
-function preview(s: SessionSummary): { text: string; muted: boolean } {
+function preview(s: SessionSummary): { text: string; muted: boolean; summary?: boolean } {
   if (s.meta.description) return { text: s.meta.description.split('\n')[0], muted: false }
+  // The AI summary's one line (where to pick up, else what was done).
+  if (s.meta.aiSummary) {
+    const line = summaryLine(s.meta.aiSummary)
+    if (line) return { text: line, muted: false, summary: true }
+  }
   // My dashboard name is the title: show what Claude Code calls it.
   if (s.titleSource === 'name' && s.claudeName && s.claudeName !== s.title)
     return { text: `Claude Code: ${s.claudeName}`, muted: true }
@@ -124,6 +131,9 @@ export const SessionRow = memo(function SessionRow({
           p.muted ? 'text-subtle-foreground' : 'text-muted-foreground'
         )}
       >
+        {p.summary && (
+          <Sparkles className="mr-1 -mt-px inline size-3 text-primary/80" aria-label="Summary" />
+        )}
         {p.text || <span className="italic">No description</span>}
       </div>
       <div className="flex min-w-0 items-center gap-2.5 pl-3.5 text-2xs text-muted-foreground">

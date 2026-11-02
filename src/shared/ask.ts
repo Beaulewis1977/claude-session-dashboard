@@ -167,6 +167,18 @@ export function askCommand(cli: AskCli): AskCommand {
 }
 
 /**
+ * The same print-mode command with more fixed flags after it (summaries add
+ * `--no-session-persistence` and a validated `--model`). Only fixed,
+ * validated values may be passed: in WSL they reach a bash command line.
+ */
+export function printCommand(cli: AskCli, extra: string[]): AskCommand {
+  for (const a of extra)
+    if (!/^(?:[A-Za-z0-9][A-Za-z0-9._-]*|--[a-z][a-z-]*)$/.test(a))
+      throw new Error(`Unsafe argument for claude: ${a}`)
+  return claudeCommand(cli, [...ASK_ARGS, ...extra])
+}
+
+/**
  * `claude auth status`, in the same environment the question will run in and
  * with the same settings files left out (the flags go before the subcommand).
  */
@@ -237,7 +249,7 @@ export function subscriptionCheck(stdout: string, code: number | null = 0): Subs
 
 /** The CLI refused one of the isolation flags: it's older than they are. */
 export function tooOldForAsk(stderr: string): boolean {
-  return /unknown option '--(safe-mode|setting-sources)'/.test(stderr)
+  return /unknown option '--(safe-mode|setting-sources|no-session-persistence)'/.test(stderr)
 }
 
 // ------------------------------------------------------------------ data

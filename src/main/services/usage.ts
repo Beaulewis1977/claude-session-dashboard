@@ -26,6 +26,7 @@ import type {
   WeekStart
 } from '@shared/usage/types'
 import type { SessionSummary } from '@shared/types'
+import { SUMMARY_USAGE_KEY, SUMMARY_USAGE_LABEL } from '@shared/summary'
 import { writeFileAtomic } from '../core/json-store'
 import { listFiles, readNdjson, writeNdjson } from '../core/ndjson'
 import { assertAppDataWrite, assertRealAppDataWrite, isInside } from '../core/safe-paths'
@@ -35,6 +36,9 @@ import type { SessionService } from './sessions'
 // 2: dedupe follows ccusage (session-scoped requestless ids, sidechain replays).
 // 3: /usage output is read as limit readings (backfill).
 const INDEX_VERSION = 3
+
+/** Usage of the app's own runs (session summaries), see addDashboardRecords. */
+const DASHBOARD_FILE = 'dashboard-runs.ndjson'
 
 interface IndexFile {
   version: number
@@ -95,6 +99,14 @@ export class UsageService extends EventEmitter<{ changed: [] }> {
   private turns = new Map<string, TurnSample>()
   private hits = new Map<string, LimitHit>()
   private usageCmd = new Map<string, UsageCommandReading>()
+  /**
+   * The app's own `claude -p` runs (session summaries): they leave no session
+   * file, so their usage is recorded here, from the CLI's answer. Kept in
+   * their own file, so "Recalculate" (which parses session files again)
+   * never loses them.
+   */
+  private dashboard = new Map<string, UsageRecord>()
+  private dashboardDirty = false
   private index: IndexFile = { version: INDEX_VERSION, sessions: {} }
   private dirtyMonths = new Set<string>()
   private dirtyTurnMonths = new Set<string>()
@@ -180,8 +192,27 @@ export class UsageService extends EventEmitter<{ changed: [] }> {
   }
 
   allRecords(): UsageRecord[] {
-    if (!this.cachedList) this.cachedList = [...this.records.values()].sort((a, b) => a.ts - b.ts)
+    if (!this.cachedList)
+      this.cachedList = [...this.records.values(), ...this.dashboard.values()].sort(
+        (a, b) => a.ts - b.ts
+      )
     return this.cachedList
+  }
+
+  /** Record the usage of one of the app's own runs (a session summary). */
+  addDashboardRecords(recs: UsageRecord[]): void {
+    let added = false
+    for (const r of recs) {
+      if (r.key !== SUMMARY_USAGE_KEY || this.dashboard.has(r.id)) continue
+      this.dashboard.set(r.id, r)
+      added = true
+    }
+    if (!added) return
+    this.dashboardDirty = true
+    this.invalidate()
+    this.lastUpdated = now()
+    this.scheduleSave()
+    this.emit('changed')
   }
 
   allTurns(): TurnSample[] {
@@ -212,6 +243,7 @@ export class UsageService extends EventEmitter<{ changed: [] }> {
       billingOf,
       sourceOf,
       sessionLabel: (key) => {
+        if (key === SUMMARY_USAGE_KEY) return { label: SUMMARY_USAGE_LABEL, detail: 'claude -p' }
         const ses = this.sessions.get(key)
         return ses ? { label: ses.title, detail: ses.projectName } : undefined
       }
@@ -283,6 +315,10 @@ export class UsageService extends EventEmitter<{ changed: [] }> {
     }
     for (const r of await readNdjson<UsageCommandReading>(join(dir, 'usage-readings.ndjson'))) {
       if (r && typeof r.id === 'string' && typeof r.ts === 'number') this.usageCmd.set(r.id, r)
+    }
+    for (const r of await readNdjson<UsageRecord>(join(dir, DASHBOARD_FILE))) {
+      if (r && typeof r.id === 'string' && typeof r.ts === 'number' && r.key === SUMMARY_USAGE_KEY)
+        this.dashboard.set(r.id, r)
     }
     this.loaded = true
     this.invalidate()
@@ -447,6 +483,11 @@ export class UsageService extends EventEmitter<{ changed: [] }> {
         this.hitsDirty = false
         await writeNdjson(join(dir, 'limit-hits.ndjson'), this.limitHits(), dataDir)
         await writeNdjson(join(dir, 'usage-readings.ndjson'), this.usageCommandReadings(), dataDir)
+      }
+      if (this.dashboardDirty) {
+        this.dashboardDirty = false
+        const rows = [...this.dashboard.values()].sort((a, b) => a.ts - b.ts)
+        await writeNdjson(join(dir, DASHBOARD_FILE), rows, dataDir)
       }
       if (this.indexDirty) {
         this.indexDirty = false

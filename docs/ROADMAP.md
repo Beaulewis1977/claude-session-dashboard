@@ -330,8 +330,19 @@ Run typecheck, lint, tests and the build. Commit, push the branch and open a PR 
 
 ---
 
-## Loose ends
+## Status & loose ends
 
+**Done:**
+- ✅ #1 Live sessions & "Claude needs you" alerts (v1.6.0)
+- ✅ #2 Archive backup (v1.6.0)
+- ✅ #3 Session summaries & "Continue fresh" (v1.7.0)
+- ✅ #4 Context size before you resume (v1.8.0)
+- ✅ #5 Phase A: provider refactor (v1.8.1)
+
+**In progress:** #5 Codex support in phases: A refactor ✅ → B Codex sessions → C Codex usage & limits → D Codex parity
+
+**Loose ends:**
+- Flaky test: a terminal test occasionally fails from a timing race in full runs, but passes in isolation. Find the race and make it reliable.
 - Phone companion still uses the deprecated sync safeStorage encrypt/decrypt calls; switch to the async API in a small PR.
 
 ---

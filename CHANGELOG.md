@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.8.1 (November 2, 2026)
+
+**An internal restructure with no visible changes: the groundwork for Codex support.**
+
+### Provider architecture (PR #26)
+
+- Everything that knows about Claude Code (finding and reading sessions, resume / fork / branch /
+  Continue fresh commands, usage and limits, Running now, session lineage) now lives behind one
+  **provider** interface, with Claude as its first provider. This prepares the app for Codex
+  sessions, usage and limits in the next steps.
+- **Nothing you can see changes:** the same sessions, names, launch commands, usage numbers, limits
+  and alerts as 1.8.0. Golden "parity" tests capture the app's output before and after the
+  restructure (in two time zones) and check that they match.
+- The summary prompt can name the session's agent; for Claude Code sessions the text sent is
+  exactly the same as before.
+- Docs: the provider layer is described in `docs/DETAILS.md`.
+
 ## 1.8.0 (November 2, 2026)
 
 **Context size before you resume: see how big each session is, and get warned before reloading a

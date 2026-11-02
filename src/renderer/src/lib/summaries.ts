@@ -32,10 +32,13 @@ export async function queue(
   keys: string[],
   origin: 'manual' | 'bulk',
   /** Send exactly this previewed text (for the previewed session). */
-  previewId?: string
+  previewId?: string,
+  opts: { prepId?: string; cancelled?: () => boolean } = {}
 ): Promise<number | undefined> {
   try {
-    const n = await api.summarize(keys, origin, previewId)
+    const n = await api.summarize(keys, origin, previewId, opts.prepId)
+    // Cancelled while preparing: the dialog already said so.
+    if (opts.cancelled?.()) return n
     if (!n)
       toast('Nothing to summarize', {
         description: 'Already being summarized, or there is no conversation yet.'

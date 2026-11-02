@@ -2,7 +2,8 @@
 // of what it would use (tokens and roughly how much of the 5-hour window),
 // and the exact text sent, before anything goes to Claude.
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { toast } from 'sonner'
 import {
   EyeOff,
   FileText,
@@ -113,6 +114,13 @@ export function SummarizeDialog() {
   return <SummarizeDialogBody key={req.keys.join('|')} />
 }
 
+/** 16 hex characters, for summaryCancelPrep. */
+function newPrepId(): string {
+  const b = new Uint8Array(8)
+  crypto.getRandomValues(b)
+  return [...b].map((x) => x.toString(16).padStart(2, '0')).join('')
+}
+
 function SummarizeDialogBody() {
   const req = useApp((s) => s.summarize)!
   const settings = useApp((s) => s.settings)
@@ -125,9 +133,18 @@ function SummarizeDialogBody() {
   /** Go ahead without the estimate (only offered when it couldn't be worked out). */
   const [noEstimateOk, setNoEstimateOk] = useState(false)
   const [showPrompt, setShowPrompt] = useState(req.preview === true)
+  /**
+   * The text was asked for: from then on what is sent is that previewed text
+   * (its id, and so its approved hash, is kept even when the text is hidden).
+   */
+  const [wantPreview, setWantPreview] = useState(req.preview === true)
   const [preview, setPreview] = useState<SummaryPreview | null>(null)
   const [previewError, setPreviewError] = useState<string>()
   const [busy, setBusy] = useState(false)
+  /** The running request's id (cancellable while it reads the sessions). */
+  const [prepId, setPrepId] = useState<string>()
+  const cancelledRef = useRef(false)
+  const progress = useApp((st) => st.summaryQueue.preparing.find((x) => x.id === prepId))
   const many = req.keys.length > 1
   const first = sessions.find((s) => s.key === req.keys[0])
 
@@ -143,7 +160,7 @@ function SummarizeDialogBody() {
   }, [req.keys])
 
   useEffect(() => {
-    if (!showPrompt || preview) return
+    if (!wantPreview || preview || previewError) return
     let cancelled = false
     void api
       .summaryPreview(req.keys[0])
@@ -152,24 +169,45 @@ function SummarizeDialogBody() {
     return () => {
       cancelled = true
     }
-  }, [showPrompt, preview, req.keys])
+  }, [wantPreview, preview, previewError, req.keys])
 
-  const close = (): void => set({ summarize: null })
-  // The estimate comes first: no sending before it's shown (or explicitly skipped).
-  const ready = agreed && !busy && (!!estimate || (!!estimateError && noEstimateOk))
+  /** Close; a request still reading its sessions is cancelled (nothing of it is queued). */
+  const close = (): void => {
+    if (busy && prepId && !cancelledRef.current) {
+      cancelledRef.current = true
+      void api.summaryCancelPrep(prepId)
+      toast('Cancelled', { description: 'Nothing was queued or sent.' })
+    }
+    set({ summarize: null })
+  }
+  // The estimate comes first: no sending before it's shown (or explicitly
+  // skipped). A text that was asked for must have loaded: what's sent is it.
+  const ready =
+    agreed &&
+    !busy &&
+    (!!estimate || (!!estimateError && noEstimateOk)) &&
+    (!wantPreview || !!preview)
   const go = async (): Promise<void> => {
     if (!ready) return
     setBusy(true)
+    const id = newPrepId()
+    setPrepId(id)
     if (!sum.noticeAccepted) {
       const st = await api.updateSettings({ summaries: { ...sum, noticeAccepted: true } })
       set({ settings: st })
     }
-    // A preview that was shown is what gets sent for that session.
-    const previewId = showPrompt && preview ? preview.id : undefined
-    const n = await queue(req.keys, req.origin, previewId)
+    // A preview that was shown is what gets sent for that session, hidden or not.
+    const previewId = preview?.id
+    const n = await queue(req.keys, req.origin, previewId, {
+      prepId: id,
+      cancelled: () => cancelledRef.current
+    })
+    if (cancelledRef.current) return
     setBusy(false)
-    if (n !== undefined) close()
-    // The session changed or the preview expired: show the current text again.
+    setPrepId(undefined)
+    // Done: close without cancelling anything.
+    if (n !== undefined) set({ summarize: null })
+    // The session changed or the preview expired: load the current text again.
     else if (previewId) setPreview(null)
   }
 
@@ -236,7 +274,10 @@ function SummarizeDialogBody() {
           <div>
             <button
               type="button"
-              onClick={() => setShowPrompt((v) => !v)}
+              onClick={() => {
+                setShowPrompt((v) => !v)
+                setWantPreview(true)
+              }}
               className="inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:underline"
             >
               {showPrompt ? <EyeOff className="size-3.5" /> : <FileText className="size-3.5" />}
@@ -251,7 +292,12 @@ function SummarizeDialogBody() {
                 {previewError ? (
                   <div className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs">
                     <TriangleAlert className="mt-px size-3.5 shrink-0 text-destructive" />
-                    {previewError}
+                    <span className="min-w-0 flex-1">
+                      Couldn&apos;t prepare what is sent: {previewError}
+                    </span>
+                    <Button variant="outline" size="xs" onClick={() => setPreviewError(undefined)}>
+                      Try again
+                    </Button>
                   </div>
                 ) : preview ? (
                   <>
@@ -273,6 +319,17 @@ function SummarizeDialogBody() {
           </div>
         </div>
         <DialogFooter>
+          {busy && (
+            <span className="mr-auto text-xs text-muted-foreground tabular-nums" role="status">
+              Preparing…{progress ? ` (${progress.done}/${progress.total})` : ''}
+            </span>
+          )}
+          {!busy && wantPreview && !preview && !previewError && (
+            <span className="mr-auto text-xs text-muted-foreground">Preparing what is sent…</span>
+          )}
+          {!busy && wantPreview && previewError && (
+            <span className="mr-auto text-xs text-destructive">Try the preview again to send</span>
+          )}
           <Button variant="ghost" onClick={close}>
             Cancel
           </Button>

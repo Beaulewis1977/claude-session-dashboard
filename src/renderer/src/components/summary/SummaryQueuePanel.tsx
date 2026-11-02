@@ -109,11 +109,21 @@ export function SummaryQueuePanel() {
       )}
       {q.paused && (
         <div className="border-b border-warning/25 bg-warning-soft px-3 py-2 text-xs text-foreground/85">
-          The 5-hour limit is at {Math.round(q.paused.pct)}%, above your {q.paused.limit}% pause
-          line. Nothing more is sent until you resume.
+          {q.paused.unknown ? (
+            <>
+              Can&apos;t tell how much of your 5-hour limit the last summaries used: there&apos;s no
+              limit-health baseline yet and no earlier use in this window to compare with. The last
+              live reading was {Math.round(q.paused.pct)}%. Nothing more is sent until you continue.
+            </>
+          ) : (
+            <>
+              The 5-hour limit is at {Math.round(q.paused.pct)}%, above your {q.paused.limit}% pause
+              line. Nothing more is sent until you resume.
+            </>
+          )}
           <div className="mt-2 flex gap-2">
             <Button variant="outline" size="xs" onClick={() => void api.summaryResume()}>
-              <Play /> Resume anyway
+              <Play /> {q.paused.unknown ? 'Continue' : 'Resume anyway'}
             </Button>
             <Button variant="ghost" size="xs" onClick={() => void api.summaryCancel()}>
               Cancel the rest

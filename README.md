@@ -98,10 +98,17 @@ Everything stays on your PC and your own private network.
   "Large session: about 180K tokens. Resuming may use about 12% of your 5-hour window", with
   **Continue fresh** (or **Summarize first**), **Fork** (keeps the original, same size), **Resume
   anyway** (one click) and **Don't warn for this session**. Same on the phone.
-- The % is an **estimate**: the context priced at the launch's model as a prompt-cache write (or a
-  cache read when the last reply was recent enough that the cache may still be warm), turned into a
-  share of the 5-hour window by your limit-health baseline, or by this window's own subscription use
-  when there's no baseline yet. Without either it shows tokens only; on API credits it shows dollars.
+- The % is an **estimate**: the context priced at the launch's model as a prompt-cache write, turned
+  into a share of the 5-hour window by your limit-health baseline, or by this window's own
+  subscription use when there's no baseline yet. Without either it shows tokens only; on API credits
+  it shows dollars.
+- **Warm cache:** when the last reply was recent enough, the part of the cache that is still alive
+  (5-minute and 1-hour parts are counted separately) is priced as a cheaper cache read, and the
+  estimate updates by itself when it runs out. Only for the same model and the same billing account
+  (caches aren't shared between accounts).
+- Continue fresh is priced at the model the new session will use: the one you chose, else Claude
+  Code's current model from the status line, else tokens only. The context window follows the
+  launch's model too (`[1m]`, or the size the status line reported for that model).
 
 ### Usage and limits
 

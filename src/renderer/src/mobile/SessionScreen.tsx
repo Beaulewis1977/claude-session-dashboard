@@ -348,7 +348,7 @@ export function SessionScreen({ session }: { session: SessionSummary }) {
           <SessionUsageStrip sessionKey={session.key} version={session.sizeBytes} />
           <ContextStrip
             sessionKey={session.key}
-            version={`${session.sizeBytes}:${session.meta.aiSummary?.generatedAt ?? ''}:${session.meta.aiSummary?.editedAt ?? ''}:${session.meta.model ?? ''}`}
+            version={`${session.sizeBytes}:${session.context?.tokens ?? ''}:${session.context?.at ?? ''}:${session.context?.windowSize ?? ''}:${session.billing?.mode ?? ''}:${session.meta.aiSummary?.generatedAt ?? ''}:${session.meta.aiSummary?.editedAt ?? ''}:${session.meta.model ?? ''}`}
           />
           <div className="mt-3">
             <TagEditor

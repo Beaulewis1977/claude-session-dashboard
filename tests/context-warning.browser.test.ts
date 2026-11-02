@@ -60,12 +60,15 @@ import { TooltipProvider } from '/src/renderer/src/components/ui/tooltip.tsx'
 import '/src/renderer/src/styles.css'
 
 const small = location.search.includes('small')
+// ?expire: the cache runs out 1.5 s after the first preview; later previews are cold.
+const expire = location.search.includes('expire')
+window.previews = 0
 window.launched = []
 window.metas = []
 const est = (tokens) => ({
   tokens, from: 'usage', windowSize: 200000, windowPct: tokens / 2000, band: tokens >= 150000 ? 'XL' : 'M',
-  compactions: 1, preCompactTokens: 205000, model: 'claude-opus-4-5', billing: 'subscription', cacheTtl: '1h',
-  warmUntil: Date.now() + 20 * 60000,
+  compactions: 1, preCompactTokens: 205000, model: 'claude-opus-4-5', billing: 'subscription', cache: '1h',
+  warmUntil: Date.now() + (expire ? 1500 : 20 * 60000),
   resume: { tokens, costUsd: 0.09, pct5h: 0.18 },
   cold: { tokens, costUsd: 1.8, pct5h: 3.6 },
   perMessage: { tokens, costUsd: 0.09, pct5h: 0.18 },
@@ -80,7 +83,15 @@ const preview = {
   context: est(small ? 60000 : 180000)
 }
 window.csd = {
-  previewLaunch: async (o) => (o.continueFresh ? { ...preview, context: undefined } : preview),
+  previewLaunch: async (o) => {
+    window.previews++
+    if (o.continueFresh) return { ...preview, context: undefined }
+    if (expire && window.previews > 1) {
+      const { warmUntil, cold, ...rest } = preview.context
+      return { ...preview, context: { ...rest, resume: cold } }
+    }
+    return preview
+  },
   launch: async (o) => { window.launched.push(o); return { ok: true, restored: false, commandLine: 'x', simulated: true } },
   updateMeta: async (key, patch) => {
     window.metas.push(patch)
@@ -193,6 +204,13 @@ const resumeState = (page: Page) =>
   )
 const warning = (page: Page) => page.getByRole('alert').filter({ hasText: 'Large session' })
 
+const previews = (page: Page) =>
+  page.evaluate(() => (globalThis as unknown as { previews: number }).previews)
+const lastLaunch = (page: Page) =>
+  page.evaluate(
+    () => (globalThis as unknown as { launched: Record<string, unknown>[] }).launched.at(-1) ?? null
+  )
+
 describe('large-session warning', () => {
   it('shows the size, the warm cache and the comparison; Resume anyway is one click', async ({
     skip
@@ -245,6 +263,53 @@ describe('large-session warning', () => {
       expect(await launched(page2)).toBe(0)
     } finally {
       await page2.close()
+    }
+  }, 60_000)
+
+  it('switching to Fork keeps the choices made in the dialog', async ({ skip }) => {
+    if (!browser) skip(unavailableReason)
+    const page = await open()
+    try {
+      const skipBox = page.getByRole('checkbox', { name: /Skip permission prompts/ })
+      // On by default (Settings); turn it off, and pick PowerShell.
+      await skipBox.click()
+      await page.getByRole('radio', { name: 'PowerShell' }).click()
+      await warning(page).getByRole('button', { name: /Fork/ }).click()
+      await expect
+        .poll(() => resumeState(page))
+        .toMatchObject({
+          fork: true,
+          carry: { skip: false, terminal: 'powershell' }
+        })
+      await expect
+        .poll(() => page.getByRole('checkbox', { name: /Skip permission prompts/ }).isChecked())
+        .toBe(false)
+      await page.getByRole('button', { name: /^Fork/ }).last().click()
+      await expect
+        .poll(() => lastLaunch(page))
+        .toMatchObject({ fork: true, skipPermissions: false, terminal: 'powershell' })
+    } finally {
+      await page.close()
+    }
+  }, 60_000)
+
+  it('a warm cache that runs out while the dialog is open: the estimate is fetched again', async ({
+    skip
+  }) => {
+    if (!browser) skip(unavailableReason)
+    const page = await open(15_000, '/?expire=1')
+    try {
+      await warning(page)
+        .getByText(/Cache may still be warm/)
+        .waitFor()
+      const before = await previews(page)
+      await expect.poll(() => previews(page), { timeout: 6_000 }).toBeGreaterThan(before)
+      await warning(page)
+        .getByText(/Cache may still be warm/)
+        .waitFor({ state: 'detached' })
+      expect((await warning(page).innerText()).replace(/\s+/g, ' ')).toContain('Resume ≈ 3.6%')
+    } finally {
+      await page.close()
     }
   }, 60_000)
 

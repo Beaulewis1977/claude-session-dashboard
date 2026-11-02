@@ -6,6 +6,7 @@ import { Flame, Gauge, GitFork, Info, Sparkles, TriangleAlert, Zap } from 'lucid
 import { sizeBand, type ResumeEstimate, type SessionContext, type SizeBand } from '@shared/context'
 import { formatTime, formatTokens } from '@shared/format'
 import { api } from '@/lib/api'
+import { useWarmExpiry } from '@/lib/use-warm-expiry'
 import {
   compactionNote,
   contextTitle,
@@ -76,7 +77,8 @@ export function ResumeComparison({
   noSummaryText?: string
 }) {
   // Highlight Continue fresh only when it's the cheaper one (a warm cache can make Resume cheaper).
-  const freshCheaper = !!estimate.fresh && estimate.fresh.costUsd < estimate.resume.costUsd
+  const freshCheaper =
+    !!estimate.fresh && !estimate.fresh.unpriced && estimate.fresh.costUsd < estimate.resume.costUsd
   return (
     <span className="tabular-nums">
       <b className="font-semibold">Resume {costShort(estimate.resume, estimate.billing)}</b>
@@ -233,6 +235,8 @@ export function ContextStrip({
   version: string
 }) {
   const [e, setE] = useState<ResumeEstimate | null>(null)
+  const [expired, setExpired] = useState(0)
+  useWarmExpiry(e?.warmUntil, () => setExpired((n) => n + 1))
   useEffect(() => {
     let cancelled = false
     const load = (): void => {
@@ -247,7 +251,7 @@ export function ContextStrip({
       cancelled = true
       off()
     }
-  }, [sessionKey, version])
+  }, [sessionKey, version, expired])
 
   if (!e) return null
   const note = compactionNote(e)

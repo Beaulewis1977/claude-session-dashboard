@@ -24,6 +24,7 @@ import { freshRemoteUrl } from '@/lib/remote'
 import { DEFAULT_CONTEXT_WARNING, shouldWarn } from '@shared/context'
 import { updateMeta } from '@/lib/actions'
 import { ContextLine, ContextWarning } from '@/components/context/ContextSize'
+import { useWarmExpiry } from '@/lib/use-warm-expiry'
 import { useApp } from '@/lib/store'
 import { phone } from '@/lib/web-api'
 import { Button } from '@/components/ui/button'
@@ -86,6 +87,9 @@ export function LaunchSheet({
   const fresh = useFreshRemoteUrl(result?.ok ? result : null, result?.at ?? 0)
   const [waitedLong, setWaitedLong] = useState(false)
 
+  // The estimate goes up when a warm cache runs out: ask the PC again then.
+  const [expired, setExpired] = useState(0)
+  useWarmExpiry(result ? undefined : preview?.context?.warmUntil, () => setExpired((n) => n + 1))
   useEffect(() => {
     let cancelled = false
     void phone
@@ -97,7 +101,7 @@ export function LaunchSheet({
     }
     // The request is fixed for the sheet's lifetime.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [expired])
 
   useEffect(() => {
     if (!result?.ok || fresh) return

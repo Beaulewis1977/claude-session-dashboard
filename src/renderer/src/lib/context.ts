@@ -12,6 +12,7 @@ export function pctText(p: number): string {
 
 /** "≈ 12%" (subscription), "≈ $1.20" (API), else "≈ 182K tokens". */
 export function costShort(c: CostEstimate, billing: ResumeEstimate['billing']): string {
+  if (c.unpriced) return `≈ ${formatTokens(c.tokens)} tokens`
   if (billing === 'api' && c.costUsd > 0) return `≈ ${formatUsd(c.costUsd)}`
   if (billing === 'subscription' && c.pct5h !== undefined) return `≈ ${pctText(c.pct5h)}`
   return `≈ ${formatTokens(c.tokens)} tokens`
@@ -47,6 +48,12 @@ export function contextTitle(c: SessionContext): string {
   return parts.join(' · ')
 }
 
+const CACHE: Record<ResumeEstimate['cache'], string> = {
+  '1h': '1-hour cache',
+  '5m': '5-minute cache',
+  mixed: 'partly 1-hour, partly 5-minute cache'
+}
+
 const SOURCE: Record<ResumeEstimate['from'], string> = {
   usage: "the last reply's usage in the session file",
   compaction: 'the compaction summary (no reply since the last compaction)',
@@ -57,11 +64,15 @@ const SOURCE: Record<ResumeEstimate['from'], string> = {
 export function estimateExplainer(e: ResumeEstimate): string {
   const lines = [
     `Estimate. The context size (${formatInt(e.tokens)} tokens) comes from ${SOURCE[e.from]}.`,
-    `Resuming sends the whole conversation again. Priced as ${e.model} at API list prices: the first message writes it to the prompt cache (${e.cacheTtl === '1h' ? '1-hour' : '5-minute'} cache), and each later message reads it from the cache.`
+    `Resuming sends the whole conversation again. Priced as ${e.model} at API list prices: the first message writes it to the prompt cache (${CACHE[e.cache]}), and each later message reads it from the cache.`
   ]
+  if (e.otherScope)
+    lines.push(
+      "This launch bills another account than the session did (or the session's billing isn't known), so it can't reuse the session's cache, and the write is priced at the 1-hour cache rate."
+    )
   if (e.warmUntil)
     lines.push(
-      "The last reply was recent enough that its cache may still be alive, so the first message may read it from the cache instead (if Claude Code's prompt is unchanged)."
+      "The last reply was recent enough that its cache may still be (partly) alive, so the first message may read it from the cache instead (if Claude Code's prompt is unchanged). The estimate goes up when it runs out."
     )
   if (e.billing === 'api') lines.push("On API credits, this doesn't use your 5-hour window.")
   else if (e.basis === 'baseline')
@@ -73,7 +84,7 @@ export function estimateExplainer(e: ResumeEstimate): string {
   if (e.unknown) lines.push(e.unknown)
   if (e.fresh)
     lines.push(
-      `Continue fresh starts a new session with only Claude Code's setup and the summary handoff: about ${formatTokens(e.fresh.tokens)} tokens.`
+      `Continue fresh starts a new session with only Claude Code's setup and the summary handoff: about ${formatTokens(e.fresh.tokens)} tokens${e.freshModel ? `, priced as ${e.freshModel}` : " (tokens only: the new session uses Claude Code's default model, which isn't known yet)"}.`
     )
   return lines.join(' ')
 }

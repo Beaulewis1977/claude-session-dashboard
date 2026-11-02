@@ -1,5 +1,41 @@
 # Changelog
 
+## 1.8.0 (November 2, 2026)
+
+**Context size before you resume: see how big each session is, and get warned before reloading a
+large one.**
+
+### Context size before you resume (PR #24)
+
+- **Context size per session:** the last reply's context (input + cache tokens), or the status
+  line's reading when it's newer. Right after a compaction it's estimated from the summary.
+  Sessions without usage data show no size.
+- **On every card:** an S / M / L / XL badge (exact tokens on hover), and a **Context size** sort.
+- **In the viewer:** tokens, the % of the model's context window ("9% of 1M · Opus 5.5", with where
+  the number comes from on hover), compactions, and what resuming would use next to what Continue
+  fresh would use.
+- **A warning before resuming a large session** (150k tokens by default, Settings → Context size):
+  "Large session: about 180K tokens. Resuming may use about 12% of your 5-hour window", with
+  **Continue fresh** (or **Summarize first**), **Fork · same size**, **Resume anyway** (still one
+  click) and **Don't warn for this session**. Switching to Fork or Continue fresh keeps the choices
+  you made in the dialog. Same on the phone.
+- **The estimate:** the context priced at the launch's model as a prompt-cache write, turned into a
+  share of the 5-hour window by the limit-health baseline (or this window's own subscription use
+  when there's no baseline yet); tokens only when neither is known, dollars on API credits.
+- **Warm cache:** when the last reply was recent enough, the part of the prompt cache that may still
+  be alive (5-minute and 1-hour parts counted separately) is priced as a cheaper read: "Cache may
+  still be warm, cheaper if you resume now". Only for the same model and billing account, and the
+  estimate updates by itself when the cache runs out.
+- **Context window per model:** `[1m]` variants and models with a native 1M window (Opus 4.7+,
+  Sonnet 5+, Haiku 5.5+, Fable 5+) count 1M, others 200k; a session's own status line reading is
+  used for the model it was taken for.
+- Continue fresh is priced at the model you chose; with Claude Code's default model (which the app
+  can't see) both sides are compared in tokens.
+- Open launch dialogs and the viewer follow the session as its context changes and as limits update.
+- The summaries' limits guard and the resume estimate share one baseline and one "this window's
+  rate" helper, which now needs the window's start (otherwise it says unknown).
+- The session cache is rebuilt once on the first start (a full rescan).
+
 ## 1.7.0 (November 2, 2026)
 
 **Session summaries, and Continue fresh: start a new session from a summary instead of reloading

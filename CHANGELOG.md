@@ -24,9 +24,9 @@
   app's data folder that the first message @-mentions, so it never goes on a command line. The new
   session shows as "continued from" in the Branches panel. Also from a phone (a fourth fixed launch,
   with the same rules as Resume, Fork and Branch).
-- **What you approve is what is sent:** a previewed text is sent exactly as shown (or not at all),
-  each job sends what the session held when it was queued, and Cancel works up to the moment
-  anything is sent. The limits guard counts the summaries' own usage since the latest live reading,
+- **What you preview is what is sent:** a previewed text is sent exactly as shown (or not at all),
+  and Cancel works up to the moment anything is sent. A queued summary you didn't preview sends the
+  session's content as it is when the summary runs. The limits guard counts the summaries' own usage since the latest live reading,
   and Summarize waits for the estimate.
 - Cancel works while a request is still reading its sessions ("Preparing… (n/N)"); a text you
   previewed stays the one that's sent even if you hide it; and a summary run counts from when it
@@ -35,6 +35,7 @@
 - Continue fresh in WSL asks the distro where it sees the handoff file (custom automount roots
   work) and starts nothing if the distro can't read it. Its command can't be copied, since the
   handoff exists only when the app launches it.
+- **Regenerate** on the summary is now a labelled button, not just an icon.
 - The launch and Summarize dialogs scroll when they're taller than the window, instead of hiding
   their buttons.
 

@@ -205,8 +205,9 @@ background; a panel in the corner shows the queue, with Cancel for one or all.
   exactly what is sent** shows the full text; Settings → Summaries → **Show again** brings the notice
   back. A previewed text is sent exactly as shown, even if the session goes on or the settings change
   before it runs; if it can't be rebuilt (an earlier message changed), nothing is sent and you're
-  asked to look again. Any job sends what the session held when it was queued, never what arrived
-  later.
+  asked to look again. A summary you didn't preview keeps the session details, size limit and
+  model from when it was queued, but sends the session's content as it is when it runs (a known
+  limit).
 - **Model:** Sonnet by default; Haiku uses the least of your limits, Opus writes the most careful
   summaries, Default adds no `--model`. The summary records the model that answered.
 - **Stored** in the app's `metadata.json` with the date, the model, the message count at the time

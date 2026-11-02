@@ -31,6 +31,7 @@ import {
   bridgeWindowReadings,
   compareHealth,
   healthReport,
+  planAt,
   splitWindow,
   scoreWindows,
   type CompareRange,
@@ -43,6 +44,7 @@ import {
 } from '@shared/usage/health'
 import { paceAdvice, paceOf, type PaceSettings } from '@shared/usage/pace'
 import type { WindowKind } from '@shared/usage/limits'
+import type { StatusContext } from '@shared/context'
 import type { JsonStore } from '../core/json-store'
 import { appendNdjson, readNdjson } from '../core/ndjson'
 import { assertExactBridgeLive, assertRealBridgeWrite } from '../core/safe-paths'
@@ -310,6 +312,28 @@ export class LimitsService extends EventEmitter<{ changed: [] }> {
       if (last?.contextPct !== undefined) out.set(sid, last.contextPct)
     }
     return out
+  }
+
+  /** The status line's latest context-window reading of a session. */
+  contextOf(sessionId: string): StatusContext | undefined {
+    const list = this.bySession.get(sessionId)
+    if (!list) return undefined
+    for (let i = list.length - 1; i >= 0; i--) {
+      const r = list[i]
+      if (r.contextPct !== undefined)
+        return { pct: r.contextPct, ts: r.ts, ...(r.contextSize ? { size: r.contextSize } : {}) }
+    }
+    return undefined
+  }
+
+  /**
+   * The limit-health baseline as $ per 1% of the 5-hour window at the plan in
+   * force now (summary estimates, the limits guard, resume estimates).
+   */
+  dollarsPerPct(): number | undefined {
+    const h = this.health('five_hour')
+    if (!h.baseline) return undefined
+    return h.baseline.value * planAt(h.plans, now()).mult
   }
 
   private add(r: BridgeReading): void {

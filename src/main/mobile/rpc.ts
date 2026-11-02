@@ -33,7 +33,7 @@ const str = (v: unknown, max = 1000): string => {
   return v.slice(0, max)
 }
 
-/** The fields a phone may edit: name, description, tags, pinned, hidden, alert mute, launch model and effort. */
+/** The fields a phone may edit: name, description, tags, pinned, hidden, alert mute, the large-context warning, launch model and effort. */
 export function phoneMetaPatch(v: unknown): Partial<SessionMeta> {
   const o = (v && typeof v === 'object' ? v : {}) as Record<string, unknown>
   const out: Partial<SessionMeta> = {}
@@ -45,6 +45,7 @@ export function phoneMetaPatch(v: unknown): Partial<SessionMeta> {
   if ('pinned' in o) out.pinned = o.pinned === true
   if ('hidden' in o) out.hidden = o.hidden === true
   if ('muteAlerts' in o) out.muteAlerts = o.muteAlerts === true
+  if ('noContextWarning' in o) out.noContextWarning = o.noContextWarning === true
   // Validated (or cleared) by cleanMetaPatch like the desktop's own edits.
   if ('model' in o) out.model = typeof o.model === 'string' ? o.model.slice(0, 200) : undefined
   if ('effort' in o)
@@ -165,6 +166,7 @@ export const RPC: Record<string, RpcMethod> = {
   },
   getUsageReport: { channel: 'usage:report', kind: 'read', args: ([q]) => [q] },
   getSessionUsage: { channel: 'usage:session', kind: 'read', args: ([k]) => [str(k, 300)] },
+  getContextEstimate: { channel: 'context:estimate', kind: 'read', args: ([k]) => [str(k, 300)] },
   getUsageStatus: { channel: 'usage:status', kind: 'read', args: none },
   getTrends: { channel: 'usage:trends', kind: 'read', args: ([g]) => [g] },
   compareTrends: { channel: 'usage:compare', kind: 'read', args: ([a, b]) => [a, b] },

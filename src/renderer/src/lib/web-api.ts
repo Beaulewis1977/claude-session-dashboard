@@ -236,6 +236,7 @@ export const webApi: CsdApi = {
 
   getUsageReport: (q) => rpc('getUsageReport', q),
   getSessionUsage: (key) => rpc('getSessionUsage', key),
+  getContextEstimate: (key) => rpc('getContextEstimate', key),
   getUsageStatus: () => rpc('getUsageStatus'),
   onUsageChanged: (cb) => subscribe('usage', cb),
   recalculateUsage: onPc('Recalculating usage'),

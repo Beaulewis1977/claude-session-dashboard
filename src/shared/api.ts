@@ -24,6 +24,7 @@ import type { BridgeApplyResult, BridgePlan, LimitsState } from './usage/limits'
 import type { CompareRange, HealthCompare } from './usage/health'
 import type { AskHistoryItem } from './ask'
 import type { AiSummary, SummaryEstimate } from './summary'
+import type { ResumeEstimate } from './context'
 import type { SummaryBatchEstimate, SummaryPreview, SummaryQueueState } from './summary-queue'
 import type { Account, CreditGrant, CreditsState } from './usage/credits'
 import type { CompareResult, CompareSide, TrendGroupBy, TrendsReport } from './usage/trends'
@@ -114,6 +115,8 @@ export interface CsdApi {
   // Usage (Phase 5)
   getUsageReport(query: UsageQuery): Promise<UsageReport>
   getSessionUsage(key: string): Promise<SessionUsage>
+  /** Context size and the estimated cost of resuming (null: not known). */
+  getContextEstimate(key: string): Promise<ResumeEstimate | null>
   getUsageStatus(): Promise<UsageStatus>
   onUsageChanged(cb: () => void): () => void
   recalculateUsage(): Promise<UsageStatus>

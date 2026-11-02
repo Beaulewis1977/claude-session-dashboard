@@ -65,6 +65,9 @@ import { registerUsageIpc } from './ipc-usage'
 import { registerAccountsIpc } from './ipc-accounts'
 import { registerAskIpc } from './ipc-ask'
 import { registerSummaryIpc } from './ipc-summaries'
+import { registerContextIpc } from './ipc-context'
+import { ContextCost } from './services/context-cost'
+import { sanitizeContextWarning } from '@shared/context'
 import { PrintRunner } from './services/print-runner'
 import { sanitizeSummarySettings, SUMMARY_USAGE_KEY, SUMMARY_USAGE_LABEL } from '@shared/summary'
 import { AccountsService, createAccountsStore, type Encryptor } from './services/accounts'
@@ -269,6 +272,7 @@ async function main(): Promise<void> {
     s.projectModels = sanitizeProjectModels(s.projectModels)
     s.liveAlerts = sanitizeLiveAlerts(s.liveAlerts)
     s.summaries = sanitizeSummarySettings(s.summaries)
+    s.contextWarning = sanitizeContextWarning(s.contextWarning)
   })
   if (FIXTURES) {
     await seedFixtureData(appRoot, paths.archiveDir, metadata)
@@ -426,6 +430,10 @@ async function main(): Promise<void> {
     sourceOf
   )
   bridgeGuess = (sid) => limits.billingOf(sid)
+  sessions.contextResolver = (sid) => limits.contextOf(sid)
+  const contextCost = new ContextCost({ limits, usage, settings: () => settings.value })
+  launcher.contextEstimate = (s, l) => contextCost.estimate(s, l)
+  registerContextIpc({ sessions, launcher, cost: contextCost })
   usage.on('changed', () => limits.emit('changed'))
   limits.on('changed', () => billing.refreshInferred())
   registerUsageIpc({

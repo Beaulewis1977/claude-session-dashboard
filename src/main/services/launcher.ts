@@ -34,6 +34,7 @@ import { resolveModelChoice, type ModelSettings, type ResolvedModel } from '@sha
 import { fileExists, isAbsoluteWindowsPath } from '../core/which'
 import type { Platform } from '../platform'
 import { BranchService } from './branches'
+import type { ResumeEstimate } from '@shared/context'
 import type { SessionService } from './sessions'
 
 /** API-credit launches (Phase 5). */
@@ -79,6 +80,11 @@ type CwdState = 'exists' | 'missing' | 'unreachable'
 
 export class Launcher {
   readonly branches: BranchService
+  /** Resume / Fork previews: the context size and what reloading it would cost (set at startup). */
+  contextEstimate?: (
+    s: SessionSummary,
+    launch: { billingAccountId?: string; modelChoice?: string }
+  ) => Promise<ResumeEstimate | undefined>
 
   constructor(
     private readonly platform: Platform,
@@ -420,6 +426,14 @@ export class Launcher {
     const originalExists = await this.platform.pathExists(s.originalPath)
     const record = this.sessions.archiveRecord(s.key)
     const { cmd, error } = this.tryCommand(s, opts, cwd ?? this.placeholderCwd(s), terminal, tools)
+    const modelChoice = this.modelChoice(s)
+    // An estimate that fails never stops a launch.
+    const context = opts.newSession
+      ? undefined
+      : await this.contextEstimate?.(s, {
+          billingAccountId: opts.billingAccountId,
+          modelChoice: modelChoice.model
+        }).catch(() => undefined)
     return {
       commandLine: cmd?.commandLine ?? '',
       claudeCommand: this.claudeCommand(s, opts, cmd),
@@ -435,7 +449,8 @@ export class Launcher {
       billingLabel: this.billingLabel(opts),
       launchError: error ?? folderError,
       remoteControlName: this.remoteControl(s, opts)?.name,
-      modelChoice: this.modelChoice(s)
+      modelChoice,
+      ...(context ? { context } : {})
     }
   }
 

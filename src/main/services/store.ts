@@ -88,6 +88,8 @@ export function cleanMetaPatch(patch: Partial<SessionMeta>): Partial<SessionMeta
   if ('effort' in patch) out.effort = cleanEffortChoice(patch.effort)
   if ('pinned' in patch) out.pinned = patch.pinned === true
   if ('muteAlerts' in patch) out.muteAlerts = patch.muteAlerts === true ? true : undefined
+  if ('noContextWarning' in patch)
+    out.noContextWarning = patch.noContextWarning === true ? true : undefined
   if ('billing' in patch) {
     const b = patch.billing as Record<string, unknown> | undefined | null
     out.billing =

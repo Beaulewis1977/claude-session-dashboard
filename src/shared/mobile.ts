@@ -7,6 +7,7 @@
 
 import type { AppSettings } from './types'
 import type { ResolvedModel } from './model-choice'
+import type { ResumeEstimate } from './context'
 
 export type MobileMode = 'tailscale' | 'lan'
 
@@ -152,6 +153,8 @@ export interface RemoteLaunchPreview {
   modelChoice?: ResolvedModel
   /** Continue fresh: new messages since the summary was written. */
   newSinceSummary?: number
+  /** Resume / Fork: the context size and what reloading it would cost (estimate). */
+  context?: ResumeEstimate
 }
 
 export interface RemoteLaunchResult {

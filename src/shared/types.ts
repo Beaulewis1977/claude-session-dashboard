@@ -14,6 +14,7 @@ import {
 } from './usage/health'
 import { DEFAULT_PACE, type PaceSettings } from './usage/pace'
 import type { SourceHints, SourceLabel } from './source-label'
+import type { ProviderId } from './provider'
 import type { EffortChoice, ProjectModelDefault, ResolvedModel } from './model-choice'
 import { DEFAULT_LIVE_ALERTS, type LiveAlertSettings } from './live-alerts'
 import { DEFAULT_SUMMARY_SETTINGS, type AiSummary, type SummarySettings } from './summary'
@@ -31,6 +32,8 @@ export type SourceStatus = 'ok' | 'missing' | 'unreadable' | 'not-running' | 'sk
 export interface SourceInfo {
   /** Stable id, also used as the archive sub-folder name. */
   id: string
+  /** Which coding agent's sessions this is (always set by the app; absent: Claude Code). */
+  provider?: ProviderId
   /** Human label, e.g. "Windows" or "WSL: Ubuntu". */
   label: string
   env: EnvKind
@@ -109,6 +112,8 @@ export interface BranchRecord {
 }
 
 export interface ArchiveRecord {
+  /** Not written for Claude Code sessions (absent means Claude Code, as in every older record). */
+  provider?: ProviderId
   sessionId: string
   sourceId: string
   sourceLabel: string
@@ -148,6 +153,8 @@ export type TitleSource = 'name' | 'claude-name' | 'summary' | 'first-prompt' | 
 export interface SessionSummary {
   /** Unique key in the app: `${sourceId}:${sessionId}`. */
   key: string
+  /** Which coding agent ran it (always set by the app; absent: Claude Code). */
+  provider?: ProviderId
   sessionId: string
   sourceId: string
   sourceLabel: string

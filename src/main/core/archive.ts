@@ -5,6 +5,7 @@ import { createHash } from 'node:crypto'
 import { createReadStream } from 'node:fs'
 import { mkdir, readdir, rename, stat, unlink } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
+import { DEFAULT_PROVIDER, type ProviderId } from '@shared/provider'
 import type { ArchiveRecord } from '@shared/types'
 import { assertAppDataWrite, assertRealAppDataWrite } from './safe-paths'
 import { copyShared } from './shared-copy'
@@ -26,8 +27,14 @@ export function archiveName(sessionId: string): string {
   return `${safeSegment(sessionId).slice(0, 60)}.${hash}`
 }
 
-export function archivePathFor(archiveDir: string, sourceId: string, sessionId: string): string {
-  return join(archiveDir, safeSegment(sourceId), `${archiveName(sessionId)}.jsonl`)
+/** `ext`: the provider's archive extension (Claude Code: ".jsonl"). */
+export function archivePathFor(
+  archiveDir: string,
+  sourceId: string,
+  sessionId: string,
+  ext = '.jsonl'
+): string {
+  return join(archiveDir, safeSegment(sourceId), `${archiveName(sessionId)}${ext}`)
 }
 
 export async function sha256File(path: string): Promise<string> {
@@ -37,6 +44,10 @@ export async function sha256File(path: string): Promise<string> {
 }
 
 export interface ArchiveInput {
+  /** Recorded only when it isn't Claude Code (absent means Claude Code). */
+  provider?: ProviderId
+  /** The archive copy's extension (default ".jsonl"). */
+  ext?: string
   sessionId: string
   sourceId: string
   sourceLabel: string
@@ -79,7 +90,8 @@ export async function archiveSession(
   appDataDir: string
 ): Promise<ArchiveRecord | undefined> {
   const src = await stat(input.originalPath)
-  const dest = existing?.archivePath ?? archivePathFor(archiveDir, input.sourceId, input.sessionId)
+  const dest =
+    existing?.archivePath ?? archivePathFor(archiveDir, input.sourceId, input.sessionId, input.ext)
   const decision = shouldArchive(existing, src.size, await fileExists(dest))
   if (decision === 'skip') {
     // Keep the record's descriptive fields fresh without touching the copy.
@@ -104,6 +116,9 @@ export async function archiveSession(
     await rename(tmp, dest)
     const now = new Date().toISOString()
     return {
+      ...(input.provider && input.provider !== DEFAULT_PROVIDER
+        ? { provider: input.provider }
+        : {}),
       sessionId: input.sessionId,
       sourceId: input.sourceId,
       sourceLabel: input.sourceLabel,
@@ -124,7 +139,11 @@ export async function archiveSession(
   }
 }
 
-export async function archiveStats(dir: string): Promise<{ files: number; bytes: number }> {
+/** Archive copies (files with one of the providers' extensions) and their size. */
+export async function archiveStats(
+  dir: string,
+  exts: readonly string[] = ['.jsonl']
+): Promise<{ files: number; bytes: number }> {
   let files = 0
   let bytes = 0
   const walk = async (d: string): Promise<void> => {
@@ -137,7 +156,7 @@ export async function archiveStats(dir: string): Promise<{ files: number; bytes:
     for (const e of entries) {
       const p = join(d, e.name)
       if (e.isDirectory()) await walk(p)
-      else if (e.isFile() && e.name.endsWith('.jsonl')) {
+      else if (e.isFile() && exts.some((x) => e.name.endsWith(x))) {
         files++
         bytes += (await stat(p)).size
       }

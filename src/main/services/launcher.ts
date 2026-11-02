@@ -14,10 +14,7 @@ import type {
   TerminalPref
 } from '@shared/types'
 import {
-  buildLaunchCommand,
   buildShellCommand,
-  claudeArgs,
-  claudeCommandLine,
   cwdProblem,
   remoteControlName,
   REMOTE_CONTROL_API_ERROR,
@@ -29,12 +26,14 @@ import {
 import { restoreIfMissing } from '../core/restore'
 import { handoffPath, writeHandoff } from '../core/handoff'
 import { isUuid } from '@shared/jsonl'
-import { buildHandoff, continuedName, handoffPrompt, newSinceSummary } from '@shared/summary'
+import { buildHandoff, continuedName, newSinceSummary } from '@shared/summary'
 import { resolveModelChoice, type ModelSettings, type ResolvedModel } from '@shared/model-choice'
 import { fileExists, isAbsoluteWindowsPath } from '../core/which'
 import type { Platform } from '../platform'
 import { BranchService } from './branches'
 import type { ResumeEstimate } from '@shared/context'
+import { sessionProvider } from '../providers/registry'
+import type { SessionProvider } from '../providers/types'
 import type { SessionService } from './sessions'
 
 /** API-credit launches (Phase 5). */
@@ -73,8 +72,12 @@ interface ContinuePlan {
   target: SessionSummary
 }
 
-export const CLAUDE_NOT_FOUND =
-  "Claude Code wasn't found on this computer's PATH. Install it (or open a new terminal once after installing), then try again."
+/** The agent's command isn't installed (or not on PATH). */
+export function notFoundMessage(product: string): string {
+  return `${product} wasn't found on this computer's PATH. Install it (or open a new terminal once after installing), then try again.`
+}
+
+export const CLAUDE_NOT_FOUND = notFoundMessage('Claude Code')
 
 type CwdState = 'exists' | 'missing' | 'unreachable'
 
@@ -113,6 +116,23 @@ export class Launcher {
       if (await this.platform.pathExists(join(root, ...parts))) return 'exists'
     for (const root of roots) if (await this.platform.pathExists(root)) return 'missing'
     return 'unreachable'
+  }
+
+  private provider(s: SessionSummary): SessionProvider {
+    return sessionProvider(this.sessions, s)
+  }
+
+  /** Why this launch isn't possible for the session's provider, if it isn't. */
+  private unsupported(s: SessionSummary, opts: LaunchOptions): string | undefined {
+    const p = this.provider(s)
+    const c = p.capabilities
+    const no = (what: string): string => `${what} isn't available for ${p.productName} sessions.`
+    if (opts.fork && !c.fork) return no('Fork')
+    if (opts.branch && !c.branch) return no('Branch from here')
+    if (opts.continueFresh && !c.continueFresh) return no('Continue fresh')
+    if (opts.remoteControl && !c.remoteControl) return no('Remote Control')
+    if (opts.billingAccountId && !c.apiBilling) return no('Launching on API credits')
+    return undefined
   }
 
   private unreachable(s: SessionSummary): string {
@@ -155,7 +175,7 @@ export class Launcher {
     apiKey?: string,
     continueFresh?: ContinueFreshArgs
   ): LaunchCommand {
-    return buildLaunchCommand({
+    return this.provider(s).launch.buildCommand({
       continueFresh,
       remoteControl: this.remoteControl(s, opts),
       askPermissions: opts.askPermissions === true,
@@ -213,10 +233,10 @@ export class Launcher {
     dataDir: string,
     wanted?: string
   ): Promise<string> {
-    const dir = dirname(s.originalPath)
+    const p = this.provider(s)
     // The handoff is in the app's own folder: checked directly, not through the platform.
     const free = async (id: string): Promise<boolean> =>
-      !(await this.platform.pathExists(join(dir, `${id}.jsonl`))) &&
+      !(await this.platform.pathExists(p.launch.sessionFilePath(s, id))) &&
       !(await fileExists(handoffPath(dataDir, id)))
     if (wanted && isUuid(wanted) && (await free(wanted))) return wanted
     for (let i = 0; i < 20; i++) {
@@ -251,10 +271,11 @@ export class Launcher {
         )
       sessionPath = `${root}/handoffs/${id}.md`
     }
-    const prompt = handoffPrompt(sessionPath)
+    const p = this.provider(s)
+    const prompt = p.launch.handoffPrompt(sessionPath)
     if (!prompt)
       throw new Error(
-        "The app's data folder has characters in its path that can't be passed to Claude Code safely."
+        `The app's data folder has characters in its path that can't be passed to ${p.productName} safely.`
       )
     const addDir =
       prompt.mode === 'read'
@@ -300,21 +321,19 @@ export class Launcher {
     }
   }
 
-  /** Just the `claude …` part, even when the full command can't be built. */
+  /** Just the agent's own command (`claude …`), even when the full command can't be built. */
   private claudeCommand(s: SessionSummary, opts: LaunchOptions, cmd?: LaunchCommand): string {
     if (cmd) return cmd.claudeCommand
     try {
-      return claudeCommandLine(
-        claudeArgs(
-          s.sessionId,
-          opts.skipPermissions,
-          opts.fork,
-          opts.newSession,
-          this.remoteControl(s, opts),
-          opts.askPermissions === true,
-          this.modelChoice(s)
-        )
-      )
+      return this.provider(s).launch.commandLine({
+        sessionId: s.sessionId,
+        skipPermissions: opts.skipPermissions,
+        fork: opts.fork,
+        newSession: opts.newSession,
+        remoteControl: this.remoteControl(s, opts),
+        askPermissions: opts.askPermissions === true,
+        modelChoice: this.modelChoice(s)
+      })
     } catch {
       return ''
     }
@@ -375,7 +394,7 @@ export class Launcher {
         billingLabel: this.billingLabel(opts),
         branch,
         branchError,
-        launchError: error ?? folderError,
+        launchError: this.unsupported(s, opts) ?? error ?? folderError,
         remoteControlName: this.remoteControl(
           branch ? { ...s, meta: { ...s.meta, name: s.meta.name || branch.name } } : s,
           opts
@@ -418,7 +437,7 @@ export class Launcher {
         billingLabel: this.billingLabel(opts),
         continueFresh: plan?.preview,
         continueError,
-        launchError: built.error ?? folderError,
+        launchError: this.unsupported(s, opts) ?? built.error ?? folderError,
         remoteControlName: this.remoteControl(target, opts)?.name,
         modelChoice: this.modelChoice(s)
       }
@@ -447,7 +466,7 @@ export class Launcher {
       terminal: cmd?.terminal ?? terminal,
       terminalReason: cmd?.terminalReason,
       billingLabel: this.billingLabel(opts),
-      launchError: error ?? folderError,
+      launchError: this.unsupported(s, opts) ?? error ?? folderError,
       remoteControlName: this.remoteControl(s, opts)?.name,
       modelChoice,
       ...(context ? { context } : {})
@@ -520,6 +539,8 @@ export class Launcher {
       commandLine: '',
       error
     })
+    const unsupported = this.unsupported(s, opts)
+    if (unsupported) return fail(unsupported)
     if (opts.remoteControl && opts.billingAccountId) return fail(REMOTE_CONTROL_API_ERROR)
     const cwd = opts.cwdOverride ?? s.cwd
     const tools = await this.platform.launchTools()
@@ -549,7 +570,8 @@ export class Launcher {
     const state = await this.cwdState(s, cwd)
     if (state === 'unreachable') return fail(this.unreachable(s))
     if (state === 'missing') return fail(`The folder no longer exists: ${cwd}`)
-    if (s.env === 'windows' && !tools.claude) return fail(CLAUDE_NOT_FOUND)
+    const p = this.provider(s)
+    if (p.launch.cliMissing(s.env, tools)) return fail(notFoundMessage(p.productName))
 
     // API billing: the key, decrypted only now and passed only to the child process.
     let apiKey: string | undefined

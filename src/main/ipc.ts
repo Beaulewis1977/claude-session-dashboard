@@ -314,7 +314,10 @@ export function registerIpc(deps: IpcDeps): void {
 
   handle('archive:stats', async () => ({
     dir: paths.archiveDir,
-    ...(await archiveStats(paths.archiveDir))
+    ...(await archiveStats(
+      paths.archiveDir,
+      sessions.providers.all().map((p) => p.archiveExt)
+    ))
   }))
   handle('import:claudeAi', async () => {
     const w = win()

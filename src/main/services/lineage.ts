@@ -4,7 +4,6 @@
 
 import { readFile, stat } from 'node:fs/promises'
 import { branchName } from '@shared/branch'
-import { buildMessages, isUuid, parseJsonl } from '@shared/jsonl'
 import {
   computeLineage,
   type LineageInput,
@@ -12,6 +11,7 @@ import {
   type SessionLineage
 } from '@shared/lineage'
 import type { SessionSummary } from '@shared/types'
+import { sessionProvider } from '../providers/registry'
 import type { SessionService } from './sessions'
 
 interface PendingFork {
@@ -28,16 +28,18 @@ interface PendingFork {
 
 const PENDING_MS = 60 * 60_000
 
-export async function messageStarts(path: string): Promise<MessageStart[] | undefined> {
+/** Where each message of a session starts (read with the session's provider). */
+async function messageStarts(
+  path: string,
+  starts: (text: string) => MessageStart[]
+): Promise<MessageStart[] | undefined> {
   let text: string
   try {
     text = await readFile(path, 'utf8')
   } catch {
     return undefined
   }
-  return buildMessages(parseJsonl(text).events)
-    .filter((m) => (m.role === 'user' || m.role === 'assistant') && isUuid(m.id))
-    .map((m) => ({ uuid: m.id, t: m.timestamp }))
+  return starts(text)
 }
 
 export class LineageService {
@@ -141,7 +143,7 @@ export class LineageService {
     const stamp = `${s.filePath}|${s.sizeBytes}|${s.lastActivityAt ?? ''}`
     const hit = this.starts.get(s.key)
     if (hit?.stamp === stamp) return hit
-    const list = await messageStarts(s.filePath)
+    const list = await messageStarts(s.filePath, sessionProvider(this.sessions, s).messageStarts)
     if (!list) return undefined
     const entry = { stamp, list, bornAt: await this.bornAt(s) }
     this.starts.set(s.key, entry)

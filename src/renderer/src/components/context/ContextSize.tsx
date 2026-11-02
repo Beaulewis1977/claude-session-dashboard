@@ -89,7 +89,11 @@ export function ResumeComparison({
       <b className="font-semibold">
         Resume{' '}
         {estimate.fresh?.unpriced
-          ? `≈ ${formatTokens(estimate.resume.tokens)} tokens`
+          ? `≈ ${formatTokens(estimate.resume.tokens)} tokens${
+              costShort(estimate.resume, estimate.billing).endsWith('tokens')
+                ? ''
+                : ` (${costShort(estimate.resume, estimate.billing)})`
+            }`
           : costShort(estimate.resume, estimate.billing)}
       </b>
       <span className="text-muted-foreground"> · </span>
@@ -123,14 +127,14 @@ function WarmNote({ estimate }: { estimate: ResumeEstimate }) {
 export function ContextLine({ estimate }: { estimate: ResumeEstimate }) {
   return (
     <div className="space-y-1 text-xs text-muted-foreground">
-      <div className="flex flex-wrap items-center gap-x-1.5">
-        <Gauge className="size-3.5 shrink-0" />
-        <span>
+      <div className="flex items-start gap-1.5">
+        <Gauge className="mt-px size-3.5 shrink-0" />
+        <span className="min-w-0 leading-relaxed">
           Context ≈ {formatTokens(estimate.tokens)} tokens ({pctText(estimate.windowPct)} of{' '}
           {formatTokens(estimate.windowSize)}).{' '}
-          {resumeSentence(estimate).replace(/^Resuming/, 'Reloading it')}
+          {resumeSentence(estimate).replace(/^Resuming/, 'Reloading it')}.{' '}
+          <EstimateInfo estimate={estimate} />
         </span>
-        <EstimateInfo estimate={estimate} />
       </div>
       <WarmNote estimate={estimate} />
     </div>

@@ -51,7 +51,8 @@ type BaseSummary = Omit<
 // v7: summaries in the search index (a new field).
 // v8: the context size (last reply's usage, compactions, cache lifetime).
 // v9: the cache lifetime as a 1-hour share (mixed 5-minute / 1-hour caches).
-const CACHE_VERSION = 9
+// v10: the 1-hour share of what is cached now (not of all writes).
+const CACHE_VERSION = 10
 
 interface CacheFile {
   version: number

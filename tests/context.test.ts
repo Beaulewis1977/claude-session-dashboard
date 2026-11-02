@@ -13,6 +13,7 @@ import {
   sizeBand,
   firstMessage,
   modelKey,
+  nativeWindow,
   withStatusLine,
   type SessionContext
 } from '@shared/context'
@@ -92,30 +93,87 @@ describe('analyzeContext', () => {
     expect(five.cache1hShare).toBe(0)
     const old = analyzeContext([reply(1, { input_tokens: 100, cache_creation_input_tokens: 50 })])!
     expect(old.tokens).toBe(150)
-    expect(old.cache1hShare).toBeUndefined()
+    // Older usage without the breakdown: the 5-minute cache.
+    expect(old.cache1hShare).toBe(0)
   })
 
-  it('mixed cache lifetimes: the 1-hour share of writes since the last compaction', () => {
-    const mixed = (cw5: number, cw1h: number) => ({
+  it('mixed cache lifetimes: what the cache holds now, by lifetime', () => {
+    const mixed = (read: number, cw5: number, cw1h: number) => ({
       input_tokens: 1,
+      cache_read_input_tokens: read,
       cache_creation_input_tokens: cw5 + cw1h,
       cache_creation: { ephemeral_5m_input_tokens: cw5, ephemeral_1h_input_tokens: cw1h }
     })
     const c = analyzeContext([
-      reply(1, mixed(0, 20_000)),
+      reply(1, mixed(0, 0, 20_000)),
       // Streamed parts of one reply count once.
-      reply(2, mixed(50_000, 0)),
-      reply(2, mixed(50_000, 0)),
-      reply(3, mixed(50_000, 0))
+      reply(2, mixed(20_000, 50_000, 0)),
+      reply(2, mixed(20_000, 50_000, 0)),
+      reply(3, mixed(70_000, 50_000, 0))
     ])!
     expect(c.cache1hShare).toBeCloseTo(20_000 / 120_000)
+
+    // The 5-minute part ran out and was written again: it isn't counted twice.
+    const rewritten = analyzeContext([
+      reply(1, mixed(0, 0, 20_000)),
+      reply(2, mixed(20_000, 100_000, 0)),
+      reply(20, mixed(20_000, 110_000, 0))
+    ])!
+    expect(rewritten.cache1hShare).toBeCloseTo(20_000 / 130_000)
+
     // A compaction starts over.
     const after = analyzeContext([
-      reply(1, mixed(90_000, 0)),
+      reply(1, mixed(0, 90_000, 0)),
       { type: 'system', subtype: 'compact_boundary', compactMetadata: { preTokens: 1 } },
-      reply(5, mixed(0, 30_000))
+      reply(5, mixed(0, 0, 30_000))
     ])!
     expect(after.cache1hShare).toBe(1)
+  })
+
+  it("another model's cache doesn't carry over", () => {
+    const c = analyzeContext([
+      reply(1, use1h(1, 0, 50_000), {}, 'claude-opus-4-5'),
+      reply(
+        2,
+        {
+          input_tokens: 1,
+          cache_read_input_tokens: 0,
+          cache_creation_input_tokens: 30_000,
+          cache_creation: { ephemeral_5m_input_tokens: 30_000, ephemeral_1h_input_tokens: 0 }
+        },
+        {},
+        'claude-sonnet-4-5'
+      )
+    ])!
+    expect(c.cache1hShare).toBe(0)
+    expect(c.model).toBe('claude-sonnet-4-5')
+  })
+
+  it('a reused message id after a compaction is a new reply (never a negative share)', () => {
+    const placeholder = (min: number, rid: string, usage: Record<string, unknown>): RawEvent => ({
+      type: 'assistant',
+      timestamp: at(min),
+      requestId: rid,
+      message: { id: 'msg_placeholder', model: 'claude-opus-4-5', content: [], usage }
+    })
+    const c = analyzeContext([
+      placeholder(1, 'req-1', use1h(1, 0, 100_000)),
+      { type: 'system', subtype: 'compact_boundary', compactMetadata: { preTokens: 100_001 } },
+      placeholder(5, 'req-2', {
+        input_tokens: 1,
+        cache_creation_input_tokens: 20_000,
+        cache_creation: { ephemeral_5m_input_tokens: 20_000, ephemeral_1h_input_tokens: 0 }
+      })
+    ])!
+    expect(c.cache1hShare).toBe(0)
+    expect(c.tokens).toBe(20_001)
+    // The same id with different requests (a gateway): separate replies too.
+    const twice = analyzeContext([
+      placeholder(1, 'req-1', use1h(1, 0, 10_000)),
+      placeholder(2, 'req-2', use1h(1, 10_000, 5_000))
+    ])!
+    expect(twice.cache1hShare).toBe(1)
+    expect(twice.tokens).toBe(15_001)
   })
 
   it('missing usage: unknown', () => {
@@ -224,39 +282,49 @@ describe('size', () => {
     expect(contextWindowSize({ ...c, windowSize: 500_000 })).toBe(500_000)
   })
 
+  it("models' own windows (Claude Code's model configuration)", () => {
+    expect(nativeWindow('claude-opus-4-6')).toBe(200_000)
+    expect(nativeWindow('claude-opus-4-5-20251101')).toBe(200_000)
+    expect(nativeWindow('claude-opus-4-7')).toBe(1_000_000)
+    expect(nativeWindow('claude-opus-5-5')).toBe(1_000_000)
+    expect(nativeWindow('claude-sonnet-4-6')).toBe(200_000)
+    expect(nativeWindow('claude-sonnet-5')).toBe(1_000_000)
+    expect(nativeWindow('claude-haiku-4-5')).toBe(200_000)
+    expect(nativeWindow('claude-haiku-5-5')).toBe(1_000_000)
+    expect(nativeWindow('claude-fable-5-1')).toBe(1_000_000)
+    expect(nativeWindow('claude-3-5-sonnet')).toBe(200_000)
+    expect(nativeWindow('claude-opus-4-6[1m]')).toBe(1_000_000)
+    expect(nativeWindow(undefined)).toBe(200_000)
+    expect(modelKey('Claude-Opus-4-5-20251101')).toBe('claude-opus-4-5')
+  })
+
   it('the window of the model the launch uses', () => {
+    // The session ran Opus 4.6 [1m]: its reading says 1M.
     const c: SessionContext = {
       tokens: 180_000,
       from: 'usage',
       compactions: 0,
-      model: 'claude-sonnet-4-5-20250929',
-      windowSize: 200_000,
-      windowModel: 'claude-sonnet-4-5-20250929'
+      model: 'claude-opus-4-6',
+      windowSize: 1_000_000,
+      windowModel: 'claude-opus-4-6'
     }
-    // An explicit [1m] launch isn't held to the old 200k reading.
-    expect(contextWindowSize(c, { choice: 'sonnet[1m]', modelId: 'claude-sonnet-4-5' })).toBe(
-      1_000_000
+    expect(contextWindowSize(c)).toBe(1_000_000)
+    // An explicit standard Opus 4.6 launch runs at 200k; its [1m] variant at 1M.
+    expect(contextWindowSize(c, { choice: 'claude-opus-4-6', modelId: 'claude-opus-4-6' })).toBe(
+      200_000
     )
-    // The same model (dates aside) keeps the session's reading; no choice too.
-    expect(
-      contextWindowSize(c, { choice: 'claude-sonnet-4-5', modelId: 'claude-sonnet-4-5' })
-    ).toBe(200_000)
-    expect(contextWindowSize(c)).toBe(200_000)
-    // Another model: what the status line reported for it elsewhere (a native 1M window).
-    const learned = { [modelKey('claude-opus-5-5')]: 1_000_000 }
-    expect(contextWindowSize(c, { choice: 'opus', modelId: 'claude-opus-5-5', learned })).toBe(
-      1_000_000
+    expect(contextWindowSize(c, { choice: 'opus[1m]', modelId: 'claude-opus-4-6' })).toBe(1_000_000)
+    // A native 1M model without any status line reading: 150k is 15%, not 75%.
+    const native: SessionContext = {
+      tokens: 150_000,
+      from: 'usage',
+      compactions: 0,
+      model: 'claude-opus-5-5'
+    }
+    expect(contextWindowSize(native)).toBe(1_000_000)
+    expect(contextWindowSize(native, { choice: 'haiku', modelId: 'claude-haiku-4-5' })).toBe(
+      200_000
     )
-    // A session without a reading, on a model seen with 1M elsewhere.
-    expect(
-      contextWindowSize(
-        { tokens: 50_000, from: 'usage', compactions: 0, model: 'claude-opus-5-5-20261001' },
-        { learned }
-      )
-    ).toBe(1_000_000)
-    // Another model, never seen: the standard window.
-    expect(contextWindowSize(c, { choice: 'haiku', modelId: 'claude-haiku-4-5' })).toBe(200_000)
-    expect(modelKey('Claude-Opus-4-5-20251101')).toBe('claude-opus-4-5')
   })
 })
 
@@ -402,12 +470,12 @@ describe('estimateResume', () => {
     expect(e.resume.costUsd).toBeCloseTo(1.0)
   })
 
-  it("Continue fresh: the setup plus the handoff, at the new session's model", () => {
+  it('Continue fresh: the setup plus the handoff, at the chosen model', () => {
     const e = estimateResume({
       ...base,
+      modelChoice: 'claude-opus-4-5',
       dollarsPerPct: 0.5,
       handoffChars: 3_100,
-      defaultModel: 'claude-opus-4-5',
       now: cold
     })
     // 20k + (3100 + 900) / 4 = 21k tokens, 1h write.
@@ -418,27 +486,17 @@ describe('estimateResume', () => {
     expect(estimateResume({ ...base, now: cold }).fresh).toBeUndefined()
   })
 
-  it("Continue fresh with no model chosen uses Claude Code's current default, else tokens only", () => {
-    // The session ran on Opus; Claude Code's default is Haiku now.
-    const e = estimateResume({
-      ...base,
-      handoffChars: 3_100,
-      defaultModel: 'claude-haiku-4-5',
-      dollarsPerPct: 0.5,
-      now: cold
-    })
-    expect(e.freshModel).toBe('claude-haiku-4-5')
-    expect(e.model).toBe('claude-opus-4-5')
-    const unknown = estimateResume({ ...base, handoffChars: 3_100, dollarsPerPct: 0.5, now: cold })
-    expect(unknown.fresh).toMatchObject({ tokens: 21_000, unpriced: true })
-    expect(unknown.fresh?.pct5h).toBeUndefined()
-    expect(unknown.freshModel).toBeUndefined()
-    // An explicit model choice prices both with it.
+  it("Continue fresh with no model chosen: Claude Code's default can't be verified, tokens only", () => {
+    const e = estimateResume({ ...base, handoffChars: 3_100, dollarsPerPct: 0.5, now: cold })
+    expect(e.fresh).toMatchObject({ tokens: 21_000, unpriced: true })
+    expect(e.fresh?.pct5h).toBeUndefined()
+    expect(e.freshModel).toBeUndefined()
+    // Resume itself is still priced.
+    expect(e.resume.pct5h).toBeCloseTo(2)
     const chosen = estimateResume({
       ...base,
       modelChoice: 'sonnet',
       handoffChars: 3_100,
-      defaultModel: 'claude-haiku-4-5',
       now: cold
     })
     expect(chosen.freshModel).toBe(chosen.model)
@@ -489,6 +547,22 @@ describe('estimateResume', () => {
     ).toBeUndefined()
     expect(
       pctPerWeightedToken({ reading: { pct: 5, at: T0 }, records: [], weights: DEFAULT_WEIGHTS })
+    ).toBeUndefined()
+    // Without the window's start, older use would count as this window's: unknown.
+    const old = {
+      id: 'o',
+      ts: T0 - 30 * 86_400_000,
+      key: 'w:old',
+      project: 'p',
+      env: 'windows',
+      model: 'claude-opus-4-5',
+      input: 0,
+      output: 0,
+      cacheWrite: 0,
+      cacheRead: 1_000_000
+    } as UsageRecord
+    expect(
+      pctPerWeightedToken({ reading: { pct: 5, at: T0 }, records: [old], weights: DEFAULT_WEIGHTS })
     ).toBeUndefined()
   })
 

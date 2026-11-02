@@ -149,9 +149,7 @@ describe('context size (fixtures)', { timeout: 30_000 }, () => {
       limits: {
         dollarsPerPct: () => 0.5,
         state: async () => ({}) as never,
-        isSubscription: () => true,
-        latestModel: () => 'claude-opus-4-5-20251101',
-        windowSizes: () => ({})
+        isSubscription: () => true
       },
       usage: { allRecords: () => [] },
       settings: () => DEFAULT_SETTINGS
@@ -190,9 +188,14 @@ describe('context size (fixtures)', { timeout: 30_000 }, () => {
     })
     const withSummary = await launcher.preview(opts)
     expect(withSummary.context?.fresh?.tokens).toBeGreaterThan(21_004)
-    // No model chosen: the new session is priced at Claude Code's current model.
-    expect(withSummary.context?.freshModel).toBe('claude-opus-4-5-20251101')
-    expect(withSummary.context!.fresh!.pct5h!).toBeLessThan(withSummary.context!.resume.pct5h!)
+    // No model chosen: Claude Code's default can't be verified, so tokens only.
+    expect(withSummary.context?.fresh?.unpriced).toBe(true)
+    expect(withSummary.context?.freshModel).toBeUndefined()
+    // A chosen model prices both.
+    sessions.updateMeta(key, { model: 'opus' })
+    const chosen = await launcher.preview(opts)
+    expect(chosen.context?.freshModel).toBe(chosen.context?.model)
+    expect(chosen.context!.fresh!.pct5h!).toBeLessThan(chosen.context!.resume.pct5h!)
   })
 
   it('a failing estimate never stops the preview', async () => {
@@ -208,7 +211,16 @@ describe('context size (fixtures)', { timeout: 30_000 }, () => {
 })
 
 describe('cache scope', () => {
-  const s = (billing?: SessionSummary['billing']) => ({ billing }) as SessionSummary
+  const s = (
+    billing?: SessionSummary['billing'],
+    taggedAt = '2026-10-01T09:00:00.000Z',
+    lastReplyAt = '2026-10-01T10:00:00.000Z'
+  ) =>
+    ({
+      billing,
+      meta: { billing: billing && { mode: billing.mode, source: 'launch', at: taggedAt } },
+      context: { tokens: 1, from: 'usage', compactions: 0, lastReplyAt }
+    }) as SessionSummary
   it('the same account shares the cache; another or an unknown one does not', () => {
     expect(sameCacheScope(s({ mode: 'subscription', source: 'bridge' }), undefined)).toBe(true)
     expect(sameCacheScope(s({ mode: 'subscription', source: 'launch' }), 'acct-1')).toBe(false)
@@ -223,6 +235,24 @@ describe('cache scope', () => {
     ).toBe(false)
     expect(sameCacheScope(s({ mode: 'unknown', source: 'none' }), undefined)).toBe(false)
     expect(sameCacheScope(s(undefined), undefined)).toBe(false)
+    // Tagged by a launch after the last reply: the tag doesn't say who made the cache.
+    expect(
+      sameCacheScope(
+        s(
+          { mode: 'api', accountId: 'acct-2', source: 'launch' },
+          '2026-10-01T11:00:00.000Z',
+          '2026-10-01T10:00:00.000Z'
+        ),
+        'acct-2'
+      )
+    ).toBe(false)
+    // A reading-based guess isn't a launch tag: it holds.
+    expect(
+      sameCacheScope(
+        s({ mode: 'subscription', source: 'bridge' }, '2026-10-01T11:00:00.000Z'),
+        undefined
+      )
+    ).toBe(true)
   })
 })
 

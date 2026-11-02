@@ -135,7 +135,8 @@ afterEach(async () => {
   await rm(root, { recursive: true, force: true, maxRetries: 5 })
 })
 
-describe('fixtures', () => {
+// A full fixture scan, like the other fixture suites: slow under a parallel run.
+describe('fixtures', { timeout: 30_000 }, () => {
   it('migrates the sample WSL billing default to its distro', async () => {
     await cp(FIXTURES, join(root, 'fixtures'), { recursive: true })
     // The ml-pipeline sessions are part of the usage samples.

@@ -14,11 +14,20 @@ import type { UsageService } from './usage'
 /**
  * The launch bills the same account the session's prompt cache belongs to.
  * Caches aren't shared across organizations, so another account (or a
- * session whose billing isn't known) starts cold.
+ * session whose billing isn't known) starts cold. The app tags a session's
+ * billing when it opens the terminal, before any new reply: a tag newer than
+ * the last reply says nothing about who made the cache.
  */
 export function sameCacheScope(s: SessionSummary, billingAccountId: string | undefined): boolean {
   const b = s.billing
   if (!b) return false
+  const lastReply = s.context?.lastReplyAt ? Date.parse(s.context.lastReplyAt) : undefined
+  const taggedAt = s.meta.billing?.at ? Date.parse(s.meta.billing.at) : undefined
+  if (
+    b.source === 'launch' &&
+    (taggedAt === undefined || lastReply === undefined || !(taggedAt <= lastReply))
+  )
+    return false
   if (billingAccountId) return b.mode === 'api' && b.accountId === billingAccountId
   return b.mode === 'subscription'
 }
@@ -46,10 +55,7 @@ export function publishContextReadings(
 export class ContextCost {
   constructor(
     private readonly deps: {
-      limits: Pick<
-        LimitsService,
-        'dollarsPerPct' | 'state' | 'isSubscription' | 'latestModel' | 'windowSizes'
-      >
+      limits: Pick<LimitsService, 'dollarsPerPct' | 'state' | 'isSubscription'>
       usage: Pick<UsageService, 'allRecords'>
       settings: () => AppSettings
     }
@@ -90,8 +96,6 @@ export class ContextCost {
       dollarsPerPct,
       pctPerWeighted,
       handoffChars: summary ? summaryMarkdown(summary).length : undefined,
-      defaultModel: this.deps.limits.latestModel(),
-      windowSizes: this.deps.limits.windowSizes(),
       now: now()
     })
   }

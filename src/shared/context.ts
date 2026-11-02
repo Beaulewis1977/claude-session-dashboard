@@ -46,9 +46,9 @@ export interface SessionContext {
   /** The session's fixed setup (system prompt, tools, first prompt): its first reply's input. */
   baseTokens?: number
   /**
-   * Share (0–1) of the cache writes since the last compaction that went to
-   * the 1-hour cache; the rest went to the 5-minute one. Undefined when the
-   * usage lines don't say (then everything counts as 5-minute).
+   * Share (0–1) of what the prompt cache held after the last reply that is in
+   * the 1-hour cache; the rest is in the 5-minute one. Undefined when nothing
+   * is known to be cached (then everything counts as 5-minute).
    */
   cache1hShare?: number
   /** Time of the last main-thread reply (ISO): its cache may still be warm. */
@@ -85,17 +85,48 @@ function blocksText(content: unknown): string {
 /** Context tokens of one reply's usage: input + cache read + cache creation. */
 export function usageContextTokens(usage: unknown): {
   tokens: number
+  read: number
   cw5: number
   cw1h: number
 } {
   const u = obj(usage)
-  if (!u) return { tokens: 0, cw5: 0, cw1h: 0 }
+  if (!u) return { tokens: 0, read: 0, cw5: 0, cw1h: 0 }
   const cc = obj(u.cache_creation)
-  const cw5 = num(cc?.ephemeral_5m_input_tokens)
+  let cw5 = num(cc?.ephemeral_5m_input_tokens)
   const cw1h = num(cc?.ephemeral_1h_input_tokens)
-  const write = cc && cw5 + cw1h > 0 ? cw5 + cw1h : num(u.cache_creation_input_tokens)
-  const tokens = num(u.input_tokens) + num(u.cache_read_input_tokens) + write
-  return { tokens, cw5, cw1h }
+  // Without the breakdown (older versions), writes went to the 5-minute cache.
+  if (!(cc && cw5 + cw1h > 0)) cw5 = num(u.cache_creation_input_tokens)
+  const read = num(u.cache_read_input_tokens)
+  return { tokens: num(u.input_tokens) + read + cw5 + cw1h, read, cw5, cw1h }
+}
+
+/**
+ * What the prompt cache holds after each reply, by lifetime. 1-hour entries
+ * come first in the prompt, then 5-minute ones. A reply reads a prefix of
+ * what was cached (the rest ran out or changed) and writes new entries after
+ * it, so the cache is the part it read plus what it wrote. Caches belong to
+ * one model: another model starts empty.
+ */
+class CacheTrack {
+  h1 = 0
+  m5 = 0
+  model?: string
+  apply(model: string | undefined, u: { read: number; cw5: number; cw1h: number }): void {
+    if (model && this.model && model !== this.model) this.reset()
+    if (model) this.model = model
+    const kept1 = Math.min(this.h1, u.read)
+    const kept5 = Math.min(this.m5, Math.max(0, u.read - kept1))
+    this.h1 = kept1 + u.cw1h
+    this.m5 = kept5 + u.cw5
+  }
+  reset(): void {
+    this.h1 = this.m5 = 0
+  }
+  /** Share of the cached tokens in the 1-hour cache, undefined when nothing is cached. */
+  get share1h(): number | undefined {
+    const total = this.h1 + this.m5
+    return total > 0 ? this.h1 / total : undefined
+  }
 }
 
 /**
@@ -105,9 +136,15 @@ export function usageContextTokens(usage: unknown): {
 export function analyzeContext(events: RawEvent[]): SessionContext | undefined {
   let last: { tokens: number; at?: string; model?: string } | undefined
   let base: number | undefined
-  // Cache writes since the last compaction, by lifetime.
-  let cw5 = 0
-  let cw1h = 0
+  const cache = new CacheTrack()
+  // Streamed parts of one reply (same message and request) repeat its usage:
+  // it is applied once, with the last part's numbers.
+  let pending:
+    { key: string; model?: string; u: { read: number; cw5: number; cw1h: number } } | undefined
+  const flush = (): void => {
+    if (pending) cache.apply(pending.model, pending.u)
+    pending = undefined
+  }
   let compactions = 0
   let preCompact: number | undefined
   let compactAt: string | undefined
@@ -115,8 +152,7 @@ export function analyzeContext(events: RawEvent[]): SessionContext | undefined {
   let compactedSinceReply = false
   let summaryChars = 0
   let lastTs: string | undefined
-  let lastId: string | undefined
-  let lastWrites = { cw5: 0, cw1h: 0 }
+  let n = 0
 
   for (const e of events) {
     const ts = validTs(e.timestamp)
@@ -130,7 +166,9 @@ export function analyzeContext(events: RawEvent[]): SessionContext | undefined {
       compactedSinceReply = true
       summaryChars = 0
       compactAt = ts ?? lastTs
-      cw5 = cw1h = 0
+      // A new conversation: nothing of it is cached, and no reply is half-counted.
+      pending = undefined
+      cache.reset()
       continue
     }
     const msg = obj(e.message)
@@ -139,7 +177,8 @@ export function analyzeContext(events: RawEvent[]): SessionContext | undefined {
       if (!compactedSinceReply) {
         compactions++
         compactAt = ts ?? lastTs
-        cw5 = cw1h = 0
+        pending = undefined
+        cache.reset()
       }
       compactedSinceReply = true
       summaryChars = blocksText(msg?.content ?? e.content).length
@@ -150,29 +189,25 @@ export function analyzeContext(events: RawEvent[]): SessionContext | undefined {
     if (model === '<synthetic>') continue
     const u = usageContextTokens(msg.usage)
     if (!u.tokens) continue
-    // Streamed parts of one reply repeat its usage: count its writes once.
     const mid = text(msg.id)
-    if (mid && mid === lastId) {
-      cw5 += u.cw5 - lastWrites.cw5
-      cw1h += u.cw1h - lastWrites.cw1h
-    } else {
-      cw5 += u.cw5
-      cw1h += u.cw1h
-    }
-    lastId = mid
-    lastWrites = { cw5: u.cw5, cw1h: u.cw1h }
-    // Streamed parts of one reply repeat its usage: the last one wins.
+    const rid = text(e.requestId)
+    // Without ids every entry is its own reply.
+    const key = mid ? `${mid}:${rid ?? ''}` : `#${n++}`
+    if (pending?.key !== key) flush()
+    pending = { key, model: model ?? last?.model, u }
     last = { tokens: u.tokens, at: ts, model: model ?? last?.model }
     if (base === undefined) base = u.tokens
     compactedSinceReply = false
   }
+  flush()
 
   if (!last && !compactions) return undefined
+  const share1h = cache.share1h
   const common = {
     compactions,
     ...(preCompact ? { preCompactTokens: preCompact } : {}),
     ...(base !== undefined ? { baseTokens: base } : {}),
-    ...(cw5 + cw1h > 0 ? { cache1hShare: cw1h / (cw5 + cw1h) } : {}),
+    ...(share1h !== undefined ? { cache1hShare: share1h } : {}),
     ...(last?.model ? { model: last.model } : {})
   }
   if (compactedSinceReply || !last) {
@@ -244,15 +279,30 @@ export function modelKey(id: string): string {
   return id.toLowerCase().replace(/-\d{8}(?=$|\[)/, '')
 }
 
-const plainKey = (id: string): string => modelKey(id).replace(/\[1m\]$/, '')
+/**
+ * A model's own context window (Claude Code's model configuration docs):
+ * Fable 5 and later, Sonnet 5 and later, Haiku 5.5 and later and Opus 4.7 and
+ * later run with 1M by default; other models (Opus 4.6, Sonnet 4.6 and older)
+ * have 200k unless their `[1m]` variant is chosen.
+ */
+export function nativeWindow(modelId: string | undefined): number {
+  if (!modelId) return STANDARD_WINDOW
+  const id = modelKey(modelId)
+  if (id.endsWith('[1m]')) return LONG_WINDOW
+  const m = /claude-(opus|sonnet|haiku|fable|mythos)-(\d+)(?:-(\d{1,2}))?(?=$|-|\[)/.exec(id)
+  if (!m) return STANDARD_WINDOW
+  const v = Number(m[2]) * 100 + Number(m[3] ?? 0)
+  const at = { fable: 500, sonnet: 500, haiku: 505, opus: 407 } as Record<string, number>
+  return m[1] in at && v >= at[m[1]] ? LONG_WINDOW : STANDARD_WINDOW
+}
 
 /**
  * The context window of the model a launch uses:
  * - an explicit `[1m]` choice: 1M;
- * - the session's own status line reading, unless another model is chosen;
- * - what the status line reported for that model in any session (so models
- *   with a native 1M window are known once seen);
- * - else 1M when the context is already past 200k, otherwise 200k.
+ * - another explicit model: that model's own window (a reading of the
+ *   session's can't tell a `[1m]` variant from the standard one);
+ * - no choice: the session's status line reading, else its model's own
+ *   window, else 1M when the context is already past 200k.
  */
 export function contextWindowSize(
   ctx: SessionContext,
@@ -261,25 +311,15 @@ export function contextWindowSize(
     choice?: string
     /** The model id it resolves to. */
     modelId?: string
-    /** Window sizes the status line reported, by `modelKey`. */
-    learned?: Record<string, number>
   } = {}
 ): number {
   const choice = launch.choice?.toLowerCase()
   if (choice?.endsWith('[1m]')) return LONG_WINDOW
   const explicit = !!choice && choice !== 'default'
-  const target = launch.modelId ?? ctx.model
-  const readFor = ctx.windowModel ?? ctx.model
-  if (
-    ctx.windowSize &&
-    (!explicit || !target || (!!readFor && plainKey(readFor) === plainKey(target)))
-  )
-    return ctx.windowSize
-  const learned = target ? launch.learned?.[modelKey(target)] : undefined
-  if (learned) return learned
-  if ((!explicit && ctx.model?.toLowerCase().includes('[1m]')) || ctx.tokens > STANDARD_WINDOW)
-    return LONG_WINDOW
-  return STANDARD_WINDOW
+  if (explicit) return nativeWindow(launch.modelId)
+  if (ctx.windowSize) return ctx.windowSize
+  if (ctx.tokens > STANDARD_WINDOW) return LONG_WINDOW
+  return nativeWindow(ctx.model)
 }
 
 export type SizeBand = 'S' | 'M' | 'L' | 'XL'
@@ -432,7 +472,7 @@ export interface PctBasis {
  * This window's % per weighted token: the live reading divided by the
  * subscription use in the window up to it (API-billed use doesn't move the
  * limit, so it's left out, as in the limit gauge). Undefined without a
- * reading or use to compare with.
+ * reading, its window's start, or use to compare with.
  */
 export function pctPerWeightedToken(i: {
   reading?: { pct: number; at: number; windowStart?: number }
@@ -441,12 +481,12 @@ export function pctPerWeightedToken(i: {
   isSubscription?: (key: string) => boolean
 }): number | undefined {
   const r = i.reading
-  if (!r || !(r.pct > 0)) return undefined
+  // Without the window's start, older use can't be told apart from this window's.
+  if (!r || !(r.pct > 0) || r.windowStart === undefined) return undefined
   const sub = i.isSubscription ?? (() => true)
   let before = 0
   for (const x of i.records)
-    if (x.ts <= r.at && (r.windowStart === undefined || x.ts >= r.windowStart) && sub(x.key))
-      before += weightedTokens(x, i.weights)
+    if (x.ts <= r.at && x.ts >= r.windowStart && sub(x.key)) before += weightedTokens(x, i.weights)
   return before > 0 ? r.pct / before : undefined
 }
 
@@ -535,13 +575,6 @@ export function estimateResume(i: {
   pctPerWeighted?: number
   /** Characters of the summary that Continue fresh would hand over (undefined: no summary). */
   handoffChars?: number
-  /**
-   * The model a new session uses when none is chosen: Claude Code's current
-   * default (e.g. the latest status line reading's model).
-   */
-  defaultModel?: string
-  /** Window sizes the status line reported, by `modelKey`. */
-  windowSizes?: Record<string, number>
   now: number
 }): ResumeEstimate {
   const { ctx, prices } = i
@@ -570,14 +603,11 @@ export function estimateResume(i: {
         basis
       )
     : coldCost
-  // Continue fresh starts a new session: the chosen model, else Claude Code's
-  // current default (not necessarily this session's model).
+  // Continue fresh starts a new session. Without a chosen model it gets Claude
+  // Code's default (environment, settings, plan, organization), which the app
+  // can't verify, so it is shown in tokens only.
   const explicit = !!i.modelChoice && i.modelChoice.toLowerCase() !== 'default'
-  const freshModel = explicit
-    ? model
-    : i.defaultModel
-      ? priceModelId(undefined, i.defaultModel, prices)
-      : undefined
+  const freshModel = explicit ? model : undefined
   let fresh: CostEstimate | undefined
   if (i.handoffChars !== undefined) {
     const t =
@@ -588,11 +618,7 @@ export function estimateResume(i: {
       : { tokens: t, costUsd: 0, unpriced: true }
   }
   const priced = !!findPrice(model.replace(/-fast$/, ''), prices)
-  const windowSize = contextWindowSize(ctx, {
-    choice: i.modelChoice,
-    modelId: explicit ? model : ctx.model,
-    learned: i.windowSizes
-  })
+  const windowSize = contextWindowSize(ctx, { choice: i.modelChoice, modelId: model })
   const basisUsed: ResumeEstimate['basis'] =
     sub && resume.pct5h !== undefined
       ? i.dollarsPerPct && i.dollarsPerPct > 0 && priced

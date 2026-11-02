@@ -44,7 +44,7 @@ import {
 } from '@shared/usage/health'
 import { paceAdvice, paceOf, type PaceSettings } from '@shared/usage/pace'
 import type { WindowKind } from '@shared/usage/limits'
-import { modelKey, type StatusContext } from '@shared/context'
+import type { StatusContext } from '@shared/context'
 import type { JsonStore } from '../core/json-store'
 import { appendNdjson, readNdjson } from '../core/ndjson'
 import { assertExactBridgeLive, assertRealBridgeWrite } from '../core/safe-paths'
@@ -344,23 +344,6 @@ export class LimitsService extends EventEmitter<{ changed: [] }> {
   /** Time of the newest context reading of any session (changes when one arrives). */
   lastContextAt(): number {
     return this.contextAt
-  }
-
-  /** The model of the newest status line reading: Claude Code's model right now. */
-  latestModel(): string | undefined {
-    for (let i = this.history.length - 1; i >= 0; i--) {
-      const m = this.history[i].model
-      if (m) return m
-    }
-    return undefined
-  }
-
-  /** Context window sizes the status line reported, by model (the newest per model). */
-  windowSizes(): Record<string, number> {
-    const out: Record<string, number> = {}
-    for (const r of this.history)
-      if (r.model && r.contextSize && r.contextSize > 0) out[modelKey(r.model)] = r.contextSize
-    return out
   }
 
   private contextAt = 0

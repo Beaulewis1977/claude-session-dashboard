@@ -1,8 +1,11 @@
 # Changelog
 
-## Unreleased
+## 1.7.0 (November 2, 2026)
 
-### Session summaries and Continue fresh
+**Session summaries, and Continue fresh: start a new session from a summary instead of reloading
+the whole history.**
+
+### Session summaries and Continue fresh (PR #22)
 
 - **Summaries.** A short summary per session (suggested title, what was done, files changed,
   decisions, open to-dos, where to pick up) at the top of the viewer and as one line on each card,
@@ -38,6 +41,9 @@
 - **Regenerate** on the summary is now a labelled button, not just an icon.
 - The launch and Summarize dialogs scroll when they're taller than the window, instead of hiding
   their buttons.
+
+**Known issue:** a queued summary you didn't preview sends the session's content as it is when the
+summary runs, not as it was when you queued it.
 
 ## 1.6.0 (November 1, 2026)
 

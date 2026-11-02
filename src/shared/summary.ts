@@ -417,7 +417,15 @@ export function parseSummaryAnswer(
 /** Usage of one `claude -p --output-format json` run, per model, as usage records. */
 export function runUsageRecords(
   stdout: string,
-  opts: { runId: string; ts: number; env: UsageRecord['env']; fallbackModel?: string }
+  opts: {
+    runId: string
+    /** When the run finished (the usage is counted then). */
+    ts: number
+    /** When it started. */
+    startTs?: number
+    env: UsageRecord['env']
+    fallbackModel?: string
+  }
 ): UsageRecord[] {
   let o: Record<string, unknown> | undefined
   const lines = stdout.trim().split(/\r?\n/)
@@ -433,6 +441,7 @@ export function runUsageRecords(
   const num = (v: unknown): number => (typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : 0)
   const base = {
     ts: opts.ts,
+    ...(opts.startTs !== undefined ? { startTs: opts.startTs } : {}),
     key: SUMMARY_USAGE_KEY,
     project: SUMMARY_USAGE_LABEL,
     env: opts.env
@@ -588,14 +597,31 @@ export function continuedName(parentTitle: string, taken: Iterable<string>): str
 
 // ------------------------------------------------------------ limits guard
 
+/** The 5-hour % the limits guard goes by; `unknown`: its own runs since couldn't be counted. */
+export interface GuardReading {
+  pct: number
+  /**
+   * Summaries ran since the live reading but how much they used can't be
+   * worked out (no baseline, and no earlier use in this window to compare
+   * with): `pct` is only the reading, which doesn't include them.
+   */
+  unknown?: boolean
+}
+
 /**
  * The 5-hour % the limits guard goes by: the latest live reading, plus what
  * this app's own summary runs have used since it. The reading comes from
  * Claude Code's status line, which summary runs (claude -p) don't update, so
  * without this a batch that starts below the pause line would never see
- * itself cross it. Their share comes from the limit-health baseline ($ per 1%
- * at the plan) or, without one, from this window's own % per weighted token.
- * Undefined when there's no current reading.
+ * itself cross it.
+ *
+ * A run counts when it finished after the reading (so one that was still
+ * running when the reading came counts too: its tokens are billed as it
+ * ends). Its share comes from the limit-health baseline ($ per 1% at the
+ * plan) or, without one, from this window's own % per weighted token of
+ * subscription use up to the reading (API-billed use doesn't move the
+ * limit, so it's left out, as in the limit gauge). Undefined when there's no
+ * current reading.
  */
 export function guardPct(i: {
   reading?: { pct: number; at: number; windowStart?: number }
@@ -603,22 +629,25 @@ export function guardPct(i: {
   prices: ModelPrice[]
   weights: CapacityWeights
   dollarsPerPct?: number
-}): number | undefined {
+  /** Billed to the subscription (the limit gauge's own filter). */
+  isSubscription?: (key: string) => boolean
+}): GuardReading | undefined {
   const r = i.reading
   if (!r) return undefined
+  const sub = i.isSubscription ?? (() => true)
   const inWindow = (ts: number): boolean => r.windowStart === undefined || ts >= r.windowStart
   const own = i.records.filter((x) => x.key === SUMMARY_USAGE_KEY && x.ts > r.at && inWindow(x.ts))
-  if (!own.length) return r.pct
+  if (!own.length) return { pct: r.pct }
   if (i.dollarsPerPct && i.dollarsPerPct > 0)
-    return r.pct + own.reduce((n, x) => n + recordCost(x, i.prices), 0) / i.dollarsPerPct
+    return { pct: r.pct + own.reduce((n, x) => n + recordCost(x, i.prices), 0) / i.dollarsPerPct }
   let before = 0
   for (const x of i.records)
-    if (x.ts <= r.at && inWindow(x.ts)) before += weightedTokens(x, i.weights)
+    if (x.ts <= r.at && inWindow(x.ts) && sub(x.key)) before += weightedTokens(x, i.weights)
   if (before > 0 && r.pct > 0) {
     const ownWeighted = own.reduce((n, x) => n + weightedTokens(x, i.weights), 0)
-    return r.pct + (ownWeighted * r.pct) / before
+    return { pct: r.pct + (ownWeighted * r.pct) / before }
   }
-  return r.pct
+  return { pct: r.pct, unknown: true }
 }
 
 // --------------------------------------------------------------- estimates

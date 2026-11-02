@@ -409,6 +409,14 @@ describe('the limits guard counts its own runs', () => {
   const weights = { input: 1, output: 1, cacheRead: 0, cacheWrite: 0 }
   const reading = { pct: 70, at: 10_000, windowStart: 1_000 }
 
+  it('counts a run that was still going when the reading came', () => {
+    // Started before the reading, finished after it: its tokens weren't in the %.
+    const run = { ...rec(12_000, SUMMARY_USAGE_KEY, 2000), startTs: 9_000 }
+    expect(
+      guardPct({ reading, records: [run], prices: DEFAULT_PRICES, weights, dollarsPerPct: 0.5 })
+    ).toEqual({ pct: 74 })
+  })
+
   it('adds summary runs since the reading, at the baseline rate', () => {
     const records = [
       rec(5_000, SUMMARY_USAGE_KEY), // before the reading: already in its %
@@ -419,17 +427,52 @@ describe('the limits guard counts its own runs', () => {
     ]
     expect(
       guardPct({ reading, records, prices: DEFAULT_PRICES, weights, dollarsPerPct: 0.5 })
-    ).toBe(70 + 5 / 0.5)
+    ).toEqual({ pct: 70 + 5 / 0.5 })
   })
 
   it("without a baseline, uses the window's own % per token", () => {
     const records = [rec(5_000, 'w:a', 7000), rec(12_000, SUMMARY_USAGE_KEY, 1000)]
     // 70% for 7000 weighted tokens: 1000 more is 10%.
-    expect(guardPct({ reading, records, prices: DEFAULT_PRICES, weights })).toBeCloseTo(80, 6)
+    expect(guardPct({ reading, records, prices: DEFAULT_PRICES, weights })!.pct).toBeCloseTo(80, 6)
+  })
+
+  it('leaves API-billed use out of the fallback, like the limit gauge', () => {
+    const records = [
+      rec(5_000, 'w:sub', 7000),
+      rec(6_000, 'w:api', 70_000), // billed to an API key: doesn't move the limit
+      rec(12_000, SUMMARY_USAGE_KEY, 1000)
+    ]
+    const g = guardPct({
+      reading,
+      records,
+      prices: DEFAULT_PRICES,
+      weights,
+      isSubscription: (k) => k !== 'w:api'
+    })
+    expect(g!.pct).toBeCloseTo(80, 6)
+    expect(g!.unknown).toBeUndefined()
+  })
+
+  it('says "unknown" when its own runs can\'t be counted, instead of the bare reading', () => {
+    const own = [rec(12_000, SUMMARY_USAGE_KEY, 1000)]
+    // A 0% reading: no rate to scale by.
+    expect(
+      guardPct({ reading: { ...reading, pct: 0 }, records: own, prices: DEFAULT_PRICES, weights })
+    ).toEqual({ pct: 0, unknown: true })
+    // No earlier subscription use in the window.
+    expect(
+      guardPct({
+        reading,
+        records: [rec(5_000, 'w:api', 9000), ...own],
+        prices: DEFAULT_PRICES,
+        weights,
+        isSubscription: (k) => k !== 'w:api'
+      })
+    ).toEqual({ pct: 70, unknown: true })
   })
 
   it('is the reading alone with no runs since, and undefined without a reading', () => {
-    expect(guardPct({ reading, records: [], prices: DEFAULT_PRICES, weights })).toBe(70)
+    expect(guardPct({ reading, records: [], prices: DEFAULT_PRICES, weights })).toEqual({ pct: 70 })
     expect(guardPct({ records: [], prices: DEFAULT_PRICES, weights })).toBeUndefined()
   })
 })

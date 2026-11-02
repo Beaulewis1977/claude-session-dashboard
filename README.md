@@ -87,6 +87,22 @@ Everything stays on your PC and your own private network.
   it would use first, and pauses (with a Resume button) if the live 5-hour limit goes above 80%.
   Summary runs show in Usage as "Summaries (dashboard)".
 
+### Context size before you resume
+
+- **A size badge on every card** (S / M / L / XL, exact tokens on hover) and a **Context size** sort.
+  The size is the last reply's context (input + cache tokens), the status line's reading when it is
+  newer, or an estimate from the summary right after a compaction.
+- **In the viewer:** tokens, % of the model's context window, compactions, and what resuming would
+  use, next to what Continue fresh would use.
+- **A warning before resuming a large session** (150k tokens by default, Settings → Context size):
+  "Large session: about 180K tokens. Resuming may use about 12% of your 5-hour window", with
+  **Continue fresh** (or **Summarize first**), **Fork** (keeps the original, same size), **Resume
+  anyway** (one click) and **Don't warn for this session**. Same on the phone.
+- The % is an **estimate**: the context priced at the launch's model as a prompt-cache write (or a
+  cache read when the last reply was recent enough that the cache may still be warm), turned into a
+  share of the 5-hour window by your limit-health baseline, or by this window's own subscription use
+  when there's no baseline yet. Without either it shows tokens only; on API credits it shows dollars.
+
 ### Usage and limits
 
 - **Live limits:** your real 5-hour and weekly plan percentages (the same ones `/usage` shows), with
@@ -136,7 +152,7 @@ Everything stays on your PC and your own private network.
 - The same app in a phone layout: search and read sessions, rename, describe, tag, pin and hide
   them, and check usage and limits. It updates live and installs to your home screen.
 - **Resume, fork, branch or continue fresh** a session on your PC from the phone, with Remote
-  Control on, then continue it in the Claude app. Summaries show on the phone and can be edited
+  Control on, then continue it in the Claude app. Large sessions show the same context-size warning. Summaries show on the phone and can be edited
   there (they are written on the PC).
 - Connect over **Tailscale** (private, works from anywhere) or **home Wi-Fi only**. Each phone is
   paired with a QR code and has its own key, which you can revoke.

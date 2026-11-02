@@ -27,6 +27,8 @@ export interface LaunchTools {
   wsl: string
   /** Claude Code for Windows sessions (claude.exe or npm's claude.cmd); undefined if not found. */
   claude?: string
+  /** Codex for Windows sessions (codex.exe or npm's codex.cmd); undefined if not found. */
+  codex?: string
 }
 
 export interface LaunchInput {
@@ -117,16 +119,21 @@ function folderReason(
   terminal: TerminalPref,
   env: EnvKind,
   cwd: string,
-  tools: LaunchTools
+  tools: LaunchTools,
+  agent: AgentSpec
 ): string | undefined {
   // The program that goes inside the terminal's command line.
-  const inner = (env === 'wsl' ? tools.wsl : tools.claude) ?? ''
+  const inner = (env === 'wsl' ? tools.wsl : agent.program) ?? ''
+  const toolReason =
+    agent.product === 'Claude Code'
+      ? TOOL_PATH_REASON
+      : TOOL_PATH_REASON.replace('Claude Code', agent.product)
   // Windows Terminal splits every argument at ";" and expands %variables% in the line it runs.
   if (terminal === 'wt' && /[;%]/.test(cwd)) return WT_FOLDER_REASON
-  if (terminal === 'wt' && /[;%]/.test(inner + (tools.cmd ?? ''))) return TOOL_PATH_REASON
+  if (terminal === 'wt' && /[;%]/.test(inner + (tools.cmd ?? ''))) return toolReason
   // cmd expands %variables% (and !variables!) even inside quotes.
   if (terminal === 'cmd' && env === 'wsl' && /[%!]/.test(cwd)) return CMD_FOLDER_REASON
-  if (terminal === 'cmd' && /[%!]/.test(inner)) return TOOL_PATH_REASON
+  if (terminal === 'cmd' && /[%!]/.test(inner)) return toolReason
   // cmd would start in C:\Windows instead.
   if (terminal === 'cmd' && env === 'windows' && /^[\\/]{2}/.test(cwd)) return CMD_UNC_REASON
   return undefined
@@ -295,7 +302,12 @@ function psArg(arg: string): string {
 
 /** The `claude …` command as bash reads it (also what's shown as "the claude command"). */
 export function claudeCommandLine(args: string[]): string {
-  return ['claude', ...args.map(bashArg)].join(' ')
+  return agentCommandLine('claude', args)
+}
+
+/** An agent's command (`claude …`, `codex …`) as bash reads it. */
+export function agentCommandLine(bin: string, args: string[]): string {
+  return [bin, ...args.map(bashArg)].join(' ')
 }
 
 /** Quote one argument the way the MSVC runtime / CommandLineToArgvW expects. */
@@ -379,12 +391,21 @@ function bashClaudeLine(claudeCommand: string, unset: string[]): string {
   return unset.length ? `unset ${unset.join(' ')} && ${claudeCommand}` : claudeCommand
 }
 
-export function buildLaunchCommand(input: LaunchInput): LaunchCommand {
-  const cmd = build(input)
-  return { ...cmd, commandLine: shownCommand(cmd) }
+/**
+ * The coding agent a terminal runs: its command name in WSL, its absolute
+ * path on Windows, and its arguments (already validated by its provider).
+ */
+export interface AgentSpec {
+  /** "Claude Code", "Codex": for messages. */
+  product: string
+  /** The command in WSL's login shell: "claude", "codex". */
+  bin: string
+  /** Windows: the absolute path (see which.ts); undefined if it wasn't found. */
+  program?: string
+  args: string[]
 }
 
-function build(input: LaunchInput): Omit<LaunchCommand, 'commandLine'> {
+export function buildLaunchCommand(input: LaunchInput): LaunchCommand {
   const cArgs = claudeArgs(
     input.sessionId,
     input.skipPermissions,
@@ -395,7 +416,23 @@ function build(input: LaunchInput): Omit<LaunchCommand, 'commandLine'> {
     input.modelChoice,
     input.continueFresh
   )
-  const claudeCommand = claudeCommandLine(cArgs)
+  return buildAgentLaunch(input, {
+    product: 'Claude Code',
+    bin: 'claude',
+    program: input.tools.claude,
+    args: cArgs
+  })
+}
+
+/** The full launch of any agent: terminal, folder, environment and the agent's command. */
+export function buildAgentLaunch(input: LaunchInput, agent: AgentSpec): LaunchCommand {
+  const cmd = build(input, agent)
+  return { ...cmd, commandLine: shownCommand(cmd) }
+}
+
+function build(input: LaunchInput, agent: AgentSpec): Omit<LaunchCommand, 'commandLine'> {
+  const cArgs = agent.args
+  const claudeCommand = agentCommandLine(agent.bin, cArgs)
   // Remote Control refuses API-key auth: remove the keys in the final shell
   // too, after its startup profile has run (they're also kept out of its
   // environment, see unsetEnv).
@@ -418,7 +455,7 @@ function build(input: LaunchInput): Omit<LaunchCommand, 'commandLine'> {
         ? { ANTHROPIC_API_KEY: apiKey, WSLENV: wslenvWithKey(input.wslenv) }
         : { ANTHROPIC_API_KEY: apiKey }
   }
-  const folder = folderReason(input.terminal, input.env, input.cwd, tools)
+  const folder = folderReason(input.terminal, input.env, input.cwd, tools, agent)
   if (folder) {
     input = { ...input, terminal: 'powershell' }
     terminalReason = folder
@@ -474,7 +511,7 @@ function build(input: LaunchInput): Omit<LaunchCommand, 'commandLine'> {
   }
 
   // Windows session
-  const claude = checkedTool(tools.claude, 'Claude Code')
+  const claude = checkedTool(agent.program, agent.product)
   switch (input.terminal) {
     case 'wt': {
       // Windows Terminal puts quotes around an argument with spaces, which

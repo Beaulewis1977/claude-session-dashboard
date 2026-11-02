@@ -56,11 +56,17 @@ export function fixturesLayout(appRoot: string): {
 
 export async function prepareFixtures(
   appRoot: string,
-  opts: { usageHistory?: boolean } = {}
+  opts: { usageHistory?: boolean; codex?: boolean } = {}
 ): Promise<void> {
   const { fixturesDir, sourcesDir } = fixturesLayout(appRoot)
   await copyMissing(join(fixturesDir, 'windows'), join(sourcesDir, 'windows'))
   await copyMissing(join(fixturesDir, 'wsl'), join(sourcesDir, 'wsl'))
+  if (opts.codex) {
+    // Sample Codex homes (~/.codex): plain and zstd rollouts, thread names.
+    const codex = join(fixturesDir, 'codex')
+    await copyMissing(join(codex, 'windows'), join(sourcesDir, 'windows'))
+    await copyMissing(join(codex, 'wsl'), join(sourcesDir, 'wsl'))
+  }
   if (opts.usageHistory) {
     // 13 weeks of generated sessions with token usage (scripts/make-usage-fixtures.mjs).
     const usage = join(fixturesDir, 'usage')

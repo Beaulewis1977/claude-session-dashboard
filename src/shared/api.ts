@@ -4,6 +4,7 @@ import type {
   AppInfo,
   AppSettings,
   ArchiveStats,
+  CodexArchiveEstimate,
   LaunchOptions,
   LaunchPreview,
   LaunchResult,
@@ -97,6 +98,8 @@ export interface CsdApi {
   addExtraFolder(): Promise<AppSettings>
   removeExtraFolder(folder: string): Promise<AppSettings>
   getArchiveStats(): Promise<ArchiveStats>
+  /** What "Archive Codex sessions" would copy, per mode (sizes, backup estimate). */
+  getCodexArchiveEstimate(): Promise<CodexArchiveEstimate>
   /** Pick a claude.ai export zip and import it. Null when the dialog was cancelled. */
   importClaudeAi(): Promise<ImportResult | null>
   openArchiveFolder(): Promise<void>

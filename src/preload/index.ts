@@ -27,6 +27,7 @@ const api: CsdApi = {
   addExtraFolder: () => ipcRenderer.invoke('settings:addFolder'),
   removeExtraFolder: (folder) => ipcRenderer.invoke('settings:removeFolder', folder),
   getArchiveStats: () => ipcRenderer.invoke('archive:stats'),
+  getCodexArchiveEstimate: () => ipcRenderer.invoke('archive:codexEstimate'),
   importClaudeAi: () => ipcRenderer.invoke('import:claudeAi'),
   openArchiveFolder: () => ipcRenderer.invoke('archive:open'),
   showSessionFile: (key) => ipcRenderer.invoke('sessions:showFile', key),

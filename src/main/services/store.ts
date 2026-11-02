@@ -9,12 +9,12 @@ import {
 } from '@shared/types'
 import { JsonStore } from '../core/json-store'
 import { isSourceLabel } from '@shared/source-label'
-import { cleanEffortChoice, cleanModelChoice } from '@shared/model-choice'
+import { cleanEffortChoice, cleanModelChoice, type EffortLevels } from '@shared/model-choice'
 import type { MobileSettings } from '@shared/mobile'
 
 export interface MetadataFile {
   version: 1
-  /** Keyed by session id. */
+  /** Keyed by metaKey(): a Claude Code session's id, `codex:<id>` for a Codex session. */
   sessions: Record<string, SessionMeta>
   /** Keyed by `${sourceId}:${sessionId}`. */
   archive: Record<string, ArchiveRecord>
@@ -65,8 +65,11 @@ export function createSettingsStore(paths: AppPaths): JsonStore<SettingsFile> {
   }))
 }
 
-/** Normalise a metadata patch from the renderer. */
-export function cleanMetaPatch(patch: Partial<SessionMeta>): Partial<SessionMeta> {
+/** Normalise a metadata patch from the renderer (`levels`: the session's provider's effort levels). */
+export function cleanMetaPatch(
+  patch: Partial<SessionMeta>,
+  levels?: EffortLevels
+): Partial<SessionMeta> {
   const out: Partial<SessionMeta> = {}
   if ('name' in patch)
     out.name = typeof patch.name === 'string' ? patch.name.trim().slice(0, 300) : undefined
@@ -85,7 +88,7 @@ export function cleanMetaPatch(patch: Partial<SessionMeta>): Partial<SessionMeta
   if ('hidden' in patch) out.hidden = patch.hidden === true
   // Launch model / effort: a value that isn't safe or known clears the choice.
   if ('model' in patch) out.model = cleanModelChoice(patch.model)
-  if ('effort' in patch) out.effort = cleanEffortChoice(patch.effort)
+  if ('effort' in patch) out.effort = cleanEffortChoice(patch.effort, levels)
   if ('pinned' in patch) out.pinned = patch.pinned === true
   if ('muteAlerts' in patch) out.muteAlerts = patch.muteAlerts === true ? true : undefined
   if ('noContextWarning' in patch)

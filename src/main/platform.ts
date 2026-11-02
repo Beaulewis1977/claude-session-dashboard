@@ -10,6 +10,7 @@ import {
   fileExists as exists,
   findOnPath,
   findWindowsClaude,
+  findWindowsCodex,
   findWindowsTerminal,
   systemExe,
   systemRoot
@@ -185,6 +186,7 @@ export function createRealPlatform(): Platform {
   const isWindows = process.platform === 'win32'
   let wtCache: string | null | undefined
   let claudeCache: string | undefined
+  let codexCache: string | undefined
   return {
     fixtures: false,
     canLaunch: isWindows,
@@ -221,6 +223,8 @@ export function createRealPlatform(): Platform {
       // Look again if Claude Code wasn't found, or isn't where it was.
       if (!claudeCache || !(await exists(claudeCache))) claudeCache = await findWindowsClaude()
       tools.claude = claudeCache
+      if (!codexCache || !(await exists(codexCache))) codexCache = await findWindowsCodex()
+      tools.codex = codexCache
       return tools
     },
     spawnDetached(cmd) {
@@ -306,7 +310,8 @@ export function createFixturesPlatform(fixturesDir: string, sourcesDir: string):
         powershell: 'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe',
         cmd: 'C:\\Windows\\System32\\cmd.exe',
         wsl: 'C:\\Windows\\System32\\wsl.exe',
-        claude: 'C:\\Users\\beau\\.local\\bin\\claude.exe'
+        claude: 'C:\\Users\\beau\\.local\\bin\\claude.exe',
+        codex: 'C:\\Users\\beau\\AppData\\Roaming\\npm\\codex.cmd'
       }
     },
     async spawnDetached() {

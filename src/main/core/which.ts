@@ -93,3 +93,19 @@ export async function findWindowsClaude(
   for (const c of candidates) if (c && isAbsoluteWindowsPath(c) && (await exists(c))) return c
   return undefined
 }
+
+/**
+ * Codex on Windows: what typing `codex` would run (npm's codex.cmd shim, or
+ * a codex.exe on PATH), else npm's usual global folder. The desktop app's own
+ * copies under ~/.codex are never used.
+ */
+export async function findWindowsCodex(
+  env: NodeJS.ProcessEnv = process.env,
+  exists: Exists = fileExists
+): Promise<string | undefined> {
+  const onPath = await findOnPath('codex', ['.exe', '.bat', '.cmd'], env, exists)
+  if (onPath) return onPath
+  const npm = env.APPDATA && win32.join(env.APPDATA, 'npm', 'codex.cmd')
+  if (npm && isAbsoluteWindowsPath(npm) && (await exists(npm))) return npm
+  return undefined
+}

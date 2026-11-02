@@ -2,7 +2,7 @@
 // @shared/lineage), and names forks launched from the app when they appear.
 // Reads only; everything it records goes into the app's own metadata.
 
-import { readFile, stat } from 'node:fs/promises'
+import { stat } from 'node:fs/promises'
 import { branchName } from '@shared/branch'
 import {
   computeLineage,
@@ -12,6 +12,7 @@ import {
 } from '@shared/lineage'
 import type { SessionSummary } from '@shared/types'
 import { sessionProvider } from '../providers/registry'
+import type { SessionProvider } from '../providers/types'
 import type { SessionService } from './sessions'
 
 interface PendingFork {
@@ -31,15 +32,15 @@ const PENDING_MS = 60 * 60_000
 /** Where each message of a session starts (read with the session's provider). */
 async function messageStarts(
   path: string,
-  starts: (text: string) => MessageStart[]
+  provider: Pick<SessionProvider, 'readText' | 'messageStarts'>
 ): Promise<MessageStart[] | undefined> {
   let text: string
   try {
-    text = await readFile(path, 'utf8')
+    text = await provider.readText(path)
   } catch {
     return undefined
   }
-  return starts(text)
+  return provider.messageStarts(text)
 }
 
 export class LineageService {
@@ -143,7 +144,7 @@ export class LineageService {
     const stamp = `${s.filePath}|${s.sizeBytes}|${s.lastActivityAt ?? ''}`
     const hit = this.starts.get(s.key)
     if (hit?.stamp === stamp) return hit
-    const list = await messageStarts(s.filePath, sessionProvider(this.sessions, s).messageStarts)
+    const list = await messageStarts(s.filePath, sessionProvider(this.sessions, s))
     if (!list) return undefined
     const entry = { stamp, list, bornAt: await this.bornAt(s) }
     this.starts.set(s.key, entry)

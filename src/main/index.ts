@@ -59,7 +59,11 @@ import {
   seedFixtureData,
   seedFixtureUsage
 } from './fixtures'
-import { registerIpc } from './ipc'
+import { providerSettings, registerIpc } from './ipc'
+import { claudeProvider } from './providers/claude'
+import { codexProvider } from './providers/codex'
+import { ProviderRegistry } from './providers/registry'
+import { providerOf } from '@shared/provider'
 import { createMeter } from './meter'
 import { registerUsageIpc } from './ipc-usage'
 import { registerAccountsIpc } from './ipc-accounts'
@@ -228,7 +232,7 @@ async function main(): Promise<void> {
 
   let platform: Platform
   if (FIXTURES) {
-    await prepareFixtures(appRoot, { usageHistory: true })
+    await prepareFixtures(appRoot, { usageHistory: true, codex: true })
     const layout = fixturesLayout(appRoot)
     platform = createFixturesPlatform(layout.fixturesDir, layout.sourcesDir)
   } else {
@@ -279,7 +283,10 @@ async function main(): Promise<void> {
     await seedFixtureUsage(appRoot, paths.dataDir)
   }
 
-  const sessions = new SessionService(platform, paths, metadata, settings)
+  // Claude Code and Codex; Settings → Providers can turn either off (never both).
+  const providers = new ProviderRegistry([claudeProvider, codexProvider])
+  providers.setEnabled(providerSettings(settings.value).providers)
+  const sessions = new SessionService(platform, paths, metadata, settings, providers)
   const watcher = new SourceWatcher(sessions)
   const lineage = new LineageService(sessions)
 
@@ -350,6 +357,8 @@ async function main(): Promise<void> {
       },
       subscriptionLabel: () => `Subscription (${PLAN_LABEL[settings.value.plan]})`,
       launched: (s, opts, cwd, ctx) => {
+        // Billing tags and Remote Control are Claude Code's.
+        if (providerOf(s) !== 'claude') return
         const at = new Date().toISOString()
         const tag = {
           mode: opts.billingAccountId ? ('api' as const) : ('subscription' as const),

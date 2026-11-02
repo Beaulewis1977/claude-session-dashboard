@@ -3,7 +3,9 @@
 // bridges, …) behind the provider interface. Behaviour is exactly what the
 // app did before providers existed.
 
+import { readFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
+import { EFFORT_LEVELS } from '@shared/model-choice'
 import { askQuestionOf } from '@shared/ask'
 import { buildBranchFile, planBranch } from '@shared/branch'
 import { analyzeEvents, buildMessages, isUuid, parseJsonl } from '@shared/jsonl'
@@ -35,8 +37,13 @@ export const claudeProvider: SessionProvider = {
     branch: true,
     continueFresh: true,
     remoteControl: true,
-    apiBilling: true
+    apiBilling: true,
+    newSession: true,
+    summaries: true,
+    usage: true,
+    restore: true
   },
+  effortLevels: EFFORT_LEVELS,
 
   async detectSources(platform, opts) {
     return (await detectSources(platform, opts)).map((s) => ({ ...s, provider: 'claude' }))
@@ -49,6 +56,7 @@ export const claudeProvider: SessionProvider = {
     isSessionFile: (path) => path.endsWith('.jsonl')
   }),
 
+  readText: (path) => readFile(path, 'utf8'),
   parseSession: parseSessionText,
   buildMessages: (text, base) => buildMessages(parseJsonl(text).events, base.cwd),
   searchText: (text) => analyzeEvents(parseJsonl(text).events).searchText,

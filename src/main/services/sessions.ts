@@ -15,7 +15,9 @@ import type { DetectedSource } from '@shared/source-label'
 import { summarySearchText, type AiSummary } from '@shared/summary'
 import type {
   ArchiveRecord,
+  ArchiveTally,
   Availability,
+  CodexArchiveEstimate,
   BranchRecord,
   SessionDetail,
   SessionMeta,
@@ -24,7 +26,7 @@ import type {
   ScanState,
   SourceInfo
 } from '@shared/types'
-import type { ProviderId } from '@shared/provider'
+import { metaKey, type ProviderId } from '@shared/provider'
 import type { SearchHit } from '@shared/api'
 import type { SessionBilling } from '@shared/usage/credits'
 import { archiveSession } from '../core/archive'
@@ -92,17 +94,34 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
     private readonly paths: AppPaths,
     private readonly metadata: JsonStore<MetadataFile>,
     private readonly settings: JsonStore<SettingsFile>,
-    /** The coding agents whose sessions are shown (Claude Code only, so far). */
+    /** The coding agents whose sessions are shown (Claude Code only, unless the app adds Codex). */
     readonly providers: ProviderRegistry = defaultProviders()
   ) {
     super()
   }
 
-  /** The provider a session belongs to (its source's, else its archive record's). */
+  /** Which provider each entry was loaded with (kept when its source goes away). */
+  private owner = new Map<string, ProviderId>()
+
+  /** The provider a session belongs to (as loaded, else its source's, else its archive record's). */
   providerOf(base: Pick<BaseSummary, 'key' | 'sourceId'>): SessionProvider {
+    const known = this.owner.get(base.key)
+    if (known) return this.providers.of({ provider: known })
     const owner: { provider?: ProviderId } | undefined =
       this.source(base.sourceId) ?? this.metadata.value.archive[base.key]
     return this.providers.of(owner)
+  }
+
+  /**
+   * A session's key in `metadata.json` (see metaKey in @shared/provider):
+   * Claude Code's bare session id, `codex:<id>` for Codex.
+   */
+  metaKeyOf(base: Pick<BaseSummary, 'key' | 'sourceId' | 'sessionId'>): string {
+    return metaKey(this.providerOf(base).id, base.sessionId)
+  }
+
+  private metaOf(base: Pick<BaseSummary, 'key' | 'sourceId' | 'sessionId'>): SessionMeta {
+    return this.metadata.value.sessions[this.metaKeyOf(base)] ?? {}
   }
 
   // ---------------------------------------------------------------- public
@@ -141,7 +160,7 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
     if (!e) return null
     let text: string
     try {
-      text = await readFile(e.base.filePath, 'utf8')
+      text = await this.providerOf(e.base).readText(e.base.filePath)
     } catch {
       return null
     }
@@ -154,9 +173,11 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
   updateMeta(key: string, patch: Partial<SessionMeta>): SessionSummary | null {
     const e = this.entries.get(key)
     if (!e) return null
-    const clean = cleanMetaPatch(patch)
+    const provider = this.providerOf(e.base)
+    const mk = metaKey(provider.id, e.base.sessionId)
+    const clean = cleanMetaPatch(patch, provider.effortLevels)
     this.metadata.update((d) => {
-      const prev = d.sessions[e.base.sessionId] ?? {}
+      const prev = d.sessions[mk] ?? {}
       const at = new Date().toISOString()
       const next: SessionMeta = { ...prev, ...clean, updatedAt: at }
       // When I named it here, to compare with a later rename in Claude Code.
@@ -166,9 +187,13 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
         if (v === undefined || v === '' || v === false || (Array.isArray(v) && v.length === 0))
           delete next[k]
       }
-      d.sessions[e.base.sessionId] = next
+      d.sessions[mk] = next
     })
     void this.reindex(key)
+    // "Only named, pinned or tagged": naming one may make it worth keeping.
+    const src = this.source(e.base.sourceId)
+    if (src && e.base.availability === 'live' && provider.id !== 'claude')
+      this.queueArchive(src, e.base)
     this.emitChanged()
     return this.get(key) ?? null
   }
@@ -189,8 +214,8 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
   applyClaudeNames(keys: string[]): number {
     let n = 0
     for (const key of new Set(keys)) {
-      const e = this.entries.get(key)
-      if (!e?.base.claudeName || !this.metadata.value.sessions[e.base.sessionId]?.name) continue
+      const s = this.get(key)
+      if (!s?.claudeName || !s.meta.name) continue
       this.updateMeta(key, { name: '' })
       n++
     }
@@ -310,12 +335,17 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
 
   private async rescanNow(): Promise<void> {
     this.sources = await this.detect()
+    this.dropDisabled()
     const files = new Map<string, SessionFile[]>()
+    const renamed = new Map<string, string[]>()
     for (const src of this.sources) {
       if (src.status !== 'ok') continue
-      const list = await this.providers.of(src).listSessionFiles(src)
+      const provider = this.providers.of(src)
+      const list = await provider.listSessionFiles(src)
       if (list) files.set(src.id, list)
       else Object.assign(src, { status: 'unreadable', statusMessage: "Folder can't be read" })
+      const changed = list ? await provider.names?.refresh(src).catch(() => []) : undefined
+      if (changed?.length) renamed.set(src.id, changed)
     }
     const total = [...files.values()].reduce((n, f) => n + f.length, 0)
     this.scan = { phase: 'scanning', done: 0, total }
@@ -327,6 +357,7 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
     this.dropUnknownSources()
     // Drop index entries (e.g. from the cache) for sessions that no longer exist.
     for (const key of this.cached.keys()) if (!this.entries.has(key)) this.search.remove(key)
+    for (const [sourceId, ids] of renamed) this.reindexNames(sourceId, ids)
     this.scan = { phase: 'ready', done: total, total, finishedAt: now() }
     this.emitChanged(true)
   }
@@ -335,12 +366,19 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
   async pollSource(sourceId: string): Promise<void> {
     const src = this.source(sourceId)
     if (!src || src.status !== 'ok') return
-    const list = await this.providers.of(src).listSessionFiles(src)
+    const provider = this.providers.find(src)
+    if (!provider) return
+    const list = await provider.listSessionFiles(src)
     if (!list) {
       // e.g. the WSL distro was shut down: show archive copies instead.
       Object.assign(src, { status: 'unreadable', statusMessage: "Can't be read right now" })
     } else {
       await this.syncSource(src, list, false)
+      const renamed = await provider.names?.refresh(src).catch(() => [])
+      if (renamed?.length) {
+        this.reindexNames(src.id, renamed)
+        this.emitChanged()
+      }
     }
     await this.syncArchiveOnly()
     if (!list) this.emitChanged()
@@ -350,7 +388,9 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
   async fileChanged(sourceId: string, path: string): Promise<void> {
     const src = this.source(sourceId)
     if (!src || src.status !== 'ok') return
-    const file = this.providers.of(src).sessionFileOf(path)
+    const provider = this.providers.find(src)
+    if (!provider) return
+    const file = provider.sessionFileOf(path)
     if (!file) return
     const key = `${src.id}:${file.sessionId}`
     let st
@@ -386,7 +426,7 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
   lineageResolver?: (key: string) => SessionLineage | undefined
 
   private detectSource(base: BaseSummary): DetectedSource {
-    const meta = this.metadata.value.sessions[base.sessionId] ?? {}
+    const meta = this.metaOf(base)
     return this.providerOf(base).detectSource(base, {
       env: base.env,
       cwd: base.cwd,
@@ -397,8 +437,12 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
     })
   }
 
-  private withMeta(base: BaseSummary): SessionSummary {
-    const meta = this.metadata.value.sessions[base.sessionId] ?? {}
+  private withMeta(raw: BaseSummary): SessionSummary {
+    const provider = this.providerOf(raw)
+    // The agent's own name for it, when kept outside its file (Codex's thread names).
+    const agent = provider.names?.get(raw.sourceId, raw.sessionId)
+    const base = agent ? { ...raw, claudeName: agent.name, claudeNameAt: agent.at } : raw
+    const meta = this.metaOf(base)
     const manual = meta.source?.by === 'manual' ? meta.source : undefined
     const det = manual ? undefined : this.detectSource(base)
     const title = computeTitle(
@@ -407,7 +451,6 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
       base.summary,
       base.firstPrompt
     )
-    const provider = this.providerOf(base)
     // The dashboard's own runs (Ask Claude, summaries): titled by what they are.
     const own =
       title.titleSource === 'first-prompt' ? provider.ownRunTitle(base.firstPrompt) : undefined
@@ -417,23 +460,29 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
       provider: provider.id,
       meta,
       ...title,
-      billing: this.billingResolver?.(base.sessionId, meta),
+      // Billing and the status line's context are Claude Code's (Codex usage comes in Phase C).
+      billing: provider.capabilities.apiBilling
+        ? this.billingResolver?.(base.sessionId, meta)
+        : undefined,
       source: manual?.label ?? det!.label,
       sourceReason: manual ? 'Set by hand' : det!.reason,
       lineage: this.lineageResolver?.(base.key),
-      context: withStatusLine(base.context, this.contextResolver?.(base.sessionId))
+      context: provider.capabilities.usage
+        ? withStatusLine(base.context, this.contextResolver?.(base.sessionId))
+        : base.context
     }
   }
 
   /** Keep the detected label in the app's metadata (never in Claude's files). */
   private rememberSource(base: BaseSummary): void {
-    const meta = this.metadata.value.sessions[base.sessionId]
+    const mk = this.metaKeyOf(base)
+    const meta = this.metadata.value.sessions[mk]
     if (meta?.source?.by === 'manual') return
     const det = this.detectSource(base)
     if (meta?.source?.label === det.label && meta.source.reason === det.reason) return
     this.metadata.update((d) => {
-      d.sessions[base.sessionId] = {
-        ...(d.sessions[base.sessionId] ?? {}),
+      d.sessions[mk] = {
+        ...(d.sessions[mk] ?? {}),
         source: { label: det.label, by: 'auto', reason: det.reason }
       }
     })
@@ -446,12 +495,13 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
   setAiSummary(key: string, summary: AiSummary | undefined): SessionSummary | null {
     const e = this.entries.get(key)
     if (!e) return null
+    const mk = this.metaKeyOf(e.base)
     this.metadata.update((d) => {
-      const next: SessionMeta = { ...(d.sessions[e.base.sessionId] ?? {}) }
+      const next: SessionMeta = { ...(d.sessions[mk] ?? {}) }
       if (summary) next.aiSummary = summary
       else delete next.aiSummary
       next.updatedAt = new Date().toISOString()
-      d.sessions[e.base.sessionId] = next
+      d.sessions[mk] = next
     })
     void this.reindex(key)
     this.emitChanged()
@@ -463,6 +513,7 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
    * a default name if it has none.
    */
   recordBranch(
+    /** The new session's metadata key (Claude Code's session id; see metaKeyOf). */
     sessionId: string,
     branch: BranchRecord,
     name?: string,
@@ -499,7 +550,7 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
     this.emitChanged()
   }
 
-  /** Tag a session's billing (from a launch), without touching Claude's files. */
+  /** Tag a session's billing (from a launch), without touching Claude's files. `sessionId`: its metadata key. */
   tagBilling(sessionId: string, billing: NonNullable<SessionMeta['billing']>): void {
     this.metadata.update((d) => {
       d.sessions[sessionId] = { ...(d.sessions[sessionId] ?? {}), billing }
@@ -586,32 +637,98 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
         sourceLabel: src.label,
         archivePath: record?.archivePath ?? cached.base.archivePath
       }
+      this.owner.set(key, this.providers.of(src).id)
       this.entries.set(key, { base, size: f.size, mtimeMs: f.mtimeMs })
       this.queueArchive(src, base)
       return
     }
+    const provider = this.providers.of(src)
     let text: string
     try {
-      text = await readFile(f.path, 'utf8')
+      text = await provider.readText(f.path)
     } catch {
       return
     }
-    const { base, searchText } = this.providers.of(src).parseSession(text, f, src)
+    const { base, searchText } = provider.parseSession(text, f, src)
     if (record) base.archivePath = record.archivePath
+    this.owner.set(key, provider.id)
     this.entries.set(key, { base, size: f.size, mtimeMs: f.mtimeMs })
     this.index(base, searchText)
     this.queueArchive(src, base)
   }
 
+  /**
+   * Is this session copied into the archive? Claude Code's always are.
+   * Another agent's follow Settings → Archive (Codex: off by default, only
+   * named, pinned or tagged ones, or all), because Codex doesn't remove old
+   * sessions itself and its history can be very large.
+   */
+  archiveWanted(provider: SessionProvider, base: Pick<BaseSummary, 'sessionId'>): boolean {
+    if (provider.id === 'claude') return true
+    const mode = this.settings.value.codexArchive ?? 'off'
+    if (mode === 'all') return true
+    if (mode !== 'marked') return false
+    const m = this.metadata.value.sessions[metaKey(provider.id, base.sessionId)]
+    return !!(m?.name?.trim() || m?.pinned || m?.tags?.length)
+  }
+
+  /**
+   * Copy (or update) the archive copies the Codex archive setting now asks
+   * for: after the setting changed. Nothing already archived is removed.
+   */
+  archiveWantedNow(): void {
+    for (const e of this.entries.values()) {
+      if (e.base.availability !== 'live') continue
+      const src = this.source(e.base.sourceId)
+      if (src && this.providerOf(e.base).id !== 'claude') this.queueArchive(src, e.base)
+    }
+  }
+
+  /**
+   * What "Archive Codex sessions" would copy: the live Codex sessions per
+   * mode, and the part not archived yet. Backups of the archive keep each
+   * file once, gzip-compressed: compressed rollouts stay about the same size,
+   * plain ones shrink (estimated at a quarter).
+   */
+  codexArchiveEstimate(): CodexArchiveEstimate {
+    const all = emptyTally()
+    const marked = emptyTally()
+    for (const e of this.entries.values()) {
+      if (e.base.availability !== 'live') continue
+      const provider = this.providerOf(e.base)
+      if (provider.id !== 'codex') continue
+      const rec = this.metadata.value.archive[e.base.key]
+      const add = (t: ArchiveTally): void => {
+        const compressed = e.base.filePath.endsWith('.zst')
+        t.sessions++
+        t.bytes += e.size
+        if (!rec || rec.size < e.size) t.newBytes += e.size - (rec?.size ?? 0)
+        t.backupBytes += compressed ? e.size : Math.round(e.size / 4)
+      }
+      add(all)
+      const m = this.metadata.value.sessions[metaKey('codex', e.base.sessionId)]
+      if (m?.name?.trim() || m?.pinned || m?.tags?.length) add(marked)
+    }
+    let archived = 0
+    let archivedBytes = 0
+    for (const r of Object.values(this.metadata.value.archive))
+      if (r.provider === 'codex') {
+        archived++
+        archivedBytes += r.size
+      }
+    return { all, marked, archived, archivedBytes }
+  }
+
   private queueArchive(src: ResolvedSource, base: BaseSummary): void {
+    const provider = this.providers.find(src)
+    if (!provider || !this.archiveWanted(provider, base)) return
     this.archiveQueue = this.archiveQueue.then(async () => {
       try {
         const key = base.key
-        const provider = this.providers.of(src)
         const rec = await archiveSession(
           {
             provider: provider.id,
-            ext: provider.archiveExt,
+            ext: provider.archiveExtOf?.(base.originalPath) ?? provider.archiveExt,
             sessionId: base.sessionId,
             sourceId: src.id,
             sourceLabel: src.label,
@@ -642,6 +759,7 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
     const rec = this.metadata.value.archive[key]
     if (!rec) {
       this.entries.delete(key)
+      this.owner.delete(key)
       this.search.remove(key)
       this.markCacheDirty()
       this.emitChanged()
@@ -687,7 +805,7 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
     let text: string
     const imported = availability === 'imported'
     try {
-      text = await readFile(rec.archivePath, 'utf8')
+      text = await provider.readText(rec.archivePath)
     } catch {
       if (imported) this.dropEntry(`${rec.sourceId}:${rec.sessionId}`)
       return
@@ -699,7 +817,8 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
       this.dropEntry(`${rec.sourceId}:${rec.sessionId}`)
       return
     }
-    const size = Buffer.byteLength(text)
+    // Claude Code's text is the file; another agent's is a digest of it (see readText).
+    const size = provider.id === 'claude' ? Buffer.byteLength(text) : rec.size
     const src = this.source(rec.sourceId) ?? {
       id: rec.sourceId,
       label: rec.sourceLabel,
@@ -726,6 +845,7 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
     }
     // Imported entries remember their content hash and file: a re-import can
     // change the text without changing the size, or move it to another file.
+    this.owner.set(base.key, provider.id)
     this.entries.set(base.key, {
       base,
       size,
@@ -737,8 +857,32 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
 
   private dropEntry(key: string): void {
     if (!this.entries.delete(key)) return
+    this.owner.delete(key)
     this.search.remove(key)
     this.markCacheDirty()
+  }
+
+  /**
+   * Sessions of a provider that was turned off (Settings → Providers) leave
+   * the list and the search index. Their metadata and archive copies stay,
+   * so turning it back on brings everything back.
+   */
+  private dropDisabled(): void {
+    for (const [key, p] of this.owner) {
+      if (this.providers.isOn(p)) continue
+      this.entries.delete(key)
+      this.owner.delete(key)
+      this.search.remove(key)
+      this.markCacheDirty()
+    }
+  }
+
+  /** Search entries of sessions whose name the agent changed (e.g. a Codex thread rename). */
+  private reindexNames(sourceId: string, sessionIds: string[]): void {
+    const ids = new Set(sessionIds.map((x) => x.toLowerCase()))
+    for (const e of this.entries.values())
+      if (e.base.sourceId === sourceId && ids.has(e.base.sessionId.toLowerCase()))
+        void this.reindex(e.base.key)
   }
 
   /** Pick up archive records added by an import. */
@@ -753,6 +897,7 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
     for (const [key, e] of this.entries) {
       if (!ids.has(e.base.sourceId) && !this.metadata.value.archive[key]) {
         this.entries.delete(key)
+        this.owner.delete(key)
         this.search.remove(key)
       }
     }
@@ -765,7 +910,7 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
     this.search.upsert({
       id: base.key,
       title: s.title,
-      name: [s.meta.name, base.claudeName].filter(Boolean).join(' '),
+      name: [s.meta.name, s.claudeName].filter(Boolean).join(' '),
       description: s.meta.description ?? '',
       tags: (s.meta.tags ?? []).join(' '),
       summary: summarySearchText(s.meta.aiSummary),
@@ -778,12 +923,17 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
     const e = this.entries.get(key)
     if (!e) return
     try {
-      const text = await readFile(e.base.filePath, 'utf8')
-      this.index(e.base, this.providerOf(e.base).searchText(text))
+      const provider = this.providerOf(e.base)
+      const text = await provider.readText(e.base.filePath)
+      this.index(e.base, provider.searchText(text))
     } catch {
       // keep the old index entry
     }
   }
+}
+
+function emptyTally(): ArchiveTally {
+  return { sessions: 0, bytes: 0, newBytes: 0, backupBytes: 0 }
 }
 
 function publicSource(s: ResolvedSource): SourceInfo {

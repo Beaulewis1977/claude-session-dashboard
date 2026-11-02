@@ -212,6 +212,7 @@ export const webApi: CsdApi = {
   addExtraFolder: onPc('Adding folders'),
   removeExtraFolder: onPc('Removing folders'),
   getArchiveStats: onPc('The archive'),
+  getCodexArchiveEstimate: onPc('The archive'),
   importClaudeAi: onPc('Importing'),
   openArchiveFolder: onPc('Opening folders'),
   showSessionFile: onPc('Showing files'),

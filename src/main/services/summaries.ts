@@ -171,9 +171,19 @@ export class SummaryService extends EventEmitter<{ changed: [] }> {
    * the snapshot was taken: only the messages there were then, with the
    * session details, size limit and model of that moment.
    */
+  /** Sessions whose provider has summaries (auto-summarize looks only at these). */
+  private summarizable(): SessionSummary[] {
+    return this.deps.sessions
+      .list()
+      .filter((s) => sessionProvider(this.deps.sessions, s).capabilities.summaries)
+  }
+
   private async prepare(key: string, snap?: Snapshot): Promise<Prepared> {
     const d = await this.deps.sessions.detail(key)
     if (!d) throw new Error("This session's file can't be read right now.")
+    const provider = sessionProvider(this.deps.sessions, d.summary)
+    if (!provider.capabilities.summaries)
+      throw new Error(`Summaries aren't available for ${provider.productName} sessions yet.`)
     const settings = this.deps.settings()
     const s = d.summary
     const messages = snap ? d.messages.slice(0, snap.messages) : d.messages
@@ -596,7 +606,7 @@ export class SummaryService extends EventEmitter<{ changed: [] }> {
 
   /** Which sessions auto-summarize would summarize now (for Settings), with an estimate. */
   async autoPreview(): Promise<{ count: number; estimate: SummaryEstimate }> {
-    const list = autoCandidates(this.deps.sessions.list(), this.deps.settings(), now(), (k) =>
+    const list = autoCandidates(this.summarizable(), this.deps.settings(), now(), (k) =>
       this.recentlyFailed(k)
     )
     const sample = list.slice(0, 50)
@@ -632,7 +642,7 @@ export class SummaryService extends EventEmitter<{ changed: [] }> {
     this.autoRuns = this.autoRuns.filter((x) => t - x < 3600_000)
     const room = AUTO_PER_HOUR - this.autoRuns.length
     if (room <= 0) return 0
-    const pick = autoCandidates(this.deps.sessions.list(), st, now(), (k) =>
+    const pick = autoCandidates(this.summarizable(), st, now(), (k) =>
       this.recentlyFailed(k)
     ).slice(0, room)
     if (!pick.length) return 0

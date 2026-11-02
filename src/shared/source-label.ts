@@ -23,6 +23,27 @@ export type SourceLabel =
   | 'unknown'
   | 'ask-claude'
   | 'claude-ai'
+  | CodexSourceLabel
+
+/** Which Codex product ran a session (see providers/codex/source.ts). */
+export type CodexSourceLabel =
+  | 'codex-cli'
+  | 'codex-vscode'
+  | 'codex-desktop'
+  | 'codex-exec'
+  | 'codex-subagent'
+  | 'codex-claude-code'
+  | 'codex-unknown'
+
+export const CODEX_SOURCE_LABELS: readonly CodexSourceLabel[] = [
+  'codex-cli',
+  'codex-vscode',
+  'codex-desktop',
+  'codex-exec',
+  'codex-subagent',
+  'codex-claude-code',
+  'codex-unknown'
+]
 
 export const SOURCE_LABELS: Record<SourceLabel, string> = {
   'terminal-windows': 'Terminal (Windows)',
@@ -34,7 +55,14 @@ export const SOURCE_LABELS: Record<SourceLabel, string> = {
   cloud: 'Cloud (teleported)',
   unknown: 'Local · unknown',
   'ask-claude': 'Ask Claude (dashboard)',
-  'claude-ai': 'claude.ai'
+  'claude-ai': 'claude.ai',
+  'codex-cli': 'Codex CLI',
+  'codex-vscode': 'Codex · VS Code',
+  'codex-desktop': 'Codex desktop app',
+  'codex-exec': 'Codex exec',
+  'codex-subagent': 'Codex subagent',
+  'codex-claude-code': 'Codex · from Claude Code',
+  'codex-unknown': 'Codex · unknown'
 }
 
 /** Labels a person can pick by hand. */

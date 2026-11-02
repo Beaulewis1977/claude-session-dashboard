@@ -1,6 +1,6 @@
-// Which coding agent a session belongs to. Claude Code is the only provider
-// so far; Codex comes later (docs/ROADMAP.md, feature 5). Data written before
-// providers existed has no provider field and means Claude Code.
+// Which coding agent a session belongs to: Claude Code or OpenAI Codex
+// (docs/ROADMAP.md, feature 5). Data written before providers existed has no
+// provider field and means Claude Code.
 
 export type ProviderId = 'claude' | 'codex'
 
@@ -9,6 +9,17 @@ export const PROVIDER_IDS: readonly ProviderId[] = ['claude', 'codex']
 /** What a missing provider field means (everything stored before providers). */
 export const DEFAULT_PROVIDER: ProviderId = 'claude'
 
+export const PROVIDER_LABEL: Record<ProviderId, string> = {
+  claude: 'Claude Code',
+  codex: 'Codex'
+}
+
+/** Short names for badges and the view switch. */
+export const PROVIDER_SHORT: Record<ProviderId, string> = {
+  claude: 'Claude',
+  codex: 'Codex'
+}
+
 export function isProviderId(v: unknown): v is ProviderId {
   return typeof v === 'string' && (PROVIDER_IDS as readonly string[]).includes(v)
 }
@@ -16,4 +27,57 @@ export function isProviderId(v: unknown): v is ProviderId {
 /** The provider of a session, source or archive record (absent: Claude Code). */
 export function providerOf(x: { provider?: ProviderId } | undefined | null): ProviderId {
   return x?.provider ?? DEFAULT_PROVIDER
+}
+
+/**
+ * The key of a session's entry in `metadata.json` (names, tags, summaries…).
+ * Claude Code sessions keep their bare session id, exactly as before
+ * providers existed. Every other provider's ids get a `<provider>:` prefix.
+ * A Claude Code session id never contains ":" (its file name allows only
+ * letters, digits, "_" and "-"), so the two can never collide.
+ */
+export function metaKey(provider: ProviderId | undefined, sessionId: string): string {
+  const p = provider ?? DEFAULT_PROVIDER
+  return p === DEFAULT_PROVIDER ? sessionId : `${p}:${sessionId}`
+}
+
+/** A session's metadata key (see metaKey). */
+export function metaKeyOf(s: { provider?: ProviderId; sessionId: string }): string {
+  return metaKey(s.provider, s.sessionId)
+}
+
+/** The view switch: every provider, or just one. */
+export type ProviderView = 'all' | ProviderId
+
+export function isProviderView(v: unknown): v is ProviderView {
+  return v === 'all' || isProviderId(v)
+}
+
+/** Does a session show in this view? */
+export function inProviderView(view: ProviderView, s: { provider?: ProviderId }): boolean {
+  return view === 'all' || providerOf(s) === view
+}
+
+/** Which providers are turned on (Settings → Providers). Both by default. */
+export type ProviderToggles = Record<ProviderId, boolean>
+
+export const DEFAULT_PROVIDER_TOGGLES: ProviderToggles = { claude: true, codex: true }
+
+/** Cleans stored toggles: unknown values are on, and at least one stays on. */
+export function sanitizeProviderToggles(v: unknown): ProviderToggles {
+  const o = (v && typeof v === 'object' ? v : {}) as Record<string, unknown>
+  const out: ProviderToggles = { claude: o.claude !== false, codex: o.codex !== false }
+  if (!out.claude && !out.codex) out.claude = true
+  return out
+}
+
+/** The view to use when some providers are off: a view of a provider that's off becomes "all". */
+export function effectiveView(view: ProviderView, enabled: ProviderToggles): ProviderView {
+  if (view !== 'all' && !enabled[view]) return 'all'
+  return view
+}
+
+/** Providers that are on, in their usual order. */
+export function enabledProviders(enabled: ProviderToggles): ProviderId[] {
+  return PROVIDER_IDS.filter((p) => enabled[p])
 }

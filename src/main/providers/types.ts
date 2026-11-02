@@ -1,7 +1,7 @@
 // The provider interface: everything about one coding agent's sessions that
 // the generic services (catalogue, archive, launcher, usage, limits, Running
 // now, summaries) need, so they never read an agent's files or build its
-// commands themselves. ClaudeProvider (./claude) is the only one so far.
+// commands themselves: ClaudeProvider (./claude) and CodexProvider (./codex).
 
 import type { ProviderId } from '@shared/provider'
 import type { BranchMode, BranchPlanOk } from '@shared/branch'
@@ -9,6 +9,7 @@ import type { MessageStart } from '@shared/lineage'
 import type { HookEvent, RunningFile } from '@shared/live'
 import type { HandoffMode } from '@shared/summary'
 import type { DetectedSource, SourceContext } from '@shared/source-label'
+import type { EffortLevels } from '@shared/model-choice'
 import type { BridgeReading } from '@shared/usage/bridge'
 import type { UsageContext } from '@shared/usage/parse'
 import type { UsageAnalysis } from '@shared/usage/types'
@@ -50,6 +51,17 @@ export interface ProviderCapabilities {
   remoteControl: boolean
   /** Launch on an API account's key instead of the subscription. */
   apiBilling: boolean
+  /** "New session in this folder". */
+  newSession: boolean
+  /** Session summaries (written with `claude -p`). */
+  summaries: boolean
+  /** Token usage and plan limits are read from its files. */
+  usage: boolean
+  /**
+   * A missing session file may be copied back from the archive before a
+   * launch (an allowed exception for `.claude` only; never for other agents' folders).
+   */
+  restore: boolean
 }
 
 /** The agent's own command (`claude …`), without the terminal around it. */
@@ -108,7 +120,12 @@ export interface SessionProvider {
     isSessionFile(path: string): boolean
   }
 
+  /** The effort levels its launches accept. */
+  readonly effortLevels: EffortLevels
+
   // -------------------------------------------------------------- parsing
+  /** A session file's text as the parsing functions below take it. */
+  readText(path: string): Promise<string>
   parseSession(
     text: string,
     file: Omit<SessionFile, 'mtimeMs'>,
@@ -124,9 +141,18 @@ export interface SessionProvider {
   /** A title for the dashboard's own runs (Ask, summaries), from their first prompt. */
   ownRunTitle(firstPrompt: string | undefined): string | undefined
 
+  /** The agent's own names for its sessions (e.g. Codex thread names), when they're kept outside the session files. */
+  names?: {
+    get(sourceId: string, sessionId: string): { name: string; at?: string } | undefined
+    /** Re-read a source's names if they changed; returns the session ids whose name changed. */
+    refresh(src: ResolvedSource): Promise<string[]>
+  }
+
   // -------------------------------------------------------------- archive
   /** File extension of the archive copy (".jsonl"). */
   readonly archiveExt: string
+  /** The archive copy's extension for one file, when it varies (Codex: ".jsonl" or ".jsonl.zst"). */
+  archiveExtOf?(originalPath: string): string
   /** The folder name an archived session was in, from its original path. */
   projectDirOf(originalPath: string): string
 

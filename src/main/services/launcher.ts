@@ -27,7 +27,13 @@ import { restoreIfMissing } from '../core/restore'
 import { handoffPath, writeHandoff } from '../core/handoff'
 import { isUuid } from '@shared/jsonl'
 import { buildHandoff, continuedName, newSinceSummary } from '@shared/summary'
-import { resolveModelChoice, type ModelSettings, type ResolvedModel } from '@shared/model-choice'
+import {
+  codexModelSettings,
+  resolveModelChoice,
+  type CodexModelSettings,
+  type ModelSettings,
+  type ResolvedModel
+} from '@shared/model-choice'
 import { fileExists, isAbsoluteWindowsPath } from '../core/which'
 import type { Platform } from '../platform'
 import { BranchService } from './branches'
@@ -95,7 +101,7 @@ export class Launcher {
     private readonly defaultTerminal: () => TerminalPref,
     private readonly billing?: LaunchBilling,
     /** Settings → Resume defaults and per-project defaults for model / effort. */
-    private readonly modelSettings: () => Partial<ModelSettings> = () => ({}),
+    private readonly modelSettings: () => Partial<ModelSettings> & CodexModelSettings = () => ({}),
     /** The app's data folder, for Continue fresh's handoff files (none: Continue fresh is off). */
     private readonly dataDir?: string
   ) {
@@ -132,7 +138,23 @@ export class Launcher {
     if (opts.continueFresh && !c.continueFresh) return no('Continue fresh')
     if (opts.remoteControl && !c.remoteControl) return no('Remote Control')
     if (opts.billingAccountId && !c.apiBilling) return no('Launching on API credits')
+    if (opts.newSession && !c.newSession) return no('A new session in this folder')
     return undefined
+  }
+
+  /**
+   * Why a session whose file is gone can't be launched without a restore,
+   * for an agent the app never writes files for (Codex), or undefined.
+   */
+  private noRestore(
+    s: SessionSummary,
+    opts: LaunchOptions,
+    originalExists: boolean
+  ): string | undefined {
+    if (opts.newSession || originalExists || this.provider(s).capabilities.restore) return undefined
+    if (s.availability === 'source-offline')
+      return ` can't be read right now, so this session can't be resumed. Start it, then try again.`
+    return `This session's file is no longer in ${this.provider(s).productName}'s sessions folder. The app doesn't copy files into ${this.provider(s).productName}'s folder, so it can't be resumed or forked from here. You can still read, search and export it.`
   }
 
   private unreachable(s: SessionSummary): string {
@@ -163,6 +185,10 @@ export class Launcher {
    * (desktop, phone, copied command), so they all match.
    */
   modelChoice(s: SessionSummary): ResolvedModel {
+    const p = this.provider(s)
+    // Codex has its own defaults and levels, kept apart from Claude Code's.
+    if (p.id === 'codex')
+      return resolveModelChoice(s.meta, s, codexModelSettings(this.modelSettings()), p.effortLevels)
     return resolveModelChoice(s.meta, s, this.modelSettings())
   }
 
@@ -444,29 +470,32 @@ export class Launcher {
     }
     const originalExists = await this.platform.pathExists(s.originalPath)
     const record = this.sessions.archiveRecord(s.key)
+    const noRestore = this.noRestore(s, opts, originalExists)
     const { cmd, error } = this.tryCommand(s, opts, cwd ?? this.placeholderCwd(s), terminal, tools)
     const modelChoice = this.modelChoice(s)
-    // An estimate that fails never stops a launch.
-    const context = opts.newSession
-      ? undefined
-      : await this.contextEstimate?.(s, {
-          billingAccountId: opts.billingAccountId,
-          modelChoice: modelChoice.model
-        }).catch(() => undefined)
+    // An estimate that fails never stops a launch. Only for agents whose usage is read.
+    const context =
+      opts.newSession || !this.provider(s).capabilities.usage
+        ? undefined
+        : await this.contextEstimate?.(s, {
+            billingAccountId: opts.billingAccountId,
+            modelChoice: modelChoice.model
+          }).catch(() => undefined)
     return {
       commandLine: cmd?.commandLine ?? '',
       claudeCommand: this.claudeCommand(s, opts, cmd),
       fellBack,
       cwd,
       cwdExists: state === 'exists',
-      willRestore: !opts.newSession && !originalExists && !!record,
+      willRestore: !noRestore && !opts.newSession && !originalExists && !!record,
       restoreImpossible:
-        !opts.newSession && !originalExists && !record && s.availability !== 'source-offline',
+        !!noRestore ||
+        (!opts.newSession && !originalExists && !record && s.availability !== 'source-offline'),
       originalPath: s.originalPath,
       terminal: cmd?.terminal ?? terminal,
       terminalReason: cmd?.terminalReason,
       billingLabel: this.billingLabel(opts),
-      launchError: this.unsupported(s, opts) ?? error ?? folderError,
+      launchError: this.unsupported(s, opts) ?? noRestore ?? error ?? folderError,
       remoteControlName: this.remoteControl(s, opts)?.name,
       modelChoice,
       ...(context ? { context } : {})
@@ -629,8 +658,11 @@ export class Launcher {
     const continued = cont ? { continuedKey: cont.target.key } : {}
 
     // 1. Restore the original file from the archive if it's missing. Never overwrite.
+    //    (Claude Code only: the app never writes into another agent's folder.)
     let restored = false
     if (!opts.newSession && !cont && !(await this.platform.pathExists(s.originalPath))) {
+      const refuse = this.noRestore(s, opts, false)
+      if (refuse) return fail(refuse)
       const rec = this.sessions.archiveRecord(s.key)
       if (rec) {
         const stop = ctx.stillAllowed?.()

@@ -14,7 +14,7 @@ import {
 } from './usage/health'
 import { DEFAULT_PACE, type PaceSettings } from './usage/pace'
 import type { SourceHints, SourceLabel } from './source-label'
-import type { ProviderId } from './provider'
+import type { ProviderId, ProviderToggles, ProviderView } from './provider'
 import type { EffortChoice, ProjectModelDefault, ResolvedModel } from './model-choice'
 import { DEFAULT_LIVE_ALERTS, type LiveAlertSettings } from './live-alerts'
 import { DEFAULT_SUMMARY_SETTINGS, type AiSummary, type SummarySettings } from './summary'
@@ -212,6 +212,19 @@ export interface SessionSummary {
   sourceReason: string
   /** How big the context is (the last reply's usage, compaction, the status line). */
   context?: SessionContext
+  /** The reasoning effort recorded in the session's latest turn (Codex). */
+  reasoningEffort?: string
+  /** A thread another agent thread started (a Codex subagent). */
+  subagent?: { parentId?: string; nickname?: string; role?: string }
+  /** The session this one was forked from, as its own file records it (Codex). */
+  forkedFromId?: string
+  /** Git commit and remote recorded when the session started (Codex). */
+  gitCommit?: string
+  gitRemote?: string
+  /** Which Codex client ran it, as its file records it. */
+  origin?: { originator?: string; source?: string; threadSource?: string }
+  /** Why the conversation shown may not be complete (the viewer says so). */
+  historyNote?: string
 }
 
 export interface ToolResult {
@@ -308,6 +321,51 @@ export interface AppSettings {
   summaries: SummarySettings
   /** The large-session warning before Resume. */
   contextWarning: ContextWarningSettings
+  // Optional: absent in every settings file written before Codex support
+  // (each has a default, applied where it's read).
+  /** Settings → Providers: which coding agents are on (absent: both). */
+  providers?: ProviderToggles
+  /** The All / Claude / Codex switch (absent: All). Only filters what's shown. */
+  providerView?: ProviderView
+  /** Settings → Archive: which Codex sessions are copied into the archive (absent: none). */
+  codexArchive?: CodexArchiveMode
+  /** Show Codex subagent threads in the list (absent: hidden). */
+  showSubagents?: boolean
+  /** Codex launches: model unless a session or project has its own ("default" = Codex's own). */
+  codexDefaultModel?: string
+  /** Codex launches: reasoning effort unless a session or project has its own. */
+  codexDefaultEffort?: EffortChoice
+  /** Codex per-project model / effort defaults, keyed like projectModels. */
+  codexProjectModels?: Record<string, ProjectModelDefault>
+}
+
+/**
+ * Which Codex sessions are copied into the archive: none, only the ones I
+ * named, pinned or tagged, or all. Codex doesn't delete old sessions itself,
+ * so it's off by default.
+ */
+export type CodexArchiveMode = 'off' | 'marked' | 'all'
+
+export function isCodexArchiveMode(v: unknown): v is CodexArchiveMode {
+  return v === 'off' || v === 'marked' || v === 'all'
+}
+
+export interface ArchiveTally {
+  sessions: number
+  /** Their files' size now. */
+  bytes: number
+  /** What isn't in the archive yet (new sessions, and growth of archived ones). */
+  newBytes: number
+  /** Estimated size in a backup (gzip; compressed rollouts don't shrink). */
+  backupBytes: number
+}
+
+export interface CodexArchiveEstimate {
+  all: ArchiveTally
+  marked: ArchiveTally
+  /** Codex sessions already in the archive, and their size. */
+  archived: number
+  archivedBytes: number
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {

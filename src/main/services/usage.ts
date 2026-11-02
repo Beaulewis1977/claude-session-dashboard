@@ -5,12 +5,10 @@
 // only parses files that changed.
 
 import { EventEmitter } from 'node:events'
-import { mkdir, readdir, readFile, rename, stat, unlink } from 'node:fs/promises'
-import { basename, dirname, join } from 'node:path'
-import { parseJsonl } from '@shared/jsonl'
+import { mkdir, readFile, rename, stat, unlink } from 'node:fs/promises'
+import { basename, join } from 'node:path'
 import { now } from '@shared/clock'
 import { buildReport, breakdown, emptyTotals, addRecord, toCsv } from '@shared/usage/aggregate'
-import { analyzeUsage } from '@shared/usage/parse'
 import { UsageDeduper } from '@shared/usage/dedupe'
 import { estimateCost, type ModelPrice } from '@shared/usage/pricing'
 import { localTimeZone } from '@shared/usage/time'
@@ -31,6 +29,7 @@ import { writeFileAtomic } from '../core/json-store'
 import { listFiles, readNdjson, writeNdjson } from '../core/ndjson'
 import { assertAppDataWrite, assertRealAppDataWrite, isInside } from '../core/safe-paths'
 import { copyShared } from '../core/shared-copy'
+import { sessionProvider } from '../providers/registry'
 import type { SessionService } from './sessions'
 
 // 2: dedupe follows ccusage (session-scoped requestless ids, sidechain replays).
@@ -65,31 +64,6 @@ export function usagePaths(dataDir: string, archiveDir: string): UsagePaths {
 function storageMonth(ts: number): string {
   const d = new Date(ts)
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`
-}
-
-/** Subagent transcripts live next to the session: `<project>/<session-id>/subagents/*.jsonl`. */
-export async function listSubagentFiles(
-  sessionFile: string,
-  sessionId: string
-): Promise<{ path: string; size: number }[]> {
-  const dir = join(dirname(sessionFile), sessionId, 'subagents')
-  let names: string[]
-  try {
-    names = await readdir(dir)
-  } catch {
-    return []
-  }
-  const out: { path: string; size: number }[] = []
-  for (const n of names.sort()) {
-    if (!n.endsWith('.jsonl')) continue
-    try {
-      const st = await stat(join(dir, n))
-      if (st.isFile()) out.push({ path: join(dir, n), size: st.size })
-    } catch {
-      // vanished
-    }
-  }
-  return out
 }
 
 export class UsageService extends EventEmitter<{ changed: [] }> {
@@ -333,7 +307,8 @@ export class UsageService extends EventEmitter<{ changed: [] }> {
   }
 
   private async signature(s: SessionSummary): Promise<{ sig: string; subagents: string[] }> {
-    const subs = await listSubagentFiles(s.filePath, s.sessionId)
+    // More files with this session's usage (Claude Code: its subagents' transcripts).
+    const subs = await sessionProvider(this.sessions, s).usage.extraFiles(s)
     const sig = [`${s.filePath}|${s.sizeBytes}|${s.lastActivityAt ?? ''}`]
     for (const f of subs) sig.push(`${basename(f.path)}:${f.size}`)
     return { sig: sig.join(';'), subagents: subs.map((f) => f.path) }
@@ -381,8 +356,7 @@ export class UsageService extends EventEmitter<{ changed: [] }> {
     } catch {
       return false
     }
-    const { events } = parseJsonl(text)
-    const a = analyzeUsage(events, {
+    const a = sessionProvider(this.sessions, s).usage.analyze(text, {
       key: s.key,
       project: s.projectName,
       env: s.env,
@@ -425,7 +399,10 @@ export class UsageService extends EventEmitter<{ changed: [] }> {
    */
   private async archiveSubagents(s: SessionSummary, files: string[]): Promise<void> {
     if (!s.archivePath || !files.length) return
-    const destDir = join(dirname(s.archivePath), s.sessionId, 'subagents')
+    const destDir = sessionProvider(this.sessions, s).usage.extrasArchiveDir(
+      s.archivePath,
+      s.sessionId
+    )
     if (!isInside(destDir, this.paths.archiveDir)) return
     for (const src of files) {
       const dest = join(destDir, basename(src))

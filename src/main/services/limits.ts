@@ -11,7 +11,6 @@ import { fiveHourBlocks } from '@shared/usage/aggregate'
 import {
   hasLimits,
   inferBilling,
-  parseBridgePayload,
   sameLimits,
   type BillingGuess,
   type BridgeReading
@@ -48,7 +47,10 @@ import type { StatusContext } from '@shared/context'
 import type { JsonStore } from '../core/json-store'
 import { appendNdjson, readNdjson } from '../core/ndjson'
 import { assertExactBridgeLive, assertRealBridgeWrite } from '../core/safe-paths'
-import { envPaths, type BridgeFile, type BridgeInstaller } from './bridge'
+import { catalogueProviders } from '../providers/registry'
+import type { BridgeDirs, SessionProvider } from '../providers/types'
+import type { SourceInfo } from '@shared/types'
+import type { BridgeFile, BridgeInstaller } from './bridge'
 import type { SessionService } from './sessions'
 import type { UsageService } from './usage'
 
@@ -86,6 +88,13 @@ export interface SalvageResult {
   /** Time range of the imported readings, epoch ms. */
   from?: number
   to?: number
+}
+
+/** A readable home with a status line bridge, and its provider's reader. */
+interface HomeBridge {
+  src: SourceInfo
+  p: BridgeDirs
+  limits: NonNullable<SessionProvider['limits']>
 }
 
 export class LimitsService extends EventEmitter<{ changed: [] }> {
@@ -172,10 +181,7 @@ export class LimitsService extends EventEmitter<{ changed: [] }> {
     const done: Handled[] = []
     const found: (Handled & { r: BridgeReading })[] = []
     const homes = new Map<string, string>()
-    for (const src of this.sessions.sources) {
-      if (src.status !== 'ok') continue
-      const p = envPaths(src)
-      if (!p) continue
+    for (const { src, p, limits } of this.bridges()) {
       const live = join(p.bridgeDir, 'live')
       let names: string[]
       try {
@@ -206,7 +212,7 @@ export class LimitsService extends EventEmitter<{ changed: [] }> {
           done.push(h)
           continue
         }
-        const r = parseBridgePayload(text, {
+        const r = limits.parseReading(text, {
           ts: Math.round(mtimeMs + clockOffset()),
           source: src.id
         })
@@ -295,6 +301,19 @@ export class LimitsService extends EventEmitter<{ changed: [] }> {
     if (this.timer) clearInterval(this.timer)
   }
 
+  /** Readable homes with a status line bridge (whose provider has one). */
+  private bridges(): HomeBridge[] {
+    const providers = catalogueProviders(this.sessions)
+    const out: HomeBridge[] = []
+    for (const src of this.sessions.sources) {
+      if (src.status !== 'ok') continue
+      const limits = providers.find(src)?.limits
+      const p = limits?.bridge(src)
+      if (limits && p) out.push({ src, p, limits })
+    }
+    return out
+  }
+
   readings(): BridgeReading[] {
     return this.history
   }
@@ -377,10 +396,7 @@ export class LimitsService extends EventEmitter<{ changed: [] }> {
     this.scanning = true
     const fresh: BridgeReading[] = []
     try {
-      for (const src of this.sessions.sources) {
-        if (src.status !== 'ok') continue
-        const p = envPaths(src)
-        if (!p) continue
+      for (const { src, p, limits } of this.bridges()) {
         const live = join(p.bridgeDir, 'live')
         const latest = join(live, 'latest.json')
         let st
@@ -419,7 +435,7 @@ export class LimitsService extends EventEmitter<{ changed: [] }> {
           } catch {
             continue
           }
-          const r = parseBridgePayload(text, {
+          const r = limits.parseReading(text, {
             ts: Math.round(fst.mtimeMs + clockOffset()),
             source: src.id
           })

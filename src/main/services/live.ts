@@ -9,12 +9,10 @@
 import { randomBytes } from 'node:crypto'
 import { EventEmitter } from 'node:events'
 import { lstat, readdir, readFile, realpath, stat, unlink } from 'node:fs/promises'
-import { dirname, join } from 'node:path'
+import { join } from 'node:path'
 import { clockOffset, now } from '@shared/clock'
 import {
   computeLive,
-  parseHookEvent,
-  parseRunningFile,
   type HookEnv,
   type HookEvent,
   type LiveSession,
@@ -30,10 +28,11 @@ import {
   type AlertKind,
   type LiveAlertSettings
 } from '@shared/live-alerts'
-import type { SourceInfo } from '@shared/types'
 import { isInsideClaudeDir } from '../core/safe-paths'
 import type { Alive, ProcQuery } from '../core/procs'
-import { BRIDGE_DIR_NAME, envPaths } from './bridge'
+import { catalogueProviders } from '../providers/registry'
+import type { LiveDirs, SessionProvider } from '../providers/types'
+import { BRIDGE_DIR_NAME } from './bridge'
 import type { HooksInstaller } from './hooks'
 import type { SessionService } from './sessions'
 
@@ -81,22 +80,9 @@ interface Cached<T> {
   value: T | undefined
 }
 
-interface SourceDirs {
-  src: SourceInfo
-  sessionsDir: string
-  eventsDir: string
-  home: string
-}
-
-export function sourceDirs(src: SourceInfo): SourceDirs | undefined {
-  const p = envPaths(src)
-  if (!p || src.status !== 'ok') return undefined
-  return {
-    src,
-    sessionsDir: join(dirname(p.settingsPath), 'sessions'),
-    eventsDir: join(p.bridgeDir, 'events'),
-    home: p.home
-  }
+/** A home's "Running now" folders, with its provider's readers. */
+interface SourceDirs extends LiveDirs {
+  live: NonNullable<SessionProvider['live']>
 }
 
 export class LiveService extends EventEmitter<{ changed: [] }> {
@@ -173,7 +159,7 @@ export class LiveService extends EventEmitter<{ changed: [] }> {
   private async pollNow(force: boolean): Promise<void> {
     const t = now()
     const m = this.mono()
-    const dirs = this.deps.sessions.sources.map(sourceDirs).filter((d): d is SourceDirs => !!d)
+    const dirs = this.sourceDirs()
     const idlePrompts = new Set<string>()
     for (const d of dirs) {
       const every = isUnc(d.sessionsDir) ? POLL_UNC_MS : POLL_MS
@@ -277,12 +263,25 @@ export class LiveService extends EventEmitter<{ changed: [] }> {
     }
   }
 
+  /** Every readable home whose provider has "Running now". */
+  private sourceDirs(): SourceDirs[] {
+    const providers = catalogueProviders(this.deps.sessions)
+    const out: SourceDirs[] = []
+    for (const src of this.deps.sessions.sources) {
+      const live = providers.find(src)?.live
+      const d = live?.dirs(src)
+      if (live && d) out.push({ ...d, live })
+    }
+    return out
+  }
+
   private async describeHooks(events: HookEvent[]): Promise<void> {
     const last = new Map<string, number>()
     for (const e of events) last.set(e.source, Math.max(last.get(e.source) ?? 0, e.ts))
     const out: HookEnv[] = []
+    const providers = catalogueProviders(this.deps.sessions)
     for (const src of this.deps.sessions.sources) {
-      if (src.kind !== 'auto' || !src.claudeSettingsPath) continue
+      if (!providers.find(src)?.live?.hooksPossible(src)) continue
       const d = await this.deps.hooks.describe(src, last.get(src.id)).catch(() => undefined)
       if (d) out.push(d)
     }
@@ -310,7 +309,7 @@ export class LiveService extends EventEmitter<{ changed: [] }> {
         if (!st.isFile() || st.size > 64 * 1024) continue
         const c = this.running.get(k)
         if (c && c.mtimeMs === st.mtimeMs && c.size === st.size) continue
-        const value = parseRunningFile(await readFile(path, 'utf8'))
+        const value = d.live.parseRunning(await readFile(path, 'utf8'))
         this.running.set(k, { mtimeMs: st.mtimeMs, size: st.size, value })
       } catch {
         // Being rewritten right now: read it next time.
@@ -358,7 +357,7 @@ export class LiveService extends EventEmitter<{ changed: [] }> {
         if (!st.isFile() || st.size > 1024 * 1024) continue
         const c = this.events.get(k)
         if (c && c.mtimeMs === st.mtimeMs && c.size === st.size) continue
-        const value = parseHookEvent(await readFile(path, 'utf8'), {
+        const value = d.live.parseHook(await readFile(path, 'utf8'), {
           ts: Math.round(st.mtimeMs + clockOffset()),
           source: d.src.id
         })

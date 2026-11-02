@@ -291,6 +291,8 @@ export function transcriptForSummary(messages: ChatMessage[], maxChars: number):
 // ---------------------------------------------------------------- prompt
 
 export interface SummarySubject {
+  /** The coding agent that ran the session (default: Claude Code). */
+  product?: string
   title: string
   cwd?: string
   gitBranch?: string
@@ -303,7 +305,7 @@ export interface SummarySubject {
 export function buildSummaryPrompt(s: SummarySubject, t: SummaryTranscript): string {
   return [
     SUMMARY_MARKER,
-    'Summarize this Claude Code session for my local session dashboard, so I can see at a glance what it was about and pick it up later in a new session.',
+    `Summarize this ${s.product ?? 'Claude Code'} session for my local session dashboard, so I can see at a glance what it was about and pick it up later in a new session.`,
     'Reply with only a JSON object (no Markdown, no code fences), exactly in this shape:',
     '{"title": string, "done": string[], "files": string[], "decisions": string[], "todos": string[], "pickUp": string}',
     '- title: a short name for the session, at most 8 words.',

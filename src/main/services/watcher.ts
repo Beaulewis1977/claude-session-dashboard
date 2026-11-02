@@ -46,18 +46,19 @@ export class SourceWatcher {
     await this.closeNow()
     for (const src of this.sessions.sources) {
       if (src.status !== 'ok') continue
-      if (isUnc(src.projectsDir)) {
+      const spec = this.sessions.providers.of(src).watchSpec(src)
+      if (isUnc(spec.root)) {
         this.timers.push(setInterval(() => void this.sessions.pollSource(src.id), POLL_UNC_MS))
         continue
       }
-      const w = watch(src.projectsDir, {
+      const w = watch(spec.root, {
         ignoreInitial: true,
-        depth: 1,
-        ignored: (path, stats) => !!stats?.isFile() && !path.endsWith('.jsonl')
+        depth: spec.depth,
+        ignored: (path, stats) => !!stats?.isFile() && !spec.isSessionFile(path)
       })
       const onEvent = (path: string): void => this.debounce(src.id, path)
       w.on('add', onEvent).on('change', onEvent).on('unlink', onEvent)
-      w.on('error', (err) => console.warn('watcher error', src.projectsDir, err))
+      w.on('error', (err) => console.warn('watcher error', spec.root, err))
       this.watchers.push(w)
     }
     this.timers.push(setInterval(() => void this.recheck(), RECHECK_MS))
@@ -65,7 +66,8 @@ export class SourceWatcher {
     this.timers.push(
       setInterval(() => {
         for (const src of this.sessions.sources)
-          if (!isUnc(src.projectsDir)) void this.sessions.pollSource(src.id)
+          if (!isUnc(this.sessions.providers.of(src).watchSpec(src).root))
+            void this.sessions.pollSource(src.id)
       }, POLL_ALL_MS)
     )
   }

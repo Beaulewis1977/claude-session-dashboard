@@ -5,17 +5,14 @@
 
 import { createHash } from 'node:crypto'
 import { EventEmitter } from 'node:events'
-import { readdir, readFile, stat } from 'node:fs/promises'
-import { basename, join } from 'node:path'
-import { analyzeEvents, buildMessages, isUuid, parseJsonl } from '@shared/jsonl'
-import { analyzeContext, withStatusLine, type StatusContext } from '@shared/context'
+import { readFile, stat } from 'node:fs/promises'
+import { join } from 'node:path'
+import { withStatusLine, type StatusContext } from '@shared/context'
 import { now } from '@shared/clock'
-import { baseName } from '@shared/format'
 import { computeTitle } from '@shared/title'
 import type { SessionLineage } from '@shared/lineage'
-import { detectSource, type DetectedSource } from '@shared/source-label'
-import { askQuestionOf } from '@shared/ask'
-import { SUMMARY_MARKER, summarySearchText, type AiSummary } from '@shared/summary'
+import type { DetectedSource } from '@shared/source-label'
+import { summarySearchText, type AiSummary } from '@shared/summary'
 import type {
   ArchiveRecord,
   Availability,
@@ -27,20 +24,18 @@ import type {
   ScanState,
   SourceInfo
 } from '@shared/types'
+import type { ProviderId } from '@shared/provider'
 import type { SearchHit } from '@shared/api'
 import type { SessionBilling } from '@shared/usage/credits'
 import { archiveSession } from '../core/archive'
 import { writeFileAtomic, type JsonStore } from '../core/json-store'
 import { isInside } from '../core/safe-paths'
 import type { Platform } from '../platform'
+import { defaultProviders, type ProviderRegistry } from '../providers/registry'
+import type { BaseSummary, SessionFile, SessionProvider } from '../providers/types'
 import { SearchIndex } from './search'
-import { detectSources, type ResolvedSource } from './sources'
+import type { ResolvedSource } from './sources'
 import { cleanMetaPatch, type AppPaths, type MetadataFile, type SettingsFile } from './store'
-
-type BaseSummary = Omit<
-  SessionSummary,
-  'meta' | 'title' | 'titleSource' | 'billing' | 'lineage' | 'source' | 'sourceReason'
->
 
 // v2: lineage fields (firstUuid, forkedFrom, copiedFrom) and, separately,
 // source hints (entrypoint, IDE context, cloud link) for the source label.
@@ -68,56 +63,8 @@ interface Entry {
   rev?: string
 }
 
-interface FileInfo {
-  path: string
-  projectDir: string
-  sessionId: string
-  size: number
-  mtimeMs: number
-}
-
-const SESSION_FILE_RE = /^[A-Za-z0-9][A-Za-z0-9_-]*\.jsonl$/i
-
 /** What an imported entry was loaded from: reloaded when either changes. */
 const importRev = (rec: ArchiveRecord): string => `${rec.sha256}|${rec.archivePath}`
-
-/** Lists `<projectsDir>/<project>/<session>.jsonl`. Undefined if the folder can't be read. */
-export async function listSessionFiles(projectsDir: string): Promise<FileInfo[] | undefined> {
-  const out: FileInfo[] = []
-  let projects
-  try {
-    projects = await readdir(projectsDir, { withFileTypes: true })
-  } catch {
-    return undefined
-  }
-  for (const p of projects) {
-    if (!p.isDirectory()) continue
-    const dir = join(projectsDir, p.name)
-    let files
-    try {
-      files = await readdir(dir, { withFileTypes: true })
-    } catch {
-      continue
-    }
-    for (const f of files) {
-      if (!f.isFile() || !SESSION_FILE_RE.test(f.name)) continue
-      const path = join(dir, f.name)
-      try {
-        const st = await stat(path)
-        out.push({
-          path,
-          projectDir: p.name,
-          sessionId: f.name.slice(0, -6),
-          size: st.size,
-          mtimeMs: st.mtimeMs
-        })
-      } catch {
-        // vanished between readdir and stat
-      }
-    }
-  }
-  return out
-}
 
 async function mapLimit<T>(
   items: T[],
@@ -129,58 +76,6 @@ async function mapLimit<T>(
     while (i < items.length) await fn(items[i++])
   })
   await Promise.all(workers)
-}
-
-export function parseSessionText(
-  text: string,
-  file: { path: string; projectDir: string; sessionId: string; size: number },
-  src: Pick<SourceInfo, 'id' | 'label' | 'env' | 'distro'>
-): { base: BaseSummary; searchText: string } {
-  const { events, malformedLines } = parseJsonl(text)
-  const a = analyzeEvents(events, { sessionId: file.sessionId })
-  const context = analyzeContext(events)
-  return {
-    searchText: a.searchText,
-    base: {
-      key: `${src.id}:${file.sessionId}`,
-      sessionId: file.sessionId,
-      sourceId: src.id,
-      sourceLabel: src.label,
-      env: src.env,
-      distro: src.distro,
-      filePath: file.path,
-      originalPath: file.path,
-      availability: 'live',
-      projectDir: file.projectDir,
-      projectName: baseName(a.cwd) || file.projectDir,
-      cwd: a.cwd,
-      gitBranch: a.gitBranch,
-      version: a.version,
-      summary: a.summary,
-      claudeName: a.claudeName,
-      claudeNameAt: a.claudeNameAt,
-      firstPrompt: a.firstPrompt,
-      startedAt: a.startedAt,
-      lastActivityAt: a.lastActivityAt,
-      messageCount: a.userMessageCount + a.assistantMessageCount,
-      userMessageCount: a.userMessageCount,
-      assistantMessageCount: a.assistantMessageCount,
-      toolCallCount: a.toolCallCount,
-      malformedLines,
-      sizeBytes: file.size,
-      models: a.models,
-      firstUuid: a.firstUuid,
-      forkedFrom: a.forkedFrom,
-      copiedFrom:
-        a.sessionId && a.sessionId !== file.sessionId && isUuid(a.sessionId)
-          ? a.sessionId
-          : undefined,
-      sourceHints: a.sourceHints,
-      remoteUrl: a.remoteUrl,
-      remoteUrlAt: a.remoteUrlAt,
-      ...(context ? { context } : {})
-    }
-  }
 }
 
 export class SessionService extends EventEmitter<{ changed: [] }> {
@@ -196,9 +91,18 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
     private readonly platform: Platform,
     private readonly paths: AppPaths,
     private readonly metadata: JsonStore<MetadataFile>,
-    private readonly settings: JsonStore<SettingsFile>
+    private readonly settings: JsonStore<SettingsFile>,
+    /** The coding agents whose sessions are shown (Claude Code only, so far). */
+    readonly providers: ProviderRegistry = defaultProviders()
   ) {
     super()
+  }
+
+  /** The provider a session belongs to (its source's, else its archive record's). */
+  providerOf(base: Pick<BaseSummary, 'key' | 'sourceId'>): SessionProvider {
+    const owner: { provider?: ProviderId } | undefined =
+      this.source(base.sourceId) ?? this.metadata.value.archive[base.key]
+    return this.providers.of(owner)
   }
 
   // ---------------------------------------------------------------- public
@@ -241,8 +145,10 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
     } catch {
       return null
     }
-    const { events } = parseJsonl(text)
-    return { summary: this.withMeta(e.base), messages: buildMessages(events, e.base.cwd) }
+    return {
+      summary: this.withMeta(e.base),
+      messages: this.providerOf(e.base).buildMessages(text, e.base)
+    }
   }
 
   updateMeta(key: string, patch: Partial<SessionMeta>): SessionSummary | null {
@@ -352,10 +258,10 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
 
   private async detect(): Promise<ResolvedSource[]> {
     const s = this.settings.value
-    const detected = await detectSources(this.platform, {
-      extraFolders: s.extraFolders,
-      scanStoppedDistros: s.scanStoppedDistros
-    })
+    const opts = { extraFolders: s.extraFolders, scanStoppedDistros: s.scanStoppedDistros }
+    const detected: ResolvedSource[] = []
+    for (const p of this.providers.all())
+      detected.push(...(await p.detectSources(this.platform, opts)))
     // Drop duplicates (e.g. an extra folder that is also auto-detected) and
     // anything inside the app's own data folder.
     const seen = new Set<string>()
@@ -404,10 +310,10 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
 
   private async rescanNow(): Promise<void> {
     this.sources = await this.detect()
-    const files = new Map<string, FileInfo[]>()
+    const files = new Map<string, SessionFile[]>()
     for (const src of this.sources) {
       if (src.status !== 'ok') continue
-      const list = await listSessionFiles(src.projectsDir)
+      const list = await this.providers.of(src).listSessionFiles(src)
       if (list) files.set(src.id, list)
       else Object.assign(src, { status: 'unreadable', statusMessage: "Folder can't be read" })
     }
@@ -429,7 +335,7 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
   async pollSource(sourceId: string): Promise<void> {
     const src = this.source(sourceId)
     if (!src || src.status !== 'ok') return
-    const list = await listSessionFiles(src.projectsDir)
+    const list = await this.providers.of(src).listSessionFiles(src)
     if (!list) {
       // e.g. the WSL distro was shut down: show archive copies instead.
       Object.assign(src, { status: 'unreadable', statusMessage: "Can't be read right now" })
@@ -444,9 +350,9 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
   async fileChanged(sourceId: string, path: string): Promise<void> {
     const src = this.source(sourceId)
     if (!src || src.status !== 'ok') return
-    const name = basename(path)
-    if (!SESSION_FILE_RE.test(name)) return
-    const key = `${src.id}:${name.slice(0, -6)}`
+    const file = this.providers.of(src).sessionFileOf(path)
+    if (!file) return
+    const key = `${src.id}:${file.sessionId}`
     let st
     try {
       st = await stat(path)
@@ -456,8 +362,8 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
     }
     await this.loadFile(src, {
       path,
-      projectDir: basename(join(path, '..')),
-      sessionId: name.slice(0, -6),
+      projectDir: file.projectDir,
+      sessionId: file.sessionId,
       size: st.size,
       mtimeMs: st.mtimeMs
     })
@@ -481,7 +387,7 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
 
   private detectSource(base: BaseSummary): DetectedSource {
     const meta = this.metadata.value.sessions[base.sessionId] ?? {}
-    return detectSource(base.sourceHints, {
+    return this.providerOf(base).detectSource(base, {
       env: base.env,
       cwd: base.cwd,
       sourceUser: this.source(base.sourceId)?.user,
@@ -501,13 +407,14 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
       base.summary,
       base.firstPrompt
     )
-    // The dashboard's own Ask Claude runs: title them by the question.
-    const asked = title.titleSource === 'first-prompt' ? askQuestionOf(base.firstPrompt) : undefined
-    if (asked) title.title = `Ask Claude: ${asked}`
-    else if (title.titleSource === 'first-prompt' && base.firstPrompt?.startsWith(SUMMARY_MARKER))
-      title.title = 'Session summary (dashboard)'
+    const provider = this.providerOf(base)
+    // The dashboard's own runs (Ask Claude, summaries): titled by what they are.
+    const own =
+      title.titleSource === 'first-prompt' ? provider.ownRunTitle(base.firstPrompt) : undefined
+    if (own) title.title = own
     return {
       ...base,
+      provider: provider.id,
       meta,
       ...title,
       billing: this.billingResolver?.(base.sessionId, meta),
@@ -582,7 +489,9 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
   /** Load a file the app just created, and return its summary. */
   async loadNew(sourceId: string, path: string): Promise<SessionSummary | undefined> {
     await this.fileChanged(sourceId, path)
-    return this.get(`${sourceId}:${basename(path).slice(0, -6)}`)
+    const src = this.source(sourceId)
+    const file = src && this.providers.of(src).sessionFileOf(path)
+    return file ? this.get(`${sourceId}:${file.sessionId}`) : undefined
   }
 
   /** Tell the renderer that derived fields (e.g. billing) changed. */
@@ -622,7 +531,7 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
 
   private async syncSource(
     src: ResolvedSource,
-    files: FileInfo[],
+    files: SessionFile[],
     initial: boolean
   ): Promise<void> {
     // Serialise syncs per source.
@@ -650,7 +559,7 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
     await run
   }
 
-  private async loadFile(src: ResolvedSource, f: FileInfo): Promise<void> {
+  private async loadFile(src: ResolvedSource, f: SessionFile): Promise<void> {
     const key = `${src.id}:${f.sessionId}`
     const existing = this.entries.get(key)
     if (
@@ -687,7 +596,7 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
     } catch {
       return
     }
-    const { base, searchText } = parseSessionText(text, f, src)
+    const { base, searchText } = this.providers.of(src).parseSession(text, f, src)
     if (record) base.archivePath = record.archivePath
     this.entries.set(key, { base, size: f.size, mtimeMs: f.mtimeMs })
     this.index(base, searchText)
@@ -698,8 +607,11 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
     this.archiveQueue = this.archiveQueue.then(async () => {
       try {
         const key = base.key
+        const provider = this.providers.of(src)
         const rec = await archiveSession(
           {
+            provider: provider.id,
+            ext: provider.archiveExt,
             sessionId: base.sessionId,
             sourceId: src.id,
             sourceLabel: src.label,
@@ -769,6 +681,9 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
   }
 
   private async loadArchived(rec: ArchiveRecord, availability: Availability): Promise<void> {
+    // Kept by a provider this version doesn't have: left alone (it stays archived).
+    const provider = this.providers.find(rec)
+    if (!provider) return
     let text: string
     const imported = availability === 'imported'
     try {
@@ -791,11 +706,11 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
       env: rec.env,
       distro: rec.distro
     }
-    const { base, searchText } = parseSessionText(
+    const { base, searchText } = provider.parseSession(
       text,
       {
         path: rec.archivePath,
-        projectDir: basename(join(rec.originalPath, '..')),
+        projectDir: provider.projectDirOf(rec.originalPath),
         sessionId: rec.sessionId,
         size
       },
@@ -864,7 +779,7 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
     if (!e) return
     try {
       const text = await readFile(e.base.filePath, 'utf8')
-      this.index(e.base, analyzeEvents(parseJsonl(text).events).searchText)
+      this.index(e.base, this.providerOf(e.base).searchText(text))
     } catch {
       // keep the old index entry
     }

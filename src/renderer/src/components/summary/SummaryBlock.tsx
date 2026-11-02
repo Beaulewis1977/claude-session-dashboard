@@ -264,14 +264,9 @@ export function SummaryBlock({
             </Tooltip>
           )}
           {!job && !remote && (
-            <Tooltip content="Write the summary again">
-              <Button
-                variant="ghost"
-                size="icon-xs"
-                onClick={() => summarize([session.key])}
-                aria-label="Regenerate summary"
-              >
-                <RefreshCw />
+            <Tooltip content="Write the summary again (sends the session to Claude)">
+              <Button variant="ghost" size="xs" onClick={() => summarize([session.key])}>
+                <RefreshCw /> Regenerate
               </Button>
             </Tooltip>
           )}

@@ -17,6 +17,12 @@ import type { SourceHints, SourceLabel } from './source-label'
 import type { EffortChoice, ProjectModelDefault, ResolvedModel } from './model-choice'
 import { DEFAULT_LIVE_ALERTS, type LiveAlertSettings } from './live-alerts'
 import { DEFAULT_SUMMARY_SETTINGS, type AiSummary, type SummarySettings } from './summary'
+import {
+  DEFAULT_CONTEXT_WARNING,
+  type ContextWarningSettings,
+  type ResumeEstimate,
+  type SessionContext
+} from './context'
 
 export type EnvKind = 'windows' | 'wsl'
 
@@ -74,6 +80,8 @@ export interface SessionMeta {
   effort?: EffortChoice
   /** The AI summary of the session (written with `claude -p`, editable). */
   aiSummary?: AiSummary
+  /** "Don't warn for this session": no large-context warning before Resume. */
+  noContextWarning?: boolean
   updatedAt?: string
 }
 
@@ -195,6 +203,8 @@ export interface SessionSummary {
   /** Which product ran it (manual override, else detected). */
   source: SourceLabel
   sourceReason: string
+  /** How big the context is (the last reply's usage, compaction, the status line). */
+  context?: SessionContext
 }
 
 export interface ToolResult {
@@ -289,6 +299,8 @@ export interface AppSettings {
   liveAlerts: LiveAlertSettings
   /** Session summaries: model, auto-summarize, the limits guard. */
   summaries: SummarySettings
+  /** The large-session warning before Resume. */
+  contextWarning: ContextWarningSettings
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -318,7 +330,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   defaultEffort: 'default',
   projectModels: {},
   liveAlerts: DEFAULT_LIVE_ALERTS,
-  summaries: DEFAULT_SUMMARY_SETTINGS
+  summaries: DEFAULT_SUMMARY_SETTINGS,
+  contextWarning: DEFAULT_CONTEXT_WARNING
 }
 
 export interface ScanState {
@@ -442,6 +455,8 @@ export interface LaunchPreview {
   /** For Continue fresh: the handoff, or why there is none. */
   continueFresh?: ContinueFreshPreview
   continueError?: string
+  /** Resume / Fork: the context size and what reloading it would cost (estimate). */
+  context?: ResumeEstimate
 }
 
 export interface LaunchResult {

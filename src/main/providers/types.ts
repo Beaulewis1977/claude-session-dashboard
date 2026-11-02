@@ -3,7 +3,7 @@
 // now, summaries) need, so they never read an agent's files or build its
 // commands themselves: ClaudeProvider (./claude) and CodexProvider (./codex).
 
-import type { ProviderId } from '@shared/provider'
+import type { ProviderCapabilities, ProviderId } from '@shared/provider'
 import type { BranchMode, BranchPlanOk } from '@shared/branch'
 import type { MessageStart } from '@shared/lineage'
 import type { HookEvent, RunningFile } from '@shared/live'
@@ -43,26 +43,7 @@ export type BaseSummary = Omit<
 
 export type SourceRef = Pick<SourceInfo, 'id' | 'label' | 'env' | 'distro'>
 
-/** What a provider's sessions can do (unsupported actions are refused). */
-export interface ProviderCapabilities {
-  fork: boolean
-  branch: boolean
-  continueFresh: boolean
-  remoteControl: boolean
-  /** Launch on an API account's key instead of the subscription. */
-  apiBilling: boolean
-  /** "New session in this folder". */
-  newSession: boolean
-  /** Session summaries (written with `claude -p`). */
-  summaries: boolean
-  /** Token usage and plan limits are read from its files. */
-  usage: boolean
-  /**
-   * A missing session file may be copied back from the archive before a
-   * launch (an allowed exception for `.claude` only; never for other agents' folders).
-   */
-  restore: boolean
-}
+export type { ProviderCapabilities }
 
 /** The agent's own command (`claude …`), without the terminal around it. */
 export interface CliInput {

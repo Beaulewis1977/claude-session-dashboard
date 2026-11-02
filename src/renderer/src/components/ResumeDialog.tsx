@@ -34,12 +34,15 @@ import { Segmented } from './ui/segmented'
 import { Tooltip } from './ui/tooltip'
 import { validBilling } from '@/lib/billing'
 import { BillingPicker } from './BillingPicker'
+import { capsOf, providerOf } from '@shared/provider'
 import { BranchPointCard } from './viewer/Branches'
 import { SessionModelControls } from './ModelPicker'
 import { choiceLabel } from '@shared/model-choice'
 import { projectDefault, projectDefaultKey, withProjectDefault } from '@shared/project-key'
 
 export const SKIP_WARNING = 'Claude will not ask before running commands or deleting files.'
+export const BYPASS_WARNING =
+  'Codex will not ask before running commands, and runs them outside its sandbox.'
 
 const TERMINAL_LABEL: Record<TerminalPref, string> = {
   wt: 'Windows Terminal',
@@ -47,11 +50,18 @@ const TERMINAL_LABEL: Record<TerminalPref, string> = {
   cmd: 'Command Prompt'
 }
 
-export function SkipPermissionsWarning({ className }: { className?: string }) {
+export function SkipPermissionsWarning({
+  className,
+  codex = false
+}: {
+  className?: string
+  /** Codex's bypass flag instead of Claude Code's. */
+  codex?: boolean
+}) {
   return (
     <div className={cn('flex items-center gap-1.5 text-xs font-medium text-warning', className)}>
       <TriangleAlert className="size-3.5 shrink-0" />
-      {SKIP_WARNING}
+      {codex ? BYPASS_WARNING : SKIP_WARNING}
     </div>
   )
 }
@@ -108,6 +118,9 @@ function ResumeDialogBody({ resume }: { resume: ResumeRequest }) {
   const info = useApp((s) => s.info)
   const set = useApp((s) => s.set)
   const session = sessions.find((s) => s.key === resume.key)
+  // Codex: no API billing or Remote Control; its own bypass flag.
+  const caps = capsOf(session)
+  const codex = providerOf(session) === 'codex'
 
   const carry = resume.carry
   const [skip, setSkip] = useState(carry?.skip ?? settings.skipPermissionsDefault)
@@ -126,14 +139,19 @@ function ResumeDialogBody({ resume }: { resume: ResumeRequest }) {
   const projectKey = projectDefaultKey(session)
   const projectBillingNow = projectDefault(settings.projectBilling, session)
   const [billing, setBilling] = useState(() =>
-    validBilling(carry?.billing ?? projectBillingNow ?? settings.defaultBilling, accounts)
+    caps.apiBilling
+      ? validBilling(carry?.billing ?? projectBillingNow ?? settings.defaultBilling, accounts)
+      : 'subscription'
   )
   const [rememberProject, setRememberProject] = useState(
     () => carry?.rememberProject ?? projectBillingNow !== undefined
   )
   // Remote Control runs only on the subscription: turning one on turns the other off.
   const [remoteControl, setRemoteControlState] = useState(
-    () => (carry?.remoteControl ?? settings.remoteControlDefault) && billing === 'subscription'
+    () =>
+      caps.remoteControl &&
+      (carry?.remoteControl ?? settings.remoteControlDefault) &&
+      billing === 'subscription'
   )
   // The estimate goes up when a warm cache runs out: preview again then.
   const [expired, setExpired] = useState(0)
@@ -207,7 +225,10 @@ function ResumeDialogBody({ resume }: { resume: ResumeRequest }) {
     session?.meta.effort,
     settings.defaultModel,
     settings.defaultEffort,
-    settings.projectModels
+    settings.projectModels,
+    settings.codexDefaultModel,
+    settings.codexDefaultEffort,
+    settings.codexProjectModels
   ])
 
   useWarmExpiry(preview?.context?.warmUntil, () => setExpired((n) => n + 1))
@@ -268,7 +289,7 @@ function ResumeDialogBody({ resume }: { resume: ResumeRequest }) {
     // Per-project default ("always use API credits for this project").
     const current = projectDefault(settings.projectBilling, session)
     const want = rememberProject ? billing : undefined
-    if (session && projectKey && current !== want) {
+    if (session && caps.apiBilling && projectKey && current !== want) {
       const projectBilling = withProjectDefault(settings.projectBilling, session, want, sessions)
       void api.updateSettings({ projectBilling }).then((st) => set({ settings: st }))
     }
@@ -501,8 +522,9 @@ function ResumeDialogBody({ resume }: { resume: ResumeRequest }) {
             {cwdOverride && (
               <div className="mt-1.5 flex items-start gap-1.5 text-xs text-muted-foreground">
                 <Info className="mt-px size-3.5 shrink-0" />
-                Claude Code looks sessions up by project folder, so resuming from a different folder
-                may not find it.
+                {codex
+                  ? 'Codex resumes by session id; it will run in the folder you picked.'
+                  : 'Claude Code looks sessions up by project folder, so resuming from a different folder may not find it.'}
                 <button
                   type="button"
                   className="shrink-0 font-medium text-primary hover:underline"
@@ -539,35 +561,41 @@ function ResumeDialogBody({ resume }: { resume: ResumeRequest }) {
             )}
           </div>
 
-          <div>
-            <div className="mb-1.5 flex items-center gap-1.5 text-xs font-medium">
-              Billing
-              <Tooltip
-                content="With an API key, Claude Code may ask once to confirm that it should use the key. The key is only given to this one terminal."
-                side="right"
-              >
-                <Info className="size-3.5 text-subtle-foreground" aria-label="About billing" />
-              </Tooltip>
+          {caps.apiBilling && (
+            <div>
+              <div className="mb-1.5 flex items-center gap-1.5 text-xs font-medium">
+                Billing
+                <Tooltip
+                  content="With an API key, Claude Code may ask once to confirm that it should use the key. The key is only given to this one terminal."
+                  side="right"
+                >
+                  <Info className="size-3.5 text-subtle-foreground" aria-label="About billing" />
+                </Tooltip>
+              </div>
+              <div className="flex flex-wrap items-center gap-3">
+                <BillingPicker value={billing} onChange={pickBilling} />
+                {projectKey && (
+                  <label className="flex cursor-pointer items-center gap-2 text-xs text-muted-foreground">
+                    <Checkbox
+                      checked={rememberProject}
+                      onCheckedChange={(v) => setRememberProject(v === true)}
+                    />
+                    Always use this for {session.projectName}
+                  </label>
+                )}
+              </div>
             </div>
-            <div className="flex flex-wrap items-center gap-3">
-              <BillingPicker value={billing} onChange={pickBilling} />
-              {projectKey && (
-                <label className="flex cursor-pointer items-center gap-2 text-xs text-muted-foreground">
-                  <Checkbox
-                    checked={rememberProject}
-                    onCheckedChange={(v) => setRememberProject(v === true)}
-                  />
-                  Always use this for {session.projectName}
-                </label>
-              )}
-            </div>
-          </div>
+          )}
 
           <div>
             <div className="mb-1.5 flex items-center gap-1.5 text-xs font-medium">
               Model and effort
               <Tooltip
-                content="Saved for this session. Default uses the project's default, then Settings, then Claude Code's own (no flag). An effort level set with CLAUDE_CODE_EFFORT_LEVEL wins over --effort."
+                content={
+                  codex
+                    ? "Saved for this session. Default uses the project's default, then Settings → Codex, then Codex's own (no -m / -c model_reasoning_effort)."
+                    : "Saved for this session. Default uses the project's default, then Settings, then Claude Code's own (no flag). An effort level set with CLAUDE_CODE_EFFORT_LEVEL wins over --effort."
+                }
                 side="right"
               >
                 <Info
@@ -579,11 +607,13 @@ function ResumeDialogBody({ resume }: { resume: ResumeRequest }) {
             <SessionModelControls session={session} />
           </div>
 
-          <RemoteControlOption
-            checked={remoteControl}
-            onChange={setRemoteControl}
-            name={preview?.remoteControlName}
-          />
+          {caps.remoteControl && (
+            <RemoteControlOption
+              checked={remoteControl}
+              onChange={setRemoteControl}
+              name={preview?.remoteControlName}
+            />
+          )}
 
           <div className="rounded-lg border border-border p-3">
             <label className="flex cursor-pointer items-start gap-2.5">
@@ -593,13 +623,17 @@ function ResumeDialogBody({ resume }: { resume: ResumeRequest }) {
                 className="mt-0.5"
               />
               <span className="min-w-0">
-                <span className="block text-[13px] font-medium">Skip permission prompts</span>
+                <span className="block text-[13px] font-medium">
+                  {codex ? 'Bypass approvals and sandbox' : 'Skip permission prompts'}
+                </span>
                 <span className="block font-mono text-[11px] text-muted-foreground">
-                  --dangerously-skip-permissions
+                  {codex
+                    ? '--dangerously-bypass-approvals-and-sandbox'
+                    : '--dangerously-skip-permissions'}
                 </span>
               </span>
             </label>
-            {skip && <SkipPermissionsWarning className="mt-2 pl-[26px]" />}
+            {skip && <SkipPermissionsWarning className="mt-2 pl-[26px]" codex={codex} />}
           </div>
 
           <div>

@@ -3,6 +3,7 @@ import { Plus, X } from 'lucide-react'
 import type { SessionSummary } from '@shared/types'
 import { canUseClaudeName, titleSourceLabel } from '@shared/title'
 import { applyClaudeNames } from '@/lib/actions'
+import { PROVIDER_LABEL, providerOf } from '@shared/provider'
 import { tagColor } from '@/lib/filters'
 import { cn } from '@/lib/utils'
 
@@ -131,7 +132,9 @@ export function EditableTitle({
           data-testid="renamed-meanwhile"
           className="mt-1 flex flex-wrap items-center gap-x-1.5 text-2xs text-muted-foreground"
         >
-          <span>Renamed in Claude Code to “{session.title}”.</span>
+          <span>
+            Renamed in {PROVIDER_LABEL[providerOf(session)]} to “{session.title}”.
+          </span>
           <button
             type="button"
             // Keep the focus in the box, so the draft isn't saved first.
@@ -170,10 +173,10 @@ export function TitleSourceLine({
       data-testid="title-source"
       className="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-2xs text-subtle-foreground"
     >
-      <span>{titleSourceLabel(session.titleSource)}</span>
+      <span>{titleSourceLabel(session.titleSource, PROVIDER_LABEL[providerOf(session)])}</span>
       {renamedLater && (
         <span title={`Your dashboard name was “${session.meta.name}”`}>
-          · renamed in Claude Code after your dashboard name
+          · renamed in {PROVIDER_LABEL[providerOf(session)]} after your dashboard name
         </span>
       )}
       {useClaude && (
@@ -182,10 +185,10 @@ export function TitleSourceLine({
           <button
             type="button"
             onClick={onUseClaudeName}
-            title={`Claude Code calls it “${session.claudeName}”`}
+            title={`${PROVIDER_LABEL[providerOf(session)]} calls it “${session.claudeName}”`}
             className="font-medium text-primary hover:underline"
           >
-            Use name from Claude Code
+            Use name from {PROVIDER_LABEL[providerOf(session)]}
           </button>
         </>
       )}

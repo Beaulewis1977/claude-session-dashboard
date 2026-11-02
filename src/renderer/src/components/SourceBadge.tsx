@@ -52,7 +52,8 @@ export function SourcePicker({
   onPick: (label: SourceLabel | null) => void
 }) {
   const Icon = SOURCE_ICON[source] ?? CircleHelp
-  const fixed = source === 'ask-claude' || source === 'claude-ai'
+  // The dashboard's own runs, imports and Codex's labels are detected, not picked.
+  const fixed = source === 'ask-claude' || source === 'claude-ai' || source.startsWith('codex-')
   const badge = (
     <span className="inline-flex h-[22px] items-center gap-1 rounded-md border border-border bg-secondary/60 px-1.5 text-xs font-medium text-foreground/80 [&_svg]:size-3">
       <Icon /> {SOURCE_LABELS[source]}

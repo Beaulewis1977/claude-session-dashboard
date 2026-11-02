@@ -8,6 +8,7 @@ import { toast } from 'sonner'
 import { Check, ChevronDown, FolderCog, Gauge, Sparkles, X } from 'lucide-react'
 import {
   choiceLabel,
+  CODEX_EFFORT_LEVELS,
   DEFAULT_CHOICE,
   EFFORT_LABEL,
   EFFORT_LEVELS,
@@ -20,7 +21,6 @@ import {
   modelsSeen,
   projectModelKey,
   promoteToProject,
-  resolveModelChoice,
   type ChoiceFrom,
   type EffortChoice,
   type ResolvedModel
@@ -29,6 +29,8 @@ import type { SessionMeta, SessionSummary } from '@shared/types'
 import { api } from '@/lib/api'
 import { updateMeta } from '@/lib/actions'
 import { useApp } from '@/lib/store'
+import { modelChoiceOf } from '@/lib/model-choice'
+import { PROVIDER_LABEL, providerOf, type ProviderId } from '@shared/provider'
 import { cn } from '@/lib/utils'
 import { Badge } from './ui/badge'
 import { Button } from './ui/button'
@@ -55,22 +57,25 @@ const clearChoice = { model: '', effort: '' } as unknown as Pick<SessionMeta, 'm
 /** What "Default" means for a session: its project's default, else Settings. */
 function useInherited(s: SessionSummary): ResolvedModel {
   const settings = useApp((st) => st.settings)
-  const { cwd, env, distro } = s
+  const { cwd, env, distro, provider } = s
   return useMemo(
-    () => resolveModelChoice(undefined, { cwd, env, distro }, settings),
-    [cwd, env, distro, settings]
+    () => modelChoiceOf({ meta: {}, cwd, env, distro, provider }, settings),
+    [cwd, env, distro, provider, settings]
   )
 }
+
+/** "Claude Code's" / "Codex's": whose own default applies when nothing is set. */
+const ownDefault = (agent: ProviderId): string => PROVIDER_LABEL[agent] + "'s"
 
 const fromShort = (from: ChoiceFrom): string =>
   from === 'project' ? 'project' : from === 'settings' ? 'Settings' : ''
 
-function inheritedModelText(r: ResolvedModel): string {
-  return r.model ? `${modelLabel(r.model)} · ${fromShort(r.modelFrom)}` : "Claude Code's"
+function inheritedModelText(r: ResolvedModel, agent: ProviderId = 'claude'): string {
+  return r.model ? `${modelLabel(r.model)} · ${fromShort(r.modelFrom)}` : ownDefault(agent)
 }
 
-function inheritedEffortText(r: ResolvedModel): string {
-  return r.effort ? `${effortLabel(r.effort)} · ${fromShort(r.effortFrom)}` : "Claude Code's"
+function inheritedEffortText(r: ResolvedModel, agent: ProviderId = 'claude'): string {
+  return r.effort ? `${effortLabel(r.effort)} · ${fromShort(r.effortFrom)}` : ownDefault(agent)
 }
 
 /** "Opus · High" next to a session; nothing when Claude Code's defaults apply. */
@@ -125,7 +130,8 @@ export function ModelPicker({
   explicitDefault = false,
   align = 'start',
   disabled,
-  className
+  className,
+  agent = 'claude'
 }: {
   value: string | undefined
   onChange: (v: string | undefined) => void
@@ -136,17 +142,24 @@ export function ModelPicker({
   align?: 'start' | 'end'
   disabled?: boolean
   className?: string
+  /** Whose models: Claude Code's aliases and models, or Codex's. */
+  agent?: ProviderId
 }) {
   const sessions = useApp((s) => s.sessions)
-  const seen = useMemo(() => modelsSeen(sessions).slice(0, SEEN_MAX), [sessions])
+  const seen = useMemo(
+    () => modelsSeen(sessions.filter((s) => providerOf(s) === agent)).slice(0, SEEN_MAX),
+    [sessions, agent]
+  )
   const [custom, setCustom] = useState<string | null>(null)
-  const known = new Set<string>([...MODEL_ALIASES, ...seen])
+  // Codex has no documented aliases: its models come from the sessions (or Custom…).
+  const aliases: readonly string[] = agent === 'claude' ? MODEL_ALIASES : []
+  const known = new Set<string>([...aliases, ...seen])
   const radio = value === undefined ? '' : value
   const label =
     value === undefined
       ? `Default (${defaultText})`
       : value === DEFAULT_CHOICE
-        ? "Claude Code's default"
+        ? `${ownDefault(agent)} default`
         : modelLabel(value)
 
   if (custom !== null) {
@@ -174,7 +187,7 @@ export function ModelPicker({
                 setCustom(null)
               }
             }}
-            placeholder="opus, sonnet[1m], claude-…"
+            placeholder={agent === 'codex' ? 'gpt-5.5-codex, …' : 'opus, sonnet[1m], claude-…'}
             aria-label="Custom model ID or alias"
             aria-invalid={!!custom.trim() && !ok}
             className="h-8 w-[200px] font-mono text-[12px]"
@@ -239,18 +252,22 @@ export function ModelPicker({
           </DropdownMenuRadioItem>
           {explicitDefault && (
             <DropdownMenuRadioItem value={DEFAULT_CHOICE}>
-              <span className="min-w-0 flex-1 truncate">Claude Code&apos;s default</span>
+              <span className="min-w-0 flex-1 truncate">{ownDefault(agent)} default</span>
               <span className="text-[11px] text-subtle-foreground">no flag</span>
             </DropdownMenuRadioItem>
           )}
-          <DropdownMenuSeparator />
-          <DropdownMenuLabel>Aliases (latest model)</DropdownMenuLabel>
-          {MODEL_ALIASES.map((m) => (
-            <DropdownMenuRadioItem key={m} value={m}>
-              <span className="min-w-0 flex-1">{modelLabel(m)}</span>
-              <span className="font-mono text-[10.5px] text-subtle-foreground">{m}</span>
-            </DropdownMenuRadioItem>
-          ))}
+          {aliases.length > 0 && (
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuLabel>Aliases (latest model)</DropdownMenuLabel>
+              {aliases.map((m) => (
+                <DropdownMenuRadioItem key={m} value={m}>
+                  <span className="min-w-0 flex-1">{modelLabel(m)}</span>
+                  <span className="font-mono text-[10.5px] text-subtle-foreground">{m}</span>
+                </DropdownMenuRadioItem>
+              ))}
+            </>
+          )}
           {seen.length > 0 && (
             <>
               <DropdownMenuSeparator />
@@ -289,7 +306,8 @@ export function EffortPicker({
   explicitDefault = false,
   align = 'start',
   disabled,
-  className
+  className,
+  agent = 'claude'
 }: {
   value: EffortChoice | undefined
   onChange: (v: EffortChoice | undefined) => void
@@ -298,12 +316,15 @@ export function EffortPicker({
   align?: 'start' | 'end'
   disabled?: boolean
   className?: string
+  /** Whose levels: `claude --effort`, or Codex's model_reasoning_effort. */
+  agent?: ProviderId
 }) {
+  const levels = agent === 'codex' ? CODEX_EFFORT_LEVELS : EFFORT_LEVELS
   const label =
     value === undefined
       ? `Default (${defaultText})`
       : value === DEFAULT_CHOICE
-        ? "Claude Code's default"
+        ? `${ownDefault(agent)} default`
         : EFFORT_LABEL[value]
   return (
     <DropdownMenu>
@@ -328,7 +349,11 @@ export function EffortPicker({
           value={value ?? ''}
           onValueChange={(v) =>
             onChange(
-              v === '' ? undefined : v === DEFAULT_CHOICE || isEffortLevel(v) ? v : undefined
+              v === ''
+                ? undefined
+                : v === DEFAULT_CHOICE || isEffortLevel(v, levels)
+                  ? v
+                  : undefined
             )
           }
         >
@@ -338,12 +363,12 @@ export function EffortPicker({
           </DropdownMenuRadioItem>
           {explicitDefault && (
             <DropdownMenuRadioItem value={DEFAULT_CHOICE}>
-              <span className="min-w-0 flex-1 truncate">Claude Code&apos;s default</span>
+              <span className="min-w-0 flex-1 truncate">{ownDefault(agent)} default</span>
               <span className="text-[11px] text-subtle-foreground">no flag</span>
             </DropdownMenuRadioItem>
           )}
           <DropdownMenuSeparator />
-          {EFFORT_LEVELS.map((e) => (
+          {levels.map((e) => (
             <DropdownMenuRadioItem key={e} value={e}>
               <span className="min-w-0 flex-1">{EFFORT_LABEL[e]}</span>
               <span className="font-mono text-[10.5px] text-subtle-foreground">{e}</span>
@@ -351,8 +376,9 @@ export function EffortPicker({
           ))}
         </DropdownMenuRadioGroup>
         <div className="px-2 pt-1 pb-1.5 text-[11px] leading-snug text-subtle-foreground">
-          Not every model supports every level; Claude Code steps down to the highest one it
-          supports.
+          {agent === 'codex'
+            ? 'Not every Codex model supports every level (Ultra is only on some).'
+            : 'Not every model supports every level; Claude Code steps down to the highest one it supports.'}
         </div>
       </DropdownMenuContent>
     </DropdownMenu>
@@ -377,6 +403,7 @@ export function SessionModelControls({
   className?: string
 }) {
   const inherited = useInherited(session)
+  const agent = providerOf(session)
   const meta = session.meta
   const model = meta.model
   const effort = meta.effort
@@ -386,16 +413,18 @@ export function SessionModelControls({
       <ModelPicker
         value={model}
         onChange={(v) => save(v === undefined ? { model: clearChoice.model } : { model: v })}
-        defaultText={inheritedModelText(inherited)}
+        defaultText={inheritedModelText(inherited, agent)}
         explicitDefault={!!inherited.model}
         disabled={disabled}
+        agent={agent}
       />
       <EffortPicker
         value={effort}
         onChange={(v) => save(v === undefined ? { effort: clearChoice.effort } : { effort: v })}
-        defaultText={inheritedEffortText(inherited)}
+        defaultText={inheritedEffortText(inherited, agent)}
         explicitDefault={!!inherited.effort}
         disabled={disabled}
+        agent={agent}
       />
       {!api.remote && projectModelKey(session) && <ProjectDefaultMenu session={session} />}
     </div>
@@ -407,20 +436,24 @@ function ProjectDefaultMenu({ session }: { session: SessionSummary }) {
   const settings = useApp((s) => s.settings)
   const set = useApp((s) => s.set)
   const key = projectModelKey(session) ?? ''
-  const current = Object.hasOwn(settings.projectModels, key)
-    ? settings.projectModels[key]
-    : undefined
+  // Codex has its own project defaults, apart from Claude Code's.
+  const codex = providerOf(session) === 'codex'
+  const field = codex ? 'codexProjectModels' : 'projectModels'
+  const models = (codex ? settings.codexProjectModels : settings.projectModels) ?? {}
+  const current = Object.hasOwn(models, key) ? models[key] : undefined
   const own = { model: session.meta.model, effort: session.meta.effort }
   const hasOwn = own.model !== undefined || own.effort !== undefined
   const currentLabel = current
     ? choiceLabel({
         model: current.model !== DEFAULT_CHOICE ? current.model : undefined,
-        effort: isEffortLevel(current.effort) ? current.effort : undefined
-      }) || "Claude Code's default"
+        effort: isEffortLevel(current.effort, codex ? CODEX_EFFORT_LEVELS : EFFORT_LEVELS)
+          ? current.effort
+          : undefined
+      }) || ownDefault(providerOf(session)) + ' default'
     : undefined
   const saveProject = async (next: (typeof settings)['projectModels']): Promise<boolean> => {
     try {
-      set({ settings: await api.updateSettings({ projectModels: next }) })
+      set({ settings: await api.updateSettings({ [field]: next }) })
       return true
     } catch (err) {
       toast.error('Could not save the project default', { description: (err as Error).message })
@@ -447,7 +480,7 @@ function ProjectDefaultMenu({ session }: { session: SessionSummary }) {
           onSelect={() =>
             void (async () => {
               // Only the session's own fields change; the project keeps the others.
-              const next = { ...settings.projectModels, [key]: promoteToProject(current, own) }
+              const next = { ...models, [key]: promoteToProject(current, own) }
               if (!(await saveProject(next))) return
               // Saved: the session now follows the project default for what it promoted.
               await updateMeta(session.key, {
@@ -462,7 +495,7 @@ function ProjectDefaultMenu({ session }: { session: SessionSummary }) {
         <DropdownMenuItem
           disabled={!current}
           onSelect={() => {
-            const next = { ...settings.projectModels }
+            const next = { ...models }
             delete next[key]
             void saveProject(next)
           }}
@@ -484,12 +517,14 @@ export function DefaultModelPickers({
   model,
   effort,
   onModel,
-  onEffort
+  onEffort,
+  agent = 'claude'
 }: {
   model: string
   effort: EffortChoice
   onModel: (v: string) => void
   onEffort: (v: EffortChoice) => void
+  agent?: ProviderId
 }) {
   return (
     <div className="flex flex-wrap items-center justify-end gap-2">
@@ -497,13 +532,15 @@ export function DefaultModelPickers({
         align="end"
         value={model === DEFAULT_CHOICE ? undefined : model}
         onChange={(v) => onModel(v ?? DEFAULT_CHOICE)}
-        defaultText="Claude Code's"
+        defaultText={ownDefault(agent)}
+        agent={agent}
       />
       <EffortPicker
         align="end"
         value={effort === DEFAULT_CHOICE ? undefined : effort}
         onChange={(v) => onEffort(v ?? DEFAULT_CHOICE)}
-        defaultText="Claude Code's"
+        defaultText={ownDefault(agent)}
+        agent={agent}
       />
     </div>
   )

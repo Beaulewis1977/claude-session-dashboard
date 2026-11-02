@@ -4,6 +4,7 @@ import { setClockOffset } from '@shared/clock'
 import { api } from '@/lib/api'
 import { copyResumeCommand, exportMarkdown, openResume, toggleHidden } from '@/lib/actions'
 import { branchCounts, groupBranches, visibleSessions } from '@/lib/filters'
+import { useScope } from '@/lib/scope'
 import { useHotkeys } from '@/lib/hotkeys'
 import { useLiveData } from '@/lib/live'
 import { useLiveSessions } from '@/lib/live-sessions'
@@ -122,12 +123,14 @@ export function App() {
   const requestFocus = useApp((s) => s.requestFocus)
   const resolvedTheme = useThemeEffect(settings.theme)
   const grouped = useApp((s) => s.groupBranches)
+  // The All / Claude / Codex switch and the subagent toggle.
+  const scope = useScope()
 
   // With grouping on, branches follow their parent (keyboard order matches the list).
   const { items, depth } = useMemo(() => {
-    const list = visibleSessions(sessions, filters, sort, hits)
+    const list = visibleSessions(sessions, filters, sort, hits, scope)
     return grouped ? groupBranches(list) : { items: list, depth: undefined }
-  }, [sessions, filters, sort, hits, grouped])
+  }, [sessions, filters, sort, hits, grouped, scope])
   const counts = useMemo(() => branchCounts(sessions), [sessions])
   const selected = sessions.find((s) => s.key === selectedKey)
   const allTags = useMemo(

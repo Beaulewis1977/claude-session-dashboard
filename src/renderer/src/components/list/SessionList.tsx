@@ -31,10 +31,11 @@ function EmptyList({ kind }: { kind: 'none' | 'filtered' | 'search' }) {
         <div className="mb-4 flex size-12 items-center justify-center rounded-xl border border-border bg-background shadow-xs">
           <FolderSearch className="size-5 text-muted-foreground" />
         </div>
-        <div className="text-sm font-medium">No Claude Code sessions found</div>
+        <div className="text-sm font-medium">No sessions found</div>
         <p className="mt-1.5 max-w-[260px] text-xs leading-relaxed text-muted-foreground">
           Sessions appear here as soon as Claude Code writes them to{' '}
-          <span className="font-mono">.claude/projects</span> on Windows or in WSL. You can also add
+          <span className="font-mono">.claude/projects</span> (or Codex to{' '}
+          <span className="font-mono">.codex/sessions</span>) on Windows or in WSL. You can also add
           other folders to scan.
         </p>
         <Button
@@ -60,7 +61,7 @@ function EmptyList({ kind }: { kind: 'none' | 'filtered' | 'search' }) {
         {visibility === 'hidden'
           ? 'Hidden sessions show up here.'
           : visibility === 'archived'
-            ? 'Sessions whose original file was cleaned up by Claude Code show up here.'
+            ? 'Sessions whose original file is gone (cleaned up by Claude Code, or removed from ~/.codex) show up here.'
             : 'Try a different search or clear the filters.'}
       </p>
       <Button

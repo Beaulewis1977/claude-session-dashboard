@@ -2,6 +2,7 @@
 
 import { toast } from 'sonner'
 import type { AiSummary } from '@shared/summary'
+import { capsOf } from '@shared/provider'
 import { api } from './api'
 import { useApp } from './store'
 
@@ -14,8 +15,12 @@ const get = () => useApp.getState()
  */
 export function summarize(keys: string[], origin: 'manual' | 'bulk' = 'manual'): void {
   const st = get()
-  const list = keys.filter((k) => st.sessions.some((s) => s.key === k))
-  if (!list.length) return
+  // Only sessions whose agent has summaries (not Codex, for now).
+  const list = keys.filter((k) => st.sessions.some((s) => s.key === k && capsOf(s).summaries))
+  if (!list.length) {
+    if (keys.length) toast("Summaries aren't available for Codex sessions yet")
+    return
+  }
   if (origin === 'manual' && list.length === 1 && st.settings.summaries.noticeAccepted) {
     void queue(list, origin)
     return
@@ -84,6 +89,10 @@ export async function removeSummary(key: string): Promise<void> {
 export function openContinueFresh(key: string): void {
   const s = get().sessions.find((x) => x.key === key)
   if (!s) return
+  if (!capsOf(s).continueFresh) {
+    toast("Continue fresh isn't available for Codex sessions yet")
+    return
+  }
   if (s.availability === 'imported') {
     toast('This conversation was imported from claude.ai', {
       description: 'It can be read, searched and summarized, but not continued in Claude Code.'

@@ -206,3 +206,81 @@ describe('clearedFilters', () => {
     expect(clearedFilters(f).source).toBeNull()
   })
 })
+
+describe('the All / Claude / Codex switch and the subagent toggle', () => {
+  const mixed = [
+    s({ key: 'c1', provider: 'claude', lastActivityAt: '2026-10-20T10:00:00Z' }),
+    s({ key: 'c2', lastActivityAt: '2026-10-19T10:00:00Z' }),
+    s({
+      key: 'x1',
+      provider: 'codex',
+      source: 'codex-cli',
+      env: 'wsl',
+      distro: 'Ubuntu',
+      lastActivityAt: '2026-10-18T10:00:00Z'
+    }),
+    s({
+      key: 'x2',
+      provider: 'codex',
+      source: 'codex-subagent',
+      subagent: { parentId: 'x1' },
+      lastActivityAt: '2026-10-17T10:00:00Z'
+    })
+  ]
+  const keys = (l: SessionSummary[]): string[] => l.map((x) => x.key)
+  const scope = (view: 'all' | 'claude' | 'codex', subagents = false) => ({ view, subagents })
+
+  it('filters the list by provider; subagents only when turned on or picked', () => {
+    expect(keys(visibleSessions(mixed, EMPTY_FILTERS, 'activity', null))).toEqual([
+      'c1',
+      'c2',
+      'x1',
+      'x2'
+    ])
+    expect(keys(visibleSessions(mixed, EMPTY_FILTERS, 'activity', null, scope('all')))).toEqual([
+      'c1',
+      'c2',
+      'x1'
+    ])
+    // A session without a provider field is Claude Code's.
+    expect(keys(visibleSessions(mixed, EMPTY_FILTERS, 'activity', null, scope('claude')))).toEqual([
+      'c1',
+      'c2'
+    ])
+    expect(keys(visibleSessions(mixed, EMPTY_FILTERS, 'activity', null, scope('codex')))).toEqual([
+      'x1'
+    ])
+    expect(
+      keys(visibleSessions(mixed, EMPTY_FILTERS, 'activity', null, scope('codex', true)))
+    ).toEqual(['x1', 'x2'])
+    // Picking the "Codex subagent" source shows them even with the toggle off.
+    expect(
+      keys(
+        visibleSessions(
+          mixed,
+          { ...EMPTY_FILTERS, source: 'codex-subagent' },
+          'activity',
+          null,
+          scope('all')
+        )
+      )
+    ).toEqual(['x2'])
+  })
+
+  it('applies to search results and the sidebar counts', () => {
+    const hits = new Map([
+      ['c1', { key: 'c1', score: 2, fields: ['text'] }],
+      ['x1', { key: 'x1', score: 3, fields: ['text'] }]
+    ])
+    expect(keys(visibleSessions(mixed, EMPTY_FILTERS, 'relevance', hits, scope('codex')))).toEqual([
+      'x1'
+    ])
+    const f = facets(mixed, EMPTY_FILTERS, scope('claude'))
+    expect(f.views.visible).toBe(2)
+    expect(f.env.map((e) => e.key)).toEqual(['windows'])
+    const all = facets(mixed, EMPTY_FILTERS, scope('all'))
+    expect(all.views.visible).toBe(3)
+    // The subagent source stays in the Source list so it can be picked.
+    expect(all.source.find((x) => x.key === 'codex-subagent')?.count).toBe(1)
+  })
+})

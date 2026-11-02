@@ -81,3 +81,62 @@ export function effectiveView(view: ProviderView, enabled: ProviderToggles): Pro
 export function enabledProviders(enabled: ProviderToggles): ProviderId[] {
   return PROVIDER_IDS.filter((p) => enabled[p])
 }
+
+/** What a provider's sessions can do. Unsupported actions are hidden in the app and refused in the main process. */
+export interface ProviderCapabilities {
+  fork: boolean
+  branch: boolean
+  continueFresh: boolean
+  remoteControl: boolean
+  /** Launch on an API account's key instead of the subscription. */
+  apiBilling: boolean
+  /** "New session in this folder". */
+  newSession: boolean
+  /** Session summaries (written with `claude -p`). */
+  summaries: boolean
+  /** Token usage and plan limits are read from its files. */
+  usage: boolean
+  /**
+   * A missing session file may be copied back from the archive before a
+   * launch (an allowed exception for `.claude` only; never for other agents' folders).
+   */
+  restore: boolean
+  /** Running now and session alerts. */
+  live: boolean
+}
+
+export const PROVIDER_CAPABILITIES: Record<ProviderId, ProviderCapabilities> = {
+  claude: {
+    fork: true,
+    branch: true,
+    continueFresh: true,
+    remoteControl: true,
+    apiBilling: true,
+    newSession: true,
+    summaries: true,
+    usage: true,
+    restore: true,
+    live: true
+  },
+  // Codex (Phase B): `codex resume` and `codex fork`; no Branch from here (it would
+  // write into ~/.codex), no Continue fresh or summaries yet, usage in Phase C.
+  codex: {
+    fork: true,
+    branch: false,
+    continueFresh: false,
+    remoteControl: false,
+    apiBilling: false,
+    newSession: false,
+    summaries: false,
+    usage: false,
+    restore: false,
+    live: false
+  }
+}
+
+export function capsOf(x: { provider?: ProviderId } | undefined | null): ProviderCapabilities {
+  return PROVIDER_CAPABILITIES[providerOf(x)]
+}
+
+/** The agent's command, for "Copy codex command only". */
+export const PROVIDER_BIN: Record<ProviderId, string> = { claude: 'claude', codex: 'codex' }

@@ -9,6 +9,7 @@
 
 import { basename, dirname, join } from 'node:path'
 import { CODEX_EFFORT_LEVELS } from '@shared/model-choice'
+import { PROVIDER_CAPABILITIES } from '@shared/provider'
 import { baseName } from '@shared/format'
 import type { BaseSummary, SessionProvider } from '../types'
 import { buildCodexLaunch, codexCommandLine } from './launch'
@@ -30,18 +31,8 @@ export function createCodexProvider(): SessionProvider {
   return {
     id: 'codex',
     productName: 'Codex',
-    capabilities: {
-      // `codex fork <id>`: a new session with the same history; the original stays as it is.
-      fork: true,
-      branch: false,
-      continueFresh: false,
-      remoteControl: false,
-      apiBilling: false,
-      newSession: false,
-      summaries: false,
-      usage: false,
-      restore: false
-    },
+    // `codex fork <id>`: a new session with the same history; the original stays as it is.
+    capabilities: PROVIDER_CAPABILITIES.codex,
     effortLevels: CODEX_EFFORT_LEVELS,
 
     detectSources: (platform, opts) => detectCodexSources(platform, opts),

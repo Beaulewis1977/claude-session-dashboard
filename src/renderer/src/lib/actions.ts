@@ -4,6 +4,7 @@ import { toast } from 'sonner'
 import type { SessionDetail, SessionMeta, SessionSummary } from '@shared/types'
 import { sessionToMarkdown } from '@shared/markdown'
 import { canUseClaudeName } from '@shared/title'
+import { capsOf, PROVIDER_BIN, PROVIDER_LABEL, providerOf } from '@shared/provider'
 import { api } from './api'
 import { projectKey } from './filters'
 import { useApp } from './store'
@@ -24,8 +25,22 @@ function viewOnly(key: string): boolean {
   return true
 }
 
+const NOT_FOR: Record<'branch' | 'newSession' | 'fork', string> = {
+  branch: 'Branch from here',
+  newSession: 'A new session in this folder',
+  fork: 'Fork'
+}
+
+/** An action the session's agent doesn't have (e.g. Branch from here for Codex): say so. */
+function unsupported(key: string, what: keyof typeof NOT_FOR): boolean {
+  const s = get().sessions.find((x) => x.key === key)
+  if (capsOf(s)[what]) return false
+  toast(`${NOT_FOR[what]} isn't available for ${PROVIDER_LABEL[providerOf(s)]} sessions`)
+  return true
+}
+
 export function openResume(key: string, fork: boolean): void {
-  if (viewOnly(key)) return
+  if (viewOnly(key) || (fork && unsupported(key, 'fork'))) return
   get().set({ resume: { key, fork } })
 }
 
@@ -34,7 +49,7 @@ export function openResume(key: string, fork: boolean): void {
  * session file in Claude's project folder) before opening the launch dialog.
  */
 export function openBranch(key: string, at: string, mode: 'include' | 'before' = 'include'): void {
-  if (viewOnly(key)) return
+  if (viewOnly(key) || unsupported(key, 'branch')) return
   const branch = { at, mode }
   if (get().settings.branchConfirmed) get().set({ resume: { key, fork: false, branch } })
   else get().set({ branchIntro: { key, branch } })
@@ -53,7 +68,7 @@ export function showNewSession(s: SessionSummary): void {
 
 /** Start a fresh Claude Code session in the same folder as `key`. */
 export function openNewSession(key: string): void {
-  if (viewOnly(key)) return
+  if (viewOnly(key) || unsupported(key, 'newSession')) return
   get().set({ resume: { key, fork: false, newSession: true } })
 }
 
@@ -75,7 +90,8 @@ export async function copyResumeCommand(
       return
     }
     await api.copyText(text)
-    toast.success(which === 'launch' ? 'Resume command copied' : 'Claude command copied', {
+    const bin = PROVIDER_BIN[providerOf(get().sessions.find((x) => x.key === key))]
+    toast.success(which === 'launch' ? 'Resume command copied' : `${bin} command copied`, {
       description: which === 'claude' && p.cwd ? `Run it from ${p.cwd}` : undefined
     })
   } catch (err) {

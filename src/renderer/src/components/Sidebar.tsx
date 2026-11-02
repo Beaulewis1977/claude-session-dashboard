@@ -6,6 +6,7 @@ import {
   CircleHelp,
   EyeOff,
   Folder,
+  GitFork,
   Inbox,
   MessagesSquare,
   Monitor,
@@ -17,6 +18,14 @@ import {
 import { useLiveCounts } from '@/lib/live-sessions'
 import { facets, tagColor, type Facet, type Filters, type Visibility } from '@/lib/filters'
 import { useApp } from '@/lib/store'
+import {
+  hasSubagents,
+  saveShowSubagents,
+  saveView,
+  useEnabledProviders,
+  useScope
+} from '@/lib/scope'
+import { ProviderSwitch } from './ProviderSwitch'
 import { openTerminalHere, projectSessionKey } from '@/lib/actions'
 import { cn, MOD } from '@/lib/utils'
 import { Tooltip } from './ui/tooltip'
@@ -108,7 +117,11 @@ export function Sidebar() {
   const set = useApp((s) => s.set)
   const setFilters = useApp((s) => s.setFilters)
   const [allProjects, setAllProjects] = useState(false)
-  const f = facets(sessions, filters)
+  const scope = useScope()
+  const enabled = useEnabledProviders()
+  const showSubagents = useApp((s) => s.settings.showSubagents === true)
+  const f = facets(sessions, filters, scope)
+  const subagents = hasSubagents(sessions) && scope.view !== 'claude'
   const notices = sources.filter((s) => s.status !== 'ok' && s.status !== 'missing').length
   const live = useLiveCounts()
 
@@ -125,6 +138,11 @@ export function Sidebar() {
   return (
     <nav aria-label="Filters" className="flex h-full w-full flex-col bg-chrome">
       <div className="min-h-0 flex-1 overflow-y-auto px-2 pt-1 pb-3">
+        {enabled.length > 1 && (
+          <div className="mb-2 px-0.5 pt-1">
+            <ProviderSwitch value={scope.view} onChange={saveView} enabled={enabled} />
+          </div>
+        )}
         <div className="space-y-px">
           <Tooltip content="Usage & limits" shortcut={`${MOD}+U`} side="right">
             <div>
@@ -144,7 +162,7 @@ export function Sidebar() {
             title={
               live.running
                 ? `${live.running} running${live.approval ? `, ${live.approval} need approval` : ''}`
-                : 'No Claude Code session is running'
+                : 'No Claude Code session is running (Running now is Claude Code only for now)'
             }
             badge={
               live.running > 0 ? (
@@ -174,7 +192,7 @@ export function Sidebar() {
             label="Archived only"
             count={f.views.archived}
             onClick={() => visibility('archived')}
-            title="Sessions whose original file was removed from .claude"
+            title="Sessions whose original file was removed from .claude (or ~/.codex)"
           />
           <Item
             active={view === 'sessions' && filters.visibility === 'hidden'}
@@ -183,6 +201,15 @@ export function Sidebar() {
             count={f.views.hidden}
             onClick={() => visibility('hidden')}
           />
+          {subagents && (
+            <Item
+              active={showSubagents}
+              icon={<GitFork />}
+              label={showSubagents ? 'Hide Codex subagents' : 'Show Codex subagents'}
+              onClick={() => saveShowSubagents(!showSubagents)}
+              title="Threads another Codex thread started. Hidden by default; also listed under Source."
+            />
+          )}
         </div>
 
         {f.env.length > 0 && (

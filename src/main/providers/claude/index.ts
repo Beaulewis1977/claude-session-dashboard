@@ -6,6 +6,7 @@
 import { readFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
 import { EFFORT_LEVELS } from '@shared/model-choice'
+import { PROVIDER_CAPABILITIES } from '@shared/provider'
 import { askQuestionOf } from '@shared/ask'
 import { buildBranchFile, planBranch } from '@shared/branch'
 import { analyzeEvents, buildMessages, isUuid, parseJsonl } from '@shared/jsonl'
@@ -32,17 +33,7 @@ import { listSubagentFiles, subagentArchiveDir } from './usage'
 export const claudeProvider: SessionProvider = {
   id: 'claude',
   productName: 'Claude Code',
-  capabilities: {
-    fork: true,
-    branch: true,
-    continueFresh: true,
-    remoteControl: true,
-    apiBilling: true,
-    newSession: true,
-    summaries: true,
-    usage: true,
-    restore: true
-  },
+  capabilities: PROVIDER_CAPABILITIES.claude,
   effortLevels: EFFORT_LEVELS,
 
   async detectSources(platform, opts) {

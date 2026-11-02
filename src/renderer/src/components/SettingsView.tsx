@@ -40,6 +40,12 @@ import { BackupSettings } from './settings/BackupSettings'
 import { SummariesSettings } from './settings/SummariesSettings'
 import { ContextSettings } from './settings/ContextSettings'
 import { DefaultModelPickers } from './ModelPicker'
+import { ProviderBadge } from './ProviderSwitch'
+import {
+  CodexArchiveSettings,
+  CodexLaunchSettings,
+  ProvidersSettings
+} from './settings/ProvidersSettings'
 import { choiceLabel, DEFAULT_CHOICE, isEffortLevel, projectKeyLabel } from '@shared/model-choice'
 
 export function Section({
@@ -130,6 +136,7 @@ function SourceRow({ s, onRemove }: { s: SourceInfo; onRemove?: () => void }) {
       </div>
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2 text-[13px] font-medium">
+          <ProviderBadge provider={s.provider} />
           {s.label}
           {s.user && <span className="text-xs font-normal text-muted-foreground">{s.user}</span>}
           {s.kind === 'custom' && <Badge variant="muted">Added</Badge>}
@@ -207,8 +214,8 @@ export function SettingsView() {
       <div className="mx-auto max-w-[720px] px-8 pt-8 pb-16">
         <h1 className="text-[20px] font-semibold tracking-[-0.015em]">Settings</h1>
         <p className="mt-1 text-[13px] text-muted-foreground">
-          Everything stays on this computer. The app only reads Claude Code's files and keeps its
-          own data separately.
+          Everything stays on this computer. The app only reads Claude Code&apos;s and Codex&apos;s
+          files and keeps its own data separately.
         </p>
 
         <Section title="Appearance">
@@ -326,6 +333,7 @@ export function SettingsView() {
               ))}
             </div>
           )}
+          <CodexLaunchSettings update={update} />
         </Section>
 
         <SummariesSettings update={update} />
@@ -350,9 +358,11 @@ export function SettingsView() {
         <UsageSettings update={update} />
         <HealthSettings update={update} />
 
+        <ProvidersSettings update={update} />
+
         <Section
           title="Scan sources"
-          description="Detected automatically: your Windows profile and every WSL distro (each user in /home, plus /root). Add any other folder that contains Claude Code sessions."
+          description="Detected automatically: your Windows profile and every WSL distro (each user in /home, plus /root). Add any other folder that contains Claude Code sessions, or a .codex folder."
         >
           <div className="divide-y divide-border overflow-hidden rounded-lg border border-border">
             {sources.map((s) => (
@@ -402,7 +412,7 @@ export function SettingsView() {
 
         <Section
           title="Archive"
-          description="Every session file is copied here and kept forever, so sessions survive Claude Code's cleanup. Nothing is ever removed from the archive automatically."
+          description="Every Claude Code session file is copied here and kept forever, so sessions survive Claude Code's cleanup (Codex sessions as set below). Nothing is ever removed from the archive automatically."
         >
           <div className="flex items-center gap-3 rounded-lg border border-border px-3 py-3">
             <div className="flex size-8 shrink-0 items-center justify-center rounded-md bg-secondary">
@@ -454,6 +464,7 @@ export function SettingsView() {
               <FileArchive /> Choose zip…
             </Button>
           </div>
+          <CodexArchiveSettings update={update} />
         </Section>
 
         <BackupSettings />

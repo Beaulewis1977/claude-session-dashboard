@@ -28,10 +28,18 @@ export function previewSummary(key: string): void {
   get().set({ summarize: { keys: [key], origin: 'manual', preview: true } })
 }
 
-export async function queue(keys: string[], origin: 'manual' | 'bulk'): Promise<number> {
+export async function queue(
+  keys: string[],
+  origin: 'manual' | 'bulk',
+  /** Send exactly this previewed text (for the previewed session). */
+  previewId?: string
+): Promise<number | undefined> {
   try {
-    const n = await api.summarize(keys, origin)
-    if (!n) toast('Already being summarized')
+    const n = await api.summarize(keys, origin, previewId)
+    if (!n)
+      toast('Nothing to summarize', {
+        description: 'Already being summarized, or there is no conversation yet.'
+      })
     else if (keys.length > 1)
       toast(`Summarizing ${n} session${n === 1 ? '' : 's'}`, {
         description: 'One at a time, in the background. Progress is in the corner.'
@@ -39,7 +47,7 @@ export async function queue(keys: string[], origin: 'manual' | 'bulk'): Promise<
     return n
   } catch (err) {
     toast.error('Could not summarize', { description: (err as Error).message })
-    return 0
+    return undefined
   }
 }
 

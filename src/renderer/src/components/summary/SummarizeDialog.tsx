@@ -72,7 +72,7 @@ export function EstimateCard({
             5-hour limit now: {Math.round(live)}%
             {above
               ? ` · above your ${pauseAbove}% pause line: the queue pauses before it starts, and you can resume anyway.`
-              : ` · the queue pauses if it goes above ${pauseAbove}%.`}
+              : ` · the queue pauses if it goes above ${pauseAbove}%, these summaries included.`}
           </div>
         )}
       </div>
@@ -121,6 +121,9 @@ function SummarizeDialogBody() {
   const sum = settings.summaries
   const [agreed, setAgreed] = useState(sum.noticeAccepted)
   const [estimate, setEstimate] = useState<SummaryBatchEstimate | null>(null)
+  const [estimateError, setEstimateError] = useState<string>()
+  /** Go ahead without the estimate (only offered when it couldn't be worked out). */
+  const [noEstimateOk, setNoEstimateOk] = useState(false)
   const [showPrompt, setShowPrompt] = useState(req.preview === true)
   const [preview, setPreview] = useState<SummaryPreview | null>(null)
   const [previewError, setPreviewError] = useState<string>()
@@ -133,7 +136,7 @@ function SummarizeDialogBody() {
     void api
       .summaryEstimate(req.keys)
       .then((e) => !cancelled && setEstimate(e))
-      .catch(() => undefined)
+      .catch((err: Error) => !cancelled && setEstimateError(err.message))
     return () => {
       cancelled = true
     }
@@ -152,16 +155,22 @@ function SummarizeDialogBody() {
   }, [showPrompt, preview, req.keys])
 
   const close = (): void => set({ summarize: null })
+  // The estimate comes first: no sending before it's shown (or explicitly skipped).
+  const ready = agreed && !busy && (!!estimate || (!!estimateError && noEstimateOk))
   const go = async (): Promise<void> => {
-    if (!agreed || busy) return
+    if (!ready) return
     setBusy(true)
     if (!sum.noticeAccepted) {
       const st = await api.updateSettings({ summaries: { ...sum, noticeAccepted: true } })
       set({ settings: st })
     }
-    const n = await queue(req.keys, req.origin)
+    // A preview that was shown is what gets sent for that session.
+    const previewId = showPrompt && preview ? preview.id : undefined
+    const n = await queue(req.keys, req.origin, previewId)
     setBusy(false)
-    if (n || !many) close()
+    if (n !== undefined) close()
+    // The session changed or the preview expired: show the current text again.
+    else if (previewId) setPreview(null)
   }
 
   return (
@@ -195,11 +204,28 @@ function SummarizeDialogBody() {
             </div>
           )}
 
-          <EstimateCard
-            estimate={estimate}
-            pauseAbove={sum.pauseAbovePct}
-            sessions={req.keys.length}
-          />
+          {estimateError && !estimate && (
+            <div className="rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2.5 text-xs">
+              <div className="flex items-start gap-2">
+                <TriangleAlert className="mt-px size-3.5 shrink-0 text-destructive" />
+                <span>Couldn&apos;t work out what this would use: {estimateError}</span>
+              </div>
+              <label className="mt-2 flex cursor-pointer items-center gap-2 pl-[22px] font-medium">
+                <Checkbox
+                  checked={noEstimateOk}
+                  onCheckedChange={(v) => setNoEstimateOk(v === true)}
+                />
+                Summarize anyway, without an estimate
+              </label>
+            </div>
+          )}
+          {!estimateError && (
+            <EstimateCard
+              estimate={estimate}
+              pauseAbove={sum.pauseAbovePct}
+              sessions={req.keys.length}
+            />
+          )}
 
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
             <Info className="size-3.5 shrink-0" />
@@ -250,7 +276,7 @@ function SummarizeDialogBody() {
           <Button variant="ghost" onClick={close}>
             Cancel
           </Button>
-          <Button variant="primary" onClick={() => void go()} disabled={!agreed || busy} autoFocus>
+          <Button variant="primary" onClick={() => void go()} disabled={!ready} autoFocus>
             {busy ? <Loader2 className="animate-spin" /> : <Sparkles />}
             {many ? `Summarize ${req.keys.length}` : 'Summarize'}
           </Button>

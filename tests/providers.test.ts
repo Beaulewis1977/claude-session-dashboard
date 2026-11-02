@@ -45,7 +45,10 @@ afterEach(async () => {
   await rm(root, { recursive: true, force: true, maxRetries: 5 })
 })
 
-async function setup(providers?: ProviderRegistry) {
+async function setup(
+  providers?: ProviderRegistry,
+  opts: { codexArchive?: 'off' | 'marked' | 'all' } = {}
+) {
   await cp(FIXTURES, join(root, 'fixtures'), { recursive: true })
   await prepareFixtures(root)
   const layout = fixturesLayout(root)
@@ -55,6 +58,10 @@ async function setup(providers?: ProviderRegistry) {
   const settings = createSettingsStore(paths)
   await metadata.load()
   await settings.load()
+  if (opts.codexArchive)
+    settings.update((s) => {
+      s.codexArchive = opts.codexArchive
+    })
   await seedFixtureData(root, paths.archiveDir, metadata)
   const sessions = new SessionService(platform, paths, metadata, settings, providers)
   busy.push(sessions)
@@ -339,7 +346,9 @@ describe('the generic services with another provider (a stand-in)', () => {
   }
 
   it('tags, archives and refuses by the provider', async () => {
-    const { sessions, launcher, paths } = await setup(new ProviderRegistry([standIn]))
+    const { sessions, launcher, paths } = await setup(new ProviderRegistry([standIn]), {
+      codexArchive: 'all'
+    })
     const s = sessions.get('other-windows:' + SAFARI)!
     expect(s.provider).toBe('codex')
     const live = sessions.list().filter((x) => x.availability === 'live')

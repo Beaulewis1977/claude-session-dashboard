@@ -632,12 +632,27 @@ for (const s of sessions) {
 
 // Bridge readings: one per few responses (the status line runs on every update).
 const sourceOf = (s) => (s.project.env.kind === 'windows' ? 'windows' : 'wsl-Ubuntu-beau')
-const ctxPct = (u) =>
+// Each model's own context window (Claude Code's model configuration): native
+// 1M for Opus 4.7+, Sonnet 5+, Haiku 5.5+ and Fable 5+, 200k otherwise.
+const windowFor = (model) => {
+  const m = /claude-(opus|sonnet|haiku|fable)-(\d+)(?:-(\d{1,2}))?(?=$|-|\[)/.exec(
+    String(model)
+      .toLowerCase()
+      .replace(/-\d{8}(?=$|\[)/, '')
+  )
+  if (!m) return 200000
+  const v = Number(m[2]) * 100 + Number(m[3] ?? 0)
+  const at = { fable: 500, sonnet: 500, haiku: 505, opus: 407 }
+  return v >= at[m[1]] ? 1000000 : 200000
+}
+const ctxPct = (u, model) =>
   Math.min(
     100,
     Math.round(
-      ((u.input_tokens + u.cache_read_input_tokens + u.cache_creation_input_tokens) / 200000) * 100
-    )
+      ((u.input_tokens + u.cache_read_input_tokens + u.cache_creation_input_tokens) /
+        windowFor(model)) *
+        1000
+    ) / 10
   )
 let last = 0
 const running = {}
@@ -664,8 +679,8 @@ for (const { s, r } of all) {
       version: versionAt(s.start),
       cwd: s.project.cwd,
       costUsd: apiCostBySession[s.id],
-      contextPct: ctxPct(r.usage),
-      contextSize: 200000
+      contextPct: ctxPct(r.usage, s.model),
+      contextSize: windowFor(s.model)
     })
     continue
   }
@@ -682,8 +697,8 @@ for (const { s, r } of all) {
     fiveHour: r.fiveHour,
     sevenDay: r.sevenDay,
     costUsd: undefined,
-    contextPct: ctxPct(r.usage),
-    contextSize: 200000
+    contextPct: ctxPct(r.usage, s.model),
+    contextSize: windowFor(s.model)
   })
 }
 readings.sort((a, b) => a.ts - b.ts)
@@ -724,7 +739,7 @@ for (const r of Object.values(latestByEnv)) {
     context_window: {
       total_input_tokens: 92000,
       total_output_tokens: 3100,
-      context_window_size: 200000,
+      context_window_size: windowFor(r.model),
       used_percentage: r.contextPct,
       remaining_percentage: 100 - r.contextPct,
       current_usage: {

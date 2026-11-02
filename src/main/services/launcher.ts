@@ -644,6 +644,12 @@ export class Launcher {
         }
       }
     }
+    // Asked again right before starting anything: the checks above take time
+    // (writing the handoff, asking WSL), and a phone can be revoked or
+    // read-only mode turned on meanwhile.
+    const late = ctx.stillAllowed?.()
+    if (late)
+      return { ok: false, restored, commandLine: cmd.commandLine, error: `Not launched: ${late}.` }
     try {
       await this.platform.spawnDetached(cmd)
     } catch (err) {

@@ -393,6 +393,36 @@ describe('Continue fresh in WSL: the path as the distro sees it', { timeout: 30_
   })
 })
 
+describe('A launch is allowed right up to the start', { timeout: 30_000 }, () => {
+  for (const why of ['the phone was revoked', 'read-only mode was turned on'])
+    it(`starts nothing when ${why} during the WSL check`, async () => {
+      let stop: string | undefined
+      const { sessions, launcher, spawned } = await setup({
+        canRead: () => {
+          // Changes while the distro is being asked.
+          stop = why
+          return true
+        }
+      })
+      const s = sessions.list().find((x) => x.sessionId === ORDERS)!
+      sessions.setAiSummary(s.key, SUMMARY)
+      const r = await launcher.launch(
+        {
+          key: s.key,
+          fork: false,
+          skipPermissions: false,
+          askPermissions: true,
+          remoteControl: true,
+          cwdOverride: '/home/beau',
+          continueFresh: {}
+        },
+        { via: 'phone', device: 'Phone', stillAllowed: () => stop }
+      )
+      expect(r).toMatchObject({ ok: false, error: `Not launched: ${why}.` })
+      expect(spawned).toHaveLength(0)
+    })
+})
+
 describe('Continue fresh: lineage', () => {
   it('shows the new session as continued from the old one', () => {
     const out = computeLineage([

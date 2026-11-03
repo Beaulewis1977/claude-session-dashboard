@@ -3,7 +3,7 @@
 // switch and the provider on/off toggle. Runs on the sample Codex homes in
 // fixtures/codex/ (scripts/make-codex-fixtures.mjs).
 
-import { cp, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { cp, mkdtemp, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { zstdCompressSync } from 'node:zlib'
@@ -32,7 +32,13 @@ import {
   patchFiles,
   rolloutIdOf
 } from '../src/main/providers/codex/parse'
-import { compactLine, isCredentialPath, readCodexText } from '../src/main/providers/codex/read'
+import {
+  compactLine,
+  isCredentialPath,
+  readBytesOf,
+  readCodexText
+} from '../src/main/providers/codex/read'
+import { CompactTextCache } from '../src/main/providers/codex/text-cache'
 import { parseNameIndex } from '../src/main/providers/codex/sessions'
 import { buildCodexLaunch, codexArgs } from '../src/main/providers/codex/launch'
 import { detectCodexSource } from '../src/main/providers/codex/source'
@@ -201,9 +207,35 @@ describe('reading rollouts', () => {
     await writeFile(file, lines.join('\n'))
     const a = analyzeCodex(await readCodexText(file, 20_000), ID.cli)
     expect(a.historyNote).toMatch(/may be incomplete.*very large/)
+    // For showing it, reading stops at the cut: the same start, without the rest.
+    const partial = await readCodexText(file, 20_000, { partial: true })
+    const full = await readCodexText(file, 20_000)
+    expect(partial.length).toBeLessThan(full.length + 1)
+    expect(buildCodexMessages(partial)[0]).toEqual(buildCodexMessages(full)[0])
+    expect(analyzeCodex(partial).historyNote).toMatch(/very large/)
     // The last activity still comes from the end of the file.
     expect(a.lastActivityAt).toBe('2026-10-01T00:06:40.000Z')
     expect(analyzeCodex(await readCodexText(file), ID.cli).historyNote).toBeUndefined()
+  })
+
+  it("keeps big rollouts' compact text in the app's cache, per file version", async () => {
+    const dataDir = join(root, 'appdata')
+    const cache = new CompactTextCache(join(dataDir, 'cache', 'codex'), dataDir)
+    expect(() => new CompactTextCache(join(root, 'elsewhere'), dataDir)).toThrow()
+    const file = join(root, `rollout-2026-10-01T00-00-00-${ID.cli}.jsonl`)
+    await writeFile(file, 'v1')
+    expect(await cache.get(file)).toBeUndefined()
+    const st1 = await stat(file)
+    await cache.put(file, st1.size, st1.mtimeMs, 'compact v1')
+    expect(await cache.get(file)).toBe('compact v1')
+    // The file changed: the old text isn't used, and is replaced when the new one is kept.
+    await writeFile(file, 'version two')
+    expect(await cache.get(file)).toBeUndefined()
+    const st2 = await stat(file)
+    await cache.put(file, st2.size, st2.mtimeMs, 'compact v2')
+    expect(await cache.get(file)).toBe('compact v2')
+    expect(await readdir(join(dataDir, 'cache', 'codex'))).toHaveLength(1)
+    expect(readBytesOf('{"type":"csd_read_note","bytes":123}\n{}')).toBe(123)
   })
 
   it('never reads a credential file, whatever path it is given', async () => {
@@ -332,6 +364,23 @@ describe('parsing', () => {
     expect(label('Claude Code', 'exec')).toBe('codex-claude-code')
     expect(label('Codex Desktop', 'vscode', true)).toBe('codex-subagent')
     expect(label(undefined, undefined)).toBe('codex-unknown')
+  })
+
+  it("doesn't take context Codex wraps in a tag for a prompt", () => {
+    const line = (text: string): string =>
+      JSON.stringify({
+        type: 'response_item',
+        payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text }] }
+      })
+    const text = [
+      line('<external_codex_apps_open_page>{"page_id":null}</external_codex_apps_open_page>'),
+      line('<recommended_plugins>\nHere is a list of plugins\n</recommended_plugins>'),
+      line('Please fix <b>this</b> bug')
+    ].join('\n')
+    const a = analyzeCodex(text)
+    expect(a.firstPrompt).toBe('Please fix <b>this</b> bug')
+    expect(a.userMessageCount).toBe(1)
+    expect(buildCodexMessages(text)).toHaveLength(1)
   })
 
   it('finds the files an apply_patch touches', () => {

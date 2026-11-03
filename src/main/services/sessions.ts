@@ -63,6 +63,8 @@ interface Entry {
   mtimeMs: number
   /** Imported entries: the archive copy's SHA-256, to notice any re-import. */
   rev?: string
+  /** The provider's parse version when it was read (absent: a provider without one, e.g. Claude Code). */
+  pv?: number
 }
 
 /** What an imported entry was loaded from: reloaded when either changes. */
@@ -160,7 +162,7 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
     if (!e) return null
     let text: string
     try {
-      text = await this.providerOf(e.base).readText(e.base.filePath)
+      text = await this.providerOf(e.base).readText(e.base.filePath, 'view')
     } catch {
       return null
     }
@@ -629,6 +631,7 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
       cached.size === f.size &&
       cached.mtimeMs === f.mtimeMs &&
       cached.base.filePath === f.path &&
+      cached.pv === this.providers.of(src).parseVersion &&
       this.search.has(key)
     ) {
       // Unchanged since the last run: reuse the cached summary and index entry.
@@ -637,8 +640,9 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
         sourceLabel: src.label,
         archivePath: record?.archivePath ?? cached.base.archivePath
       }
+      const pv = this.providers.of(src).parseVersion
       this.owner.set(key, this.providers.of(src).id)
-      this.entries.set(key, { base, size: f.size, mtimeMs: f.mtimeMs })
+      this.entries.set(key, { base, size: f.size, mtimeMs: f.mtimeMs, ...(pv ? { pv } : {}) })
       this.queueArchive(src, base)
       return
     }
@@ -652,7 +656,8 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
     const { base, searchText } = provider.parseSession(text, f, src)
     if (record) base.archivePath = record.archivePath
     this.owner.set(key, provider.id)
-    this.entries.set(key, { base, size: f.size, mtimeMs: f.mtimeMs })
+    const pv = provider.parseVersion
+    this.entries.set(key, { base, size: f.size, mtimeMs: f.mtimeMs, ...(pv ? { pv } : {}) })
     this.index(base, searchText)
     this.queueArchive(src, base)
   }
@@ -924,7 +929,7 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
     if (!e) return
     try {
       const provider = this.providerOf(e.base)
-      const text = await provider.readText(e.base.filePath)
+      const text = await provider.readText(e.base.filePath, 'view')
       this.index(e.base, provider.searchText(text))
     } catch {
       // keep the old index entry

@@ -103,10 +103,19 @@ export interface SessionProvider {
 
   /** The effort levels its launches accept. */
   readonly effortLevels: EffortLevels
+  /**
+   * Bumped when its parsing changes, so the startup cache reads its files again
+   * (Claude Code has none: its cache is versioned with the whole cache file).
+   */
+  readonly parseVersion?: number
 
   // -------------------------------------------------------------- parsing
-  /** A session file's text as the parsing functions below take it. */
-  readText(path: string): Promise<string>
+  /**
+   * A session file's text as the parsing functions below take it. `purpose`:
+   * "view" (showing or searching it) may stop early on a huge file; "summary"
+   * (the default) reads it to the end.
+   */
+  readText(path: string, purpose?: 'summary' | 'view'): Promise<string>
   parseSession(
     text: string,
     file: Omit<SessionFile, 'mtimeMs'>,

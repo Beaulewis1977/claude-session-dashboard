@@ -61,7 +61,8 @@ import {
 } from './fixtures'
 import { providerSettings, registerIpc } from './ipc'
 import { claudeProvider } from './providers/claude'
-import { codexProvider } from './providers/codex'
+import { createCodexProvider } from './providers/codex'
+import { CompactTextCache } from './providers/codex/text-cache'
 import { ProviderRegistry } from './providers/registry'
 import { providerOf } from '@shared/provider'
 import { createMeter } from './meter'
@@ -284,7 +285,13 @@ async function main(): Promise<void> {
   }
 
   // Claude Code and Codex; Settings → Providers can turn either off (never both).
-  const providers = new ProviderRegistry([claudeProvider, codexProvider])
+  const providers = new ProviderRegistry([
+    claudeProvider,
+    // Big Codex rollouts' compact text is kept in the app's cache folder (never backed up).
+    createCodexProvider({
+      textCache: new CompactTextCache(join(paths.dataDir, 'cache', 'codex'), paths.dataDir)
+    })
+  ])
   providers.setEnabled(providerSettings(settings.value).providers)
   const sessions = new SessionService(platform, paths, metadata, settings, providers)
   const watcher = new SourceWatcher(sessions)

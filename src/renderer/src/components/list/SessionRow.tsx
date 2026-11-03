@@ -24,7 +24,7 @@ import { ContextBadge } from '../context/ContextSize'
 import { ModelChoiceBadge } from '../ModelPicker'
 import { useModelChoice } from '@/lib/model-choice'
 import { useScope } from '@/lib/scope'
-import { PROVIDER_LABEL, providerOf } from '@shared/provider'
+import { capsOf, PROVIDER_LABEL, providerOf } from '@shared/provider'
 import { ProviderBadge } from '../ProviderSwitch'
 
 export const ROW_HEIGHT = 104
@@ -187,7 +187,7 @@ export const SessionRow = memo(function SessionRow({
           {s.availability !== 'imported' && <ModelChoiceBadge choice={choice} compact />}
           {scope.view === 'all' && <ProviderBadge provider={s.provider} />}
           <SourceBadge source={s.source} reason={s.sourceReason} compact />
-          <BillingBadge billing={s.billing} compact />
+          {capsOf(s).apiBilling && <BillingBadge billing={s.billing} compact />}
           {hit &&
             hit.fields.includes('text') &&
             !hit.fields.some((f) => f !== 'text' && f !== 'project') && (

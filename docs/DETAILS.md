@@ -938,7 +938,10 @@ root), plus Codex folders added in Settings → Scan sources.
   Real rollouts can be more than 500 MB decompressed (more than a JavaScript string can hold);
   the compact text stops growing at 48 MB, and the viewer then says the history may be
   incomplete. It says the same when the rollout's own entry numbers (`ordinal`) don't start at 0
-  or skip. Codex's newer "paginated" history keeps the whole conversation in the rollout
+  or skip. Rollouts over 64 MB decompressed keep their compact text in the app's cache folder
+  (`cache/codex/`, keyed by path, size and time, never backed up), so opening one later doesn't
+  decompress gigabytes again (a 397 MB `.zst` opened in 23 s before, 20 ms after).
+  Codex's newer "paginated" history keeps the whole conversation in the rollout
   (`thread_history_*.sqlite` is a projection of it), so the label alone doesn't trigger the note.
 - **Parsing** (`providers/codex/parse.ts`): `session_meta` (id, cwd, originator, CLI version,
   source, subagent parent, fork parent, git commit/branch/remote), `turn_context` (model, reasoning

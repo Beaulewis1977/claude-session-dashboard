@@ -172,7 +172,9 @@ async function eachLine(
   path: string,
   compressed: boolean,
   onLine: (line: string) => void,
-  onHuge: () => void
+  onHuge: () => void,
+  /** Checked after each chunk: true stops reading (the rest of the file is skipped). */
+  stop: () => boolean = () => false
 ): Promise<number> {
   let parts: Buffer[] = []
   let partLen = 0
@@ -214,6 +216,7 @@ async function eachLine(
     const c = chunk as Buffer
     if (zstd) zstd.push(c)
     else take(c)
+    if (stop()) return bytes
     sinceYield += c.length
     if (sinceYield > 8 * 1024 * 1024) {
       sinceYield = 0
@@ -235,7 +238,17 @@ async function eachLine(
 const ORDINAL_RE = /^\{"timestamp":"[^"]*","ordinal":(\d+)/
 const TIMESTAMP_RE = /^\{"timestamp":"([^"]{10,40})"/
 
-export async function readCodexText(path: string, limit = COMPACT_LIMIT): Promise<string> {
+export async function readCodexText(
+  path: string,
+  limit = COMPACT_LIMIT,
+  opts: {
+    /**
+     * Stop at the limit instead of reading to the end (for showing or
+     * searching a session; the summary needs the end, for its last activity).
+     */
+    partial?: boolean
+  } = {}
+): Promise<string> {
   refuseCredentials(path)
   const compressed = await isZstdFile(path)
   const out: string[] = []
@@ -280,7 +293,21 @@ export async function readCodexText(path: string, limit = COMPACT_LIMIT): Promis
     () => {
       note.lines++
       note.hugeLines++
-    }
+    },
+    () => !!opts.partial && size >= limit
   )
+  if (opts.partial && size >= limit && !note.cutLines) note.cutLines = 1
   return [JSON.stringify(note), ...out].join('\n')
+}
+
+/** How many (decompressed) bytes the file had, from a compact text's first line. */
+export function readBytesOf(text: string): number {
+  const nl = text.indexOf('\n')
+  const first = nl < 0 ? text : text.slice(0, nl)
+  try {
+    const n = (JSON.parse(first) as Partial<ReadNote>).bytes
+    return typeof n === 'number' ? n : 0
+  } catch {
+    return 0
+  }
 }

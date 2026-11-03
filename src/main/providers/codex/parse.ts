@@ -112,8 +112,17 @@ const str = (v: unknown): string | undefined => (typeof v === 'string' && v ? v 
 const INJECTED_RE =
   /^\s*(<(environment_context|user_instructions|permissions instructions|collaboration_mode|apps_instructions|skills_instructions|turn_aborted|user_shell_command|subagent_notification|personality_spec)\b|# AGENTS\.md instructions\b|<INSTRUCTIONS>)/i
 
+/**
+ * Codex (and the desktop app) wrap the context it adds in one tag:
+ * `<recommended_plugins>…</recommended_plugins>`,
+ * `<external_codex_apps_open_page>{…}</external_codex_apps_open_page>`, and
+ * more with each version. A text item that is nothing but one such block is
+ * context, not something I typed.
+ */
+const WRAPPED_RE = /^<([a-z][\w-]*)(?:\s[^>]*)?>[\s\S]*<\/\1>$/i
+
 export function isInjected(text: string): boolean {
-  return INJECTED_RE.test(text)
+  return INJECTED_RE.test(text) || WRAPPED_RE.test(text.trim())
 }
 
 /** Text items of a message's content (`input_text`, `output_text`, `text`). */

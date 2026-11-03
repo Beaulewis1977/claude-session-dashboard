@@ -320,7 +320,7 @@ function Header({
               })
             }
           />
-          <BillingBadge billing={session.billing} />
+          {caps.apiBilling && <BillingBadge billing={session.billing} />}
           <RemoteBadge session={session} />
           {session.meta.pinned && (
             <Badge variant="accent">

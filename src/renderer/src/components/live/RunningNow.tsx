@@ -8,6 +8,7 @@ import type { LiveSession } from '@shared/live'
 import type { SessionSummary } from '@shared/types'
 import { useLiveList, useNow, liveMuted, liveTitle, timeLine } from '@/lib/live-sessions'
 import { useApp } from '@/lib/store'
+import { useScope } from '@/lib/scope'
 import { cn } from '@/lib/utils'
 import { EnvDot } from '../EnvBadge'
 import { Button } from '../ui/button'
@@ -89,7 +90,9 @@ export function RunningSection() {
   const set = useApp((s) => s.set)
   const [open, setOpen] = useState(readOpen)
   const t = useNow()
-  if (!list.length) return null
+  // Running now is Claude Code's (Codex has none yet): not in the Codex view.
+  const view = useScope().view
+  if (!list.length || view === 'codex') return null
   const toggle = (): void => {
     setOpen(!open)
     try {

@@ -449,33 +449,44 @@ export interface LaunchOptions {
   /** Continue fresh: a new session whose first message is this session's summary. */
   continueFresh?: ContinueFreshRequest
   /**
-   * Where to run a session whose folder belongs to the other environment than
-   * the home that holds it (see LaunchPlacement). Unset: the default (WSL for
-   * a Linux folder).
+   * Opt in to resuming a session whose folder exists only in WSL with Windows
+   * Codex, in that folder through `\\wsl.localhost\…` (see LaunchPlacement).
+   * Desktop only; approvals are then always on.
    */
-  runIn?: EnvKind
-  /** The WSL distro for such a run (unset: the default distro). */
+  wslFolder?: boolean
+  /** The WSL distro that holds that folder (unset: the default distro). */
   distro?: string
 }
 
 /**
- * A session that runs in the other environment than the home holding it: the
- * Codex desktop app on Windows runs its agent in WSL, so the Windows home
- * holds sessions whose folder is a Linux path. They resume in WSL (with
- * CODEX_HOME pointing at that Windows home), or on Windows when the folder is
- * on a Windows drive (`/mnt/c/…` → `C:\…`).
+ * A session whose folder belongs to the other environment than the `.codex`
+ * folder that holds it (the Codex desktop app on Windows can run its agent in
+ * WSL and still keeps the session in the Windows `.codex`). Codex always runs
+ * where its `.codex` is (its SQLite database can't be used across the WSL /
+ * Windows boundary); only the working folder is translated:
+ * - `translated`: `/mnt/c/x` → `C:\x` (Windows `.codex`), or `C:\x` →
+ *   `/mnt/c/x` (WSL `.codex`). Resumes as usual.
+ * - `wsl-only`: a Linux-only folder (`/home/…`) in the Windows `.codex`. Not
+ *   resumed unless opted in (`wslFolder`): then Windows Codex runs in
+ *   `\\wsl.localhost\<distro>\…`, always asking before commands.
  */
 export interface LaunchPlacement {
+  kind: 'translated' | 'wsl-only'
+  /** Where Codex runs. */
   runIn: EnvKind
-  /** What the dialog offers (WSL first, the default). */
-  choices: EnvKind[]
-  /** WSL: the distro used, and the ones to choose from. */
-  distro?: string
-  distros: string[]
   /** The folder as the run sees it. */
   cwd: string
-  /** Why it isn't run where its home is, in a sentence. */
+  /** Why, in a sentence or two. */
   reason: string
+  /** wsl-only: the distro holding the folder, and the ones to choose from. */
+  distro?: string
+  distros: string[]
+  /** wsl-only: resuming with Windows Codex was opted in. */
+  optedIn?: boolean
+  /** Bypass is off and Codex asks before every command, whatever was chosen. */
+  askForced?: boolean
+  /** The agent's own app can open this session (Codex: `codex://threads/<id>`). */
+  appLink?: boolean
 }
 
 export interface ContinueFreshRequest {

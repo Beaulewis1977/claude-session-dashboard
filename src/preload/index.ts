@@ -35,6 +35,7 @@ const api: CsdApi = {
   previewLaunch: (opts) => ipcRenderer.invoke('launch:preview', opts),
   launch: (opts) => ipcRenderer.invoke('launch:run', opts),
   pickCwd: (key, where) => ipcRenderer.invoke('launch:pickCwd', key, where),
+  openInAgentApp: (key) => ipcRenderer.invoke('launch:openInAgentApp', key),
   exportMarkdown: (key) => ipcRenderer.invoke('export:markdown', key),
   copyText: (text) => ipcRenderer.invoke('clipboard:write', text),
   setTheme: (theme, resolved) => ipcRenderer.invoke('theme:set', theme, resolved),

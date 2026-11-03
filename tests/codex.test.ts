@@ -67,7 +67,7 @@ import {
   parseDefaultDistro,
   windowsPathToWsl
 } from '../src/main/core/wsl'
-import { AGENT_ENV_CHARS_REASON, type LaunchTools } from '../src/main/core/launch'
+import { AGENT_ENV_CHARS_REASON, WT_UNC_REASON, type LaunchTools } from '../src/main/core/launch'
 
 const FIXTURES = join(__dirname, '..', 'fixtures')
 const CODEX = join(FIXTURES, 'codex', 'windows', 'Users', 'beau', '.codex')
@@ -1423,7 +1423,9 @@ describe('a session whose folder belongs to the other environment', () => {
   const XID = {
     mnt: '019a8888-0000-7000-8000-000000000008',
     home: '019a9999-0000-7000-8000-000000000009',
-    win: '019aaaaa-0000-7000-8000-00000000000a'
+    win: '019aaaaa-0000-7000-8000-00000000000a',
+    wslMnt: '019abbbb-0000-7000-8000-00000000000b',
+    wslGone: '019acccc-0000-7000-8000-00000000000c'
   }
   const rollout = (id: string, cwd: string, originator: string): string =>
     [
@@ -1444,6 +1446,7 @@ describe('a session whose folder belongs to the other environment', () => {
     ].join('\n') + '\n'
   const homeOf = (s: SessionSummary): string =>
     dirname(dirname(dirname(dirname(dirname(s.originalPath)))))
+  const base = { fork: false, skipPermissions: false }
 
   /** The Codex desktop app's WSL sessions in the Windows home, and the reverse. */
   async function crossSetup() {
@@ -1453,33 +1456,31 @@ describe('a session whose folder belongs to the other environment', () => {
     const day = (home: string): string => join(home, 'sessions', '2026', '10', '22')
     await mkdir(day(winHome), { recursive: true })
     await mkdir(day(wslHome), { recursive: true })
-    await writeFile(
-      join(day(winHome), `rollout-2026-10-22T10-00-00-${XID.mnt}.jsonl`),
-      rollout(XID.mnt, '/mnt/c/Users/beau/code/reddit', 'Codex Desktop')
-    )
-    await writeFile(
-      join(day(winHome), `rollout-2026-10-22T10-05-00-${XID.home}.jsonl`),
-      rollout(XID.home, '/home/beau/notes', 'Codex Desktop')
-    )
-    await writeFile(
-      join(day(wslHome), `rollout-2026-10-22T10-10-00-${XID.win}.jsonl`),
-      rollout(XID.win, 'C:\\Users\\beau\\code\\win', 'codex-tui')
-    )
-    // The Linux folders, as the sample Ubuntu and Debian see them.
-    for (const d of ['Ubuntu', 'Debian'])
-      for (const p of ['mnt/c/Users/beau/code/reddit', 'home/beau/notes'])
-        await mkdir(join(t.layout.sourcesDir, 'wsl', d, ...p.split('/')), { recursive: true })
+    const add = (home: string, id: string, cwd: string, originator: string, n: number) =>
+      writeFile(
+        join(day(home), `rollout-2026-10-22T10-0${n}-00-${id}.jsonl`),
+        rollout(id, cwd, originator)
+      )
+    await add(winHome, XID.mnt, '/mnt/c/Users/beau/code/reddit', 'Codex Desktop', 1)
+    await add(winHome, XID.home, '/home/beau/notes', 'Codex Desktop', 2)
+    await add(wslHome, XID.win, 'C:\\Users\\beau\\code\\win', 'codex-tui', 3)
+    // A WSL session on a Windows drive (not under the sample distro root, as from
+    // \\wsl.localhost, which can't show drive mounts), and one whose folder is gone.
+    await add(wslHome, XID.wslMnt, '/mnt/c/Users/beau/Documents/notes', 'codex-tui', 4)
+    await add(wslHome, XID.wslGone, '/home/beau/removed-project', 'codex-tui', 5)
+    await mkdir(join(t.layout.sourcesDir, 'wsl', 'Ubuntu', 'home', 'beau', 'notes'), {
+      recursive: true
+    })
     await t.sessions.rescan()
     return { ...t, winHome, wslHome }
   }
-  const esc = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 
   it('maps paths between WSL and Windows, and reads the default distro', () => {
     expect(mntToWindows('/mnt/c/Users/beau/code/reddit')).toBe('C:\\Users\\beau\\code\\reddit')
     expect(mntToWindows('/mnt/d')).toBe('D:\\')
     expect(mntToWindows('/home/beau')).toBeUndefined()
     expect(mntToWindows('/mnt/wsl/x')).toBeUndefined()
-    expect(windowsPathToWsl('C:\\Users\\kngpnn\\.codex')).toBe('/mnt/c/Users/kngpnn/.codex')
+    expect(windowsPathToWsl('C:\\Users\\beau\\code\\win')).toBe('/mnt/c/Users/beau/code/win')
     expect([isLinuxPath('/mnt/c/x'), isLinuxPath('C:\\x'), isLinuxPath('//server/x')]).toEqual([
       true,
       false,
@@ -1495,104 +1496,134 @@ describe('a session whose folder belongs to the other environment', () => {
       'utf16le'
     )
     expect(parseDefaultDistro(listV)).toBe('Ubuntu-24.04')
-    expect(parseDefaultDistro(Buffer.from('  NAME STATE\r\n  Debian Stopped\r\n', 'utf16le'))).toBe(
-      undefined
-    )
+    expect(
+      parseDefaultDistro(Buffer.from('  NAME STATE\r\n  Debian Stopped\r\n', 'utf16le'))
+    ).toBeUndefined()
   })
 
-  it('a Linux folder in the Windows home resumes in WSL, with CODEX_HOME at that Windows home', async () => {
+  it('a /mnt/c folder in the Windows .codex resumes with Windows Codex in C:\\…, never in WSL', async () => {
     const { sessions, launcher, winHome } = await crossSetup()
     const s = codexOf(sessions.list(), XID.mnt)
     expect(s.env).toBe('windows')
-    const p = await launcher.preview({ key: s.key, fork: false, skipPermissions: false })
+    const p = await launcher.preview({ key: s.key, ...base })
     expect(p.launchError).toBeUndefined()
     expect(p.placement).toMatchObject({
-      runIn: 'wsl',
-      distro: 'Ubuntu',
-      choices: ['wsl', 'windows'],
-      distros: ['Ubuntu', 'Debian'],
-      cwd: '/mnt/c/Users/beau/code/reddit'
+      kind: 'translated',
+      runIn: 'windows',
+      cwd: 'C:\\Users\\beau\\code\\reddit',
+      appLink: true
     })
-    // The Windows home as the distro sees it, and the real binary (never a shell function).
-    const homeInWsl = windowsPathToWsl(winHome)!
-    expect(homeInWsl.startsWith('/mnt/')).toBe(true)
-    expect(p.claudeCommand).toMatch(
-      new RegExp(`^CODEX_HOME='?${esc(homeInWsl)}'? command codex resume ${XID.mnt}$`)
-    )
-    expect(p.commandLine).toContain('-d Ubuntu')
-    expect(p.commandLine).toContain('--cd /mnt/c/Users/beau/code/reddit')
-    expect(p.cwdExists).toBe(true)
-    // Another distro, chosen in the dialog.
-    const debian = await launcher.preview({
-      key: s.key,
-      fork: false,
-      skipPermissions: false,
-      distro: 'Debian'
-    })
-    expect(debian.placement?.distro).toBe('Debian')
-    expect(debian.commandLine).toContain('-d Debian')
-    // An unknown or infrastructure distro is never used.
-    const docker = await launcher.preview({
-      key: s.key,
-      fork: false,
-      skipPermissions: false,
-      distro: 'docker-desktop'
-    })
-    expect(docker.placement?.distro).toBe('Ubuntu')
-    // The launch itself follows the same placement (fixtures: nothing is started).
-    const r = await launcher.launch({ key: s.key, fork: false, skipPermissions: false })
-    expect(r).toMatchObject({ ok: true, simulated: true })
-    expect(r.commandLine).toContain('-d Ubuntu')
-  })
-
-  it('a folder on a Windows drive can open on Windows instead, in C:\\…', async () => {
-    const { sessions, launcher, winHome } = await crossSetup()
-    const s = codexOf(sessions.list(), XID.mnt)
-    const p = await launcher.preview({
-      key: s.key,
-      fork: false,
-      skipPermissions: false,
-      runIn: 'windows'
-    })
-    expect(p.launchError).toBeUndefined()
-    expect(p.placement).toMatchObject({ runIn: 'windows', cwd: 'C:\\Users\\beau\\code\\reddit' })
     expect(p.cwd).toBe('C:\\Users\\beau\\code\\reddit')
     expect(p.terminal).toBe('wt')
+    // Codex runs where its .codex is: CODEX_HOME is that Windows folder, no wsl.exe.
     expect(p.claudeCommand).toBe(`$env:CODEX_HOME = '${winHome}'; codex resume ${XID.mnt}`)
+    expect(p.commandLine).not.toContain('wsl.exe')
+    const r = await launcher.launch({ key: s.key, ...base })
+    expect(r).toMatchObject({ ok: true, simulated: true })
+    expect(r.commandLine).toContain('C:\\Users\\beau\\code\\reddit')
   })
 
-  it('a folder only WSL has (/home/…) always resumes in WSL', async () => {
+  it('a Linux-only folder in the Windows .codex is not resumed unless opted in', async () => {
     const { sessions, launcher } = await crossSetup()
     const s = codexOf(sessions.list(), XID.home)
+    const p = await launcher.preview({ key: s.key, ...base })
+    expect(p.placement).toMatchObject({
+      kind: 'wsl-only',
+      cwd: '/home/beau/notes',
+      distro: 'Ubuntu',
+      distros: ['Ubuntu', 'Debian'],
+      appLink: true
+    })
+    expect(p.launchError).toMatch(/Linux-only folder/)
+    const r = await launcher.launch({ key: s.key, ...base })
+    expect(r.ok).toBe(false)
+    expect(r.error).toMatch(/Linux-only folder/)
+  })
+
+  it('opted in, Windows Codex runs in the WSL folder, always asking (never bypass)', async () => {
+    const { sessions, launcher } = await crossSetup()
+    const s = codexOf(sessions.list(), XID.home)
+    const unc = '\\\\wsl.localhost\\Ubuntu\\home\\beau\\notes'
+    // Bypass asked for: still off.
     const p = await launcher.preview({
       key: s.key,
       fork: false,
-      skipPermissions: false,
-      runIn: 'windows'
+      skipPermissions: true,
+      wslFolder: true
     })
-    expect(p.placement).toMatchObject({ runIn: 'wsl', choices: ['wsl'], cwd: '/home/beau/notes' })
-    expect(p.launchError).toBeUndefined()
-    expect(p.commandLine).toContain('--cd /home/beau/notes')
-  })
-
-  it('a Windows folder in a WSL home resumes on Windows, with CODEX_HOME at that WSL home', async () => {
-    const { sessions, launcher, wslHome } = await crossSetup()
-    const s = codexOf(sessions.list(), XID.win)
-    expect(s.env).toBe('wsl')
-    const p = await launcher.preview({ key: s.key, fork: false, skipPermissions: false })
     expect(p.launchError).toBeUndefined()
     expect(p.placement).toMatchObject({
-      runIn: 'windows',
-      choices: ['windows'],
-      cwd: 'C:\\Users\\beau\\code\\win'
+      kind: 'wsl-only',
+      optedIn: true,
+      askForced: true,
+      cwd: unc
     })
-    expect(p.terminal).toBe('wt')
-    expect(p.claudeCommand).toBe(`$env:CODEX_HOME = '${wslHome}'; codex resume ${XID.win}`)
-    expect(p.commandLine).toContain(`CODEX_HOME=${wslHome}`)
-    expect(p.commandLine).not.toContain('wsl.exe')
+    expect(p.cwd).toBe(unc)
+    // cmd (and so Windows Terminal) can't start in a \\… folder: PowerShell.
+    expect(p.terminal).toBe('powershell')
+    expect(p.terminalReason).toBe(WT_UNC_REASON)
+    expect(p.claudeCommand).toContain('-a on-request -s workspace-write')
+    expect(p.claudeCommand).not.toContain('dangerously')
+    expect(p.commandLine).not.toContain('dangerously')
+    const debian = await launcher.preview({
+      key: s.key,
+      ...base,
+      wslFolder: true,
+      distro: 'Debian'
+    })
+    expect(debian.cwd).toBe('\\\\wsl.localhost\\Debian\\home\\beau\\notes')
+    const r = await launcher.launch({
+      key: s.key,
+      fork: false,
+      skipPermissions: true,
+      wslFolder: true
+    })
+    expect(r).toMatchObject({ ok: true, simulated: true })
+    expect(r.commandLine).not.toContain('dangerously')
+    // Never from a phone, even if asked.
+    const phone = await launcher.launch(
+      { key: s.key, ...base, wslFolder: true },
+      { via: 'phone', device: 'Phone' }
+    )
+    expect(phone.ok).toBe(false)
+    expect(phone.error).toMatch(/Linux-only folder/)
   })
 
-  it('without WSL, a folder on a Windows drive opens on Windows; a WSL-only folder says why not', async () => {
+  it('a Windows folder in a WSL .codex resumes in WSL, in /mnt/c/…', async () => {
+    const { sessions, launcher } = await crossSetup()
+    const s = codexOf(sessions.list(), XID.win)
+    expect(s.env).toBe('wsl')
+    const p = await launcher.preview({ key: s.key, ...base })
+    expect(p.launchError).toBeUndefined()
+    expect(p.placement).toMatchObject({
+      kind: 'translated',
+      runIn: 'wsl',
+      cwd: '/mnt/c/Users/beau/code/win'
+    })
+    expect(p.placement?.appLink).toBeUndefined()
+    expect(p.cwdExists).toBe(true)
+    expect(p.commandLine).toContain('--cd /mnt/c/Users/beau/code/win')
+    expect(p.claudeCommand).toMatch(/command codex resume /)
+  })
+
+  it('a WSL /mnt/c folder counts as there when Windows has it (\\\\wsl.localhost hides drive mounts)', async () => {
+    const { sessions, launcher } = await crossSetup()
+    const drive = await launcher.preview({ key: codexOf(sessions.list(), XID.wslMnt).key, ...base })
+    expect(drive.placement).toBeUndefined()
+    expect(drive.cwdExists).toBe(true)
+    const gone = await launcher.preview({ key: codexOf(sessions.list(), XID.wslGone).key, ...base })
+    expect(gone.cwdExists).toBe(false)
+  })
+
+  it('"Open terminal here" opens a Linux folder in WSL', async () => {
+    const { sessions, launcher } = await crossSetup()
+    const r = await launcher.openShell(codexOf(sessions.list(), XID.home).key)
+    expect(r).toMatchObject({ ok: true, simulated: true })
+    expect(r.commandLine).toContain('-d Ubuntu')
+    expect(r.commandLine).toContain('/home/beau/notes')
+  })
+
+  it('without WSL, a /mnt/c folder still resumes on Windows; a Linux-only folder says why not', async () => {
     const { sessions, settings, layout } = await crossSetup()
     const noWsl = {
       ...createFixturesPlatform(layout.fixturesDir, layout.sourcesDir),
@@ -1606,67 +1637,28 @@ describe('a session whose folder belongs to the other environment', () => {
       undefined,
       () => settings.value
     )
-    const onDrive = await launcher.preview({
-      key: codexOf(sessions.list(), XID.mnt).key,
-      fork: false,
-      skipPermissions: false
-    })
-    expect(onDrive.placement).toMatchObject({
-      runIn: 'windows',
-      cwd: 'C:\\Users\\beau\\code\\reddit'
-    })
+    const onDrive = await launcher.preview({ key: codexOf(sessions.list(), XID.mnt).key, ...base })
+    expect(onDrive.placement).toMatchObject({ runIn: 'windows' })
     expect(onDrive.launchError).toBeUndefined()
     const linuxOnly = await launcher.preview({
       key: codexOf(sessions.list(), XID.home).key,
-      fork: false,
-      skipPermissions: false
+      ...base,
+      wslFolder: true
     })
-    expect(linuxOnly.launchError).toMatch(/no WSL distro was found/)
+    expect(linuxOnly.launchError).toMatch(/No WSL distro/)
   })
 
-  it('a /mnt/c folder counts as there when Windows has it (\\\\wsl.localhost hides drive mounts)', async () => {
-    const t = await crossSetup()
-    const winHome = t.winHome
-    const day = join(winHome, 'sessions', '2026', '10', '23')
-    await mkdir(day, { recursive: true })
-    const ids = {
-      drive: '019abbbb-0000-7000-8000-00000000000b',
-      gone: '019acccc-0000-7000-8000-00000000000c'
-    }
-    // Neither folder is under the sample distro's root (as from \\wsl.localhost).
-    await writeFile(
-      join(day, `rollout-2026-10-23T10-00-00-${ids.drive}.jsonl`),
-      rollout(ids.drive, '/mnt/c/Users/beau/Documents/Codex/2026-07-22/notes', 'Codex Desktop')
-    )
-    await writeFile(
-      join(day, `rollout-2026-10-23T10-05-00-${ids.gone}.jsonl`),
-      rollout(ids.gone, '/home/beau/removed-project', 'Codex Desktop')
-    )
-    await t.sessions.rescan()
-    const drive = await t.launcher.preview({
-      key: codexOf(t.sessions.list(), ids.drive).key,
-      fork: false,
-      skipPermissions: false
-    })
-    expect(drive.placement?.runIn).toBe('wsl')
-    expect(drive.cwdExists).toBe(true)
-    const gone = await t.launcher.preview({
-      key: codexOf(t.sessions.list(), ids.gone).key,
-      fork: false,
-      skipPermissions: false
-    })
-    expect(gone.cwdExists).toBe(false)
-  })
-
-  it('sessions whose folder matches their home are placed as before', async () => {
+  it('sessions whose folder matches their .codex are placed as before', async () => {
     const { sessions, launcher } = await crossSetup()
     for (const id of [ID.cli, ID.wsl]) {
-      const p = await launcher.preview({
-        key: codexOf(sessions.list(), id).key,
-        fork: false,
-        skipPermissions: false
-      })
+      const p = await launcher.preview({ key: codexOf(sessions.list(), id).key, ...base })
       expect(p.placement).toBeUndefined()
     }
+  })
+
+  it('opens the Codex app only with its own thread link', () => {
+    const p = createCodexProvider()
+    expect(p.launch.appLink?.(ID.cli)).toBe(`codex://threads/${ID.cli}`)
+    expect(p.launch.appLink?.('not-an-id')).toBeUndefined()
   })
 })

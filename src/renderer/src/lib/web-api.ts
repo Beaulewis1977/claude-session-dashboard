@@ -221,6 +221,7 @@ export const webApi: CsdApi = {
   previewLaunch: onPc('This launch dialog'),
   launch: onPc('This launch dialog'),
   pickCwd: onPc('Choosing a folder'),
+  openInAgentApp: onPc('Opening the Codex app'),
 
   exportMarkdown: async (key) => {
     const d = await rpc<Parameters<typeof sessionToMarkdown>[0] | null>('getSession', key)

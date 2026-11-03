@@ -975,13 +975,23 @@ root), plus Codex folders added in Settings → Scan sources.
   has can't send it to another home. In WSL the real binary runs (`command codex`), so a `codex`
   shell function or alias in `~/.bashrc` that sets its own `CODEX_HOME` can't replace it.
 - **Sessions that ran in the other environment**: the Codex desktop app on Windows can run its agent
-  in WSL and still keeps the session in the Windows home, so that home holds sessions whose folder
-  is a Linux path. Such a session resumes in WSL (`wsl.exe -d <distro> --cd <folder>`), in the
-  default distro (`wsl -l -v`; Docker's and Rancher's never) or one picked in the dialog, with
-  `CODEX_HOME` set to that Windows home as the distro sees it (asked with `wslpath`, so a custom
-  automount root works). A folder on a Windows drive (`/mnt/c/…`) can open on Windows instead
-  (`C:\…`), and does by default on a PC without WSL. The reverse, a Windows folder in a WSL home,
-  resumes on Windows with `CODEX_HOME` at that WSL home (`\\wsl.localhost\…`).
+  in WSL and still keeps the session in the Windows `.codex`, so that folder holds sessions whose
+  working folder is a Linux path. Codex always runs where its `.codex` is: its SQLite database
+  can't be opened across the WSL / Windows boundary (Codex in WSL with `CODEX_HOME=/mnt/c/…`
+  fails with "disk I/O error"). Only the working folder is translated:
+  - `/mnt/c/x` in the Windows `.codex` resumes with Windows Codex in `C:\x`.
+  - `C:\x` in a WSL `.codex` resumes in WSL in `/mnt/c/x` (as that distro mounts it, `wslpath`).
+  - A Linux-only folder (`/home/…`) in the Windows `.codex` isn't resumed by default. The dialog
+    explains why and offers **Open in Codex app** (`codex://threads/<id>`, the app's own link to a
+    local thread) and, opt-in and desktop only, **Resume with Windows Codex in the WSL folder**:
+    Windows Codex in `\\wsl.localhost\<distro>\…` (default distro from `wsl -l -v`, Docker's and
+    Rancher's never; another can be picked), always asking before commands (`-a on-request -s
+workspace-write`, bypass off) with a warning that commands run in Windows PowerShell against
+    the Linux files. PowerShell is used, as cmd (also under Windows Terminal) can't start in a
+    `\\…` folder.
+  - "Open terminal here" opens a Linux folder in WSL, a Windows one on Windows.
+  - Folder checks: Windows can't see a distro's drive mounts through `\\wsl.localhost`, so a
+    `/mnt/c/…` folder is checked as `C:\…`, and other `/mnt/…` folders inside the distro.
 - **Not for Codex** (hidden): Branch from here (it would write into `~/.codex`), Continue fresh and
   summaries (later phase), New session in this folder, Remote Control, API billing, Running now,
   usage and limits (Phase C). A Codex session whose file is gone can be read but not resumed: the

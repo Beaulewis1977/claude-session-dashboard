@@ -20,7 +20,7 @@ import { useWarmExpiry } from '@/lib/use-warm-expiry'
 import { DEFAULT_CONTEXT_WARNING, shouldWarn } from '@shared/context'
 import { updateMeta } from '@/lib/actions'
 import { summarize } from '@/lib/summaries'
-import type { EnvKind, LaunchPreview, TerminalPref } from '@shared/types'
+import type { LaunchPlacement, LaunchPreview, TerminalPref } from '@shared/types'
 import { api } from '@/lib/api'
 import { showNewSession } from '@/lib/actions'
 import { launchesOnEnter } from '@/lib/dialog-keys'
@@ -126,20 +126,23 @@ function ResumeDialogBody({ resume }: { resume: ResumeRequest }) {
   const [skip, setSkip] = useState(carry?.skip ?? settings.skipPermissionsDefault)
   const [terminal, setTerminal] = useState<TerminalPref>(carry?.terminal ?? settings.terminal)
   const [cwdOverride, setCwdOverride] = useState<string | undefined>(carry?.cwdOverride)
-  // Where a session runs that can run in either environment (see preview.placement).
-  const [runIn, setRunInState] = useState<EnvKind | undefined>(undefined)
+  // A session whose folder exists only in WSL (see preview.placement): resumed with
+  // Windows Codex in that folder only when opted in here, in the distro picked.
+  const [wslFolder, setWslFolderState] = useState(false)
   const [distro, setDistro] = useState<string | undefined>(undefined)
-  const setRunIn = (v: EnvKind): void => {
-    setRunInState(v)
-    // A folder picked for one environment isn't a folder in the other.
+  const setWslFolder = (v: boolean): void => {
+    setWslFolderState(v)
+    // A folder picked for one way of running isn't right for the other.
     setCwdOverride(undefined)
   }
   const pickDistro = (v: string): void => {
     setDistro(v)
     setCwdOverride(undefined)
   }
-  const where = { ...(runIn ? { runIn } : {}), ...(distro ? { distro } : {}) }
+  const where = { ...(wslFolder ? { wslFolder } : {}), ...(distro ? { distro } : {}) }
   const [preview, setPreview] = useState<LaunchPreview | null>(null)
+  // Approvals are always on for a WSL-only folder run with Windows Codex (main enforces it too).
+  const askForced = preview?.placement?.askForced === true
   const [launching, setLaunching] = useState(false)
   const [copied, setCopied] = useState(false)
   // "Don't warn for this session": saved right away, but the warning stays until the dialog closes.
@@ -230,7 +233,7 @@ function ResumeDialogBody({ resume }: { resume: ResumeRequest }) {
     newSession,
     remoteControl,
     expired,
-    runIn,
+    wslFolder,
     distro,
     // The session's context changed (it grew, shrank or was compacted): a new estimate.
     session?.sizeBytes,
@@ -505,41 +508,20 @@ function ResumeDialogBody({ resume }: { resume: ResumeRequest }) {
           )}
 
           {preview?.placement && (
-            <div>
-              <div className="mb-1.5 text-xs font-medium">Run in</div>
-              <div className="flex flex-wrap items-center gap-2">
-                {preview.placement.choices.length > 1 && (
-                  <Segmented<EnvKind>
-                    ariaLabel="Run in"
-                    value={preview.placement.runIn}
-                    onChange={setRunIn}
-                    options={preview.placement.choices.map((c) => ({
-                      value: c,
-                      label: c === 'wsl' ? 'WSL' : 'Windows'
-                    }))}
-                  />
-                )}
-                {preview.placement.runIn === 'wsl' && preview.placement.distros.length > 1 && (
-                  <Segmented<string>
-                    ariaLabel="WSL distro"
-                    value={preview.placement.distro ?? ''}
-                    onChange={pickDistro}
-                    options={preview.placement.distros.map((d) => ({ value: d, label: d }))}
-                  />
-                )}
-                {preview.placement.choices.length === 1 && (
-                  <span className="text-xs">
-                    {preview.placement.runIn === 'wsl'
-                      ? `WSL${preview.placement.distro ? `: ${preview.placement.distro}` : ''}`
-                      : 'Windows'}
-                  </span>
-                )}
-              </div>
-              <div className="mt-1.5 flex items-start gap-1.5 text-xs text-muted-foreground">
-                <Info className="mt-px size-3.5 shrink-0" />
-                {preview.placement.reason}
-              </div>
-            </div>
+            <PlacementNote
+              placement={preview.placement}
+              onOpenInApp={() =>
+                void api
+                  .openInAgentApp(resume.key)
+                  .then(() => close())
+                  .catch((err: Error) =>
+                    toast.error("Couldn't open the Codex app", { description: err.message })
+                  )
+              }
+              optedIn={wslFolder}
+              onOptIn={setWslFolder}
+              onDistro={pickDistro}
+            />
           )}
 
           <div>
@@ -671,9 +653,15 @@ function ResumeDialogBody({ resume }: { resume: ResumeRequest }) {
           )}
 
           <div className="rounded-lg border border-border p-3">
-            <label className="flex cursor-pointer items-start gap-2.5">
+            <label
+              className={cn(
+                'flex items-start gap-2.5',
+                askForced ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'
+              )}
+            >
               <Checkbox
-                checked={skip}
+                checked={skip && !askForced}
+                disabled={askForced}
                 onCheckedChange={(v) => setSkip(v === true)}
                 className="mt-0.5"
               />
@@ -688,7 +676,14 @@ function ResumeDialogBody({ resume }: { resume: ResumeRequest }) {
                 </span>
               </span>
             </label>
-            {skip && <SkipPermissionsWarning className="mt-2 pl-[26px]" codex={codex} />}
+            {askForced ? (
+              <div className="mt-2 pl-[26px] text-xs text-muted-foreground">
+                Off for a WSL folder run with Windows Codex: it asks before every command (
+                <span className="font-mono">-a on-request -s workspace-write</span>).
+              </div>
+            ) : (
+              skip && <SkipPermissionsWarning className="mt-2 pl-[26px]" codex={codex} />
+            )}
           </div>
 
           <div>
@@ -781,5 +776,76 @@ function ResumeDialogBody({ resume }: { resume: ResumeRequest }) {
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  )
+}
+
+/**
+ * Why a session runs where it does when its folder belongs to the other
+ * environment than its .codex folder, and (for a WSL-only folder) the opt-in to
+ * resume it with Windows Codex there, never with bypass.
+ */
+function PlacementNote({
+  placement,
+  optedIn,
+  onOpenInApp,
+  onOptIn,
+  onDistro
+}: {
+  placement: LaunchPlacement
+  optedIn: boolean
+  onOpenInApp: () => void
+  onOptIn: (v: boolean) => void
+  onDistro: (v: string) => void
+}) {
+  const wslOnly = placement.kind === 'wsl-only'
+  return (
+    <div
+      className={cn(
+        'space-y-2 rounded-lg border px-3 py-2.5 text-xs',
+        wslOnly ? 'border-warning/40 bg-warning-soft' : 'border-border bg-secondary/40'
+      )}
+    >
+      <div className="flex items-start gap-2">
+        <Info className="mt-px size-3.5 shrink-0 text-muted-foreground" />
+        <span>{placement.reason}</span>
+      </div>
+      {placement.appLink && (
+        <div className="pl-[22px]">
+          <Button variant="outline" size="xs" onClick={onOpenInApp}>
+            Open in Codex app
+          </Button>
+        </div>
+      )}
+      {wslOnly && (
+        <label className="flex cursor-pointer items-start gap-2 pl-[22px]">
+          <Checkbox
+            checked={optedIn}
+            onCheckedChange={(v) => onOptIn(v === true)}
+            className="mt-px"
+          />
+          <span className="font-medium">Resume with Windows Codex in the WSL folder</span>
+        </label>
+      )}
+      {wslOnly && optedIn && (
+        <div className="space-y-2 pl-[22px]">
+          <div className="flex items-start gap-1.5 font-medium text-warning">
+            <TriangleAlert className="mt-px size-3.5 shrink-0" />
+            <span>
+              Commands run in Windows PowerShell against the Linux files in{' '}
+              <span className="font-mono">{placement.cwd}</span>, not in Linux. Codex asks before
+              every command.
+            </span>
+          </div>
+          {placement.distros.length > 1 && (
+            <Segmented<string>
+              ariaLabel="WSL distro that holds the folder"
+              value={placement.distro ?? ''}
+              onChange={onDistro}
+              options={placement.distros.map((d) => ({ value: d, label: d }))}
+            />
+          )}
+        </div>
+      )}
+    </div>
   )
 }

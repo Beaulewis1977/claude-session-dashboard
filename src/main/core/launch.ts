@@ -176,8 +176,13 @@ function folderReason(
   if (terminal === 'cmd' && /[%!]/.test(inner)) return toolReason
   // cmd would start in C:\Windows instead.
   if (terminal === 'cmd' && env === 'windows' && /^[\\/]{2}/.test(cwd)) return CMD_UNC_REASON
+  // Windows Terminal runs the agent through cmd, which would start in C:\Windows instead.
+  if (terminal === 'wt' && env === 'windows' && /^[\\/]{2}/.test(cwd)) return WT_UNC_REASON
   return undefined
 }
+
+export const WT_UNC_REASON =
+  "Windows Terminal starts the agent through cmd, which can't start in a network or WSL folder (\\\\…), so PowerShell is used instead."
 
 /** Windows' opt-out from looking for programs in the current folder (honoured by cmd.exe and libuv). */
 export const NO_CWD_SEARCH = 'NoDefaultCurrentDirectoryInExePath'

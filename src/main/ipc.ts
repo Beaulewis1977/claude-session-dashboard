@@ -169,10 +169,10 @@ function launchOpts(v: unknown): LaunchOptions {
   }
 }
 
-/** Where to run a session that can run in either environment (see Launcher.place). */
-function placeOpts(o: Record<string, unknown>): Pick<LaunchOptions, 'runIn' | 'distro'> {
+/** The opt-in for a session in a WSL-only folder, and its distro (see Launcher.place). */
+function placeOpts(o: Record<string, unknown>): Pick<LaunchOptions, 'wslFolder' | 'distro'> {
   return {
-    ...(o.runIn === 'wsl' || o.runIn === 'windows' ? { runIn: o.runIn } : {}),
+    ...(o.wslFolder === true ? { wslFolder: true } : {}),
     ...(typeof o.distro === 'string' && isValidDistroName(o.distro) ? { distro: o.distro } : {})
   }
 }
@@ -416,6 +416,16 @@ export function registerIpc(deps: IpcDeps): void {
 
   handle('launch:preview', (_e, opts) => deps.launcher.preview(launchOpts(opts)))
   handle('launch:run', (_e, opts) => deps.launcher.launch(launchOpts(opts)))
+  handle('launch:openInAgentApp', async (_e, key) => {
+    const s = sessions.get(str(key, 'key'))
+    if (!s) throw new Error('Session not found')
+    // Built here from the session id (never a URL from the renderer), and only the
+    // agent's own app scheme: a local link handled on this PC, not a network call.
+    const link = sessions.providerOf(s).launch.appLink?.(s.sessionId)
+    if (!link || !/^codex:\/\/threads\/[0-9a-f-]{36}$/i.test(link))
+      throw new Error("This session can't be opened in its app.")
+    await shell.openExternal(link)
+  })
   handle('launch:pickCwd', async (_e, key, where) => {
     const found = sessions.get(str(key, 'key'))
     if (!found) return null

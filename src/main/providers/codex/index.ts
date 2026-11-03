@@ -10,6 +10,7 @@
 import { stat } from 'node:fs/promises'
 import { basename, dirname, join } from 'node:path'
 import { CODEX_EFFORT_LEVELS } from '@shared/model-choice'
+import { isUuid } from '@shared/jsonl'
 import { parseWslUnc } from '../../core/wsl'
 import { PROVIDER_CAPABILITIES } from '@shared/provider'
 import { baseName } from '@shared/format'
@@ -135,13 +136,12 @@ export function createCodexProvider(opts: { textCache?: CompactTextCache } = {})
         }
         return { agentEnv: { CODEX_HOME: home } }
       },
-      // The desktop app on Windows runs its agent in WSL and keeps those sessions in the
-      // Windows home (and the reverse could happen): CODEX_HOME then points at the home
-      // that holds the rollout, as the run sees it (`/mnt/c/…` in WSL).
-      crossEnv: {
-        home: (src) => codexHomeOf(src),
-        crossTarget: (homeForRun) => ({ agentEnv: { CODEX_HOME: homeForRun } })
-      },
+      // The desktop app on Windows can run its agent in WSL and still keep the session in
+      // the Windows home. Codex always runs where its home is (its SQLite database can't
+      // be used across WSL / Windows); only the folder is translated.
+      crossEnvFolders: true,
+      // The Codex app's own link to a local thread (developers.openai.com/codex/app/commands).
+      appLink: (sessionId) => (isUuid(sessionId) ? `codex://threads/${sessionId}` : undefined),
       buildCommand: buildCodexLaunch,
       commandLine: codexCommandLine,
       handoffPrompt: () => undefined,

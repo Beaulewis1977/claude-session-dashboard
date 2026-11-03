@@ -108,8 +108,10 @@ export interface CsdApi {
 
   previewLaunch(opts: LaunchOptions): Promise<LaunchPreview>
   launch(opts: LaunchOptions): Promise<LaunchResult>
-  /** `where`: the run chosen in the dialog, for a session that can run in either environment. */
-  pickCwd(key: string, where?: Pick<LaunchOptions, 'runIn' | 'distro'>): Promise<string | null>
+  /** Open the session in its agent's own app (Codex: `codex://threads/<id>`). Desktop only. */
+  openInAgentApp(key: string): Promise<void>
+  /** `where`: the choices made in the dialog for a session whose folder is in the other environment. */
+  pickCwd(key: string, where?: Pick<LaunchOptions, 'wslFolder' | 'distro'>): Promise<string | null>
 
   exportMarkdown(key: string): Promise<ExportResult>
   copyText(text: string): Promise<void>

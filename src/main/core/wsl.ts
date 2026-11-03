@@ -29,6 +29,18 @@ export function parseDistroList(buf: Uint8Array): string[] {
   return [...seen]
 }
 
+/**
+ * The default distro from `wsl.exe -l -v` (the line marked `*`), or
+ * undefined when none is marked.
+ */
+export function parseDefaultDistro(buf: Uint8Array): string | undefined {
+  for (const raw of decodeWslOutput(buf).split(/\r?\n/)) {
+    const m = /^\s*\*\s+(\S+)/.exec(raw)
+    if (m && isValidDistroName(m[1])) return m[1]
+  }
+  return undefined
+}
+
 /** Distros that are WSL infrastructure rather than user Linux installs. */
 export function isInfrastructureDistro(name: string): boolean {
   return /^docker-desktop(-data)?$/i.test(name) || /^rancher-desktop(-data)?$/i.test(name)
@@ -84,4 +96,25 @@ export function windowsPathToWsl(p: string, distro?: string): string | undefined
   }
   if (p.startsWith('/')) return p
   return undefined
+}
+
+/**
+ * A Linux folder on a Windows drive (`/mnt/c/Users/me` → `C:\Users\me`), as
+ * WSL mounts it by default; undefined for anything else (`/home/…`).
+ */
+export function mntToWindows(p: string): string | undefined {
+  const m = /^\/mnt\/([a-zA-Z])(?:\/(.*))?$/.exec(p)
+  if (!m) return undefined
+  const rest = (m[2] ?? '').split('/').filter(Boolean).join('\\')
+  return `${m[1].toUpperCase()}:\\${rest}`
+}
+
+/** Is this a Linux path (`/…`), as opposed to a Windows one (`C:\…`, `\\server\…`)? */
+export function isLinuxPath(p: string | undefined): boolean {
+  return !!p && p.startsWith('/') && !p.startsWith('//')
+}
+
+/** Is this a Windows path (`C:\…`, or a UNC path)? */
+export function isWindowsPath(p: string | undefined): boolean {
+  return !!p && (/^[A-Za-z]:[\\/]/.test(p) || /^\\\\[^\\]/.test(p))
 }

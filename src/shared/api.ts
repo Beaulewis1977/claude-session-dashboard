@@ -108,7 +108,8 @@ export interface CsdApi {
 
   previewLaunch(opts: LaunchOptions): Promise<LaunchPreview>
   launch(opts: LaunchOptions): Promise<LaunchResult>
-  pickCwd(key: string): Promise<string | null>
+  /** `where`: the run chosen in the dialog, for a session that can run in either environment. */
+  pickCwd(key: string, where?: Pick<LaunchOptions, 'runIn' | 'distro'>): Promise<string | null>
 
   exportMarkdown(key: string): Promise<ExportResult>
   copyText(text: string): Promise<void>

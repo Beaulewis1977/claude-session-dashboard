@@ -40,7 +40,7 @@ import { archiveStats } from './core/archive'
 import type { JsonStore } from './core/json-store'
 import { handle } from './ipc-guard'
 import { assertUserWrite, isInside } from './core/safe-paths'
-import { windowsPathToWsl } from './core/wsl'
+import { isValidDistroName, windowsPathToWsl } from './core/wsl'
 import type { Platform } from './platform'
 import type { Launcher } from './services/launcher'
 import type { SessionService } from './services/sessions'
@@ -164,7 +164,16 @@ function launchOpts(v: unknown): LaunchOptions {
       ? (o.terminal as TerminalPref)
       : undefined,
     remoteControl: o.remoteControl === true,
-    continueFresh: continueRequest(o.continueFresh)
+    continueFresh: continueRequest(o.continueFresh),
+    ...placeOpts(o)
+  }
+}
+
+/** Where to run a session that can run in either environment (see Launcher.place). */
+function placeOpts(o: Record<string, unknown>): Pick<LaunchOptions, 'runIn' | 'distro'> {
+  return {
+    ...(o.runIn === 'wsl' || o.runIn === 'windows' ? { runIn: o.runIn } : {}),
+    ...(typeof o.distro === 'string' && isValidDistroName(o.distro) ? { distro: o.distro } : {})
   }
 }
 
@@ -407,9 +416,14 @@ export function registerIpc(deps: IpcDeps): void {
 
   handle('launch:preview', (_e, opts) => deps.launcher.preview(launchOpts(opts)))
   handle('launch:run', (_e, opts) => deps.launcher.launch(launchOpts(opts)))
-  handle('launch:pickCwd', async (_e, key) => {
-    const s = sessions.get(str(key, 'key'))
-    if (!s) return null
+  handle('launch:pickCwd', async (_e, key, where) => {
+    const found = sessions.get(str(key, 'key'))
+    if (!found) return null
+    // As the session will run (WSL for a Codex desktop session with a Linux folder, …).
+    const { s } = await deps.launcher.place(
+      found,
+      placeOpts((where ?? {}) as Record<string, unknown>)
+    )
     const w = win()
     const opts: Electron.OpenDialogOptions = {
       title: 'Choose the working folder',

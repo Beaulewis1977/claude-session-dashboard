@@ -448,6 +448,34 @@ export interface LaunchOptions {
   askPermissions?: boolean
   /** Continue fresh: a new session whose first message is this session's summary. */
   continueFresh?: ContinueFreshRequest
+  /**
+   * Where to run a session whose folder belongs to the other environment than
+   * the home that holds it (see LaunchPlacement). Unset: the default (WSL for
+   * a Linux folder).
+   */
+  runIn?: EnvKind
+  /** The WSL distro for such a run (unset: the default distro). */
+  distro?: string
+}
+
+/**
+ * A session that runs in the other environment than the home holding it: the
+ * Codex desktop app on Windows runs its agent in WSL, so the Windows home
+ * holds sessions whose folder is a Linux path. They resume in WSL (with
+ * CODEX_HOME pointing at that Windows home), or on Windows when the folder is
+ * on a Windows drive (`/mnt/c/…` → `C:\…`).
+ */
+export interface LaunchPlacement {
+  runIn: EnvKind
+  /** What the dialog offers (WSL first, the default). */
+  choices: EnvKind[]
+  /** WSL: the distro used, and the ones to choose from. */
+  distro?: string
+  distros: string[]
+  /** The folder as the run sees it. */
+  cwd: string
+  /** Why it isn't run where its home is, in a sentence. */
+  reason: string
 }
 
 export interface ContinueFreshRequest {
@@ -530,6 +558,8 @@ export interface LaunchPreview {
   continueError?: string
   /** Resume / Fork: the context size and what reloading it would cost (estimate). */
   context?: ResumeEstimate
+  /** Runs in the other environment than its home (see LaunchPlacement). */
+  placement?: LaunchPlacement
 }
 
 export interface LaunchResult {

@@ -158,6 +158,17 @@ export interface SessionProvider {
     handoffPrompt(path: string): { prompt: string; mode: HandoffMode } | undefined
     /** Who and which home the agent runs as for a source (Codex: the WSL user, or CODEX_HOME). */
     target?(src: ResolvedSource): Pick<LaunchInput, 'wslUser' | 'agentEnv'>
+    /**
+     * Sessions that can run in the other environment than the home that holds
+     * them (Codex: the desktop app on Windows runs its agent in WSL, so a
+     * Windows home holds sessions with a Linux folder). `home`: the source's
+     * home as Windows sees it. `crossTarget`: the launch target for a run in
+     * the other environment, given that home as the run sees it.
+     */
+    crossEnv?: {
+      home(src: ResolvedSource): string
+      crossTarget(homeForRun: string): Pick<LaunchInput, 'wslUser' | 'agentEnv'>
+    }
     /** The file a new session with this id would have, next to the session's own. */
     sessionFilePath(s: SessionSummary, sessionId: string): string
   }

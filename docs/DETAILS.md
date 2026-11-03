@@ -972,7 +972,16 @@ root), plus Codex folders added in Settings → Scan sources.
   defaults (Settings → Resume) and project defaults, apart from Claude Code's. `CODEX_HOME` is
   always set to the session's own home (set in cmd itself on Windows, in front of the command in
   WSL, which also runs as the home's user), so a `CODEX_HOME` the app or a login profile already
-  has can't send it to another home.
+  has can't send it to another home. In WSL the real binary runs (`command codex`), so a `codex`
+  shell function or alias in `~/.bashrc` that sets its own `CODEX_HOME` can't replace it.
+- **Sessions that ran in the other environment**: the Codex desktop app on Windows can run its agent
+  in WSL and still keeps the session in the Windows home, so that home holds sessions whose folder
+  is a Linux path. Such a session resumes in WSL (`wsl.exe -d <distro> --cd <folder>`), in the
+  default distro (`wsl -l -v`; Docker's and Rancher's never) or one picked in the dialog, with
+  `CODEX_HOME` set to that Windows home as the distro sees it (asked with `wslpath`, so a custom
+  automount root works). A folder on a Windows drive (`/mnt/c/…`) can open on Windows instead
+  (`C:\…`), and does by default on a PC without WSL. The reverse, a Windows folder in a WSL home,
+  resumes on Windows with `CODEX_HOME` at that WSL home (`\\wsl.localhost\…`).
 - **Not for Codex** (hidden): Branch from here (it would write into `~/.codex`), Continue fresh and
   summaries (later phase), New session in this folder, Remote Control, API billing, Running now,
   usage and limits (Phase C). A Codex session whose file is gone can be read but not resumed: the

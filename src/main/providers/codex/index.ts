@@ -135,6 +135,13 @@ export function createCodexProvider(opts: { textCache?: CompactTextCache } = {})
         }
         return { agentEnv: { CODEX_HOME: home } }
       },
+      // The desktop app on Windows runs its agent in WSL and keeps those sessions in the
+      // Windows home (and the reverse could happen): CODEX_HOME then points at the home
+      // that holds the rollout, as the run sees it (`/mnt/c/…` in WSL).
+      crossEnv: {
+        home: (src) => codexHomeOf(src),
+        crossTarget: (homeForRun) => ({ agentEnv: { CODEX_HOME: homeForRun } })
+      },
       buildCommand: buildCodexLaunch,
       commandLine: codexCommandLine,
       handoffPrompt: () => undefined,

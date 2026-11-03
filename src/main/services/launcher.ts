@@ -7,7 +7,9 @@ import type {
   BranchPreview,
   ContinueFreshPreview,
   ContinueFreshRequest,
+  EnvKind,
   LaunchOptions,
+  LaunchPlacement,
   LaunchPreview,
   LaunchResult,
   SessionSummary,
@@ -20,9 +22,18 @@ import {
   REMOTE_CONTROL_API_ERROR,
   type ContinueFreshArgs,
   type LaunchCommand,
+  type LaunchInput,
   type LaunchTools,
   type RemoteControl
 } from '../core/launch'
+import {
+  isInfrastructureDistro,
+  isLinuxPath,
+  isValidDistroName,
+  isWindowsPath,
+  mntToWindows,
+  windowsPathToWsl
+} from '../core/wsl'
 import { restoreIfMissing } from '../core/restore'
 import { handoffPath, writeHandoff } from '../core/handoff'
 import { isUuid } from '@shared/jsonl'
@@ -202,9 +213,8 @@ export class Launcher {
     continueFresh?: ContinueFreshArgs
   ): LaunchCommand {
     const p = this.provider(s)
-    const src = this.sessions.source(s.sourceId)
     return p.launch.buildCommand({
-      ...(src ? p.launch.target?.(src) : undefined),
+      ...this.targetOf(s),
       continueFresh,
       remoteControl: this.remoteControl(s, opts),
       askPermissions: opts.askPermissions === true,
@@ -254,6 +264,119 @@ export class Launcher {
     }
     this.wslRoots.set(distro, { path, at: Date.now() })
     return path
+  }
+
+  /** Launch targets worked out by place() for the session objects it returns. */
+  private placedTargets = new WeakMap<SessionSummary, Pick<LaunchInput, 'wslUser' | 'agentEnv'>>()
+  /** Per distro and home: the home as that distro sees it (`wslpath`), and when. */
+  private wslHomes = new Map<string, { path: string; at: number }>()
+  private distroList?: { list: string[]; def?: string; at: number }
+
+  /** The user's distros (not Docker's or Rancher's), and the default one. */
+  private async distros(): Promise<{ list: string[]; def?: string }> {
+    const hit = this.distroList
+    if (hit && Date.now() - hit.at < 60_000) return hit
+    const list = ((await this.platform.listDistros().catch(() => undefined)) ?? []).filter(
+      (d) => isValidDistroName(d) && !isInfrastructureDistro(d)
+    )
+    const marked = await this.platform.defaultDistro?.().catch(() => undefined)
+    const def = marked && list.includes(marked) ? marked : list[0]
+    this.distroList = { list, def, at: Date.now() }
+    return this.distroList
+  }
+
+  /** A Windows folder as a distro sees it: asked in the distro, else the default `/mnt/<drive>/…`. */
+  private async homeInDistro(distro: string, home: string): Promise<string | undefined> {
+    const k = `${distro}|${home}`
+    const hit = this.wslHomes.get(k)
+    if (hit && Date.now() - hit.at < 5 * 60_000) return hit.path
+    const path =
+      (await this.platform.wslPath(distro, home).catch(() => undefined)) ?? windowsPathToWsl(home)
+    if (path) this.wslHomes.set(k, { path, at: Date.now() })
+    return path
+  }
+
+  /**
+   * Where a session runs. Usually where its home is. A provider whose
+   * sessions can run in the other environment (Codex: the desktop app on
+   * Windows runs its agent in WSL and keeps the session in the Windows home)
+   * is placed by its folder:
+   * - a Linux folder in a Windows home runs in WSL (the distro asked for, else
+   *   the default one), with the agent pointed at that Windows home as the
+   *   distro sees it (`/mnt/c/…`). A folder on a Windows drive (`/mnt/c/…`)
+   *   can run on Windows instead (`C:\…`) when asked.
+   * - a Windows folder in a WSL home runs on Windows, pointed at that WSL home
+   *   (`\\wsl.localhost\…`).
+   * The returned session has the run's environment, distro and folder; its
+   * launch target is kept for command().
+   */
+  async place(
+    s: SessionSummary,
+    opts: Pick<LaunchOptions, 'runIn' | 'distro'>
+  ): Promise<{ s: SessionSummary; placement?: LaunchPlacement; error?: string }> {
+    const cross = this.provider(s).launch.crossEnv
+    const src = this.sessions.source(s.sourceId)
+    if (!cross || !src || !s.cwd) return { s }
+    if (s.env === 'windows' && isLinuxPath(s.cwd)) {
+      const onDrive = mntToWindows(s.cwd)
+      const choices: EnvKind[] = onDrive ? ['wsl', 'windows'] : ['wsl']
+      const { list, def } = await this.distros()
+      const base = { choices, distros: list }
+      // No WSL on this PC (or no usable distro): a folder on a Windows drive opens on Windows.
+      const windows = opts.runIn === 'windows' || (!opts.runIn && !list.length)
+      if (windows && onDrive) {
+        return {
+          s: { ...s, cwd: onDrive },
+          placement: {
+            ...base,
+            runIn: 'windows',
+            cwd: onDrive,
+            reason: `${this.provider(s).productName} ran this session in WSL; ${s.cwd} is ${onDrive} on Windows.`
+          }
+        }
+      }
+      const distro = opts.distro && list.includes(opts.distro) ? opts.distro : def
+      const reason = `${this.provider(s).productName} ran this session in WSL (its folder is a Linux path), so it resumes there, using the ${s.sourceLabel} home that holds it.`
+      if (!distro)
+        return {
+          s,
+          placement: { ...base, runIn: 'wsl', cwd: s.cwd, reason },
+          error: 'This session ran in WSL, but no WSL distro was found to resume it in.'
+        }
+      const home = await this.homeInDistro(distro, cross.home(src))
+      if (!home)
+        return {
+          s,
+          placement: { ...base, runIn: 'wsl', distro, cwd: s.cwd, reason },
+          error: `WSL: ${distro} can't reach this session's home (${cross.home(src)}).`
+        }
+      const placed: SessionSummary = { ...s, env: 'wsl', distro }
+      this.placedTargets.set(placed, cross.crossTarget(home))
+      return { s: placed, placement: { ...base, runIn: 'wsl', distro, cwd: s.cwd, reason } }
+    }
+    if (s.env === 'wsl' && isWindowsPath(s.cwd)) {
+      const placed: SessionSummary = { ...s, env: 'windows', distro: undefined }
+      this.placedTargets.set(placed, cross.crossTarget(cross.home(src)))
+      return {
+        s: placed,
+        placement: {
+          runIn: 'windows',
+          choices: ['windows'],
+          distros: [],
+          cwd: s.cwd,
+          reason: `${this.provider(s).productName} ran this session on Windows (its folder is a Windows path), so it resumes there, using the ${s.sourceLabel} home that holds it.`
+        }
+      }
+    }
+    return { s }
+  }
+
+  /** The launch target: where place() put the session, else its source's. */
+  private targetOf(s: SessionSummary): Pick<LaunchInput, 'wslUser' | 'agentEnv'> | undefined {
+    const placed = this.placedTargets.get(s)
+    if (placed) return placed
+    const src = this.sessions.source(s.sourceId)
+    return src ? this.provider(s).launch.target?.(src) : undefined
   }
 
   /** A new session id that no session file or handoff uses yet (the one asked for, if free). */
@@ -356,8 +479,7 @@ export class Launcher {
     // A session that needs its own home or WSL user (Codex): the bare command
     // would run against the wrong one, so there's nothing to copy.
     const p = this.provider(s)
-    const src = this.sessions.source(s.sourceId)
-    const target = src ? p.launch.target?.(src) : undefined
+    const target = this.targetOf(s)
     if (target && (target.wslUser || Object.keys(target.agentEnv ?? {}).length)) return ''
     try {
       return p.launch.commandLine({
@@ -387,8 +509,11 @@ export class Launcher {
   }
 
   async preview(opts: LaunchOptions): Promise<LaunchPreview> {
-    const s = this.sessions.get(opts.key)
-    if (!s) throw new Error('Session not found')
+    const found = this.sessions.get(opts.key)
+    if (!found) throw new Error('Session not found')
+    // Where it runs (WSL for a Codex desktop session with a Linux folder, …).
+    const placed = await this.place(found, opts)
+    const s = placed.s
     const cwd = opts.cwdOverride ?? s.cwd
     const tools = await this.platform.launchTools()
     const { terminal, fellBack } = this.resolveTerminal(
@@ -507,10 +632,11 @@ export class Launcher {
       terminal: cmd?.terminal ?? terminal,
       terminalReason: cmd?.terminalReason,
       billingLabel: this.billingLabel(opts),
-      launchError: this.unsupported(s, opts) ?? noRestore ?? error ?? folderError,
+      launchError: this.unsupported(s, opts) ?? placed.error ?? noRestore ?? error ?? folderError,
       remoteControlName: this.remoteControl(s, opts)?.name,
       modelChoice,
-      ...(context ? { context } : {})
+      ...(context ? { context } : {}),
+      ...(placed.placement ? { placement: placed.placement } : {})
     }
   }
 
@@ -525,10 +651,14 @@ export class Launcher {
       commandLine: '',
       error
     })
-    const s = this.sessions.get(key)
-    if (!s) return fail('Session not found')
-    if (s.availability === 'imported')
+    const found = this.sessions.get(key)
+    if (!found) return fail('Session not found')
+    if (found.availability === 'imported')
       return fail('Conversations imported from claude.ai have no folder on this PC.')
+    // The folder where the session ran (WSL for a Codex desktop session with a Linux folder).
+    const placed = await this.place(found, {})
+    if (placed.error) return fail(placed.error)
+    const s = placed.s
     const cwd = s.cwd
     if (!cwd) return fail('No working directory is recorded for this session.')
     const problem = cwdProblem(s.env, cwd)
@@ -565,8 +695,12 @@ export class Launcher {
   }
 
   async launch(opts: LaunchOptions, ctx: LaunchContext = DESKTOP): Promise<LaunchResult> {
-    const s = this.sessions.get(opts.key)
-    if (!s) return { ok: false, restored: false, commandLine: '', error: 'Session not found' }
+    const found = this.sessions.get(opts.key)
+    if (!found) return { ok: false, restored: false, commandLine: '', error: 'Session not found' }
+    // Where it runs (WSL for a Codex desktop session with a Linux folder, …).
+    const placed = await this.place(found, opts)
+    if (placed.error) return { ok: false, restored: false, commandLine: '', error: placed.error }
+    const s = placed.s
     if (s.availability === 'imported')
       return {
         ok: false,

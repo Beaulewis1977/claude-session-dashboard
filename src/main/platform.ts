@@ -15,7 +15,13 @@ import {
   systemExe,
   systemRoot
 } from './core/which'
-import { isValidDistroName, parseDistroList, windowsPathToWsl, wslRoots } from './core/wsl'
+import {
+  isValidDistroName,
+  parseDefaultDistro,
+  parseDistroList,
+  windowsPathToWsl,
+  wslRoots
+} from './core/wsl'
 
 export interface Platform {
   fixtures: boolean
@@ -27,6 +33,8 @@ export interface Platform {
   listDistros(): Promise<string[] | undefined>
   /** Undefined means the running state is unknown. */
   listRunningDistros(): Promise<string[] | undefined>
+  /** The default distro (`wsl -l -v`, marked `*`), if there is one. */
+  defaultDistro?(): Promise<string | undefined>
   /** Candidate host paths for a distro's filesystem root, preferred first. */
   distroRoots(distro: string): string[]
   pathExists(p: string): Promise<boolean>
@@ -203,6 +211,11 @@ export function createRealPlatform(): Platform {
       // When nothing runs, wsl prints a sentence instead of names.
       return parseDistroList(out).filter((n) => !/\s/.test(n))
     },
+    async defaultDistro() {
+      if (!isWindows) return undefined
+      const out = await runWsl(['-l', '-v'])
+      return out ? parseDefaultDistro(out) : undefined
+    },
     distroRoots: (distro) => wslRoots(distro),
     pathExists: exists,
     async launchTools() {
@@ -294,6 +307,10 @@ export function createFixturesPlatform(fixturesDir: string, sourcesDir: string):
     },
     async listRunningDistros() {
       return parseDistroList(await readFile(join(fixturesDir, 'wsl-list-running.utf16')))
+    },
+    async defaultDistro() {
+      // The sample list's first distro stands in for the default.
+      return parseDistroList(await readFile(join(fixturesDir, 'wsl-list.utf16')))[0]
     },
     distroRoots: (distro) => [join(sourcesDir, 'wsl', distro)],
     async pathExists(p) {

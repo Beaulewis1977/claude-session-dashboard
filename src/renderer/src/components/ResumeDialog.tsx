@@ -20,7 +20,7 @@ import { useWarmExpiry } from '@/lib/use-warm-expiry'
 import { DEFAULT_CONTEXT_WARNING, shouldWarn } from '@shared/context'
 import { updateMeta } from '@/lib/actions'
 import { summarize } from '@/lib/summaries'
-import type { LaunchPreview, TerminalPref } from '@shared/types'
+import type { EnvKind, LaunchPreview, TerminalPref } from '@shared/types'
 import { api } from '@/lib/api'
 import { showNewSession } from '@/lib/actions'
 import { launchesOnEnter } from '@/lib/dialog-keys'
@@ -126,6 +126,19 @@ function ResumeDialogBody({ resume }: { resume: ResumeRequest }) {
   const [skip, setSkip] = useState(carry?.skip ?? settings.skipPermissionsDefault)
   const [terminal, setTerminal] = useState<TerminalPref>(carry?.terminal ?? settings.terminal)
   const [cwdOverride, setCwdOverride] = useState<string | undefined>(carry?.cwdOverride)
+  // Where a session runs that can run in either environment (see preview.placement).
+  const [runIn, setRunInState] = useState<EnvKind | undefined>(undefined)
+  const [distro, setDistro] = useState<string | undefined>(undefined)
+  const setRunIn = (v: EnvKind): void => {
+    setRunInState(v)
+    // A folder picked for one environment isn't a folder in the other.
+    setCwdOverride(undefined)
+  }
+  const pickDistro = (v: string): void => {
+    setDistro(v)
+    setCwdOverride(undefined)
+  }
+  const where = { ...(runIn ? { runIn } : {}), ...(distro ? { distro } : {}) }
   const [preview, setPreview] = useState<LaunchPreview | null>(null)
   const [launching, setLaunching] = useState(false)
   const [copied, setCopied] = useState(false)
@@ -190,7 +203,8 @@ function ResumeDialogBody({ resume }: { resume: ResumeRequest }) {
         newSession,
         branch: branchReq(),
         continueFresh: continueReq(),
-        remoteControl
+        remoteControl,
+        ...where
       })
       .then((p) => {
         if (cancelled) return
@@ -216,6 +230,8 @@ function ResumeDialogBody({ resume }: { resume: ResumeRequest }) {
     newSession,
     remoteControl,
     expired,
+    runIn,
+    distro,
     // The session's context changed (it grew, shrank or was compacted): a new estimate.
     session?.sizeBytes,
     session?.context?.tokens,
@@ -284,7 +300,8 @@ function ResumeDialogBody({ resume }: { resume: ResumeRequest }) {
       newSession,
       branch: branchReq(createOnly),
       continueFresh: continueReq(),
-      remoteControl
+      remoteControl,
+      ...where
     })
     // Per-project default ("always use API credits for this project").
     const current = projectDefault(settings.projectBilling, session)
@@ -354,7 +371,7 @@ function ResumeDialogBody({ resume }: { resume: ResumeRequest }) {
   }
 
   const pickFolder = async (): Promise<void> => {
-    const picked = await api.pickCwd(session.key)
+    const picked = await api.pickCwd(session.key, where)
     if (picked) setCwdOverride(picked)
   }
 
@@ -484,6 +501,44 @@ function ResumeDialogBody({ resume }: { resume: ResumeRequest }) {
             <div className="flex items-start gap-2.5 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2.5 text-xs">
               <TriangleAlert className="mt-px size-4 shrink-0 text-destructive" />
               {preview.launchError}
+            </div>
+          )}
+
+          {preview?.placement && (
+            <div>
+              <div className="mb-1.5 text-xs font-medium">Run in</div>
+              <div className="flex flex-wrap items-center gap-2">
+                {preview.placement.choices.length > 1 && (
+                  <Segmented<EnvKind>
+                    ariaLabel="Run in"
+                    value={preview.placement.runIn}
+                    onChange={setRunIn}
+                    options={preview.placement.choices.map((c) => ({
+                      value: c,
+                      label: c === 'wsl' ? 'WSL' : 'Windows'
+                    }))}
+                  />
+                )}
+                {preview.placement.runIn === 'wsl' && preview.placement.distros.length > 1 && (
+                  <Segmented<string>
+                    ariaLabel="WSL distro"
+                    value={preview.placement.distro ?? ''}
+                    onChange={pickDistro}
+                    options={preview.placement.distros.map((d) => ({ value: d, label: d }))}
+                  />
+                )}
+                {preview.placement.choices.length === 1 && (
+                  <span className="text-xs">
+                    {preview.placement.runIn === 'wsl'
+                      ? `WSL${preview.placement.distro ? `: ${preview.placement.distro}` : ''}`
+                      : 'Windows'}
+                  </span>
+                )}
+              </div>
+              <div className="mt-1.5 flex items-start gap-1.5 text-xs text-muted-foreground">
+                <Info className="mt-px size-3.5 shrink-0" />
+                {preview.placement.reason}
+              </div>
             </div>
           )}
 

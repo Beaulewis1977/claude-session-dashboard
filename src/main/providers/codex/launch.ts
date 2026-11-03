@@ -78,7 +78,10 @@ export function buildCodexLaunch(input: LaunchInput): LaunchCommand {
   if (input.apiKey) throw new Error("Codex sessions can't be launched on an API account from here.")
   return buildAgentLaunch(input, {
     product: 'Codex',
-    bin: 'codex',
+    // WSL: the real binary, never a shell function or alias of the same name. A
+    // `codex()` wrapper in ~/.bashrc that sets its own CODEX_HOME would otherwise
+    // replace the one given here and look in the wrong home.
+    bin: input.env === 'wsl' ? 'command codex' : 'codex',
     program: input.tools.codex,
     args: argsOf(input)
   })

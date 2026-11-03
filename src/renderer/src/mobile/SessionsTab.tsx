@@ -191,6 +191,21 @@ function FilterSheet({ open, onClose }: { open: boolean; onClose: () => void }) 
               ))}
             </Group>
           )}
+          {f.source.length > 0 && (
+            // Which product ran it (Claude Code terminal, Codex CLI, Codex desktop app, …),
+            // like the desktop sidebar's Source section.
+            <Group title="Source">
+              {f.source.map((s) => (
+                <Chip
+                  key={s.key}
+                  active={filters.source === s.key}
+                  onClick={() => toggle('source', s.key)}
+                >
+                  {s.label} · {s.count}
+                </Chip>
+              ))}
+            </Group>
+          )}
           <Group title="Project">
             {f.project.slice(0, 30).map((p) => (
               <Chip

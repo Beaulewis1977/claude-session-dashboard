@@ -233,6 +233,8 @@ export class Launcher {
     const forced = this.askForced.has(s)
     return p.launch.buildCommand({
       ...this.targetOf(s),
+      // A translated folder is given to the agent too, or it asks which folder to use.
+      ...(this.translated.has(s) ? { passCwd: true } : {}),
       continueFresh,
       remoteControl: this.remoteControl(s, opts),
       askPermissions: forced || opts.askPermissions === true,
@@ -286,6 +288,15 @@ export class Launcher {
 
   /** Sessions place() put in a WSL-only folder: Codex must ask before every command there. */
   private askForced = new WeakSet<SessionSummary>()
+  /** Sessions place() gave a translated folder: the agent is told it (`-C`), not just started there. */
+  private translated = new WeakSet<SessionSummary>()
+
+  /** Remember a placed session's folder as translated, and return it. */
+  private translatedTo(s: SessionSummary, cwd: string): SessionSummary {
+    const placed: SessionSummary = { ...s, cwd }
+    this.translated.add(placed)
+    return placed
+  }
   /** Per distro and Windows folder: the folder as that distro sees it (`wslpath`), and when. */
   private wslFolders = new Map<string, { path: string; at: number }>()
   private distroList?: { list: string[]; def?: string; at: number }
@@ -344,7 +355,7 @@ export class Launcher {
       const onDrive = mntToWindows(s.cwd)
       if (onDrive)
         return {
-          s: { ...s, cwd: onDrive },
+          s: this.translatedTo(s, onDrive),
           placement: {
             kind: 'translated',
             runIn: 'windows',
@@ -374,7 +385,7 @@ export class Launcher {
       if (!distro)
         return { s, placement, error: 'No WSL distro was found that could hold this folder.' }
       const unc = linuxToUnc(wslRoots(distro)[0], s.cwd)
-      const placed: SessionSummary = { ...s, cwd: unc }
+      const placed = this.translatedTo(s, unc)
       this.askForced.add(placed)
       return {
         s: placed,
@@ -397,7 +408,7 @@ export class Launcher {
           error: `${s.sourceLabel} can't reach ${s.cwd}.`
         }
       return {
-        s: { ...s, cwd: path },
+        s: this.translatedTo(s, path),
         placement: {
           // No app link: the Codex app on Windows reads the Windows .codex, not this one.
           kind: 'translated',

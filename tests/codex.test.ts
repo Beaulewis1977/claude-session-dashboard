@@ -1447,6 +1447,7 @@ describe('a session whose folder belongs to the other environment', () => {
   const homeOf = (s: SessionSummary): string =>
     dirname(dirname(dirname(dirname(dirname(s.originalPath)))))
   const base = { fork: false, skipPermissions: false }
+  const esc = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 
   /** The Codex desktop app's WSL sessions in the Windows home, and the reverse. */
   async function crossSetup() {
@@ -1516,7 +1517,12 @@ describe('a session whose folder belongs to the other environment', () => {
     expect(p.cwd).toBe('C:\\Users\\beau\\code\\reddit')
     expect(p.terminal).toBe('wt')
     // Codex runs where its .codex is: CODEX_HOME is that Windows folder, no wsl.exe.
-    expect(p.claudeCommand).toBe(`$env:CODEX_HOME = '${winHome}'; codex resume ${XID.mnt}`)
+    // The translated folder is given to Codex too (-C), or it asks which folder to use.
+    expect(p.claudeCommand).toMatch(
+      new RegExp(
+        `^\\$env:CODEX_HOME = '${esc(winHome)}'; codex resume -C '?C:\\\\Users\\\\beau\\\\code\\\\reddit'? ${XID.mnt}$`
+      )
+    )
     expect(p.commandLine).not.toContain('wsl.exe')
     const r = await launcher.launch({ key: s.key, ...base })
     expect(r).toMatchObject({ ok: true, simulated: true })
@@ -1563,6 +1569,7 @@ describe('a session whose folder belongs to the other environment', () => {
     expect(p.terminal).toBe('powershell')
     expect(p.terminalReason).toBe(WT_UNC_REASON)
     expect(p.claudeCommand).toContain('-a on-request -s workspace-write')
+    expect(p.claudeCommand).toContain('-C ')
     expect(p.claudeCommand).not.toContain('dangerously')
     expect(p.commandLine).not.toContain('dangerously')
     const debian = await launcher.preview({
@@ -1603,7 +1610,7 @@ describe('a session whose folder belongs to the other environment', () => {
     expect(p.placement?.appLink).toBeUndefined()
     expect(p.cwdExists).toBe(true)
     expect(p.commandLine).toContain('--cd /mnt/c/Users/beau/code/win')
-    expect(p.claudeCommand).toMatch(/command codex resume /)
+    expect(p.claudeCommand).toMatch(/command codex resume -C '?\/mnt\/c\/Users\/beau\/code\/win'? /)
   })
 
   it('a WSL /mnt/c folder counts as there when Windows has it (\\\\wsl.localhost hides drive mounts)', async () => {
@@ -1654,6 +1661,17 @@ describe('a session whose folder belongs to the other environment', () => {
       const p = await launcher.preview({ key: codexOf(sessions.list(), id).key, ...base })
       expect(p.placement).toBeUndefined()
     }
+  })
+
+  it('passes a translated folder with -C, and refuses one that could read as an option', () => {
+    expect(codexArgs({ sessionId: ID.cli, fork: false, bypass: false, cd: 'C:\\x y' })).toEqual([
+      'resume',
+      '-C',
+      'C:\\x y',
+      ID.cli
+    ])
+    expect(() => codexArgs({ sessionId: ID.cli, fork: false, bypass: false, cd: '-rf' })).toThrow()
+    expect(() => codexArgs({ sessionId: ID.cli, fork: false, bypass: false, cd: 'a\nb' })).toThrow()
   })
 
   it('opens the Codex app only with its own thread link', () => {

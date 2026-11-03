@@ -8,9 +8,10 @@
 //   -a, --ask-for-approval on-request     ask before running what the model decides needs it
 //   -s, --sandbox workspace-write
 //   --dangerously-bypass-approvals-and-sandbox
-// The terminal starts in the session's folder (as for Claude Code), so no
-// `--cd` is needed. Built as an argument array; nothing is ever joined into
-// a shell string except for display (core/launch.ts).
+//   -C, --cd <DIR>                        the folder to work in (see passCwd)
+// The terminal starts in the session's folder (as for Claude Code). Built as an
+// argument array; nothing is ever joined into a shell string except for
+// display (core/launch.ts).
 
 import { codexModelArgs } from '@shared/model-choice'
 import {
@@ -33,14 +34,24 @@ export interface CodexArgsInput {
   bypass: boolean
   askPermissions?: boolean
   modelChoice?: { model?: string; effort?: string }
+  /**
+   * `-C <dir>`: the folder, given to Codex explicitly. For a session whose recorded
+   * folder was translated (`/mnt/c/x` run as `C:\x`): without it Codex asks which
+   * folder to use, offering its own (wrong) conversion of the recorded one.
+   */
+  cd?: string
 }
 
 export function codexArgs(i: CodexArgsInput): string[] {
   if (!isValidSessionId(i.sessionId)) throw new Error(`Invalid session id: ${i.sessionId}`)
   if (i.askPermissions && i.bypass)
     throw new Error("Can't both bypass approvals and ask before running commands.")
+  // eslint-disable-next-line no-control-regex
+  if (i.cd !== undefined && (!i.cd || /[\u0000-\u001f]/.test(i.cd) || i.cd.startsWith('-')))
+    throw new Error(`This folder can't be passed to Codex: ${i.cd}`)
   return [
     i.fork ? 'fork' : 'resume',
+    ...(i.cd ? ['-C', i.cd] : []),
     ...(i.askPermissions ? CODEX_ASK_ARGS : []),
     ...codexModelArgs(i.modelChoice?.model, i.modelChoice?.effort),
     ...(i.bypass ? [CODEX_BYPASS_FLAG] : []),
@@ -59,7 +70,8 @@ function argsOf(
     | 'newSession'
     | 'continueFresh'
     | 'remoteControl'
-  >
+  >,
+  cd?: string
 ): string[] {
   if (i.newSession)
     throw new Error('A new session in this folder is started from Claude Code only, for now.')
@@ -70,7 +82,8 @@ function argsOf(
     fork: i.fork,
     bypass: i.skipPermissions && i.askPermissions !== true,
     askPermissions: i.askPermissions === true,
-    modelChoice: i.modelChoice
+    modelChoice: i.modelChoice,
+    ...(cd ? { cd } : {})
   })
 }
 
@@ -83,7 +96,7 @@ export function buildCodexLaunch(input: LaunchInput): LaunchCommand {
     // replace the one given here and look in the wrong home.
     bin: input.env === 'wsl' ? 'command codex' : 'codex',
     program: input.tools.codex,
-    args: argsOf(input)
+    args: argsOf(input, input.passCwd ? input.cwd : undefined)
   })
 }
 

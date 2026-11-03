@@ -65,6 +65,11 @@ export interface LaunchInput {
   /** WSL: run as this Linux user (the owner of the session's home), not the distro's default. */
   wslUser?: string
   /**
+   * Give the agent the folder explicitly too (Codex: `-C <cwd>`), for a session
+   * whose recorded folder was translated to this environment's form.
+   */
+  passCwd?: boolean
+  /**
    * Variables for the agent only (Codex: CODEX_HOME for a Codex folder added in
    * Settings). Windows: set in PowerShell's script (so PowerShell is used);
    * WSL: put before the command in bash.

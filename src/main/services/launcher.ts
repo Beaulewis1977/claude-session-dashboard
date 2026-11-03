@@ -126,12 +126,27 @@ export class Launcher {
    */
   private async cwdState(s: SessionSummary, cwd: string): Promise<CwdState> {
     if (s.env === 'windows') return (await this.platform.pathExists(cwd)) ? 'exists' : 'missing'
+    // A Windows drive mounted in WSL (/mnt/c/…) can't be seen through \\wsl.localhost
+    // (access is denied there): its Windows path is checked instead.
+    const onDrive = mntToWindows(cwd)
+    if (onDrive && (await this.platform.pathExists(onDrive))) return 'exists'
     const known = this.sessions.source(s.sourceId)?.distroRoot
     const roots = known ? [known] : s.distro ? this.platform.distroRoots(s.distro) : []
     const parts = cwd.split('/').filter(Boolean)
     for (const root of roots)
       if (await this.platform.pathExists(join(root, ...parts))) return 'exists'
-    for (const root of roots) if (await this.platform.pathExists(root)) return 'missing'
+    for (const root of roots)
+      if (await this.platform.pathExists(root)) {
+        // Mounts under /mnt (a drive with a different letter mapping, a network
+        // share) are only seen inside the distro: ask it before calling one gone.
+        if (
+          cwd.startsWith('/mnt/') &&
+          s.distro &&
+          (await this.platform.wslCanRead(s.distro, cwd).catch(() => false))
+        )
+          return 'exists'
+        return 'missing'
+      }
     return 'unreachable'
   }
 

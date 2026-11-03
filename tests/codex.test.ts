@@ -1624,6 +1624,40 @@ describe('a session whose folder belongs to the other environment', () => {
     expect(linuxOnly.launchError).toMatch(/no WSL distro was found/)
   })
 
+  it('a /mnt/c folder counts as there when Windows has it (\\\\wsl.localhost hides drive mounts)', async () => {
+    const t = await crossSetup()
+    const winHome = t.winHome
+    const day = join(winHome, 'sessions', '2026', '10', '23')
+    await mkdir(day, { recursive: true })
+    const ids = {
+      drive: '019abbbb-0000-7000-8000-00000000000b',
+      gone: '019acccc-0000-7000-8000-00000000000c'
+    }
+    // Neither folder is under the sample distro's root (as from \\wsl.localhost).
+    await writeFile(
+      join(day, `rollout-2026-10-23T10-00-00-${ids.drive}.jsonl`),
+      rollout(ids.drive, '/mnt/c/Users/beau/Documents/Codex/2026-07-22/notes', 'Codex Desktop')
+    )
+    await writeFile(
+      join(day, `rollout-2026-10-23T10-05-00-${ids.gone}.jsonl`),
+      rollout(ids.gone, '/home/beau/removed-project', 'Codex Desktop')
+    )
+    await t.sessions.rescan()
+    const drive = await t.launcher.preview({
+      key: codexOf(t.sessions.list(), ids.drive).key,
+      fork: false,
+      skipPermissions: false
+    })
+    expect(drive.placement?.runIn).toBe('wsl')
+    expect(drive.cwdExists).toBe(true)
+    const gone = await t.launcher.preview({
+      key: codexOf(t.sessions.list(), ids.gone).key,
+      fork: false,
+      skipPermissions: false
+    })
+    expect(gone.cwdExists).toBe(false)
+  })
+
   it('sessions whose folder matches their home are placed as before', async () => {
     const { sessions, launcher } = await crossSetup()
     for (const id of [ID.cli, ID.wsl]) {

@@ -12,6 +12,7 @@
 import { createReadStream } from 'node:fs'
 import { open } from 'node:fs/promises'
 import { Decompress } from 'fzstd'
+import { isContextItem, isInjected } from './provenance'
 
 /** First bytes of a zstd frame. Codex renames a rollout to .zst when it compresses it. */
 const ZSTD_MAGIC = [0x28, 0xb5, 0x2f, 0xfd]
@@ -22,14 +23,17 @@ export const COMPACT_LIMIT = 48 * 1024 * 1024
 export const LINE_LIMIT = 64 * 1024 * 1024
 /** Long strings (tool output, patches, arguments) are cut to this many characters. */
 export const FIELD_LIMIT = 64 * 1024
+/** Text that's never shown (context Codex adds, developer messages): only its start. */
+export const CONTEXT_KEEP = 2 * 1024
 
 /**
  * The version of the compact text this reader writes. Bump it whenever
  * compactLine keeps or cuts something differently: copies kept in the text
  * cache by an older version are then read again instead of reused.
  * 1: message text cut like tool output. 2: message text kept whole.
+ * 3: context Codex adds (never shown) kept only by its start.
  */
-export const COMPACT_FORMAT = 2
+export const COMPACT_FORMAT = 3
 
 /** The first line of the compact text: what the reader saw. Parsed by parse.ts. */
 export const READ_NOTE_TYPE = 'csd_read_note'
@@ -105,9 +109,33 @@ const DROP_EVENTS = new Set([
 ])
 
 function cut(s: string): string {
-  return s.length > FIELD_LIMIT
-    ? `${s.slice(0, FIELD_LIMIT)}\n… [cut by the dashboard: ${s.length - FIELD_LIMIT} more characters]`
+  return cutTo(s, FIELD_LIMIT)
+}
+
+function cutTo(s: string, n: number): string {
+  return s.length > n
+    ? `${s.slice(0, n)}\n… [cut by the dashboard: ${s.length - n} more characters]`
     : s
+}
+
+/**
+ * A message as the compact text keeps it. What I wrote and what the agent
+ * answered stay whole; text that's never shown (the context Codex adds as
+ * user text, and developer/system messages) keeps only its start, so it
+ * can't use up the size budget before later prompts and answers. Content
+ * items keep their places (provenance is per item index).
+ */
+function compactMessage(p: Record<string, unknown>): Record<string, unknown> {
+  if (p.role === 'assistant' || !Array.isArray(p.content)) return p
+  const user = p.role === 'user'
+  const content = p.content.map((c: unknown, i) => {
+    if (!c || typeof c !== 'object') return c
+    const item = c as Record<string, unknown>
+    if (typeof item.text !== 'string') return user ? item : trimDeep(item)
+    if (user && !isContextItem(p, i, item.text)) return item
+    return { ...item, text: cutTo(item.text, CONTEXT_KEEP) }
+  })
+  return { ...p, content }
 }
 
 /** Shorten every long string inside a value (tool output, patches, arguments). */
@@ -165,12 +193,20 @@ export function compactLine(line: string): string | undefined {
       effort: p.effort ?? p.reasoning_effort ?? settings.reasoning_effort,
       approval_policy: p.approval_policy
     }
+  } else if (type === 'response_item' && payload.type === 'message') {
+    keep.payload = compactMessage(payload)
   } else if (
-    (type === 'response_item' && payload.type === 'message') ||
-    (type === 'event_msg' && (payload.type === 'user_message' || payload.type === 'agent_message'))
+    type === 'event_msg' &&
+    (payload.type === 'user_message' || payload.type === 'agent_message')
   ) {
-    // What I wrote and what the agent answered: kept whole (only tool output is cut).
-    keep.payload = payload
+    // What I wrote and what the agent answered: kept whole. Context Codex added
+    // (never shown) only by its start.
+    keep.payload =
+      payload.type === 'user_message' &&
+      typeof payload.message === 'string' &&
+      isInjected(payload.message)
+        ? { ...payload, message: cutTo(payload.message, CONTEXT_KEEP) }
+        : payload
   } else {
     keep.payload = trimDeep(payload)
   }

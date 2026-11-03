@@ -416,12 +416,19 @@ function Header({
 
         {(session.availability !== 'live' ||
           session.malformedLines > 0 ||
-          !!session.historyNote) && (
+          !!session.historyNote ||
+          !!session.searchPartial) && (
           <div className="mt-3 space-y-2">
             {session.historyNote && (
               <Notice tone="warning" icon={TriangleAlert}>
                 <span className="font-medium">History may be incomplete.</span>{' '}
                 {session.historyNote.replace(/^This conversation may be incomplete: /, '')}
+              </Notice>
+            )}
+            {session.searchPartial && (
+              <Notice tone="info" icon={Search}>
+                This conversation is very long, so the search across sessions covers only its first
+                part (prompts and answers first). Find in session searches all of it.
               </Notice>
             )}
             {session.availability === 'imported' && (

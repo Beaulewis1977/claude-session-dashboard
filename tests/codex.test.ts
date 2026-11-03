@@ -5,6 +5,7 @@
 
 import {
   cp,
+  mkdir,
   mkdtemp,
   readdir,
   readFile,
@@ -16,7 +17,7 @@ import {
 } from 'node:fs/promises'
 import { createHash } from 'node:crypto'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { zstdCompressSync } from 'node:zlib'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
@@ -45,6 +46,7 @@ import {
 } from '../src/main/providers/codex/parse'
 import {
   compactLine,
+  CONTEXT_KEEP,
   isCredentialPath,
   readBytesOf,
   readCodexText
@@ -55,6 +57,9 @@ import { buildCodexLaunch, codexArgs } from '../src/main/providers/codex/launch'
 import { detectCodexSource } from '../src/main/providers/codex/source'
 import { remoteLaunchOptions } from '../src/main/mobile/remote-launch'
 import { archiveGrowth, archiveSession } from '../src/main/core/archive'
+import { applyPendingRestore, planRestore } from '../src/main/core/backup-restore'
+import { mergeOnRestore } from '../src/main/core/backup-files'
+import { zstdContentSize } from '../src/main/core/zstd'
 import { AGENT_ENV_CHARS_REASON, type LaunchTools } from '../src/main/core/launch'
 
 const FIXTURES = join(__dirname, '..', 'fixtures')
@@ -701,9 +706,14 @@ describe('launch commands', () => {
     const s = codexOf(sessions.list(), ID.cli)
     const p = await launcher.preview({ key: s.key, fork: false, skipPermissions: true })
     expect(p.launchError).toBeUndefined()
+    // Always bound to the session's own home (a CODEX_HOME set elsewhere can't redirect it).
+    const home = dirname(dirname(dirname(dirname(dirname(s.originalPath)))))
     expect(p.claudeCommand).toBe(
-      `codex resume -m gpt-5.5-codex -c model_reasoning_effort=ultra --dangerously-bypass-approvals-and-sandbox ${ID.cli}`
+      `$env:CODEX_HOME = '${home}'; codex resume -m gpt-5.5-codex -c model_reasoning_effort=ultra --dangerously-bypass-approvals-and-sandbox ${ID.cli}`
     )
+    expect(p.agentNote).toMatch(/^Run it in PowerShell, from /)
+    expect(p.commandLine).toContain(`CODEX_HOME=${home}`)
+    expect(p.terminal).toBe('wt')
     expect(p.context).toBeUndefined()
     expect(launcher.modelChoice(s)).toMatchObject({
       model: 'gpt-5.5-codex',
@@ -723,7 +733,7 @@ describe('launch commands', () => {
     // Fork works.
     expect(
       (await launcher.preview({ key: s.key, fork: true, skipPermissions: false })).claudeCommand
-    ).toMatch(/^codex fork /)
+    ).toMatch(/; codex fork /)
     // Model and effort, project defaults: kept apart from Claude Code's.
     expect(resolveModelChoice({ effort: 'ultra' }, undefined, {}, CODEX_EFFORT_LEVELS).effort).toBe(
       'ultra'
@@ -857,8 +867,19 @@ describe('review fixes', () => {
       cwd: 'C:\\x',
       agentEnv: { CODEX_HOME: 'D:\\Other Codex' }
     })
-    expect(win.terminal).toBe('powershell')
-    expect(win.args[2]).toContain("$env:CODEX_HOME = 'D:\\Other Codex';")
+    // Set in cmd itself, so it holds in a Windows Terminal window that was already open.
+    expect(win.terminal).toBe('wt')
+    expect(win.args.at(-1)).toBe(
+      `set NoDefaultCurrentDirectoryInExePath=1& set "CODEX_HOME=D:\\Other Codex"& "${TOOLS.codex}" resume ${ID.cli}`
+    )
+    const winPs = buildCodexLaunch({
+      ...base,
+      env: 'windows',
+      cwd: 'C:\\x',
+      terminal: 'powershell',
+      agentEnv: { CODEX_HOME: 'D:\\Other Codex' }
+    })
+    expect(winPs.args[2]).toContain("$env:CODEX_HOME = 'D:\\Other Codex';")
     expect(() =>
       buildCodexLaunch({ ...base, env: 'wsl', distro: 'Ubuntu', cwd: '/x', wslUser: 'a b' })
     ).toThrow(/WSL user/)
@@ -1099,5 +1120,292 @@ describe('second review fixes', () => {
     await rm(moved)
     await sessions.fileChanged(s.sourceId, moved)
     expect(codexOf(sessions.list(), ID.gap)?.availability ?? 'gone').not.toBe('live')
+  })
+})
+
+// -------------------------------------------------------- third review
+
+/** Plain text that hardly compresses, and text that compresses to almost nothing. */
+const noisy = (n: number): Buffer =>
+  Buffer.from(Array.from({ length: n }, (_, i) => ((i * 2654435761) % 4093).toString(36)).join(''))
+const repetitive = (n: number): Buffer => Buffer.from('x'.repeat(n))
+
+describe('third review fixes', () => {
+  it('restore picks the copy that holds more, by content, and keeps the record with it', async () => {
+    const dataDir = join(root, 'data')
+    const archiveDir = join(dataDir, 'archive')
+    const plain = join(archiveDir, 'w', `${ID.cli}.jsonl`)
+    await mkdir(dirname(plain), { recursive: true })
+    await writeFile(plain, noisy(20_000))
+    const plainSize = (await stat(plain)).size
+    const recFor = (path: string, size: number, contentSize: number) => ({
+      provider: 'codex',
+      sessionId: ID.cli,
+      sourceId: 'w',
+      archivePath: path,
+      size,
+      contentSize
+    })
+    await writeFile(
+      join(dataDir, 'metadata.json'),
+      JSON.stringify({
+        version: 1,
+        sessions: {},
+        archive: { k: recFor(plain, plainSize, plainSize) }
+      })
+    )
+    // The backup: a compressed copy with more in it, much smaller on disk.
+    const more = repetitive(plainSize * 3)
+    const zst = zstdCompressSync(more)
+    expect(zst.length).toBeLessThan(plainSize)
+    const pending = join(dataDir, 'restore-pending', 'files')
+    await mkdir(join(pending, 'archive', 'w'), { recursive: true })
+    await writeFile(join(pending, 'archive', 'w', `${ID.cli}.jsonl.zst`), zst)
+    const zstPath = join(archiveDir, 'w', `${ID.cli}.jsonl.zst`)
+    await writeFile(
+      join(pending, 'metadata.json'),
+      JSON.stringify({
+        version: 1,
+        sessions: {},
+        archive: { k: recFor(zstPath, zst.length, more.length) }
+      })
+    )
+    await writeFile(
+      join(dataDir, 'restore-pending', 'plan.json'),
+      JSON.stringify({
+        snapshotId: 's',
+        snapshotCreatedAt: 's',
+        // The metadata first in the plan: the archive copies are still applied first.
+        items: [
+          { rel: 'metadata.json', action: 'merge', sha256: 'x', size: 1 },
+          { rel: `archive/w/${ID.cli}.jsonl.zst`, action: 'add', sha256: 'x', size: zst.length }
+        ]
+      })
+    )
+    const rec = await applyPendingRestore(dataDir, { archiveDir, now: Date.now() })
+    expect(rec?.error).toBeUndefined()
+    const meta = JSON.parse(await readFile(join(dataDir, 'metadata.json'), 'utf8'))
+    expect(meta.archive.k).toMatchObject({ archivePath: zstPath, contentSize: more.length })
+    // The older plain copy stays.
+    expect((await stat(plain)).size).toBe(plainSize)
+
+    // By content in the merge, and never a record whose copy isn't there.
+    const merged = (backupRec: object, exists: boolean): unknown =>
+      JSON.parse(
+        mergeOnRestore(
+          'metadata.json',
+          JSON.stringify({ version: 1, sessions: {}, archive: { k: backupRec } }),
+          JSON.stringify({ version: 1, sessions: {}, archive: { k: recFor(plain, 100, 100) } }),
+          { archiveDir, exists: () => exists }
+        )
+      ).archive.k
+    expect(merged(recFor(zstPath, 10, 500), true)).toMatchObject({ archivePath: zstPath })
+    expect(merged(recFor(zstPath, 10, 500), false)).toMatchObject({ archivePath: plain })
+    expect(merged(recFor(zstPath, 900, 50), true)).toMatchObject({ archivePath: plain })
+  })
+
+  it('restore compares compressed copies by what they hold, not their size on disk', async () => {
+    const dataDir = join(root, 'data')
+    const rel = `archive/w/${ID.cli}.jsonl.zst`
+    const target = join(dataDir, 'archive', 'w', `${ID.cli}.jsonl.zst`)
+    await mkdir(dirname(target), { recursive: true })
+    const here = zstdCompressSync(noisy(20_000))
+    await writeFile(target, here)
+    // Preview: can't be told from sizes, so it's decided when restoring.
+    const { items } = await planRestore(dataDir, [{ p: rel, s: 10, m: 0, h: 'other', o: 'o' }])
+    expect(items[0]).toMatchObject({ action: 'replace', note: expect.stringMatching(/holds more/) })
+    const stageAndApply = async (backup: Buffer): Promise<void> => {
+      const staged = join(
+        dataDir,
+        'restore-pending',
+        'files',
+        'archive',
+        'w',
+        `${ID.cli}.jsonl.zst`
+      )
+      await mkdir(dirname(staged), { recursive: true })
+      await writeFile(staged, backup)
+      await writeFile(
+        join(dataDir, 'restore-pending', 'plan.json'),
+        JSON.stringify({
+          snapshotId: 's',
+          snapshotCreatedAt: 's',
+          items: [{ rel, action: 'replace', sha256: 'x', size: backup.length }]
+        })
+      )
+      await applyPendingRestore(dataDir, { archiveDir: join(dataDir, 'archive'), now: Date.now() })
+    }
+    // Smaller on disk but holding more: restored.
+    const better = zstdCompressSync(repetitive(200_000))
+    expect(better.length).toBeLessThan(here.length)
+    await stageAndApply(better)
+    expect(await readFile(target)).toEqual(better)
+    // Bigger on disk but holding less: the copy here stays.
+    const worse = zstdCompressSync(noisy(5_000))
+    await stageAndApply(Buffer.concat([worse, Buffer.alloc(0)]))
+    expect(await readFile(target)).toEqual(better)
+  })
+
+  it('a better-compressed rollout with more in it updates its compressed archive copy', async () => {
+    const dataDir = join(root, 'data')
+    const archiveDir = join(dataDir, 'archive')
+    const src = join(root, `rollout-2026-10-01T00-00-00-${ID.cli}.jsonl.zst`)
+    const first = noisy(20_000)
+    await writeFile(src, zstdCompressSync(first))
+    const base = {
+      provider: 'codex' as const,
+      ext: '.jsonl.zst',
+      sessionId: ID.cli,
+      sourceId: 'w',
+      sourceLabel: 'Windows',
+      env: 'windows' as const,
+      originalPath: src
+    }
+    const a = await archiveSession(
+      { ...base, contentSize: first.length },
+      undefined,
+      archiveDir,
+      dataDir
+    )
+    expect(a?.contentSize).toBe(first.length)
+    const more = repetitive(first.length * 2)
+    await writeFile(src, zstdCompressSync(more))
+    expect((await stat(src)).size).toBeLessThan(a!.size)
+    const b = await archiveSession({ ...base, contentSize: more.length }, a, archiveDir, dataDir)
+    expect(b).toMatchObject({ archivePath: a!.archivePath, contentSize: more.length })
+    // A copy cut off mid-way never replaces it.
+    const whole = zstdCompressSync(repetitive(first.length * 3))
+    await writeFile(src, whole.subarray(0, whole.length - 4))
+    expect(
+      await archiveSession({ ...base, contentSize: first.length * 3 }, b, archiveDir, dataDir)
+    ).toBeUndefined()
+    expect(await zstdContentSize(b!.archivePath)).toBe(more.length)
+  })
+
+  it('keeps hidden context short so it never fills the size budget', () => {
+    const big = 'C'.repeat(100_000)
+    const line = compactLine(
+      JSON.stringify({
+        type: 'response_item',
+        payload: {
+          type: 'message',
+          role: 'user',
+          content: [
+            { type: 'input_text', text: `<recommended_plugins>${big}</recommended_plugins>` },
+            { type: 'input_text', text: big }
+          ],
+          internal_chat_message_metadata_passthrough: {
+            content_item_kinds: ['plugins.recommendations', 'user.text']
+          }
+        }
+      })
+    )!
+    const kept = JSON.parse(line).payload.content
+    expect(kept[0].text.length).toBeLessThan(CONTEXT_KEEP + 100)
+    expect(kept[1].text).toBe(big)
+    const dev = compactLine(
+      JSON.stringify({
+        type: 'response_item',
+        payload: {
+          type: 'message',
+          role: 'developer',
+          content: [{ type: 'input_text', text: big }]
+        }
+      })
+    )!
+    expect(JSON.parse(dev).payload.content[0].text.length).toBeLessThan(CONTEXT_KEEP + 100)
+    const answer = compactLine(
+      JSON.stringify({
+        type: 'response_item',
+        payload: {
+          type: 'message',
+          role: 'assistant',
+          content: [{ type: 'output_text', text: big }]
+        }
+      })
+    )!
+    expect(JSON.parse(answer).payload.content[0].text).toBe(big)
+  })
+
+  it('keeps older event messages next to newer items, without doubling either', () => {
+    const ev = (type: string, message: string): string =>
+      JSON.stringify({ type: 'event_msg', payload: { type, message } })
+    const item = (role: string, text: string): string =>
+      JSON.stringify({
+        type: 'response_item',
+        payload: {
+          type: 'message',
+          role,
+          content: [{ type: role === 'user' ? 'input_text' : 'output_text', text }]
+        }
+      })
+    const text = [
+      // Older turns: events only.
+      ev('user_message', 'old prompt'),
+      ev('agent_message', 'old answer'),
+      // Newer turns: items, with the same message as an event too.
+      item('user', 'new prompt'),
+      ev('user_message', 'new prompt'),
+      item('assistant', 'new answer'),
+      ev('agent_message', 'new answer')
+    ].join('\n')
+    const texts = buildCodexMessages(text).map((m) => (m.blocks[0] as { text: string }).text)
+    expect(texts).toEqual(['old prompt', 'old answer', 'new prompt', 'new answer'])
+    const a = analyzeCodex(text)
+    expect([a.userMessageCount, a.assistantMessageCount]).toEqual([2, 2])
+    expect(a.searchText).toContain('old answer')
+  })
+
+  it('binds CODEX_HOME for auto-discovered homes too (Windows and WSL)', () => {
+    const p = createCodexProvider()
+    const win = p.launch.target!({
+      id: 'codex-windows',
+      label: 'Windows',
+      env: 'windows',
+      kind: 'auto',
+      status: 'ok',
+      sessionCount: 0,
+      projectsDir: 'C:\\Users\\beau\\.codex\\sessions'
+    })
+    expect(win).toEqual({ agentEnv: { CODEX_HOME: 'C:\\Users\\beau\\.codex' } })
+    const wsl = p.launch.target!({
+      id: 'codex-wsl',
+      label: 'WSL',
+      env: 'wsl',
+      distro: 'Ubuntu',
+      user: 'ann',
+      kind: 'auto',
+      status: 'ok',
+      sessionCount: 0,
+      projectsDir: '\\\\wsl.localhost\\Ubuntu\\home\\ann\\.codex\\sessions'
+    })
+    expect(wsl).toEqual({ wslUser: 'ann', agentEnv: { CODEX_HOME: '/home/ann/.codex' } })
+  })
+
+  it('prompts and answers come first in the search text, and a cut is said', () => {
+    const ev = (type: string, message: string): string =>
+      JSON.stringify({ type: 'event_msg', payload: { type, message } })
+    const reasoning = JSON.stringify({
+      type: 'response_item',
+      payload: { type: 'reasoning', summary: [{ type: 'summary_text', text: 'r'.repeat(600_000) }] }
+    })
+    const text = [
+      reasoning,
+      reasoning,
+      ev('user_message', 'early prompt'),
+      ev('agent_message', `${'a'.repeat(300_000)} needle`)
+    ].join('\n')
+    const a = analyzeCodex(text)
+    expect(a.searchText).toContain('needle')
+    expect(a.searchPartial).toBe(true)
+    expect(analyzeCodex(ev('user_message', 'short')).searchPartial).toBeUndefined()
+  })
+
+  it("the archive estimate adds nothing to backups for what's already archived", async () => {
+    const { sessions } = await setup({ codexArchive: 'all' })
+    const est = sessions.codexArchiveEstimate()
+    expect(est.all.sessions).toBeGreaterThan(0)
+    expect(est.all.bytes).toBeGreaterThan(0)
+    expect(est.all).toMatchObject({ newBytes: 0, backupBytes: 0 })
   })
 })

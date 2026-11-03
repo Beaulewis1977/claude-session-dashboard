@@ -227,6 +227,8 @@ export interface SessionSummary {
   origin?: { originator?: string; source?: string; threadSource?: string }
   /** Why the conversation shown may not be complete (the viewer says so). */
   historyNote?: string
+  /** Search across sessions covers only the start of it (very long Codex sessions; the viewer says so). */
+  searchPartial?: boolean
   /** The file's content size, decompressed (Codex; for archive decisions). */
   contentBytes?: number
 }

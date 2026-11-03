@@ -394,6 +394,11 @@ export function SessionScreen({ session }: { session: SessionSummary }) {
               </span>
             </div>
           )}
+          {session.searchPartial && (
+            <div className="mx-3 mt-3 rounded-xl border border-border bg-secondary/40 px-3 py-2.5 text-[13px] leading-snug text-muted-foreground">
+              This conversation is very long, so searching sessions covers only its first part.
+            </div>
+          )}
           {detail ? (
             <Transcript
               messages={messages}

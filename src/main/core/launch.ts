@@ -72,9 +72,6 @@ export interface LaunchInput {
   agentEnv?: Record<string, string>
 }
 
-export const AGENT_ENV_REASON =
-  "This session's Codex folder isn't the usual one, so PowerShell is used: it gets CODEX_HOME directly (a new Windows Terminal window can join one that's already running and get its environment instead)."
-
 export const AGENT_ENV_CHARS_REASON =
   "This session's Codex folder has ; % or ! in its name, which Windows Terminal or cmd would change, so PowerShell is used."
 
@@ -160,9 +157,10 @@ function folderReason(
   values: string[] = []
 ): string | undefined {
   // The agent's variables, checked like the folder: Windows Terminal reads ";"
-  // and "%", cmd expands "%" and "!" (even inside quotes).
+  // and "%", cmd (also the one inside Windows Terminal on Windows) expands "%"
+  // and "!" (even inside quotes).
   const vals = values.join('\n')
-  if (terminal === 'wt' && /[;%]/.test(vals)) return AGENT_ENV_CHARS_REASON
+  if (terminal === 'wt' && /[;%!]/.test(vals)) return AGENT_ENV_CHARS_REASON
   if (terminal === 'cmd' && /[%!]/.test(vals)) return AGENT_ENV_CHARS_REASON
   // The program that goes inside the terminal's command line.
   const inner = (env === 'wsl' ? tools.wsl : agent.program) ?? ''
@@ -417,11 +415,19 @@ const isBatch = (path: string): boolean => /\.(cmd|bat)$/i.test(path)
  * arguments. npm's claude.cmd starts `node` by name, so for a batch file the
  * line first turns off cmd's look in the current (project) folder.
  */
-function cmdClaudeLine(claude: string, cArgs: string[], unset: string[] = []): string {
+function cmdClaudeLine(
+  claude: string,
+  cArgs: string[],
+  unset: string[] = [],
+  /** The agent's variables (checked: no `"`, and no `%` `!` `;`, see folderReason). */
+  vars: [string, string][] = []
+): string {
   const guard = isBatch(claude) ? `set ${NO_CWD_SEARCH}=1& ` : ''
   // `set NAME=` with nothing after it removes NAME (after cmd's AutoRun has run).
   const clear = unset.map((k) => `set ${k}=& `).join('')
-  return guard + clear + [`"${claude}"`, ...cArgs.map(cmdArg)].join(' ')
+  // In cmd itself, so it holds in a Windows Terminal window that was already open.
+  const sets = vars.map(([k, v]) => `set "${k}=${v}"& `).join('')
+  return guard + clear + sets + [`"${claude}"`, ...cArgs.map(cmdArg)].join(' ')
 }
 
 /**
@@ -540,11 +546,6 @@ function build(input: LaunchInput, agent: AgentSpec): Omit<LaunchCommand, 'comma
     input = { ...input, terminal: 'powershell' }
     terminalReason = folder
   }
-  // Windows: the agent's variables are set in PowerShell's own script.
-  if (input.env === 'windows' && agentEnv.length && input.terminal !== 'powershell') {
-    input = { ...input, terminal: 'powershell' }
-    terminalReason = AGENT_ENV_REASON
-  }
   const user = input.wslUser ? ['-u', input.wslUser] : []
   // The short command to copy, complete for the shell it's pasted into: with
   // the agent's variables (CODEX_HOME), and where to run it.
@@ -610,7 +611,7 @@ function build(input: LaunchInput, agent: AgentSpec): Omit<LaunchCommand, 'comma
       // gives cmd `/s /k "<line>"`: it drops just those outer quotes.
       const wt = checkedTool(tools.wt, 'Windows Terminal')
       const cmd = checkedTool(tools.cmd, 'cmd.exe')
-      const args = ['-d', input.cwd, cmd, '/s', '/k', cmdClaudeLine(claude, cArgs, unset)]
+      const args = ['-d', input.cwd, cmd, '/s', '/k', cmdClaudeLine(claude, cArgs, unset, agentEnv)]
       return {
         ...base,
         command: wt,
@@ -643,7 +644,7 @@ function build(input: LaunchInput, agent: AgentSpec): Omit<LaunchCommand, 'comma
     case 'cmd': {
       // cmd starts in the folder, so the folder's name never reaches its parser.
       const cmd = checkedTool(tools.cmd, 'cmd.exe')
-      const args = ['/s', '/k', `"${cmdClaudeLine(claude, cArgs, unset)}"`]
+      const args = ['/s', '/k', `"${cmdClaudeLine(claude, cArgs, unset, agentEnv)}"`]
       return {
         ...base,
         command: cmd,

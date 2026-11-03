@@ -935,7 +935,9 @@ root), plus Codex folders added in Settings → Scan sources.
   [fzstd](https://github.com/101arrowz/fzstd) (pure JS), split into lines and compacted: the
   instructions repeated in every turn (`world_state`, `base_instructions`), tool lists,
   encrypted reasoning and duplicated progress events are dropped, and very long tool output and
-  arguments are cut (prompts and answers are kept whole).
+  arguments are cut (prompts and answers are kept whole). Text that's never shown (the context
+  Codex adds as user text, developer messages) keeps only its first 2 KB, so it can't use up the
+  size budget before later prompts and answers.
   Real rollouts can be more than 500 MB decompressed (more than a JavaScript string can hold);
   the compact text stops growing at 48 MB, and the viewer then says the history may be
   incomplete. It says the same when the rollout's own entry numbers (`ordinal`) don't start at 0
@@ -948,7 +950,11 @@ root), plus Codex folders added in Settings → Scan sources.
 - **Parsing** (`providers/codex/parse.ts`): `session_meta` (id, cwd, originator, CLI version,
   source, subagent parent, fork parent, git commit/branch/remote), `turn_context` (model, reasoning
   effort), `response_item` messages, reasoning summaries and tool calls with their outputs, and the
-  older `event_msg` messages. Context Codex adds as user text (environment, AGENTS.md,
+  older `event_msg` messages (matched to items one by one, so a history that mixes both keeps its
+  older turns without doubling the newer ones). Search covers the first 1,000,000 characters
+  (prompts and answers first, then reasoning and tool calls); the viewer says when a session goes
+  past it (Find in session searches all of it). Messages between agents (`agent_message` items
+  with an author and recipient) aren't shown yet. Context Codex adds as user text (environment, AGENTS.md,
   instructions, plugin suggestions) is never a prompt. Who wrote each item comes from the
   rollout itself: newer Codex records it per item (`internal_chat_message_metadata_passthrough`:
   `content_item_metadata[i].provenance.type` "user" / "harness" / …, and `content_item_kinds[i]`
@@ -963,15 +969,21 @@ root), plus Codex folders added in Settings → Scan sources.
   `-c model_reasoning_effort=<level>` (low … xhigh, max, ultra), and
   `--dangerously-bypass-approvals-and-sandbox` when "Skip permission prompts" is on. Phone launches
   never bypass: they add `-a on-request -s workspace-write`. Codex has its own model and effort
-  defaults (Settings → Resume) and project defaults, apart from Claude Code's.
+  defaults (Settings → Resume) and project defaults, apart from Claude Code's. `CODEX_HOME` is
+  always set to the session's own home (set in cmd itself on Windows, in front of the command in
+  WSL, which also runs as the home's user), so a `CODEX_HOME` the app or a login profile already
+  has can't send it to another home.
 - **Not for Codex** (hidden): Branch from here (it would write into `~/.codex`), Continue fresh and
   summaries (later phase), New session in this folder, Remote Control, API billing, Running now,
   usage and limits (Phase C). A Codex session whose file is gone can be read but not resumed: the
   app never copies files back into `~/.codex`.
 - **Archive**: Settings → Archive → "Archive Codex sessions": Off (default; Codex doesn't delete
   old sessions itself), Named, pinned or tagged, or All. The size it would copy, and about what a
-  backup grows by, are shown before it's turned on. Copies go to `archive\codex-<source>\` as they
-  are (compressed files stay compressed); a session Codex later compresses keeps its plain copy.
+  backup grows by (only for copies that are new or hold more), are shown before it's turned on.
+  Copies go to `archive\codex-<source>\` as they are (compressed files stay compressed); a session
+  Codex later compresses keeps its plain copy. Compressed copies are compared by what they hold
+  (decompressed), not their size on disk, when archiving and when restoring a backup; a restore
+  keeps each archive record with the copy it restored.
 
 ## Decisions and notes
 

@@ -92,6 +92,8 @@ export function groupOf(rel: string): FileGroup {
 /**
  * Files that only ever grow: a restore never replaces them with a smaller
  * backup copy (the copy here already holds everything plus newer lines).
+ * A compressed archive copy (`.jsonl.zst`) is compared by what it holds
+ * (decompressed), not by its size on disk (see backup-restore.ts).
  */
 export function neverShrinks(rel: string): boolean {
   return rel.startsWith('archive/') || rel === 'limits-history.ndjson'
@@ -268,6 +270,11 @@ export function rebaseArchivePath(p: unknown, archiveDir: string): unknown {
   return join(archiveDir, ...rest)
 }
 
+/** What an archive record's copy holds: its content size (decompressed), else its size. */
+function contentOf(r: Json): number {
+  return Number(r.contentSize ?? r.size ?? 0)
+}
+
 /** Settings that belong to this PC: never taken from a backup. */
 const PC_SETTINGS = ['window', 'miniMeter', 'mobile']
 
@@ -279,7 +286,11 @@ export function mergeOnRestore(
   rel: string,
   backupText: string,
   currentText: string | undefined,
-  ctx: { archiveDir: string }
+  ctx: {
+    archiveDir: string
+    /** Is there a file at this path now (after the restore wrote the archive copies)? */
+    exists?: (path: string) => boolean
+  }
 ): string {
   const b = parse(backupText)
   if (!b) throw new Error(`${rel} in the backup can't be read`)
@@ -329,8 +340,13 @@ export function mergeOnRestore(
         archivePath: rebaseArchivePath(obj(v).archivePath, ctx.archiveDir)
       }
       const here = obj(archive[k])
-      // Keep whichever record goes with the larger copy (see neverShrinks).
-      if (!(k in archive) || Number(rec.size ?? 0) > Number(here.size ?? 0)) archive[k] = rec
+      // Keep whichever record goes with the copy that holds more (see neverShrinks):
+      // by content, since a compressed copy is smaller on disk than its plain one.
+      // Only a record whose copy is there: the record and the file must match.
+      const there = (r: Json): boolean =>
+        typeof r.archivePath === 'string' && (ctx.exists?.(r.archivePath) ?? true)
+      if (!there(rec)) continue
+      if (!(k in archive) || !there(here) || contentOf(rec) > contentOf(here)) archive[k] = rec
     }
     return JSON.stringify(
       {

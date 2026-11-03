@@ -9,6 +9,7 @@ import { DEFAULT_PROVIDER, type ProviderId } from '@shared/provider'
 import type { ArchiveRecord } from '@shared/types'
 import { assertAppDataWrite, assertRealAppDataWrite } from './safe-paths'
 import { copyShared } from './shared-copy'
+import { contentSizeOf, hasZstdMagic, isZstdPath, zstdContentSize } from './zstd'
 
 /** ".jsonl.zst" or ".jsonl" (the archive's two kinds of copies). */
 function extOf(p: string): string {
@@ -143,16 +144,24 @@ export async function archiveSession(
   await copyShared(input.originalPath, tmp)
   try {
     const copied = await stat(tmp)
-    // Never replace a larger archive copy with a smaller one (the file may have
-    // been truncated between stat and copy).
-    if (
-      existing &&
-      dest === existing.archivePath &&
-      copied.size < existing.size &&
-      (await fileExists(dest))
-    ) {
+    // A compressed copy is measured by what it holds: recompressed better, it can
+    // be smaller on disk with more in it. One cut off mid-copy doesn't decode.
+    const compressed = isZstdPath(dest) && (await hasZstdMagic(tmp))
+    const content = compressed ? await zstdContentSize(tmp).catch(() => undefined) : undefined
+    if (compressed && content === undefined) {
       await unlink(tmp)
       return undefined
+    }
+    // Never replace a larger archive copy with a smaller one (the file may have
+    // been truncated between stat and copy).
+    if (existing && dest === existing.archivePath && (await fileExists(dest))) {
+      const shrank = compressed
+        ? content! < (existing.contentSize ?? (await contentSizeOf(dest).catch(() => 0)))
+        : copied.size < existing.size
+      if (shrank) {
+        await unlink(tmp)
+        return undefined
+      }
     }
     const sha256 = await sha256File(tmp)
     await rename(tmp, dest)
@@ -170,7 +179,10 @@ export async function archiveSession(
       archivePath: dest,
       cwd: input.cwd ?? existing?.cwd,
       size: copied.size,
-      ...(input.contentSize !== undefined ? { contentSize: input.contentSize } : {}),
+      // A compressed copy: what it was measured to hold (the parse may be older).
+      ...((content ?? input.contentSize) !== undefined
+        ? { contentSize: content ?? input.contentSize }
+        : {}),
       sha256,
       sourceMtimeMs: src.mtimeMs,
       firstArchivedAt: existing?.firstArchivedAt ?? now,

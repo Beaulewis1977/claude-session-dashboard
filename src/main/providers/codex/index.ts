@@ -41,8 +41,9 @@ export function createCodexProvider(opts: { textCache?: CompactTextCache } = {})
     // 2: tag-wrapped context isn't a prompt. 3: big rollouts' text is cached. 4: content size
     // (archive across compression). 5: message text kept whole; only snake_case tags are context.
     // 6: re-read big rollouts whose cached text an older reader cut (see COMPACT_FORMAT), and
-    // only Codex's own context tags count as injected.
-    parseVersion: 6,
+    // only Codex's own context tags count as injected. 7: hidden context kept short, legacy
+    // and newer messages matched one by one, search covers prompts and answers first.
+    parseVersion: 7,
 
     detectSources: (platform, opts) => detectCodexSources(platform, opts),
     listSessionFiles: (src) => listCodexFiles(codexHomeOf(src)),
@@ -103,6 +104,7 @@ export function createCodexProvider(opts: { textCache?: CompactTextCache } = {})
         ...(a.gitRemote ? { gitRemote: a.gitRemote } : {}),
         origin: a.origin,
         ...(a.historyNote ? { historyNote: a.historyNote } : {}),
+        ...(a.searchPartial ? { searchPartial: true } : {}),
         ...(a.contentBytes !== undefined ? { contentBytes: a.contentBytes } : {})
       }
       return { base, searchText: a.searchText }
@@ -121,18 +123,17 @@ export function createCodexProvider(opts: { textCache?: CompactTextCache } = {})
 
     launch: {
       cliMissing: (env, tools) => env === 'windows' && !tools.codex,
-      // The session's own Codex home: WSL as its user (whose ~/.codex it is), a Codex
-      // folder added in Settings through CODEX_HOME.
+      // The session's own Codex home, always set as CODEX_HOME: a CODEX_HOME the app
+      // (or a WSL login profile) already has could point at another home. WSL also runs
+      // as the home's user (whose ~/.codex it is, and whose files those are).
       target(src) {
         const home = codexHomeOf(src)
         if (src.env === 'wsl') {
-          if (src.kind === 'custom') {
-            const unc = parseWslUnc(home)
-            return unc ? { agentEnv: { CODEX_HOME: unc.linuxPath } } : {}
-          }
-          return src.user ? { wslUser: src.user } : {}
+          const unc = parseWslUnc(home)
+          const agentEnv = unc ? { agentEnv: { CODEX_HOME: unc.linuxPath } } : {}
+          return src.kind !== 'custom' && src.user ? { wslUser: src.user, ...agentEnv } : agentEnv
         }
-        return src.kind === 'custom' ? { agentEnv: { CODEX_HOME: home } } : {}
+        return { agentEnv: { CODEX_HOME: home } }
       },
       buildCommand: buildCodexLaunch,
       commandLine: codexCommandLine,

@@ -21,9 +21,14 @@
 
 import type { ChatMessage, ContentBlock, ToolResult } from '@shared/types'
 import { READ_NOTE_TYPE, type ReadNote } from './read'
+import { isContextItem, isInjected, whoWrote } from './provenance'
 
-/** Search text is cut to this many characters per session. */
-export const CODEX_SEARCH_LIMIT = 400_000
+/**
+ * Search text is cut to this many characters per session (prompts and
+ * answers first). Long Codex histories go past it; the viewer then says the
+ * session search covers only part (Find in session searches all of it).
+ */
+export const CODEX_SEARCH_LIMIT = 1_000_000
 
 export interface CodexOrigin {
   originator?: string
@@ -56,6 +61,8 @@ export interface CodexAnalysis {
   searchText: string
   /** Why the history shown may not be the whole conversation. */
   historyNote?: string
+  /** The search text was cut at CODEX_SEARCH_LIMIT. */
+  searchPartial?: boolean
   /** Decompressed size of the file (from the reader). */
   contentBytes?: number
 }
@@ -108,47 +115,6 @@ export function parseLines(text: string): {
 const str = (v: unknown): string | undefined => (typeof v === 'string' && v ? v : undefined)
 
 /**
- * Context Codex adds to the conversation as "user" text (the environment,
- * AGENTS.md, plugin suggestions, …), by the tags Codex itself uses. Only for
- * rollouts that don't say who wrote each item (see whoWrote): a tag's
- * spelling doesn't prove where it came from, so only Codex's own tags count,
- * never any tag that merely looks like them (a prompt like
- * `<user_input>…</user_input>` I typed stays a prompt).
- */
-const INJECTED_RE =
-  /^\s*(<(environment_context|user_instructions|permissions instructions|collaboration_mode|apps_instructions|skills_instructions|turn_aborted|user_shell_command|subagent_notification|personality_spec|recommended_plugins|external_codex_apps_open_page|codex_internal_context)\b|# AGENTS\.md instructions\b|<INSTRUCTIONS>)/i
-
-/** Context Codex added, by its tags only (for rollouts without provenance; see whoWrote). */
-export function isInjected(text: string): boolean {
-  return INJECTED_RE.test(text)
-}
-
-/**
- * Who wrote a user message's content item, as the rollout records it.
- * Newer Codex keeps, per item, `internal_chat_message_metadata_passthrough`
- * `.content_item_metadata[i].provenance.type` ("user", "harness",
- * "agents_md", …) and `.content_item_kinds[i]` ("user.text", "user.image",
- * "environments.environment_context", "plugins.recommendations", …).
- * undefined: the rollout doesn't say (older Codex).
- */
-function whoWrote(p: Record<string, unknown>, i: number): 'user' | 'codex' | undefined {
-  const m = p.internal_chat_message_metadata_passthrough
-  if (!m || typeof m !== 'object') return undefined
-  const { content_item_metadata: metas, content_item_kinds: kinds } = m as Record<string, unknown>
-  const content = Array.isArray(p.content) ? p.content.length : 0
-  // Only arrays that line up with the content items.
-  if (Array.isArray(metas) && metas.length === content) {
-    const prov = (metas[i] as { provenance?: { type?: unknown } } | null)?.provenance?.type
-    if (typeof prov === 'string') return prov === 'user' ? 'user' : 'codex'
-  }
-  if (Array.isArray(kinds) && kinds.length === content) {
-    const kind = kinds[i]
-    if (typeof kind === 'string') return kind.startsWith('user.') ? 'user' : 'codex'
-  }
-  return undefined
-}
-
-/**
  * Text items of a message's content (`input_text`, `output_text`, `text`).
  * For a user message, only what I wrote: the context Codex added is left out.
  */
@@ -161,10 +127,7 @@ function contentTexts(p: Record<string, unknown>, user: boolean): string[] {
     if (!c || typeof c !== 'object') return
     const t = (c as Record<string, unknown>).text
     if (typeof t !== 'string') return
-    if (user) {
-      const who = whoWrote(p, i)
-      if (who === 'codex' || (who === undefined && isInjected(t))) return
-    }
+    if (user && isContextItem(p, i, t)) return
     out.push(t)
   })
   return out
@@ -266,21 +229,28 @@ export function analyzeCodex(text: string, fileSessionId?: string): CodexAnalysi
     searchText: ''
   }
   const models = new Set<string>()
+  // Search text: the prompts and answers first, then reasoning and tool calls
+  // with what's left, so the budget goes to what the transcript shows.
   const text_: string[] = []
+  const extra: string[] = []
   let textLen = 0
+  let extraLen = 0
+  let total = 0
   const addText = (t: string): void => {
+    total += t.length + 1
     if (textLen >= CODEX_SEARCH_LIMIT) return
     text_.push(t)
     textLen += t.length + 1
   }
+  const addExtra = (t: string): void => {
+    total += t.length + 1
+    if (extraLen >= CODEX_SEARCH_LIMIT) return
+    extra.push(t)
+    extraLen += t.length + 1
+  }
   let minT = Infinity
   let maxT = -Infinity
-  const hasItems = lines.some(
-    (l) =>
-      l.type === 'response_item' &&
-      l.payload.type === 'message' &&
-      (l.payload.role === 'user' || l.payload.role === 'assistant')
-  )
+  const messages = conversation(lines)
   for (const l of lines) {
     const t = l.timestamp ? Date.parse(l.timestamp) : NaN
     if (Number.isFinite(t)) {
@@ -302,7 +272,7 @@ export function analyzeCodex(text: string, fileSessionId?: string): CodexAnalysi
       a.effort = str(ts.reasoning_effort) ?? a.effort
       continue
     }
-    const msg = messageOf(l, hasItems)
+    const msg = messages.get(l)
     if (msg) {
       if (msg.role === 'user') {
         const shown = msg.texts
@@ -317,11 +287,11 @@ export function analyzeCodex(text: string, fileSessionId?: string): CodexAnalysi
       continue
     }
     if (l.type === 'response_item') {
-      if (p.type === 'reasoning') for (const x of reasoningTexts(p)) addText(x)
+      if (p.type === 'reasoning') for (const x of reasoningTexts(p)) addExtra(x)
       const tool = toolCallOf(p)
       if (tool) {
         a.toolCallCount++
-        addText(tool.label)
+        addExtra(tool.label)
       }
     }
   }
@@ -335,40 +305,87 @@ export function analyzeCodex(text: string, fileSessionId?: string): CodexAnalysi
   const metaStart = str(meta.timestamp)
   if (metaStart && Number.isFinite(Date.parse(metaStart))) a.startedAt = metaStart
   a.models = [...models]
-  a.searchText = text_.join('\n').slice(0, CODEX_SEARCH_LIMIT)
+  a.searchText = [...text_, ...extra].join('\n').slice(0, CODEX_SEARCH_LIMIT)
+  // Said in the viewer: a word further on isn't found by the session search.
+  if (total > CODEX_SEARCH_LIMIT) a.searchPartial = true
   a.historyNote = historyNote(lines, note)
   if (note) a.contentBytes = note.bytes
   return a
 }
 
-/** A user or assistant message line (response_item, or the older event_msg forms). */
-function messageOf(
-  l: Line,
-  hasItems: boolean
-): { role: 'user' | 'assistant'; texts: string[]; images: number; id?: string } | undefined {
+interface Msg {
+  role: 'user' | 'assistant'
+  texts: string[]
+  images: number
+  id?: string
+}
+
+/** A `response_item` user or assistant message. */
+function itemMessage(l: Line): Msg | undefined {
   const p = l.payload
-  if (l.type === 'response_item' && p.type === 'message') {
-    if (p.role !== 'user' && p.role !== 'assistant') return undefined
-    const user = p.role === 'user'
+  if (l.type !== 'response_item' || p.type !== 'message') return undefined
+  if (p.role !== 'user' && p.role !== 'assistant') return undefined
+  const user = p.role === 'user'
+  return {
+    role: p.role,
+    // A user message's texts: only what I wrote (see contentTexts).
+    texts: contentTexts(p, user),
+    images: imageCount(p, user),
+    id: str(p.id)
+  }
+}
+
+/** The older `event_msg` form of a user or assistant message. */
+function eventMessage(l: Line): Msg | undefined {
+  const p = l.payload
+  if (l.type !== 'event_msg') return undefined
+  if (p.type === 'user_message' && typeof p.message === 'string')
     return {
-      role: p.role,
-      // A user message's texts: only what I wrote (see contentTexts).
-      texts: contentTexts(p, user),
-      images: imageCount(p, user),
-      id: str(p.id)
+      role: 'user',
+      texts: isInjected(p.message) ? [] : [p.message],
+      images: Array.isArray(p.images) ? p.images.length : 0
     }
-  }
-  if (l.type === 'event_msg' && !hasItems) {
-    if (p.type === 'user_message' && typeof p.message === 'string')
-      return {
-        role: 'user',
-        texts: isInjected(p.message) ? [] : [p.message],
-        images: Array.isArray(p.images) ? p.images.length : 0
-      }
-    if (p.type === 'agent_message' && typeof p.message === 'string')
-      return { role: 'assistant', texts: [p.message], images: 0 }
-  }
+  if (p.type === 'agent_message' && typeof p.message === 'string')
+    return { role: 'assistant', texts: [p.message], images: 0 }
   return undefined
+}
+
+/**
+ * The conversation's messages, by line. Codex has written each message as a
+ * `response_item`, as an `event_msg`, or (some versions) as both; a history
+ * can mix them (older turns of a session resumed with a newer Codex). So
+ * each event is matched to an item one by one: an event whose text an item
+ * of the same role also holds is the same message and is left out; the
+ * others are kept. Never a whole-file choice, which would drop the older
+ * turns.
+ */
+function conversation(lines: Line[]): Map<Line, Msg> {
+  const out = new Map<Line, Msg>()
+  const keyOf = (m: Msg, text = m.texts.join('\n')): string => `${m.role}\0${text.trim()}`
+  const items = new Map<string, number>()
+  const parts = new Set<string>()
+  for (const l of lines) {
+    const m = itemMessage(l)
+    if (!m) continue
+    out.set(l, m)
+    const k = keyOf(m)
+    items.set(k, (items.get(k) ?? 0) + 1)
+    for (const t of m.texts) parts.add(keyOf(m, t))
+  }
+  for (const l of lines) {
+    const m = eventMessage(l)
+    if (!m || (!m.texts.length && !m.images)) continue
+    const k = keyOf(m)
+    const n = items.get(k) ?? 0
+    if (n > 0) {
+      items.set(k, n - 1)
+      continue
+    }
+    // The item may split it into several text parts.
+    if (m.texts.length === 1 && parts.has(k)) continue
+    out.set(l, m)
+  }
+  return out
 }
 
 function reasoningTexts(p: Record<string, unknown>): string[] {
@@ -526,12 +543,7 @@ function toolOutputOf(
  */
 export function buildCodexMessages(text: string): ChatMessage[] {
   const { lines } = parseLines(text)
-  const hasItems = lines.some(
-    (l) =>
-      l.type === 'response_item' &&
-      l.payload.type === 'message' &&
-      (l.payload.role === 'user' || l.payload.role === 'assistant')
-  )
+  const messages = conversation(lines)
   const out: ChatMessage[] = []
   const calls = new Map<string, Extract<ContentBlock, { type: 'tool_use' }>>()
   let current: ChatMessage | undefined
@@ -570,7 +582,7 @@ export function buildCodexMessages(text: string): ChatMessage[] {
       })
       continue
     }
-    const msg = messageOf(l, hasItems)
+    const msg = messages.get(l)
     if (msg) {
       if (msg.role === 'user') {
         const shown = msg.texts

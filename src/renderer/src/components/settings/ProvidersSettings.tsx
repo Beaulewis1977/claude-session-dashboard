@@ -107,7 +107,7 @@ const MODE_LABEL: Record<CodexArchiveMode, string> = {
 }
 
 function tallyText(t: ArchiveTally): string {
-  return `${t.sessions} session${t.sessions === 1 ? '' : 's'} · ${formatBytes(t.bytes)} now · ${formatBytes(t.newBytes)} to copy · about ${formatBytes(t.backupBytes)} in a backup`
+  return `${t.sessions} session${t.sessions === 1 ? '' : 's'} · ${formatBytes(t.bytes)} now · ${formatBytes(t.newBytes)} to copy · about ${formatBytes(t.backupBytes)} more in backups`
 }
 
 /**

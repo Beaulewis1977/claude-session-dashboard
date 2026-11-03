@@ -733,9 +733,11 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
 
   /**
    * What "Archive Codex sessions" would copy: the live Codex sessions per
-   * mode, and the part not archived yet. Backups of the archive keep each
-   * file once, gzip-compressed: compressed rollouts stay about the same size,
-   * plain ones shrink (estimated at a quarter).
+   * mode, and the part not archived yet. `bytes` counts every session of the
+   * mode; `newBytes` and `backupBytes` only what isn't archived as it is now
+   * (new, or holding more). Backups keep each file once, gzip-compressed:
+   * compressed rollouts stay about the same size, plain ones shrink
+   * (estimated at a quarter).
    */
   codexArchiveEstimate(): CodexArchiveEstimate {
     const all = emptyTally()
@@ -754,7 +756,10 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
         const now = e.base.contentBytes ?? e.size
         const had = rec ? (rec.contentSize ?? rec.size) : 0
         const ext = provider.archiveExtOf?.(e.base.originalPath) ?? provider.archiveExt
-        if (!rec || now > had) t.newBytes += archiveGrowth(rec, e.size, ext)
+        if (rec && now <= had) return
+        t.newBytes += archiveGrowth(rec, e.size, ext)
+        // Backups add each new or changed copy whole (content-addressed, so the
+        // unchanged copies already in a backup add nothing).
         t.backupBytes += compressed ? e.size : Math.round(e.size / 4)
       }
       add(all)

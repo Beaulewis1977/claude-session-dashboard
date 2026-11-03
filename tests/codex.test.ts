@@ -3,7 +3,17 @@
 // switch and the provider on/off toggle. Runs on the sample Codex homes in
 // fixtures/codex/ (scripts/make-codex-fixtures.mjs).
 
-import { cp, mkdtemp, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
+import {
+  cp,
+  mkdtemp,
+  readdir,
+  readFile,
+  rename,
+  rm,
+  stat,
+  utimes,
+  writeFile
+} from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { zstdCompressSync } from 'node:zlib'
@@ -43,6 +53,7 @@ import { parseNameIndex } from '../src/main/providers/codex/sessions'
 import { buildCodexLaunch, codexArgs } from '../src/main/providers/codex/launch'
 import { detectCodexSource } from '../src/main/providers/codex/source'
 import { remoteLaunchOptions } from '../src/main/mobile/remote-launch'
+import { archiveSession } from '../src/main/core/archive'
 import type { LaunchTools } from '../src/main/core/launch'
 
 const FIXTURES = join(__dirname, '..', 'fixtures')
@@ -499,20 +510,22 @@ describe('Codex sessions in the catalogue', () => {
     const est = off.sessions.codexArchiveEstimate()
     expect(est.all.sessions).toBe(7)
     expect(est.all.newBytes).toBe(est.all.bytes)
-    expect(est.marked.sessions).toBe(0)
-    // Pinning one, with "only named, pinned or tagged": just that one.
+    // Named in Codex (session_index.jsonl) counts as named: 1, 2 and 7 (6's name was cleared).
+    expect(est.marked.sessions).toBe(3)
+    // "Only named, pinned or tagged": those, and the one pinned here.
     off.settings.update((s) => {
       s.codexArchive = 'marked'
     })
-    off.sessions.updateMeta(codexOf(off.sessions.list(), ID.desktop).key, { pinned: true })
+    off.sessions.archiveWantedNow()
+    off.sessions.updateMeta(codexOf(off.sessions.list(), ID.sub).key, { pinned: true })
     await off.sessions.idle()
-    expect(archived(off.sessions)).toEqual([ID.desktop])
+    expect(archived(off.sessions).sort()).toEqual([ID.cli, ID.desktop, ID.sub, ID.wsl].sort())
     const rec = Object.values(off.metadata.value.archive).find((r) => r.sessionId === ID.desktop)!
     // A compressed rollout is copied as it is, in its own source's folder.
     expect(rec.archivePath).toMatch(/[\\/]archive[\\/]codex-windows[\\/].*\.jsonl\.zst$/)
     expect(off.sessions.codexArchiveEstimate()).toMatchObject({
-      archived: 1,
-      marked: { sessions: 1, newBytes: 0 }
+      archived: 4,
+      marked: { sessions: 4, newBytes: 0 }
     })
     // "All": every one.
     off.settings.update((s) => {
@@ -760,5 +773,150 @@ describe('the All / Claude / Codex switch', () => {
     })
     expect(sanitizeProviderToggles(undefined)).toEqual({ claude: true, codex: true })
     expect(enabledProviders({ claude: false, codex: true })).toEqual(['codex'])
+  })
+})
+
+// ------------------------------------------------------- review fixes (PR 28)
+
+describe('review fixes', () => {
+  it('archives a compressed rollout with more in it than its plain copy (to a new copy)', async () => {
+    const dataDir = join(root, 'data')
+    const archiveDir = join(dataDir, 'archive')
+    const plain = join(root, `rollout-2026-10-01T00-00-00-${ID.cli}.jsonl`)
+    const lines = (n: number): string =>
+      Array.from({ length: n }, (_, i) => `{"type":"event_msg","n":${i}}`).join('\n') + '\n'
+    await writeFile(plain, lines(50))
+    const base = {
+      provider: 'codex' as const,
+      sessionId: ID.cli,
+      sourceId: 'codex-windows',
+      sourceLabel: 'Windows',
+      env: 'windows' as const
+    }
+    const first = await archiveSession(
+      { ...base, ext: '.jsonl', originalPath: plain, contentSize: (await stat(plain)).size },
+      undefined,
+      archiveDir,
+      dataDir
+    )
+    expect(first).toMatchObject({ contentSize: (await stat(plain)).size })
+    // Codex compressed it, with more turns: smaller on disk, more content.
+    const zst = `${plain}.zst`
+    const more = Buffer.from(lines(80))
+    await writeFile(zst, zstdCompressSync(more))
+    expect((await stat(zst)).size).toBeLessThan(first!.size)
+    const second = await archiveSession(
+      { ...base, ext: '.jsonl.zst', originalPath: zst, contentSize: more.length },
+      first,
+      archiveDir,
+      dataDir
+    )
+    expect(second?.archivePath).toMatch(/\.jsonl\.zst$/)
+    expect(second?.contentSize).toBe(more.length)
+    // The older plain copy is still there, untouched.
+    expect(await readFile(first!.archivePath, 'utf8')).toBe(lines(50))
+    // Same content again: nothing copied.
+    expect(
+      await archiveSession(
+        { ...base, ext: '.jsonl.zst', originalPath: zst, contentSize: more.length },
+        second,
+        archiveDir,
+        dataDir
+      )
+    ).toBeUndefined()
+  })
+
+  it("launches Codex in the session's own home: its WSL user, or CODEX_HOME for an added folder", () => {
+    const base = {
+      sessionId: ID.cli,
+      fork: false,
+      skipPermissions: false,
+      terminal: 'wt' as const,
+      tools: TOOLS
+    }
+    const wsl = buildCodexLaunch({
+      ...base,
+      env: 'wsl',
+      distro: 'Ubuntu',
+      cwd: '/home/ann/x',
+      wslUser: 'ann'
+    })
+    expect(wsl.args.slice(0, 6)).toEqual([TOOLS.wsl, '-d', 'Ubuntu', '-u', 'ann', '--cd'])
+    const wslHome = buildCodexLaunch({
+      ...base,
+      env: 'wsl',
+      distro: 'Ubuntu',
+      cwd: '/home/ann/x',
+      agentEnv: { CODEX_HOME: '/data/my codex' }
+    })
+    expect(wslHome.args.at(-1)).toBe(`CODEX_HOME='/data/my codex' codex resume ${ID.cli}`)
+    const win = buildCodexLaunch({
+      ...base,
+      env: 'windows',
+      cwd: 'C:\\x',
+      agentEnv: { CODEX_HOME: 'D:\\Other Codex' }
+    })
+    expect(win.terminal).toBe('powershell')
+    expect(win.args[2]).toContain("$env:CODEX_HOME = 'D:\\Other Codex';")
+    expect(() =>
+      buildCodexLaunch({ ...base, env: 'wsl', distro: 'Ubuntu', cwd: '/x', wslUser: 'a b' })
+    ).toThrow(/WSL user/)
+    expect(() =>
+      buildCodexLaunch({ ...base, env: 'windows', cwd: 'C:\\x', agentEnv: { CODEX_HOME: 'rel"x' } })
+    ).toThrow()
+  })
+
+  it('a provider turned off is left out at once, before the rescan', async () => {
+    const { sessions, providers } = await setup()
+    const key = codexOf(sessions.list(), ID.cli).key
+    providers.setEnabled({ claude: true, codex: false })
+    expect(() => sessions.list()).not.toThrow()
+    expect(sessions.list().some((s) => s.provider === 'codex')).toBe(false)
+    expect(sessions.get(key)).toBeUndefined()
+    expect(await sessions.detail(key)).toBeNull()
+    expect(() => sessions.payload()).not.toThrow()
+  })
+
+  it('a queued copy checks the setting again when its turn comes', async () => {
+    const { sessions, settings, metadata } = await setup()
+    settings.update((s) => {
+      s.codexArchive = 'all'
+    })
+    sessions.archiveWantedNow()
+    settings.update((s) => {
+      s.codexArchive = 'off'
+    })
+    await sessions.idle()
+    expect(Object.values(metadata.value.archive).some((r) => r.provider === 'codex')).toBe(false)
+  })
+
+  it('keeps prompts that look like XML, and long messages whole', () => {
+    const msg = (role: string, text: string): string =>
+      JSON.stringify({
+        type: 'response_item',
+        payload: { type: 'message', role, content: [{ type: 'input_text', text }] }
+      })
+    const long = 'x'.repeat(200_000)
+    const text = [msg('user', '<question>What does this mean?</question>'), msg('assistant', long)]
+      .map((l) => compactLine(l)!)
+      .join('\n')
+    const a = analyzeCodex(text)
+    expect(a.firstPrompt).toBe('<question>What does this mean?</question>')
+    const blocks = buildCodexMessages(text)[1].blocks
+    expect(blocks[0]).toEqual({ type: 'text', text: long })
+  })
+
+  it('follows a rollout that moved with the same size and time', async () => {
+    const { sessions, layout } = await setup()
+    const s = codexOf(sessions.list(), ID.gap)
+    const home = join(layout.sourcesDir, 'windows', 'Users', 'beau', '.codex')
+    const moved = join(home, 'archived_sessions', `rollout-2026-10-15T11-11-11-${ID.gap}.jsonl`)
+    const st = await stat(s.originalPath)
+    await rename(s.originalPath, moved)
+    await utimes(moved, st.atime, st.mtime)
+    await sessions.rescan()
+    const after = codexOf(sessions.list(), ID.gap)
+    expect(after.filePath).toBe(moved)
+    expect((await sessions.detail(after.key))?.messages.length).toBeGreaterThan(0)
   })
 })

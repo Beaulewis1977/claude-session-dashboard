@@ -201,7 +201,10 @@ export class Launcher {
     apiKey?: string,
     continueFresh?: ContinueFreshArgs
   ): LaunchCommand {
-    return this.provider(s).launch.buildCommand({
+    const p = this.provider(s)
+    const src = this.sessions.source(s.sourceId)
+    return p.launch.buildCommand({
+      ...(src ? p.launch.target?.(src) : undefined),
       continueFresh,
       remoteControl: this.remoteControl(s, opts),
       askPermissions: opts.askPermissions === true,

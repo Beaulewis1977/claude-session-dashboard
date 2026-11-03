@@ -156,6 +156,8 @@ export interface SessionProvider {
     commandLine(input: CliInput): string
     /** Continue fresh: the first message pointing at the handoff file. */
     handoffPrompt(path: string): { prompt: string; mode: HandoffMode } | undefined
+    /** Who and which home the agent runs as for a source (Codex: the WSL user, or CODEX_HOME). */
+    target?(src: ResolvedSource): Pick<LaunchInput, 'wslUser' | 'agentEnv'>
     /** The file a new session with this id would have, next to the session's own. */
     sessionFilePath(s: SessionSummary, sessionId: string): string
   }

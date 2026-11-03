@@ -125,6 +125,8 @@ export interface ArchiveRecord {
   archivePath: string
   cwd?: string
   size: number
+  /** Decompressed size of what was copied (Codex; absent: the same as `size`). */
+  contentSize?: number
   sha256: string
   sourceMtimeMs: number
   firstArchivedAt: string
@@ -225,6 +227,8 @@ export interface SessionSummary {
   origin?: { originator?: string; source?: string; threadSource?: string }
   /** Why the conversation shown may not be complete (the viewer says so). */
   historyNote?: string
+  /** The file's content size, decompressed (Codex; for archive decisions). */
+  contentBytes?: number
 }
 
 export interface ToolResult {

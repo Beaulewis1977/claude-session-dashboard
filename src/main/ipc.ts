@@ -334,6 +334,8 @@ export function registerIpc(deps: IpcDeps): void {
     if (p.theme) deps.applyTheme(settings.value.theme)
     // Turning a provider on or off: scan (and watch) only the ones that are on.
     const toggled = sessions.providers.setEnabled(providerSettings(settings.value).providers)
+    // A provider turned off leaves the list now, before the (slow) rescan.
+    if (toggled) sessions.dropDisabled()
     if (rescanNeeded || toggled) void rescan()
     if (providerSettings(settings.value).codexArchive !== archiveBefore) sessions.archiveWantedNow()
     return publicSettings(settings.value)

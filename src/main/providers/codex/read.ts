@@ -157,6 +157,12 @@ export function compactLine(line: string): string | undefined {
       effort: p.effort ?? p.reasoning_effort ?? settings.reasoning_effort,
       approval_policy: p.approval_policy
     }
+  } else if (
+    (type === 'response_item' && payload.type === 'message') ||
+    (type === 'event_msg' && (payload.type === 'user_message' || payload.type === 'agent_message'))
+  ) {
+    // What I wrote and what the agent answered: kept whole (only tool output is cut).
+    keep.payload = payload
   } else {
     keep.payload = trimDeep(payload)
   }

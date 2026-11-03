@@ -120,12 +120,19 @@ export function CodexArchiveSettings({ update }: { update: Update }) {
   const sessions = useApp((s) => s.sessions)
   const mode: CodexArchiveMode = settings.codexArchive ?? 'off'
   const [est, setEst] = useState<CodexArchiveEstimate | null>(null)
+  const [estFailed, setEstFailed] = useState(false)
   const [pending, setPending] = useState<CodexArchiveMode | null>(null)
   useEffect(() => {
     void api
       .getCodexArchiveEstimate()
-      .then(setEst)
-      .catch(() => setEst(null))
+      .then((e) => {
+        setEst(e)
+        setEstFailed(false)
+      })
+      .catch(() => {
+        setEst(null)
+        setEstFailed(true)
+      })
   }, [sessions, mode])
   if (!sanitizeProviderToggles(settings.providers).codex) return null
   const tally = (m: CodexArchiveMode): ArchiveTally | undefined =>
@@ -191,19 +198,32 @@ export function CodexArchiveSettings({ update }: { update: Update }) {
             </div>
           </>
         ) : (
-          <div>Working out the size…</div>
+          <div>{estFailed ? "The size couldn't be worked out." : 'Working out the size…'}</div>
         )}
       </div>
       {pending && (
         <div className="mt-2.5 flex flex-wrap items-center gap-2 rounded-md border border-warning/30 bg-warning-soft px-2.5 py-2 text-xs">
           <span className="min-w-0 flex-1">
-            {MODE_LABEL[pending]}: copies{' '}
-            <span className="font-medium">{formatBytes(tally(pending)?.newBytes ?? 0)}</span> into
-            the archive now (and new sessions as they come). If backups are on, they grow by about{' '}
-            <span className="font-medium">{formatBytes(tally(pending)?.backupBytes ?? 0)}</span>.
+            {tally(pending) ? (
+              <>
+                {MODE_LABEL[pending]}: copies{' '}
+                <span className="font-medium">{formatBytes(tally(pending)!.newBytes)}</span> into
+                the archive now (and new sessions as they come). If backups are on, they grow by
+                about{' '}
+                <span className="font-medium">{formatBytes(tally(pending)!.backupBytes)}</span>.
+              </>
+            ) : estFailed ? (
+              <>
+                {MODE_LABEL[pending]}: the size couldn&apos;t be worked out, so it isn&apos;t known
+                how much this copies into the archive (and adds to backups).
+              </>
+            ) : (
+              <>Working out how much this copies…</>
+            )}
           </span>
-          <Button size="sm" variant="primary" onClick={confirm}>
-            Turn on
+          {/* Never on a size that isn't known yet: wait for it, or say it's unknown. */}
+          <Button size="sm" variant="primary" onClick={confirm} disabled={!est && !estFailed}>
+            {est || !estFailed ? 'Turn on' : 'Turn on without a size'}
           </Button>
           <Button size="sm" variant="ghost" onClick={() => setPending(null)}>
             Cancel

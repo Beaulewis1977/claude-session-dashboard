@@ -10,6 +10,7 @@
 import { stat } from 'node:fs/promises'
 import { basename, dirname, join } from 'node:path'
 import { CODEX_EFFORT_LEVELS } from '@shared/model-choice'
+import { parseWslUnc } from '../../core/wsl'
 import { PROVIDER_CAPABILITIES } from '@shared/provider'
 import { baseName } from '@shared/format'
 import type { BaseSummary, SessionProvider } from '../types'
@@ -37,8 +38,9 @@ export function createCodexProvider(opts: { textCache?: CompactTextCache } = {})
     // `codex fork <id>`: a new session with the same history; the original stays as it is.
     capabilities: PROVIDER_CAPABILITIES.codex,
     effortLevels: CODEX_EFFORT_LEVELS,
-    // 2: context wrapped in a single tag is not a prompt. 3: big rollouts' text is cached.
-    parseVersion: 3,
+    // 2: tag-wrapped context isn't a prompt. 3: big rollouts' text is cached. 4: content size
+    // (archive across compression). 5: message text kept whole; only snake_case tags are context.
+    parseVersion: 5,
 
     detectSources: (platform, opts) => detectCodexSources(platform, opts),
     listSessionFiles: (src) => listCodexFiles(codexHomeOf(src)),
@@ -98,7 +100,8 @@ export function createCodexProvider(opts: { textCache?: CompactTextCache } = {})
         ...(a.gitCommit ? { gitCommit: a.gitCommit } : {}),
         ...(a.gitRemote ? { gitRemote: a.gitRemote } : {}),
         origin: a.origin,
-        ...(a.historyNote ? { historyNote: a.historyNote } : {})
+        ...(a.historyNote ? { historyNote: a.historyNote } : {}),
+        ...(a.contentBytes !== undefined ? { contentBytes: a.contentBytes } : {})
       }
       return { base, searchText: a.searchText }
     },
@@ -116,6 +119,19 @@ export function createCodexProvider(opts: { textCache?: CompactTextCache } = {})
 
     launch: {
       cliMissing: (env, tools) => env === 'windows' && !tools.codex,
+      // The session's own Codex home: WSL as its user (whose ~/.codex it is), a Codex
+      // folder added in Settings through CODEX_HOME.
+      target(src) {
+        const home = codexHomeOf(src)
+        if (src.env === 'wsl') {
+          if (src.kind === 'custom') {
+            const unc = parseWslUnc(home)
+            return unc ? { agentEnv: { CODEX_HOME: unc.linuxPath } } : {}
+          }
+          return src.user ? { wslUser: src.user } : {}
+        }
+        return src.kind === 'custom' ? { agentEnv: { CODEX_HOME: home } } : {}
+      },
       buildCommand: buildCodexLaunch,
       commandLine: codexCommandLine,
       handoffPrompt: () => undefined,

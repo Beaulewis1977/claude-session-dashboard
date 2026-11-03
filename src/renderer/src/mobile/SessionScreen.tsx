@@ -20,7 +20,8 @@ import {
   Search,
   Smartphone,
   SquareTerminal,
-  TextCursorInput
+  TextCursorInput,
+  TriangleAlert
 } from 'lucide-react'
 import type { SessionDetail, SessionSummary } from '@shared/types'
 import { formatDateTime } from '@shared/format'
@@ -384,6 +385,15 @@ export function SessionScreen({ session }: { session: SessionSummary }) {
           </div>
         )}
         <div ref={contentRef}>
+          {session.historyNote && (
+            <div className="mx-3 mt-3 flex items-start gap-2 rounded-xl border border-warning/25 bg-warning-soft px-3 py-2.5 text-[13px] leading-snug">
+              <TriangleAlert className="mt-0.5 size-4 shrink-0 text-warning" />
+              <span>
+                <b>History may be incomplete.</b>{' '}
+                {session.historyNote.replace(/^This conversation may be incomplete: /, '')}
+              </span>
+            </div>
+          )}
           {detail ? (
             <Transcript
               messages={messages}

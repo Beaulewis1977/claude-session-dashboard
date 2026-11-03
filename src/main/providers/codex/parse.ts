@@ -56,6 +56,8 @@ export interface CodexAnalysis {
   searchText: string
   /** Why the history shown may not be the whole conversation. */
   historyNote?: string
+  /** Decompressed size of the file (from the reader). */
+  contentBytes?: number
 }
 
 interface Line {
@@ -119,7 +121,9 @@ const INJECTED_RE =
  * more with each version. A text item that is nothing but one such block is
  * context, not something I typed.
  */
-const WRAPPED_RE = /^<([a-z][\w-]*)(?:\s[^>]*)?>[\s\S]*<\/\1>$/i
+// Only snake_case tags (every context tag Codex uses has an underscore), so a prompt
+// like "<question>…</question>" I typed myself stays a prompt.
+const WRAPPED_RE = /^<([a-z][a-z0-9]*(?:_[a-z0-9]+)+)(?:\s[^>]*)?>[\s\S]*<\/\1>$/
 
 export function isInjected(text: string): boolean {
   return INJECTED_RE.test(text) || WRAPPED_RE.test(text.trim())
@@ -300,6 +304,7 @@ export function analyzeCodex(text: string, fileSessionId?: string): CodexAnalysi
   a.models = [...models]
   a.searchText = text_.join('\n').slice(0, CODEX_SEARCH_LIMIT)
   a.historyNote = historyNote(lines, note)
+  if (note) a.contentBytes = note.bytes
   return a
 }
 

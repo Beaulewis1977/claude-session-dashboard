@@ -137,12 +137,21 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
   }
 
   list(): SessionSummary[] {
-    return [...this.entries.values()].map((e) => this.withMeta(e.base))
+    return [...this.entries.values()].filter((e) => this.isOn(e)).map((e) => this.withMeta(e.base))
   }
 
   get(key: string): SessionSummary | undefined {
     const e = this.entries.get(key)
-    return e ? this.withMeta(e.base) : undefined
+    return e && this.isOn(e) ? this.withMeta(e.base) : undefined
+  }
+
+  /**
+   * Its provider is on. Right after one is turned off its entries may still be
+   * here until the rescan drops them: they're skipped, never looked up.
+   */
+  private isOn(e: Entry): boolean {
+    const p = this.owner.get(e.base.key)
+    return !p || this.providers.isOn(p)
   }
 
   source(id: string): ResolvedSource | undefined {
@@ -159,7 +168,7 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
 
   async detail(key: string): Promise<SessionDetail | null> {
     const e = this.entries.get(key)
-    if (!e) return null
+    if (!e || !this.isOn(e)) return null
     let text: string
     try {
       text = await this.providerOf(e.base).readText(e.base.filePath, 'view')
@@ -174,7 +183,7 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
 
   updateMeta(key: string, patch: Partial<SessionMeta>): SessionSummary | null {
     const e = this.entries.get(key)
-    if (!e) return null
+    if (!e || !this.isOn(e)) return null
     const provider = this.providerOf(e.base)
     const mk = metaKey(provider.id, e.base.sessionId)
     const clean = cleanMetaPatch(patch, provider.effortLevels)
@@ -496,7 +505,7 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
    */
   setAiSummary(key: string, summary: AiSummary | undefined): SessionSummary | null {
     const e = this.entries.get(key)
-    if (!e) return null
+    if (!e || !this.isOn(e)) return null
     const mk = this.metaKeyOf(e.base)
     this.metadata.update((d) => {
       const next: SessionMeta = { ...(d.sessions[mk] ?? {}) }
@@ -618,6 +627,7 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
     if (
       existing &&
       existing.base.availability === 'live' &&
+      existing.base.filePath === f.path &&
       existing.size === f.size &&
       existing.mtimeMs === f.mtimeMs
     ) {
@@ -668,13 +678,25 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
    * named, pinned or tagged ones, or all), because Codex doesn't remove old
    * sessions itself and its history can be very large.
    */
-  archiveWanted(provider: SessionProvider, base: Pick<BaseSummary, 'sessionId'>): boolean {
+  archiveWanted(
+    provider: SessionProvider,
+    base: Pick<BaseSummary, 'sessionId' | 'sourceId'>
+  ): boolean {
     if (provider.id === 'claude') return true
     const mode = this.settings.value.codexArchive ?? 'off'
     if (mode === 'all') return true
     if (mode !== 'marked') return false
+    return this.marked(provider, base)
+  }
+
+  /** Named (here or in the agent, e.g. a Codex thread name), pinned or tagged. */
+  private marked(
+    provider: SessionProvider,
+    base: Pick<BaseSummary, 'sessionId' | 'sourceId'>
+  ): boolean {
     const m = this.metadata.value.sessions[metaKey(provider.id, base.sessionId)]
-    return !!(m?.name?.trim() || m?.pinned || m?.tags?.length)
+    if (m?.name?.trim() || m?.pinned || m?.tags?.length) return true
+    return !!provider.names?.get(base.sourceId, base.sessionId)
   }
 
   /**
@@ -683,7 +705,7 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
    */
   archiveWantedNow(): void {
     for (const e of this.entries.values()) {
-      if (e.base.availability !== 'live') continue
+      if (e.base.availability !== 'live' || !this.isOn(e)) continue
       const src = this.source(e.base.sourceId)
       if (src && this.providerOf(e.base).id !== 'claude') this.queueArchive(src, e.base)
     }
@@ -699,7 +721,7 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
     const all = emptyTally()
     const marked = emptyTally()
     for (const e of this.entries.values()) {
-      if (e.base.availability !== 'live') continue
+      if (e.base.availability !== 'live' || !this.isOn(e)) continue
       const provider = this.providerOf(e.base)
       if (provider.id !== 'codex') continue
       const rec = this.metadata.value.archive[e.base.key]
@@ -707,12 +729,14 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
         const compressed = e.base.filePath.endsWith('.zst')
         t.sessions++
         t.bytes += e.size
-        if (!rec || rec.size < e.size) t.newBytes += e.size - (rec?.size ?? 0)
+        // Compared by content (a compressed rollout is smaller than its plain copy).
+        const now = e.base.contentBytes ?? e.size
+        const had = rec ? (rec.contentSize ?? rec.size) : 0
+        if (now > had) t.newBytes += rec && had ? Math.min(e.size, now - had) : e.size
         t.backupBytes += compressed ? e.size : Math.round(e.size / 4)
       }
       add(all)
-      const m = this.metadata.value.sessions[metaKey('codex', e.base.sessionId)]
-      if (m?.name?.trim() || m?.pinned || m?.tags?.length) add(marked)
+      if (this.marked(provider, e.base)) add(marked)
     }
     let archived = 0
     let archivedBytes = 0
@@ -728,6 +752,9 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
     const provider = this.providers.find(src)
     if (!provider || !this.archiveWanted(provider, base)) return
     this.archiveQueue = this.archiveQueue.then(async () => {
+      // Asked again when it's this one's turn: the setting may have changed (or the
+      // provider been turned off) while thousands of copies were waiting.
+      if (!this.providers.isOn(provider.id) || !this.archiveWanted(provider, base)) return
       try {
         const key = base.key
         const rec = await archiveSession(
@@ -740,7 +767,8 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
             env: src.env,
             distro: src.distro,
             originalPath: base.originalPath,
-            cwd: base.cwd
+            cwd: base.cwd,
+            ...(base.contentBytes !== undefined ? { contentSize: base.contentBytes } : {})
           },
           this.metadata.value.archive[key],
           this.paths.archiveDir,
@@ -872,7 +900,7 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
    * the list and the search index. Their metadata and archive copies stay,
    * so turning it back on brings everything back.
    */
-  private dropDisabled(): void {
+  dropDisabled(): void {
     for (const [key, p] of this.owner) {
       if (this.providers.isOn(p)) continue
       this.entries.delete(key)
@@ -885,9 +913,13 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
   /** Search entries of sessions whose name the agent changed (e.g. a Codex thread rename). */
   private reindexNames(sourceId: string, sessionIds: string[]): void {
     const ids = new Set(sessionIds.map((x) => x.toLowerCase()))
+    const src = this.source(sourceId)
     for (const e of this.entries.values())
-      if (e.base.sourceId === sourceId && ids.has(e.base.sessionId.toLowerCase()))
+      if (e.base.sourceId === sourceId && ids.has(e.base.sessionId.toLowerCase())) {
         void this.reindex(e.base.key)
+        // A name given in the agent can make it "named" for the archive.
+        if (src && e.base.availability === 'live') this.queueArchive(src, e.base)
+      }
   }
 
   /** Pick up archive records added by an import. */
@@ -926,7 +958,7 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
 
   private async reindex(key: string): Promise<void> {
     const e = this.entries.get(key)
-    if (!e) return
+    if (!e || !this.isOn(e)) return
     try {
       const provider = this.providerOf(e.base)
       const text = await provider.readText(e.base.filePath, 'view')

@@ -10,6 +10,11 @@ import type { ArchiveRecord } from '@shared/types'
 import { assertAppDataWrite, assertRealAppDataWrite } from './safe-paths'
 import { copyShared } from './shared-copy'
 
+/** ".jsonl.zst" or ".jsonl" (the archive's two kinds of copies). */
+function extOf(p: string): string {
+  return p.endsWith('.jsonl.zst') ? '.jsonl.zst' : p.slice(p.lastIndexOf('.'))
+}
+
 export function safeSegment(s: string): string {
   return s.replace(/[^A-Za-z0-9._-]+/g, '_').slice(0, 100) || '_'
 }
@@ -55,6 +60,12 @@ export interface ArchiveInput {
   distro?: string
   originalPath: string
   cwd?: string
+  /**
+   * The session's content size, decompressed (agents whose files may be
+   * re-encoded, e.g. Codex compressing a rollout to .zst). Compared instead
+   * of the file size, so a compressed file with more in it is still copied.
+   */
+  contentSize?: number
 }
 
 export type ArchiveDecision = 'copy' | 'skip'
@@ -67,9 +78,12 @@ export type ArchiveDecision = 'copy' | 'skip'
 export function shouldArchive(
   record: ArchiveRecord | undefined,
   sourceSize: number,
-  archiveExists: boolean
+  archiveExists: boolean,
+  contentSize?: number
 ): ArchiveDecision {
   if (!record || !archiveExists) return 'copy'
+  if (contentSize !== undefined)
+    return contentSize > (record.contentSize ?? record.size) ? 'copy' : 'skip'
   if (sourceSize > record.size) return 'copy'
   return 'skip'
 }
@@ -90,9 +104,17 @@ export async function archiveSession(
   appDataDir: string
 ): Promise<ArchiveRecord | undefined> {
   const src = await stat(input.originalPath)
-  const dest =
-    existing?.archivePath ?? archivePathFor(archiveDir, input.sourceId, input.sessionId, input.ext)
-  const decision = shouldArchive(existing, src.size, await fileExists(dest))
+  const fresh = archivePathFor(archiveDir, input.sourceId, input.sessionId, input.ext)
+  // Same encoding: the same copy grows. Another encoding (a rollout Codex compressed):
+  // a new copy next to it, so the old one is never overwritten.
+  const sameKind = !existing || !input.ext || extOf(existing.archivePath) === input.ext
+  const dest = existing && sameKind ? existing.archivePath : fresh
+  const decision = shouldArchive(
+    existing,
+    src.size,
+    await fileExists(existing?.archivePath ?? dest),
+    input.contentSize
+  )
   if (decision === 'skip') {
     // Keep the record's descriptive fields fresh without touching the copy.
     if (existing && input.cwd && existing.cwd !== input.cwd) return { ...existing, cwd: input.cwd }
@@ -108,7 +130,12 @@ export async function archiveSession(
     const copied = await stat(tmp)
     // Never replace a larger archive copy with a smaller one (the file may have
     // been truncated between stat and copy).
-    if (existing && copied.size < existing.size && (await fileExists(dest))) {
+    if (
+      existing &&
+      dest === existing.archivePath &&
+      copied.size < existing.size &&
+      (await fileExists(dest))
+    ) {
       await unlink(tmp)
       return undefined
     }
@@ -128,6 +155,7 @@ export async function archiveSession(
       archivePath: dest,
       cwd: input.cwd ?? existing?.cwd,
       size: copied.size,
+      ...(input.contentSize !== undefined ? { contentSize: input.contentSize } : {}),
       sha256,
       sourceMtimeMs: src.mtimeMs,
       firstArchivedAt: existing?.firstArchivedAt ?? now,

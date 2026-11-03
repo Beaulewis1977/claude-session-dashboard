@@ -108,44 +108,77 @@ export function parseLines(text: string): {
 const str = (v: unknown): string | undefined => (typeof v === 'string' && v ? v : undefined)
 
 /**
- * Context Codex adds to the conversation as "user" text: the environment,
- * AGENTS.md and other instructions. Never shown as a prompt.
+ * Context Codex adds to the conversation as "user" text (the environment,
+ * AGENTS.md, plugin suggestions, …), by the tags Codex itself uses. Only for
+ * rollouts that don't say who wrote each item (see whoWrote): a tag's
+ * spelling doesn't prove where it came from, so only Codex's own tags count,
+ * never any tag that merely looks like them (a prompt like
+ * `<user_input>…</user_input>` I typed stays a prompt).
  */
 const INJECTED_RE =
-  /^\s*(<(environment_context|user_instructions|permissions instructions|collaboration_mode|apps_instructions|skills_instructions|turn_aborted|user_shell_command|subagent_notification|personality_spec)\b|# AGENTS\.md instructions\b|<INSTRUCTIONS>)/i
+  /^\s*(<(environment_context|user_instructions|permissions instructions|collaboration_mode|apps_instructions|skills_instructions|turn_aborted|user_shell_command|subagent_notification|personality_spec|recommended_plugins|external_codex_apps_open_page|codex_internal_context)\b|# AGENTS\.md instructions\b|<INSTRUCTIONS>)/i
 
-/**
- * Codex (and the desktop app) wrap the context it adds in one tag:
- * `<recommended_plugins>…</recommended_plugins>`,
- * `<external_codex_apps_open_page>{…}</external_codex_apps_open_page>`, and
- * more with each version. A text item that is nothing but one such block is
- * context, not something I typed.
- */
-// Only snake_case tags (every context tag Codex uses has an underscore), so a prompt
-// like "<question>…</question>" I typed myself stays a prompt.
-const WRAPPED_RE = /^<([a-z][a-z0-9]*(?:_[a-z0-9]+)+)(?:\s[^>]*)?>[\s\S]*<\/\1>$/
-
+/** Context Codex added, by its tags only (for rollouts without provenance; see whoWrote). */
 export function isInjected(text: string): boolean {
-  return INJECTED_RE.test(text) || WRAPPED_RE.test(text.trim())
+  return INJECTED_RE.test(text)
 }
 
-/** Text items of a message's content (`input_text`, `output_text`, `text`). */
-function contentTexts(content: unknown): string[] {
-  if (typeof content === 'string') return [content]
+/**
+ * Who wrote a user message's content item, as the rollout records it.
+ * Newer Codex keeps, per item, `internal_chat_message_metadata_passthrough`
+ * `.content_item_metadata[i].provenance.type` ("user", "harness",
+ * "agents_md", …) and `.content_item_kinds[i]` ("user.text", "user.image",
+ * "environments.environment_context", "plugins.recommendations", …).
+ * undefined: the rollout doesn't say (older Codex).
+ */
+function whoWrote(p: Record<string, unknown>, i: number): 'user' | 'codex' | undefined {
+  const m = p.internal_chat_message_metadata_passthrough
+  if (!m || typeof m !== 'object') return undefined
+  const { content_item_metadata: metas, content_item_kinds: kinds } = m as Record<string, unknown>
+  const content = Array.isArray(p.content) ? p.content.length : 0
+  // Only arrays that line up with the content items.
+  if (Array.isArray(metas) && metas.length === content) {
+    const prov = (metas[i] as { provenance?: { type?: unknown } } | null)?.provenance?.type
+    if (typeof prov === 'string') return prov === 'user' ? 'user' : 'codex'
+  }
+  if (Array.isArray(kinds) && kinds.length === content) {
+    const kind = kinds[i]
+    if (typeof kind === 'string') return kind.startsWith('user.') ? 'user' : 'codex'
+  }
+  return undefined
+}
+
+/**
+ * Text items of a message's content (`input_text`, `output_text`, `text`).
+ * For a user message, only what I wrote: the context Codex added is left out.
+ */
+function contentTexts(p: Record<string, unknown>, user: boolean): string[] {
+  const content = p.content
+  if (typeof content === 'string') return user && isInjected(content) ? [] : [content]
   if (!Array.isArray(content)) return []
   const out: string[] = []
-  for (const c of content) {
-    if (!c || typeof c !== 'object') continue
+  content.forEach((c: unknown, i) => {
+    if (!c || typeof c !== 'object') return
     const t = (c as Record<string, unknown>).text
-    if (typeof t === 'string') out.push(t)
-  }
+    if (typeof t !== 'string') return
+    if (user) {
+      const who = whoWrote(p, i)
+      if (who === 'codex' || (who === undefined && isInjected(t))) return
+    }
+    out.push(t)
+  })
   return out
 }
 
-function imageCount(content: unknown): number {
+function imageCount(p: Record<string, unknown>, user: boolean): number {
+  const content = p.content
   if (!Array.isArray(content)) return 0
   return content.filter(
-    (c) => c && typeof c === 'object' && /image/.test(String((c as { type?: unknown }).type))
+    (c: unknown, i) =>
+      c &&
+      typeof c === 'object' &&
+      /image/.test(String((c as { type?: unknown }).type)) &&
+      !(user && whoWrote(p, i) === 'codex')
   ).length
 }
 
@@ -272,7 +305,7 @@ export function analyzeCodex(text: string, fileSessionId?: string): CodexAnalysi
     const msg = messageOf(l, hasItems)
     if (msg) {
       if (msg.role === 'user') {
-        const shown = msg.texts.filter((x) => !isInjected(x))
+        const shown = msg.texts
         if (!shown.length) continue
         a.userMessageCount++
         a.firstPrompt ??= shown.join('\n').trim().slice(0, 2000) || undefined
@@ -316,10 +349,12 @@ function messageOf(
   const p = l.payload
   if (l.type === 'response_item' && p.type === 'message') {
     if (p.role !== 'user' && p.role !== 'assistant') return undefined
+    const user = p.role === 'user'
     return {
       role: p.role,
-      texts: contentTexts(p.content),
-      images: imageCount(p.content),
+      // A user message's texts: only what I wrote (see contentTexts).
+      texts: contentTexts(p, user),
+      images: imageCount(p, user),
       id: str(p.id)
     }
   }
@@ -327,7 +362,7 @@ function messageOf(
     if (p.type === 'user_message' && typeof p.message === 'string')
       return {
         role: 'user',
-        texts: [p.message],
+        texts: isInjected(p.message) ? [] : [p.message],
         images: Array.isArray(p.images) ? p.images.length : 0
       }
     if (p.type === 'agent_message' && typeof p.message === 'string')
@@ -473,10 +508,10 @@ function toolOutputOf(
       isError = typeof o.metadata?.exit_code === 'number' && o.metadata.exit_code !== 0
     } else text = out
   } else if (Array.isArray(out)) {
-    text = contentTexts(out).join('\n')
+    text = contentTexts({ content: out }, false).join('\n')
   } else if (out && typeof out === 'object') {
     const o = out as Record<string, unknown>
-    text = contentTexts(o.content).join('\n') || (typeof o.content === 'string' ? o.content : '')
+    text = contentTexts(o, false).join('\n')
     if (o.success === false) isError = true
   }
   const m = /^Exit code: (\d+)/m.exec(text) ?? /Process exited with code (\d+)/.exec(text)
@@ -538,7 +573,7 @@ export function buildCodexMessages(text: string): ChatMessage[] {
     const msg = messageOf(l, hasItems)
     if (msg) {
       if (msg.role === 'user') {
-        const shown = msg.texts.filter((x) => !isInjected(x))
+        const shown = msg.texts
         if (!shown.length && !msg.images) continue
         current = undefined
         const blocks: ContentBlock[] = shown.map((t) => ({ type: 'text', text: t }))

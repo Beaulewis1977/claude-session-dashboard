@@ -353,8 +353,14 @@ export class Launcher {
   /** Just the agent's own command (`claude …`), even when the full command can't be built. */
   private claudeCommand(s: SessionSummary, opts: LaunchOptions, cmd?: LaunchCommand): string {
     if (cmd) return cmd.claudeCommand
+    // A session that needs its own home or WSL user (Codex): the bare command
+    // would run against the wrong one, so there's nothing to copy.
+    const p = this.provider(s)
+    const src = this.sessions.source(s.sourceId)
+    const target = src ? p.launch.target?.(src) : undefined
+    if (target && (target.wslUser || Object.keys(target.agentEnv ?? {}).length)) return ''
     try {
-      return this.provider(s).launch.commandLine({
+      return p.launch.commandLine({
         sessionId: s.sessionId,
         skipPermissions: opts.skipPermissions,
         fork: opts.fork,
@@ -412,6 +418,7 @@ export class Launcher {
       return {
         commandLine: cmd?.commandLine ?? '',
         claudeCommand: this.claudeCommand(target, branchOpts, cmd),
+        ...(cmd?.agentNote ? { agentNote: cmd.agentNote } : {}),
         fellBack,
         cwd,
         cwdExists: state === 'exists',
@@ -455,6 +462,7 @@ export class Launcher {
       return {
         commandLine: built.cmd?.commandLine ?? '',
         claudeCommand: built.cmd?.claudeCommand ?? '',
+        ...(built.cmd?.agentNote ? { agentNote: built.cmd.agentNote } : {}),
         fellBack,
         cwd,
         cwdExists: state === 'exists',
@@ -487,6 +495,7 @@ export class Launcher {
     return {
       commandLine: cmd?.commandLine ?? '',
       claudeCommand: this.claudeCommand(s, opts, cmd),
+      ...(cmd?.agentNote ? { agentNote: cmd.agentNote } : {}),
       fellBack,
       cwd,
       cwdExists: state === 'exists',

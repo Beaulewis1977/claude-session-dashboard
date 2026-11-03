@@ -75,6 +75,9 @@ export interface LaunchInput {
 export const AGENT_ENV_REASON =
   "This session's Codex folder isn't the usual one, so PowerShell is used: it gets CODEX_HOME directly (a new Windows Terminal window can join one that's already running and get its environment instead)."
 
+export const AGENT_ENV_CHARS_REASON =
+  "This session's Codex folder has ; % or ! in its name, which Windows Terminal or cmd would change, so PowerShell is used."
+
 const ENV_NAME_RE = /^[A-Z][A-Z0-9_]{0,63}$/
 const WSL_USER_RE = /^[a-z_][a-z0-9_-]{0,31}$/i
 
@@ -116,7 +119,10 @@ export interface LaunchCommand {
   /** Working directory for spawn (Windows sessions only). */
   spawnCwd?: string
   commandLine: string
+  /** The agent's own command (see shortAgentCommand). */
   claudeCommand: string
+  /** Where to run claudeCommand, when that isn't just the session's folder. */
+  agentNote?: string
   claudeArgs: string[]
   /** Extra environment for the child process only. */
   env?: Record<string, string>
@@ -149,8 +155,15 @@ function folderReason(
   env: EnvKind,
   cwd: string,
   tools: LaunchTools,
-  agent: AgentSpec
+  agent: AgentSpec,
+  /** Other values that go into the terminal's command line (e.g. CODEX_HOME). */
+  values: string[] = []
 ): string | undefined {
+  // The agent's variables, checked like the folder: Windows Terminal reads ";"
+  // and "%", cmd expands "%" and "!" (even inside quotes).
+  const vals = values.join('\n')
+  if (terminal === 'wt' && /[;%]/.test(vals)) return AGENT_ENV_CHARS_REASON
+  if (terminal === 'cmd' && /[%!]/.test(vals)) return AGENT_ENV_CHARS_REASON
   // The program that goes inside the terminal's command line.
   const inner = (env === 'wsl' ? tools.wsl : agent.program) ?? ''
   const toolReason =
@@ -453,6 +466,30 @@ export function buildLaunchCommand(input: LaunchInput): LaunchCommand {
   })
 }
 
+/**
+ * The agent's own command for "Copy … command": as bash reads it, with the
+ * agent's variables in front (`CODEX_HOME='/x' codex resume …`) in WSL, or as
+ * PowerShell (`$env:CODEX_HOME = 'C:\x'; codex resume …`) on Windows. The
+ * note says where to run it when that isn't just the folder: PowerShell, or
+ * the WSL user whose home the session is in.
+ */
+function shortAgentCommand(
+  input: Pick<LaunchInput, 'env' | 'distro' | 'wslUser' | 'cwd'>,
+  agentEnv: [string, string][],
+  command: string
+): { line: string; note?: string } {
+  if (input.env === 'wsl') {
+    const line = [...agentEnv.map(([k, v]) => `${k}=${bashArg(v)}`), command].join(' ')
+    const note = input.wslUser
+      ? `Run it in WSL (${input.distro ?? 'its distro'}) as ${input.wslUser}, from ${input.cwd}`
+      : undefined
+    return { line, ...(note ? { note } : {}) }
+  }
+  if (!agentEnv.length) return { line: command }
+  const sets = agentEnv.map(([k, v]) => `$env:${k} = ${psQuote(v)}; `).join('')
+  return { line: `${sets}${command}`, note: `Run it in PowerShell, from ${input.cwd}` }
+}
+
 /** The full launch of any agent: terminal, folder, environment and the agent's command. */
 export function buildAgentLaunch(input: LaunchInput, agent: AgentSpec): LaunchCommand {
   const cmd = build(input, agent)
@@ -491,7 +528,14 @@ function build(input: LaunchInput, agent: AgentSpec): Omit<LaunchCommand, 'comma
         ? { ANTHROPIC_API_KEY: apiKey, WSLENV: wslenvWithKey(input.wslenv) }
         : { ANTHROPIC_API_KEY: apiKey }
   }
-  const folder = folderReason(input.terminal, input.env, input.cwd, tools, agent)
+  const folder = folderReason(
+    input.terminal,
+    input.env,
+    input.cwd,
+    tools,
+    agent,
+    agentEnv.map(([, v]) => v)
+  )
   if (folder) {
     input = { ...input, terminal: 'powershell' }
     terminalReason = folder
@@ -502,8 +546,12 @@ function build(input: LaunchInput, agent: AgentSpec): Omit<LaunchCommand, 'comma
     terminalReason = AGENT_ENV_REASON
   }
   const user = input.wslUser ? ['-u', input.wslUser] : []
+  // The short command to copy, complete for the shell it's pasted into: with
+  // the agent's variables (CODEX_HOME), and where to run it.
+  const short = shortAgentCommand(input, agentEnv, claudeCommand)
   const base = {
-    claudeCommand,
+    claudeCommand: short.line,
+    ...(short.note ? { agentNote: short.note } : {}),
     claudeArgs: cArgs,
     terminal: input.terminal,
     ...(env ? { env } : {}),

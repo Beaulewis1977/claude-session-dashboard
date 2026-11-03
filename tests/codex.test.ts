@@ -14,6 +14,7 @@ import {
   utimes,
   writeFile
 } from 'node:fs/promises'
+import { createHash } from 'node:crypto'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { zstdCompressSync } from 'node:zlib'
@@ -53,8 +54,8 @@ import { parseNameIndex } from '../src/main/providers/codex/sessions'
 import { buildCodexLaunch, codexArgs } from '../src/main/providers/codex/launch'
 import { detectCodexSource } from '../src/main/providers/codex/source'
 import { remoteLaunchOptions } from '../src/main/mobile/remote-launch'
-import { archiveSession } from '../src/main/core/archive'
-import type { LaunchTools } from '../src/main/core/launch'
+import { archiveGrowth, archiveSession } from '../src/main/core/archive'
+import { AGENT_ENV_CHARS_REASON, type LaunchTools } from '../src/main/core/launch'
 
 const FIXTURES = join(__dirname, '..', 'fixtures')
 const CODEX = join(FIXTURES, 'codex', 'windows', 'Users', 'beau', '.codex')
@@ -918,5 +919,185 @@ describe('review fixes', () => {
     const after = codexOf(sessions.list(), ID.gap)
     expect(after.filePath).toBe(moved)
     expect((await sessions.detail(after.key))?.messages.length).toBeGreaterThan(0)
+  })
+})
+
+// ------------------------------------------------------- second review
+
+describe('second review fixes', () => {
+  it('a provider turned off while a file is being read keeps nothing of it', async () => {
+    const codex = createCodexProvider()
+    const providers = new ProviderRegistry([claudeProvider, codex])
+    const { sessions } = await setup({ providers })
+    const s = codexOf(sessions.list(), ID.cli)
+    await writeFile(s.originalPath, (await readFile(s.originalPath, 'utf8')) + '\n')
+    let release!: () => void
+    const gate = new Promise<void>((r) => (release = r))
+    const read = codex.readText
+    codex.readText = async (path, purpose) => {
+      await gate
+      return read(path, purpose)
+    }
+    const pending = sessions.fileChanged(s.sourceId, s.originalPath)
+    await new Promise((r) => setTimeout(r, 30))
+    providers.setEnabled({ claude: true, codex: false })
+    sessions.dropDisabled()
+    release()
+    await expect(pending).resolves.toBeUndefined()
+    expect(sessions.list().some((x) => x.provider === 'codex')).toBe(false)
+    // A rescan while it's off doesn't look it up either.
+    await expect(sessions.rescan()).resolves.toBeUndefined()
+    providers.setEnabled({ claude: true, codex: true })
+    await sessions.rescan()
+    expect(codexOf(sessions.list(), ID.cli)).toBeDefined()
+  })
+
+  it("doesn't reuse compact text an older reader cached", async () => {
+    const dataDir = join(root, 'data')
+    const dir = join(dataDir, 'cache', 'codex')
+    const file = join(root, `rollout-2026-10-01T00-00-00-${ID.cli}.jsonl`)
+    await writeFile(file, 'x')
+    const st = await stat(file)
+    const old = new CompactTextCache(dir, dataDir, 1)
+    await old.put(file, st.size, st.mtimeMs, 'CUT BY AN OLDER READER')
+    expect(await old.get(file)).toBe('CUT BY AN OLDER READER')
+    // The first PR build's names had no version at all.
+    const prefix = createHash('sha1').update(file.toLowerCase()).digest('hex').slice(0, 20)
+    await writeFile(join(dir, `${prefix}-${st.size}-${Math.round(st.mtimeMs)}.jsonl`), 'LEGACY')
+    await writeFile(join(dir, 'not-ours.txt'), 'kept')
+    const cur = new CompactTextCache(dir, dataDir)
+    expect(await cur.get(file)).toBeUndefined()
+    // Swept: only the cache's own older copies (by their name pattern).
+    expect(await readdir(dir)).toEqual(['not-ours.txt'])
+    await cur.put(file, st.size, st.mtimeMs, 'WHOLE')
+    expect(await cur.get(file)).toBe('WHOLE')
+  })
+
+  it('tells what I typed from context by what the rollout records, not by the tag', () => {
+    const item = (text: string, meta?: Record<string, unknown>): string =>
+      JSON.stringify({
+        type: 'response_item',
+        payload: {
+          type: 'message',
+          role: 'user',
+          content: [{ type: 'input_text', text }],
+          ...(meta ? { internal_chat_message_metadata_passthrough: meta } : {})
+        }
+      })
+    const text = [
+      // No provenance: only Codex's own tags are context.
+      item('<recommended_plugins>\nplugins\n</recommended_plugins>'),
+      item('<user_input>Build the app</user_input>'),
+      // Provenance: the rollout says who wrote it, whatever it looks like.
+      item('<send_user_message_question_reply>Yes</send_user_message_question_reply>', {
+        content_item_kinds: ['user.text'],
+        content_item_metadata: [{ provenance: { type: 'user' } }]
+      }),
+      item('Looks like a prompt', { content_item_kinds: ['goal.internal_context'] }),
+      item('<environment_context>pasted</environment_context>', {
+        content_item_kinds: ['user.text']
+      }),
+      item('From the harness', {
+        content_item_kinds: ['user.text'],
+        content_item_metadata: [{ provenance: { type: 'harness' } }]
+      })
+    ].join('\n')
+    const a = analyzeCodex(text)
+    expect(a.firstPrompt).toBe('<user_input>Build the app</user_input>')
+    expect(a.userMessageCount).toBe(3)
+    const shown = buildCodexMessages(text).map((m) => (m.blocks[0] as { text: string }).text)
+    expect(shown).toEqual([
+      '<user_input>Build the app</user_input>',
+      '<send_user_message_question_reply>Yes</send_user_message_question_reply>',
+      '<environment_context>pasted</environment_context>'
+    ])
+  })
+
+  it('estimates an encoding change as a whole new copy', () => {
+    const rec = { archivePath: join(root, 'a.jsonl'), size: 100 }
+    expect(archiveGrowth(undefined, 40)).toBe(40)
+    expect(archiveGrowth(rec, 40, '.jsonl.zst')).toBe(40)
+    expect(archiveGrowth(rec, 120, '.jsonl')).toBe(20)
+    expect(archiveGrowth(rec, 90, '.jsonl')).toBe(0)
+  })
+
+  it('checks CODEX_HOME for what Windows Terminal and cmd would change', () => {
+    const base = { sessionId: ID.cli, fork: false, skipPermissions: false, tools: TOOLS }
+    const wt = buildCodexLaunch({
+      ...base,
+      terminal: 'wt',
+      env: 'wsl',
+      distro: 'Ubuntu',
+      cwd: '/home/ann/x',
+      agentEnv: { CODEX_HOME: '/data/a;b' }
+    })
+    expect(wt).toMatchObject({ terminal: 'powershell', terminalReason: AGENT_ENV_CHARS_REASON })
+    const cmd = buildCodexLaunch({
+      ...base,
+      terminal: 'cmd',
+      env: 'wsl',
+      distro: 'Ubuntu',
+      cwd: '/home/ann/x',
+      agentEnv: { CODEX_HOME: '/data/50%codex!' }
+    })
+    expect(cmd).toMatchObject({ terminal: 'powershell', terminalReason: AGENT_ENV_CHARS_REASON })
+    // Inside PowerShell's single-quoted string, bash's quotes are doubled.
+    expect(cmd.args[2]).toContain("CODEX_HOME=''/data/50%codex!''")
+    const plain = buildCodexLaunch({
+      ...base,
+      terminal: 'wt',
+      env: 'wsl',
+      distro: 'Ubuntu',
+      cwd: '/home/ann/x',
+      agentEnv: { CODEX_HOME: '/data/codex' }
+    })
+    expect(plain.terminal).toBe('wt')
+  })
+
+  it('the copied codex command carries its home and says where to run it', () => {
+    const base = { sessionId: ID.cli, fork: false, skipPermissions: false, tools: TOOLS }
+    const wsl = buildCodexLaunch({
+      ...base,
+      terminal: 'wt',
+      env: 'wsl',
+      distro: 'Ubuntu',
+      cwd: '/home/ann/x',
+      wslUser: 'ann',
+      agentEnv: { CODEX_HOME: '/data/my codex' }
+    })
+    expect(wsl.claudeCommand).toBe(`CODEX_HOME='/data/my codex' codex resume ${ID.cli}`)
+    expect(wsl.agentNote).toBe('Run it in WSL (Ubuntu) as ann, from /home/ann/x')
+    const win = buildCodexLaunch({
+      ...base,
+      terminal: 'wt',
+      env: 'windows',
+      cwd: 'C:\\x',
+      agentEnv: { CODEX_HOME: 'D:\\Other Codex' }
+    })
+    expect(win.claudeCommand).toBe(`$env:CODEX_HOME = 'D:\\Other Codex'; codex resume ${ID.cli}`)
+    expect(win.agentNote).toBe('Run it in PowerShell, from C:\\x')
+    // The usual home: the bare command, as before.
+    const usual = buildCodexLaunch({ ...base, terminal: 'wt', env: 'windows', cwd: 'C:\\x' })
+    expect(usual.claudeCommand).toBe(`codex resume ${ID.cli}`)
+    expect(usual.agentNote).toBeUndefined()
+  })
+
+  it("a late unlink for the old path doesn't drop a rollout that moved", async () => {
+    const { sessions, layout } = await setup()
+    const s = codexOf(sessions.list(), ID.gap)
+    const home = join(layout.sourcesDir, 'windows', 'Users', 'beau', '.codex')
+    const moved = join(home, 'archived_sessions', `rollout-2026-10-15T11-11-11-${ID.gap}.jsonl`)
+    await rename(s.originalPath, moved)
+    // The add for the new path is handled first, then the unlink for the old one.
+    await sessions.fileChanged(s.sourceId, moved)
+    await sessions.fileChanged(s.sourceId, s.originalPath)
+    expect(codexOf(sessions.list(), ID.gap)).toMatchObject({
+      filePath: moved,
+      availability: 'live'
+    })
+    // A real unlink of the file it follows still counts.
+    await rm(moved)
+    await sessions.fileChanged(s.sourceId, moved)
+    expect(codexOf(sessions.list(), ID.gap)?.availability ?? 'gone').not.toBe('live')
   })
 })

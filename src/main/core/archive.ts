@@ -88,6 +88,21 @@ export function shouldArchive(
   return 'skip'
 }
 
+/**
+ * How much a copy adds to the archive (for estimates), the way archiveSession
+ * writes it: the same encoding replaces the copy (it grows by the difference),
+ * another encoding writes a whole new copy beside the old one.
+ */
+export function archiveGrowth(
+  record: Pick<ArchiveRecord, 'archivePath' | 'size'> | undefined,
+  sourceSize: number,
+  ext?: string
+): number {
+  if (!record) return sourceSize
+  if (ext && extOf(record.archivePath) !== ext) return sourceSize
+  return Math.max(0, sourceSize - record.size)
+}
+
 async function fileExists(p: string): Promise<boolean> {
   try {
     await stat(p)

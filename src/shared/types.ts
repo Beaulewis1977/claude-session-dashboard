@@ -497,8 +497,10 @@ export interface BranchPreview {
 export interface LaunchPreview {
   /** Command line as it will be run (for display / copy). */
   commandLine: string
-  /** Just the `claude ...` part. */
+  /** Just the `claude ...` part (for Codex with its CODEX_HOME, when that's set). */
   claudeCommand: string
+  /** Where to run claudeCommand when that isn't just the folder (PowerShell, a WSL user). */
+  agentNote?: string
   terminal: TerminalPref
   /** True if the requested terminal was not found and a fallback is used. */
   fellBack: boolean

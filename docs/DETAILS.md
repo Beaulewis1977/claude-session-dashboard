@@ -934,20 +934,27 @@ root), plus Codex folders added in Settings → Scan sources.
 - **Reading** (`providers/codex/read.ts`): rollouts are streamed, decompressed with
   [fzstd](https://github.com/101arrowz/fzstd) (pure JS), split into lines and compacted: the
   instructions repeated in every turn (`world_state`, `base_instructions`), tool lists,
-  encrypted reasoning and duplicated progress events are dropped, and very long strings are cut.
+  encrypted reasoning and duplicated progress events are dropped, and very long tool output and
+  arguments are cut (prompts and answers are kept whole).
   Real rollouts can be more than 500 MB decompressed (more than a JavaScript string can hold);
   the compact text stops growing at 48 MB, and the viewer then says the history may be
   incomplete. It says the same when the rollout's own entry numbers (`ordinal`) don't start at 0
   or skip. Rollouts over 64 MB decompressed keep their compact text in the app's cache folder
-  (`cache/codex/`, keyed by path, size and time, never backed up), so opening one later doesn't
-  decompress gigabytes again (a 397 MB `.zst` opened in 23 s before, 20 ms after).
+  (`cache/codex/`, keyed by the reader's format version, path, size and time, never backed up), so
+  opening one later doesn't decompress gigabytes again (a 397 MB `.zst` opened in 23 s before,
+  20 ms after). Copies an older reader made are removed and read again.
   Codex's newer "paginated" history keeps the whole conversation in the rollout
   (`thread_history_*.sqlite` is a projection of it), so the label alone doesn't trigger the note.
 - **Parsing** (`providers/codex/parse.ts`): `session_meta` (id, cwd, originator, CLI version,
   source, subagent parent, fork parent, git commit/branch/remote), `turn_context` (model, reasoning
   effort), `response_item` messages, reasoning summaries and tool calls with their outputs, and the
   older `event_msg` messages. Context Codex adds as user text (environment, AGENTS.md,
-  instructions) is never a prompt. Source labels come from `originator` (the desktop app records
+  instructions, plugin suggestions) is never a prompt. Who wrote each item comes from the
+  rollout itself: newer Codex records it per item (`internal_chat_message_metadata_passthrough`:
+  `content_item_metadata[i].provenance.type` "user" / "harness" / …, and `content_item_kinds[i]`
+  "user.text" / "environments.environment_context" / …). Older rollouts don't, so there only
+  Codex's own context tags count; a prompt that merely looks like one (`<user_input>…`) stays a
+  prompt. Source labels come from `originator` (the desktop app records
   `source: "vscode"`): Codex CLI, Codex · VS Code, Codex desktop app, Codex exec, Codex subagent,
   Codex · from Claude Code (Claude Code's Codex plugin).
 - **Launching** (`providers/codex/launch.ts`, checked with `codex --help` 0.163/0.164):

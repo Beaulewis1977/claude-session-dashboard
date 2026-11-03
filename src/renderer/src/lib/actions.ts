@@ -92,7 +92,10 @@ export async function copyResumeCommand(
     await api.copyText(text)
     const bin = PROVIDER_BIN[providerOf(get().sessions.find((x) => x.key === key))]
     toast.success(which === 'launch' ? 'Resume command copied' : `${bin} command copied`, {
-      description: which === 'claude' && p.cwd ? `Run it from ${p.cwd}` : undefined
+      description:
+        which !== 'claude'
+          ? undefined
+          : (p.agentNote ?? (p.cwd ? `Run it from ${p.cwd}` : undefined))
     })
   } catch (err) {
     toast.error('Could not build the command', { description: String((err as Error).message) })

@@ -67,6 +67,17 @@ export class ProviderRegistry {
     if (!p) throw new Error(`Unknown provider: ${providerOf(x)}`)
     return p
   }
+
+  /**
+   * The provider of something already loaded, on or off: to read what it is
+   * (its id, metadata key, labels), never to scan or launch. Work for a
+   * provider that's off is stopped by isOn() checks before it's kept.
+   */
+  owner(x: HasProvider): SessionProvider {
+    const p = this.byId.get(providerOf(x))
+    if (!p) throw new Error(`Unknown provider: ${providerOf(x)}`)
+    return p
+  }
 }
 
 /** Claude Code only: the app as it was before Codex (tests and the parity snapshot). */

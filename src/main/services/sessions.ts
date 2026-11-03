@@ -29,7 +29,7 @@ import type {
 import { metaKey, type ProviderId } from '@shared/provider'
 import type { SearchHit } from '@shared/api'
 import type { SessionBilling } from '@shared/usage/credits'
-import { archiveSession } from '../core/archive'
+import { archiveGrowth, archiveSession } from '../core/archive'
 import { writeFileAtomic, type JsonStore } from '../core/json-store'
 import { isInside } from '../core/safe-paths'
 import type { Platform } from '../platform'
@@ -108,10 +108,12 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
   /** The provider a session belongs to (as loaded, else its source's, else its archive record's). */
   providerOf(base: Pick<BaseSummary, 'key' | 'sourceId'>): SessionProvider {
     const known = this.owner.get(base.key)
-    if (known) return this.providers.of({ provider: known })
+    // Its own provider even if that was just turned off: in-flight work for it
+    // is dropped by the isOn checks before it's kept, never by a throw here.
+    if (known) return this.providers.owner({ provider: known })
     const owner: { provider?: ProviderId } | undefined =
       this.source(base.sourceId) ?? this.metadata.value.archive[base.key]
-    return this.providers.of(owner)
+    return this.providers.owner(owner)
   }
 
   /**
@@ -169,15 +171,18 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
   async detail(key: string): Promise<SessionDetail | null> {
     const e = this.entries.get(key)
     if (!e || !this.isOn(e)) return null
+    const provider = this.providerOf(e.base)
     let text: string
     try {
-      text = await this.providerOf(e.base).readText(e.base.filePath, 'view')
+      text = await provider.readText(e.base.filePath, 'view')
     } catch {
       return null
     }
+    // Turned off while it was being read.
+    if (!this.providers.isOn(provider.id)) return null
     return {
       summary: this.withMeta(e.base),
-      messages: this.providerOf(e.base).buildMessages(text, e.base)
+      messages: provider.buildMessages(text, e.base)
     }
   }
 
@@ -350,8 +355,9 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
     const files = new Map<string, SessionFile[]>()
     const renamed = new Map<string, string[]>()
     for (const src of this.sources) {
-      if (src.status !== 'ok') continue
-      const provider = this.providers.of(src)
+      // Its provider may be turned off while this rescan runs (a new one follows).
+      const provider = this.providers.find(src)
+      if (src.status !== 'ok' || !provider) continue
       const list = await provider.listSessionFiles(src)
       if (list) files.set(src.id, list)
       else Object.assign(src, { status: 'unreadable', statusMessage: "Folder can't be read" })
@@ -408,6 +414,16 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
     try {
       st = await stat(path)
     } catch {
+      // A late "unlink" for a path the session has since moved from (a Codex
+      // rollout moving to archived_sessions/): the entry now follows the new
+      // file, which is still there.
+      const e = this.entries.get(key)
+      if (
+        e?.base.availability === 'live' &&
+        !samePath(e.base.filePath, path) &&
+        (await this.platform.pathExists(e.base.filePath))
+      )
+        return
       await this.originalGone(key)
       return
     }
@@ -552,7 +568,7 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
   async loadNew(sourceId: string, path: string): Promise<SessionSummary | undefined> {
     await this.fileChanged(sourceId, path)
     const src = this.source(sourceId)
-    const file = src && this.providers.of(src).sessionFileOf(path)
+    const file = src && this.providers.find(src)?.sessionFileOf(path)
     return file ? this.get(`${sourceId}:${file.sessionId}`) : undefined
   }
 
@@ -622,6 +638,9 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
   }
 
   private async loadFile(src: ResolvedSource, f: SessionFile): Promise<void> {
+    // Its provider may have been turned off since this scan or event started.
+    const provider = this.providers.find(src)
+    if (!provider) return
     const key = `${src.id}:${f.sessionId}`
     const existing = this.entries.get(key)
     if (
@@ -641,7 +660,7 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
       cached.size === f.size &&
       cached.mtimeMs === f.mtimeMs &&
       cached.base.filePath === f.path &&
-      cached.pv === this.providers.of(src).parseVersion &&
+      cached.pv === provider.parseVersion &&
       this.search.has(key)
     ) {
       // Unchanged since the last run: reuse the cached summary and index entry.
@@ -650,19 +669,20 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
         sourceLabel: src.label,
         archivePath: record?.archivePath ?? cached.base.archivePath
       }
-      const pv = this.providers.of(src).parseVersion
-      this.owner.set(key, this.providers.of(src).id)
+      const pv = provider.parseVersion
+      this.owner.set(key, provider.id)
       this.entries.set(key, { base, size: f.size, mtimeMs: f.mtimeMs, ...(pv ? { pv } : {}) })
       this.queueArchive(src, base)
       return
     }
-    const provider = this.providers.of(src)
     let text: string
     try {
       text = await provider.readText(f.path)
     } catch {
       return
     }
+    // Turned off while the file was being read: nothing of it is kept.
+    if (!this.providers.isOn(provider.id)) return
     const { base, searchText } = provider.parseSession(text, f, src)
     if (record) base.archivePath = record.archivePath
     this.owner.set(key, provider.id)
@@ -729,10 +749,12 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
         const compressed = e.base.filePath.endsWith('.zst')
         t.sessions++
         t.bytes += e.size
-        // Compared by content (a compressed rollout is smaller than its plain copy).
+        // Whether it's copied is decided by content (a compressed rollout is
+        // smaller than its plain copy); what it adds, by what the archive writes.
         const now = e.base.contentBytes ?? e.size
         const had = rec ? (rec.contentSize ?? rec.size) : 0
-        if (now > had) t.newBytes += rec && had ? Math.min(e.size, now - had) : e.size
+        const ext = provider.archiveExtOf?.(e.base.originalPath) ?? provider.archiveExt
+        if (!rec || now > had) t.newBytes += archiveGrowth(rec, e.size, ext)
         t.backupBytes += compressed ? e.size : Math.round(e.size / 4)
       }
       add(all)
@@ -837,12 +859,20 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
     if (!provider) return
     let text: string
     const imported = availability === 'imported'
+    const key = `${rec.sourceId}:${rec.sessionId}`
+    const before = this.entries.get(key)
     try {
       text = await provider.readText(rec.archivePath)
     } catch {
-      if (imported) this.dropEntry(`${rec.sourceId}:${rec.sessionId}`)
+      if (imported) this.dropEntry(key)
       return
     }
+    // Turned off while the copy was being read.
+    if (!this.providers.isOn(provider.id)) return
+    // The live file came back (or moved) while the copy was being read: the
+    // live entry wins over the archive copy.
+    const cur = this.entries.get(key)
+    if (!imported && cur !== before && cur?.base.availability === 'live') return
     // An imported conversation's file must hold what was imported (archives
     // from before collision-proof names may hold another conversation).
     if (imported && createHash('sha256').update(text).digest('hex') !== rec.sha256) {
@@ -962,11 +992,18 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
     try {
       const provider = this.providerOf(e.base)
       const text = await provider.readText(e.base.filePath, 'view')
+      // Turned off, or the entry replaced, while it was being read.
+      if (!this.providers.isOn(provider.id) || this.entries.get(key) !== e) return
       this.index(e.base, provider.searchText(text))
     } catch {
       // keep the old index entry
     }
   }
+}
+
+/** The same file (Windows paths: case and slashes don't matter). */
+function samePath(a: string, b: string): boolean {
+  return isInside(a, b) && isInside(b, a)
 }
 
 function emptyTally(): ArchiveTally {

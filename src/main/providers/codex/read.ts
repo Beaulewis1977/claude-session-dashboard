@@ -23,6 +23,14 @@ export const LINE_LIMIT = 64 * 1024 * 1024
 /** Long strings (tool output, patches, arguments) are cut to this many characters. */
 export const FIELD_LIMIT = 64 * 1024
 
+/**
+ * The version of the compact text this reader writes. Bump it whenever
+ * compactLine keeps or cuts something differently: copies kept in the text
+ * cache by an older version are then read again instead of reused.
+ * 1: message text cut like tool output. 2: message text kept whole.
+ */
+export const COMPACT_FORMAT = 2
+
 /** The first line of the compact text: what the reader saw. Parsed by parse.ts. */
 export const READ_NOTE_TYPE = 'csd_read_note'
 

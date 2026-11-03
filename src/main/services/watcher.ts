@@ -45,8 +45,10 @@ export class SourceWatcher {
   private async restartNow(): Promise<void> {
     await this.closeNow()
     for (const src of this.sessions.sources) {
-      if (src.status !== 'ok') continue
-      const spec = this.sessions.providers.of(src).watchSpec(src)
+      // A provider turned off (Settings → Providers) isn't watched.
+      const provider = this.sessions.providers.find(src)
+      if (src.status !== 'ok' || !provider) continue
+      const spec = provider.watchSpec(src)
       if (isUnc(spec.root)) {
         this.timers.push(setInterval(() => void this.sessions.pollSource(src.id), POLL_UNC_MS))
         continue
@@ -65,9 +67,12 @@ export class SourceWatcher {
     // Safety net for missed events.
     this.timers.push(
       setInterval(() => {
-        for (const src of this.sessions.sources)
-          if (!isUnc(this.sessions.providers.of(src).watchSpec(src).root))
+        for (const src of this.sessions.sources) {
+          // Looked up each time: its provider may have been turned off since.
+          const provider = this.sessions.providers.find(src)
+          if (provider && !isUnc(provider.watchSpec(src).root))
             void this.sessions.pollSource(src.id)
+        }
       }, POLL_ALL_MS)
     )
   }

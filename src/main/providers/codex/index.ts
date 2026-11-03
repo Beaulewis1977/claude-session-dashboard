@@ -40,7 +40,9 @@ export function createCodexProvider(opts: { textCache?: CompactTextCache } = {})
     effortLevels: CODEX_EFFORT_LEVELS,
     // 2: tag-wrapped context isn't a prompt. 3: big rollouts' text is cached. 4: content size
     // (archive across compression). 5: message text kept whole; only snake_case tags are context.
-    parseVersion: 5,
+    // 6: re-read big rollouts whose cached text an older reader cut (see COMPACT_FORMAT), and
+    // only Codex's own context tags count as injected.
+    parseVersion: 6,
 
     detectSources: (platform, opts) => detectCodexSources(platform, opts),
     listSessionFiles: (src) => listCodexFiles(codexHomeOf(src)),

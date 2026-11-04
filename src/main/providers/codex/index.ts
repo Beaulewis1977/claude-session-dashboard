@@ -5,7 +5,8 @@
 // `codex resume <id>` / `codex fork <id>` in the session's folder. Never
 // opens auth.json or any other file of the home, and never writes into it:
 // there is no restore from the archive, no Branch from here, and no new
-// session files. Usage and limits come in Phase C.
+// session files. Usage, plan limits and context size come from the rollouts'
+// token_count events (Phase C, see ./usage.ts).
 
 import { stat } from 'node:fs/promises'
 import { basename, dirname, join } from 'node:path'
@@ -17,7 +18,8 @@ import { baseName } from '@shared/format'
 import type { BaseSummary, SessionProvider } from '../types'
 import { buildCodexLaunch, codexCommandLine } from './launch'
 import { analyzeCodex, buildCodexMessages } from './parse'
-import { readBytesOf, readCodexText } from './read'
+import { readBytesOf, readCodexText, readCodexUsageText } from './read'
+import { analyzeCodexUsage } from './usage'
 import { CACHE_FROM_BYTES, type CompactTextCache } from './text-cache'
 import {
   CodexNames,
@@ -45,7 +47,8 @@ export function createCodexProvider(opts: { textCache?: CompactTextCache } = {})
     // only Codex's own context tags count as injected. 7: hidden context kept short, legacy
     // and newer messages matched one by one, search covers prompts and answers first.
     // 8: images kept only as their type; older and newer messages paired only when near.
-    parseVersion: 8,
+    // 9: context size from the last token_count.
+    parseVersion: 9,
 
     detectSources: (platform, opts) => detectCodexSources(platform, opts),
     listSessionFiles: (src) => listCodexFiles(codexHomeOf(src)),
@@ -107,7 +110,8 @@ export function createCodexProvider(opts: { textCache?: CompactTextCache } = {})
         origin: a.origin,
         ...(a.historyNote ? { historyNote: a.historyNote } : {}),
         ...(a.searchPartial ? { searchPartial: true } : {}),
-        ...(a.contentBytes !== undefined ? { contentBytes: a.contentBytes } : {})
+        ...(a.contentBytes !== undefined ? { contentBytes: a.contentBytes } : {}),
+        ...(a.context ? { context: a.context } : {})
       }
       return { base, searchText: a.searchText }
     },
@@ -161,7 +165,8 @@ export function createCodexProvider(opts: { textCache?: CompactTextCache } = {})
     usage: {
       extraFiles: async () => [],
       extrasArchiveDir: (archivePath, sessionId) => join(dirname(archivePath), sessionId),
-      analyze: () => ({ records: [], turns: [], limitHits: [], usageReadings: [] })
+      analyze: (text, ctx) => analyzeCodexUsage(text, ctx),
+      readText: (path) => readCodexUsageText(path)
     }
   }
 }

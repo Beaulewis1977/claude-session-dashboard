@@ -33,8 +33,9 @@ export const CONTEXT_KEEP = 2 * 1024
  * 1: message text cut like tool output. 2: message text kept whole.
  * 3: context Codex adds (never shown) kept only by its start.
  * 4: images kept only as their type (the viewer shows a placeholder), not their data.
+ * 5: token_count events kept past the cut too (the context size is the last one's).
  */
-export const COMPACT_FORMAT = 4
+export const COMPACT_FORMAT = 5
 
 /** The first line of the compact text: what the reader saw. Parsed by parse.ts. */
 export const READ_NOTE_TYPE = 'csd_read_note'
@@ -338,8 +339,10 @@ export async function readCodexText(
         prevOrdinal = o
       }
       if (size >= limit) {
-        // Past the cut: only the small settings lines (model, effort) are kept.
-        if (line.slice(0, 200).includes('"type":"turn_context"')) {
+        // Past the cut: only the small settings lines (model, effort) and
+        // token counts (the context size) are kept.
+        const head = line.slice(0, 200)
+        if (head.includes('"type":"turn_context"') || head.includes('"type":"token_count"')) {
           const kept = compactLine(line)
           if (kept) out.push(kept)
         } else note.cutLines++
@@ -370,4 +373,53 @@ export function readBytesOf(text: string): number {
   } catch {
     return 0
   }
+}
+
+/** Line types the usage reader keeps (everything else is skipped unparsed). */
+const USAGE_TYPES_RE = /"type":"(?:session_meta|turn_context|compacted|token_count)"/
+
+/**
+ * Only what token usage and plan limits need, from the whole file (never
+ * cut, however large): each `token_count` event, the model of each turn
+ * (`turn_context`), the session's own meta (without its instructions) and
+ * compaction markers. Small even for huge rollouts. Read-only.
+ */
+export async function readCodexUsageText(path: string): Promise<string> {
+  refuseCredentials(path)
+  const compressed = await isZstdFile(path)
+  const out: string[] = []
+  await eachLine(
+    path,
+    compressed,
+    (line) => {
+      if (!USAGE_TYPES_RE.test(line.slice(0, 300))) return
+      let o: Record<string, unknown>
+      try {
+        const v: unknown = JSON.parse(line)
+        if (!v || typeof v !== 'object' || Array.isArray(v)) return
+        o = v as Record<string, unknown>
+      } catch {
+        return
+      }
+      const p = (o.payload ?? {}) as Record<string, unknown>
+      const keep: Record<string, unknown> = { timestamp: o.timestamp, type: o.type }
+      if (o.type === 'session_meta') {
+        keep.payload = {
+          id: p.id,
+          timestamp: p.timestamp,
+          forked_from_id: p.forked_from_id,
+          cli_version: p.cli_version
+        }
+      } else if (o.type === 'turn_context') {
+        keep.payload = { model: p.model }
+      } else if (o.type === 'compacted') {
+        keep.payload = {}
+      } else if (o.type === 'event_msg' && p.type === 'token_count') {
+        keep.payload = { type: p.type, info: p.info, rate_limits: p.rate_limits }
+      } else return
+      out.push(JSON.stringify(keep))
+    },
+    () => undefined
+  )
+  return out.join('\n')
 }

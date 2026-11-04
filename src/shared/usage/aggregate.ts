@@ -39,6 +39,12 @@ export function addRecord(t: Totals, r: UsageRecord, cost: number): void {
   t.total += totalTokens(r)
   t.cost += cost
   t.responses++
+  if (r.reasoning) t.reasoning = (t.reasoning ?? 0) + r.reasoning
+}
+
+/** A record's provider id ("claude" for Claude Code's). */
+export function providerOfRecord(r: Pick<UsageRecord, 'provider'>): 'claude' | 'codex' {
+  return r.provider ?? 'claude'
 }
 
 export interface ReportContext {
@@ -52,6 +58,8 @@ export interface ReportContext {
   /** Source label of a session (Terminal, VS Code, …). */
   sourceOf?: (key: string) => string
   loading?: boolean
+  /** Split each series point by provider (reports covering Claude Code and Codex). */
+  byProvider?: boolean
 }
 
 function dimensionKey(r: UsageRecord, d: Dimension, ctx: ReportContext): string {
@@ -70,6 +78,8 @@ function dimensionKey(r: UsageRecord, d: Dimension, ctx: ReportContext): string 
       return ctx.billingOf?.(r.key) ?? 'Unknown'
     case 'source':
       return ctx.sourceOf?.(r.key) ?? 'Local · unknown'
+    case 'provider':
+      return providerOfRecord(r)
   }
 }
 
@@ -87,6 +97,8 @@ function dimensionLabel(
       return { label: key === 'wsl' ? 'WSL' : 'Windows' }
     case 'version':
       return { label: key === '(unknown)' ? 'Unknown version' : `v${key}` }
+    case 'provider':
+      return { label: key === 'codex' ? 'Codex' : 'Claude Code' }
     default:
       return { label: key }
   }
@@ -293,6 +305,11 @@ export function timeSeries(
     }
     addRecord(p, r, costs.get(r) ?? 0)
     p.byModel[r.model] = (p.byModel[r.model] ?? 0) + totalTokens(r)
+    if (ctx.byProvider) {
+      const pv = providerOfRecord(r)
+      p.byProvider ??= {}
+      p.byProvider[pv] = (p.byProvider[pv] ?? 0) + totalTokens(r)
+    }
     if (r.ts < minTs) minTs = r.ts
     if (r.ts > maxTs) maxTs = r.ts
   }
@@ -310,7 +327,8 @@ export function timeSeries(
         bucket: k,
         start: bucketRange(k, period, tz).start,
         ...emptyTotals(),
-        byModel: {}
+        byModel: {},
+        ...(ctx.byProvider ? { byProvider: {} } : {})
       }
   )
 }
@@ -448,7 +466,9 @@ export function toCsv(
       'cache_write',
       'cache_read',
       'total',
-      'est_cost_usd'
+      'est_cost_usd',
+      'reasoning',
+      'provider'
     ]
     const lines = [header.join(',')]
     for (const r of [...records].sort((a, b) => a.ts - b.ts)) {
@@ -466,7 +486,9 @@ export function toCsv(
           r.cacheWrite,
           r.cacheRead,
           totalTokens(r),
-          recordCost(r, ctx.prices).toFixed(6)
+          recordCost(r, ctx.prices).toFixed(6),
+          r.reasoning ?? 0,
+          providerOfRecord(r)
         ]
           .map(esc)
           .join(',')
@@ -474,17 +496,24 @@ export function toCsv(
     }
     return lines.join('\r\n') + '\r\n'
   }
-  const rows = new Map<string, Totals & { date: string; model: string }>()
+  const rows = new Map<string, Totals & { date: string; model: string; provider: string }>()
   for (const r of records) {
     const date = dayKey(r.ts, ctx.timeZone)
-    const k = `${date}|${r.model}`
+    const provider = providerOfRecord(r)
+    const k = `${date}|${provider}|${r.model}`
     let t = rows.get(k)
-    if (!t) rows.set(k, (t = { date, model: r.model, ...emptyTotals() }))
+    if (!t) rows.set(k, (t = { date, model: r.model, provider, ...emptyTotals() }))
     addRecord(t, r, recordCost(r, ctx.prices))
   }
-  const lines = ['date,model,responses,input,output,cache_write,cache_read,total,est_cost_usd']
+  const lines = [
+    'date,model,responses,input,output,cache_write,cache_read,total,est_cost_usd,reasoning,provider'
+  ]
   for (const t of [...rows.values()].sort((a, b) =>
-    a.date === b.date ? a.model.localeCompare(b.model) : a.date.localeCompare(b.date)
+    a.date !== b.date
+      ? a.date.localeCompare(b.date)
+      : a.provider !== b.provider
+        ? a.provider.localeCompare(b.provider)
+        : a.model.localeCompare(b.model)
   )) {
     lines.push(
       [
@@ -496,7 +525,9 @@ export function toCsv(
         t.cacheWrite,
         t.cacheRead,
         t.total,
-        t.cost.toFixed(4)
+        t.cost.toFixed(4),
+        t.reasoning ?? 0,
+        t.provider
       ]
         .map(esc)
         .join(',')

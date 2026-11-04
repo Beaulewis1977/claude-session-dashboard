@@ -189,6 +189,11 @@ export interface SessionProvider {
     /** Where the archive keeps copies of those files. */
     extrasArchiveDir(archivePath: string, sessionId: string): string
     analyze(text: string, ctx: UsageContext): UsageAnalysis
+    /**
+     * The text `analyze` takes, when a plain UTF-8 read isn't it (Codex:
+     * compressed rollouts, and only the lines usage needs, from the whole file).
+     */
+    readText?(path: string): Promise<string>
   }
 
   /** Live plan limits through a status line bridge (optional). */

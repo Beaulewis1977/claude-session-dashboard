@@ -175,9 +175,9 @@ describe('aggregation', () => {
     const csv = toCsv(records, { timeZone: 'UTC', prices: DEFAULT_PRICES })
     const lines = csv.trim().split('\r\n')
     expect(lines[0]).toBe(
-      'date,model,responses,input,output,cache_write,cache_read,total,est_cost_usd'
+      'date,model,responses,input,output,cache_write,cache_read,total,est_cost_usd,reasoning,provider'
     )
-    expect(lines).toContain('2026-10-20,claude-opus-5-5,2,20,1100,0,1780,2900,0.0224')
+    expect(lines).toContain('2026-10-20,claude-opus-5-5,2,20,1100,0,1780,2900,0.0224,0,claude')
     expect(
       toCsv(records, { timeZone: 'UTC', prices: DEFAULT_PRICES }, true).split('\r\n')[1]
     ).toMatch(/^2026-10-18T22:00:00.000Z,windows:s1,acme-web,windows,claude-opus-5-5/)

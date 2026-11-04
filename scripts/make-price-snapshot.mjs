@@ -1,16 +1,20 @@
 // Builds src/shared/usage/litellm-prices.json: the Claude rows of LiteLLM's
 // model_prices_and_context_window.json (MIT, see THIRD_PARTY_NOTICES),
-// converted to USD per million tokens. The app never fetches prices; run this
-// by hand to refresh the bundled snapshot:
+// converted to USD per million tokens. With --openai it builds
+// src/shared/usage/openai-prices.json instead: the OpenAI rows Codex uses
+// (Codex has its own price table, so the Claude snapshot stays as it is).
+// The app never fetches prices; run this by hand to refresh a bundled snapshot:
 //
 //   curl -o /tmp/litellm.json https://raw.githubusercontent.com/BerriAI/litellm/<commit>/model_prices_and_context_window.json
-//   node scripts/make-price-snapshot.mjs /tmp/litellm.json <commit> <YYYY-MM-DD>
+//   node scripts/make-price-snapshot.mjs /tmp/litellm.json <commit> <YYYY-MM-DD> [--openai]
 
 import { readFile, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-const [file, commit, date] = process.argv.slice(2)
+const args = process.argv.slice(2)
+const openai = args.includes('--openai')
+const [file, commit, date] = args.filter((a) => a !== '--openai')
 if (!file || !commit || !/^\d{4}-\d{2}-\d{2}$/.test(date ?? '')) {
   console.error('usage: node scripts/make-price-snapshot.mjs <litellm.json> <commit> <YYYY-MM-DD>')
   process.exit(1)
@@ -58,6 +62,70 @@ function row(id, v) {
     }
   }
   return r
+}
+
+if (openai) {
+  await writeOpenAi()
+  process.exit(0)
+}
+
+/**
+ * OpenAI's Codex-capable models: `gpt-<n>[.<m>][-<variant>]` and `codex-*`,
+ * without dated copies (a dated id matches its base row), chat aliases, and
+ * audio, image, search or realtime models. Uncached input is billed at the
+ * input price; cache writes at their own price where LiteLLM lists one.
+ */
+async function writeOpenAi() {
+  const keep = (k, v) =>
+    v?.litellm_provider === 'openai' &&
+    /^(?:gpt-\d+(?:\.\d+)?(?:-[a-z]+)*|codex-[a-z-]+)$/.test(k) &&
+    !/audio|realtime|search|image|transcribe|tts|chat|latest|cyber|rosalind|law|-pro$/.test(k)
+  const out = []
+  for (const [k, v] of Object.entries(data)) {
+    if (!keep(k, v)) continue
+    const input = mtok(v.input_cost_per_token)
+    const output = mtok(v.output_cost_per_token)
+    if (input === undefined || output === undefined) continue
+    const cw = mtok(v.cache_creation_input_token_cost) ?? input
+    const r = {
+      model: k,
+      input,
+      output,
+      cacheWrite5m: cw,
+      cacheWrite1h: mtok(v.cache_creation_input_token_cost_above_12hr) ?? cw,
+      cacheRead: mtok(v.cache_read_input_token_cost) ?? input
+    }
+    const lc = mtok(v.input_cost_per_token_above_272k_tokens)
+    if (lc !== undefined) {
+      const lcw = mtok(v.cache_creation_input_token_cost_above_272k_tokens) ?? lc
+      r.longContext = {
+        above: 272_000,
+        input: lc,
+        output: mtok(v.output_cost_per_token_above_272k_tokens) ?? output,
+        cacheWrite5m: lcw,
+        cacheWrite1h: mtok(v.cache_creation_input_token_cost_above_12hr_above_272k_tokens) ?? lcw,
+        cacheRead: mtok(v.cache_read_input_token_cost_above_272k_tokens) ?? r.cacheRead
+      }
+    }
+    out.push(r)
+  }
+  // Newest first: by version number, then name.
+  const ver = (id) => (/^gpt-(\d+(?:\.\d+)?)/.exec(id)?.[1] ?? '0').split('.').map(Number)
+  out.sort((a, b) => {
+    const x = ver(a.model)
+    const y = ver(b.model)
+    return (y[0] ?? 0) - (x[0] ?? 0) || (y[1] ?? 0) - (x[1] ?? 0) || a.model.localeCompare(b.model)
+  })
+  const dest = join(root, 'src/shared/usage/openai-prices.json')
+  const json = {
+    source: 'https://github.com/BerriAI/litellm/blob/main/model_prices_and_context_window.json',
+    commit,
+    date,
+    unit: 'USD per million tokens',
+    models: out
+  }
+  await writeFile(dest, JSON.stringify(json, null, 2) + '\n')
+  console.log(`wrote ${out.length} models to ${dest}`)
 }
 
 // Anthropic's own API rows first; Bedrock's global rows (same prices) only

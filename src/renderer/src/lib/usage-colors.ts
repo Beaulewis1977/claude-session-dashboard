@@ -26,12 +26,12 @@ const FAMILY_VAR: Record<string, string> = {
   mythos: '--model-fable'
 }
 
-const GPT_VARS = ['--model-sonnet', '--model-opus', '--model-haiku', '--model-fable']
+const GPT_VARS = ['--model-gpt-1', '--model-gpt-2', '--model-gpt-3', '--model-gpt-4']
 
 /** One colour per provider in charts that show both. */
 export const PROVIDER_COLOR: Record<'claude' | 'codex', string> = {
   claude: 'var(--model-opus)',
-  codex: 'var(--model-sonnet)'
+  codex: 'var(--model-gpt-1)'
 }
 
 /** Token type names as each provider calls them (Codex: "cached input"). */

@@ -281,7 +281,8 @@ export function codexPlanSpans(
   for (const c of changes) {
     const plan = planOfCode(c.code)
     const span: PlanSpan = {
-      from: spans.length ? ymdOf(c.ts) : '1970-01-01',
+      // The first plan also applies before it was seen (start 0); its date is when it was.
+      from: ymdOf(c.ts),
       plan: 'custom',
       label: codeLabel(c.code),
       mult: plan ? codexMult(plan, mults) : 1,

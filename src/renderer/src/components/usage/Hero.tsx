@@ -328,7 +328,9 @@ export function LiveGaugeCard({
             <CountUp value={g.pct} format={(n) => `${Math.round(n)}%`} />
           </div>
           <div className="mt-1.5 text-[11px] text-muted-foreground">
-            {g.resetsAt ? `Resets in ${formatDuration(g.resetsAt - t)}` : 'used'}
+            {g.resetsAt
+              ? `${compact ? 'in' : 'Resets in'} ${formatDuration(g.resetsAt - t)}`
+              : 'used'}
           </div>
         </RingGauge>
         <div className="min-w-0 flex-1 space-y-2.5">

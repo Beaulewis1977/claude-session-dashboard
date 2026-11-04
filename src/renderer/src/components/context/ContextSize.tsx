@@ -291,8 +291,9 @@ export function ContextStrip({
         <span className="text-muted-foreground">in context</span>
         <ContextBadge context={e} className="self-center" />
       </div>
-      <div className="flex min-w-[140px] flex-1 items-center gap-2">
-        <div className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-border">
+      {/* At least the label plus a short bar: a long model name wraps the row instead of overlapping. */}
+      <div className="flex min-w-fit flex-1 items-center gap-2">
+        <div className="h-1.5 min-w-12 flex-1 overflow-hidden rounded-full bg-border">
           <div
             className={cn(
               'h-full rounded-full',

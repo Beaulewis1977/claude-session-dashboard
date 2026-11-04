@@ -83,7 +83,8 @@ const ID = {
   fork: '019a4444-0000-7000-8000-000000000004',
   old: '019a5555-0000-7000-8000-000000000005',
   gap: '019a6666-0000-7000-8000-000000000006',
-  wsl: '019a7777-0000-7000-8000-000000000007'
+  wsl: '019a7777-0000-7000-8000-000000000007',
+  now: '019a8888-0000-7000-8000-000000000008'
 }
 const CLI_FILE = join(
   CODEX,
@@ -526,7 +527,7 @@ describe('Codex sessions in the catalogue', () => {
         .map((r) => r.sessionId)
     expect(archived(off.sessions)).toEqual([])
     const est = off.sessions.codexArchiveEstimate()
-    expect(est.all.sessions).toBe(7)
+    expect(est.all.sessions).toBe(8)
     expect(est.all.newBytes).toBe(est.all.bytes)
     // Named in Codex (session_index.jsonl) counts as named: 1, 2 and 7 (6's name was cleared).
     expect(est.marked.sessions).toBe(3)

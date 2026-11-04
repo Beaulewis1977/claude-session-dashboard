@@ -220,12 +220,14 @@ export function analyzeCodexUsage(text: string, ctx: CodexUsageContext): UsageAn
     } else if (!total && last && !repeat) used = last
     if (total) prevTotal = total
     const rl = l.payload.rate_limits
-    const usageId = codexEventId(root, sig(total), sig(last))
+    const hasUsage = !!used && used.input_tokens + used.output_tokens > 0
     // Events without new usage are told apart by their limits.
-    const id = used ? usageId : codexEventId(root, sig(total), sig(last), JSON.stringify(rl ?? null))
+    const id = hasUsage
+      ? codexEventId(root, sig(total), sig(last))
+      : codexEventId(root, sig(total), sig(last), JSON.stringify(rl ?? null))
     if (seen.has(id)) continue
     seen.add(id)
-    if (used && used.input_tokens + used.output_tokens > 0) {
+    if (used && hasUsage) {
       const cached = Math.min(used.cached_input_tokens, used.input_tokens)
       const cw = Math.min(used.cache_write_input_tokens, used.input_tokens - cached)
       const rec: UsageRecord = {

@@ -362,6 +362,8 @@ export function SessionsTab() {
             <ProviderSwitch value={scope.view} onChange={setView} enabled={enabled} />
           </div>
         )}
+        {/* While searching, with or without results: some sessions are searched only in part. */}
+        <PartialSearchNote className="mt-2 px-1 text-[12px]" />
         {projectSession && canOpenTerminal(terminal, projectSession) && (
           <div className="mt-2.5 flex items-center gap-2 rounded-xl border border-border bg-background px-3 py-1.5">
             <FolderOpen className="size-4 shrink-0 text-subtle-foreground" />
@@ -391,7 +393,6 @@ export function SessionsTab() {
             <SearchX className="size-8 text-subtle-foreground" />
             <div className="mt-3 text-[15px] font-medium text-foreground">No sessions match</div>
             <p className="mt-1 text-[13px]">Try another search, or clear the filters.</p>
-            <PartialSearchNote className="mt-2 justify-center text-[12px]" />
           </div>
         ) : (
           <div style={{ height: v.getTotalSize(), position: 'relative' }}>

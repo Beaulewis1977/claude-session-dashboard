@@ -923,7 +923,9 @@ only filters what's shown (desktop: kept in the app's settings; phone: kept on e
 ### Codex
 
 Read only, from every Codex home: `%USERPROFILE%\.codex` and `~/.codex` of every WSL user (and
-root), plus Codex folders added in Settings → Scan sources.
+root), plus Codex folders added in Settings → Scan sources. An added folder counts as a Codex
+home by its contents, whatever its name (a custom `CODEX_HOME` such as `~/.codex2`): a `sessions`
+folder plus Codex's name index, `config.toml`, `archived_sessions` or `sessions/YYYY` folders.
 
 | What         | Where                                                                                                                                                                                                                     |
 | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -979,10 +981,10 @@ root), plus Codex folders added in Settings → Scan sources.
   working folder is a Linux path. Codex always runs where its `.codex` is: its SQLite database
   can't be opened across the WSL / Windows boundary (Codex in WSL with `CODEX_HOME=/mnt/c/…`
   fails with "disk I/O error"). Only the working folder is translated:
-  - `/mnt/c/x` in the Windows `.codex` resumes with Windows Codex in `C:\x`, once the default
-    distro confirms that `/mnt/c/x` is that Windows folder (`wslpath -w`; a custom `wsl.conf`
-    can make `/mnt/c` a Linux folder). If it can't be confirmed, nothing is guessed: a folder has
-    to be chosen in the dialog.
+  - `/mnt/c/x` in the Windows `.codex` resumes with Windows Codex in `C:\x`, once every WSL
+    distro confirms that `/mnt/c/x` is that same Windows folder (`wslpath -w`; the session
+    doesn't record its distro, and a custom `wsl.conf` can make `/mnt/c` a Linux folder). If it
+    can't be confirmed, or the distros disagree, nothing is guessed: a folder has to be chosen.
   - `C:\x` in a WSL `.codex` resumes in WSL in `/mnt/c/x` (as that distro mounts it, `wslpath`).
   - A Linux-only folder (`/home/…`) in the Windows `.codex` isn't resumed by default. The dialog
     explains why and offers **Open in Codex app** (`codex://threads/<id>`, the app's own link to a
@@ -996,8 +998,9 @@ root), plus Codex folders added in Settings → Scan sources.
   - A translated folder, or one chosen in the dialog, is also given to Codex (`-C <folder>`), or
     Codex asks which folder to use (offering its own conversion, e.g. `C:\mnt\c\…`).
   - "Open terminal here" opens a Linux folder in WSL, a Windows one on Windows.
-  - Folder checks: Windows can't see a distro's drive mounts through `\\wsl.localhost`, so a
-    `/mnt/c/…` folder is checked as `C:\…`, and other `/mnt/…` folders inside the distro.
+  - Folder checks: Windows can't see a distro's drive mounts through `\\wsl.localhost`, nor
+    folders only the session's own WSL user can read. Those are checked inside the distro
+    (`test -r`), as the user Codex will run as.
 - **Not for Codex** (hidden): Branch from here (it would write into `~/.codex`), Continue fresh and
   summaries (later phase), New session in this folder, Remote Control, API billing, Running now,
   usage and limits (Phase C). A Codex session whose file is gone can be read but not resumed: the

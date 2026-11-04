@@ -828,6 +828,8 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
 
   /** The original file is gone: fall back to the archive copy, if any. */
   private async originalGone(key: string): Promise<void> {
+    // A read that started before the file went away must not put it back.
+    this.cancelReads(key)
     const rec = this.metadata.value.archive[key]
     if (!rec) {
       this.entries.delete(key)
@@ -925,6 +927,8 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
     }
     // Imported entries remember their content hash and file: a re-import can
     // change the text without changing the size, or move it to another file.
+    // A live read still in flight (its source went offline) must not replace it.
+    this.cancelReads(base.key)
     this.owner.set(base.key, provider.id)
     this.entries.set(base.key, {
       base,
@@ -935,7 +939,13 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
     this.index(base, searchText)
   }
 
+  /** Reads of this session still in flight are dropped when they finish (see loadFile). */
+  private cancelReads(key: string): void {
+    this.loadSeq.set(key, (this.loadSeq.get(key) ?? 0) + 1)
+  }
+
   private dropEntry(key: string): void {
+    this.cancelReads(key)
     if (!this.entries.delete(key)) return
     this.owner.delete(key)
     this.search.remove(key)
@@ -948,13 +958,18 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
    * so turning it back on brings everything back.
    */
   dropDisabled(): void {
+    let dropped = false
     for (const [key, p] of this.owner) {
       if (this.providers.isOn(p)) continue
+      this.cancelReads(key)
       this.entries.delete(key)
       this.owner.delete(key)
       this.search.remove(key)
       this.markCacheDirty()
+      dropped = true
     }
+    // The desktop and phones update now, not at the next rescan.
+    if (dropped) this.emitChanged(true)
   }
 
   /** Search entries of sessions whose name the agent changed (e.g. a Codex thread rename). */

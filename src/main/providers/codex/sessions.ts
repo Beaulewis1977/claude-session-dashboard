@@ -29,6 +29,14 @@ async function isDir(p: string): Promise<boolean> {
   }
 }
 
+async function isFile(p: string): Promise<boolean> {
+  try {
+    return (await stat(p)).isFile()
+  } catch {
+    return false
+  }
+}
+
 async function canList(p: string): Promise<boolean> {
   try {
     await readdir(p)
@@ -58,13 +66,31 @@ async function homeSource(
   }
 }
 
-/** A user-added folder: a Codex home, or a folder with a `.codex` home in it. */
-async function codexHomeIn(folder: string): Promise<string | undefined> {
+/**
+ * Is this folder a Codex home, by what's in it (any name: a custom CODEX_HOME
+ * such as `~/.codex2`)? A `sessions` folder alone isn't enough (Claude Code's
+ * `~/.claude` has one too): also Codex's name index, its config, an
+ * `archived_sessions` folder, or the `sessions/YYYY` folders rollouts go in.
+ */
+async function isCodexHome(folder: string): Promise<boolean> {
+  if (basename(folder).toLowerCase() === '.claude') return false
+  const sessions = await isDir(join(folder, SESSIONS_DIR))
+  if (await isDir(join(folder, ARCHIVED_DIR))) return true
+  if (!sessions) return false
+  if ((await isFile(join(folder, NAME_INDEX))) || (await isFile(join(folder, 'config.toml'))))
+    return true
+  const years = await readdir(join(folder, SESSIONS_DIR)).catch(() => [] as string[])
+  return years.some((n) => /^\d{4}$/.test(n))
+}
+
+/** A user-added folder: a Codex home (by name or contents), its sessions folder, or a folder with a `.codex` home in it. */
+export async function codexHomeIn(folder: string): Promise<string | undefined> {
   if (basename(folder).toLowerCase() === SESSIONS_DIR && (await isDir(folder))) {
     const home = dirname(folder)
     if (await isDir(join(home, SESSIONS_DIR))) return home
   }
   if (basename(folder).toLowerCase() === '.codex' && (await isDir(folder))) return folder
+  if (await isCodexHome(folder)) return folder
   if (await isDir(join(folder, '.codex', SESSIONS_DIR))) return join(folder, '.codex')
   return undefined
 }

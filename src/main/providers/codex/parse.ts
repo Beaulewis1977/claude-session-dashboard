@@ -307,7 +307,9 @@ export function analyzeCodex(text: string, fileSessionId?: string): CodexAnalysi
   a.models = [...models]
   a.searchText = [...text_, ...extra].join('\n').slice(0, CODEX_SEARCH_LIMIT)
   // Said in the viewer: a word further on isn't found by the session search.
-  if (total > CODEX_SEARCH_LIMIT) a.searchPartial = true
+  // Also when the reader stopped early (a very large rollout cut at its size limit, or
+  // lines too long to read): what came after isn't searchable either.
+  if (total > CODEX_SEARCH_LIMIT || note?.cutLines || note?.hugeLines) a.searchPartial = true
   a.historyNote = historyNote(lines, note)
   if (note) a.contentBytes = note.bytes
   return a
@@ -384,12 +386,21 @@ function conversation(lines: Line[]): Map<Line, Msg> {
         (free.get(k) ?? []).filter((x) => x !== i)
       )
   }
+  // Every message's line, item or event: a pair has no other message between its two
+  // copies (a reply in between means a new turn, so an equal text there is a new message).
+  const shown = (m: Msg | undefined): boolean => !!m && (m.texts.length > 0 || m.images > 0)
+  const msgLines = lines.flatMap((l, i) => (shown(out.get(l)) || shown(eventMessage(l)) ? [i] : []))
+  const nothingBetween = (a: number, b: number): boolean =>
+    !msgLines.some((k) => k > Math.min(a, b) && k < Math.max(a, b))
   lines.forEach((l, i) => {
     const m = eventMessage(l)
     if (!m || (!m.texts.length && !m.images)) return
-    const near = (free.get(keyOf(m)) ?? [])
-      .filter((j) => Math.abs(j - i) <= PAIR_DISTANCE)
-      .sort((a, b) => Math.abs(a - i) - Math.abs(b - i))[0]
+    // No text to compare (an image-only prompt): never taken for another message.
+    const near = m.texts.join('').trim()
+      ? (free.get(keyOf(m)) ?? [])
+          .filter((j) => Math.abs(j - i) <= PAIR_DISTANCE && nothingBetween(i, j))
+          .sort((a, b) => Math.abs(a - i) - Math.abs(b - i))[0]
+      : undefined
     if (near !== undefined) {
       take(near)
       return

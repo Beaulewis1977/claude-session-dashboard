@@ -58,17 +58,19 @@ export interface Platform {
    * for a folder on a mounted Windows drive, `\\wsl.localhost\…` for a Linux one.
    */
   wslWindowsPath?(distro: string, linuxPath: string): Promise<string | undefined>
-  /** Can this distro read the path? (`test -r` run inside it.) */
-  wslCanRead(distro: string, linuxPath: string): Promise<boolean>
+  /** Can this distro read the path? (`test -r` run inside it, as `user` when given.) */
+  wslCanRead(distro: string, linuxPath: string, user?: string): Promise<boolean>
 }
 
-/** Run one program inside a distro (no shell); stdout on exit code 0, else undefined. */
-function inDistro(distro: string, args: string[]): Promise<string | undefined> {
+/** Run one program inside a distro (no shell), as `user` if given; stdout on exit code 0, else undefined. */
+function inDistro(distro: string, args: string[], user?: string): Promise<string | undefined> {
   if (process.platform !== 'win32' || !isValidDistroName(distro)) return Promise.resolve(undefined)
+  if (user !== undefined && !/^[a-z_][a-z0-9_-]{0,31}$/i.test(user))
+    return Promise.resolve(undefined)
   return new Promise((resolve) =>
     execFile(
       systemExe('wsl.exe'),
-      ['-d', distro, '-e', ...args],
+      ['-d', distro, ...(user ? ['-u', user] : []), '-e', ...args],
       { encoding: 'utf8', windowsHide: true, timeout: 20_000 },
       (err, stdout) => resolve(err ? undefined : String(stdout))
     )
@@ -258,8 +260,8 @@ export function createRealPlatform(): Platform {
       const out = (await inDistro(distro, ['wslpath', '-w', linuxPath]))?.trim()
       return out && /^(?:[A-Za-z]:\\|\\\\)/.test(out) && !out.includes('\n') ? out : undefined
     },
-    async wslCanRead(distro, linuxPath) {
-      return (await inDistro(distro, ['test', '-r', linuxPath])) !== undefined
+    async wslCanRead(distro, linuxPath, user) {
+      return (await inDistro(distro, ['test', '-r', linuxPath], user)) !== undefined
     },
     async gitBash() {
       if (!isWindows) return undefined
@@ -352,8 +354,11 @@ export function createFixturesPlatform(fixturesDir: string, sourcesDir: string):
     async wslWindowsPath(distro, linuxPath) {
       return mntToWindows(linuxPath) ?? linuxToUnc(`\\\\wsl.localhost\\${distro}`, linuxPath)
     },
-    async wslCanRead() {
-      return true
+    async wslCanRead(distro, linuxPath) {
+      // Drive mounts (/mnt/c/…) stand for Windows folders, which the samples pretend exist;
+      // Linux folders are looked up in the sample distro.
+      if (linuxPath.startsWith('/mnt/')) return true
+      return exists(join(sourcesDir, 'wsl', distro, ...linuxPath.split('/').filter(Boolean)))
     },
     async runCcusage() {
       return undefined

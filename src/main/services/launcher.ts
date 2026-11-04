@@ -140,10 +140,11 @@ export class Launcher {
    */
   private async cwdState(s: SessionSummary, cwd: string): Promise<CwdState> {
     if (s.env === 'windows') return (await this.platform.pathExists(cwd)) ? 'exists' : 'missing'
-    // A Windows drive mounted in WSL (/mnt/c/…) can't be seen through \\wsl.localhost
-    // (access is denied there): its Windows path is checked instead.
-    const onDrive = mntToWindows(cwd)
-    if (onDrive && (await this.platform.pathExists(onDrive))) return 'exists'
+    // Windows can't see a distro's drive mounts (/mnt/…) through \\wsl.localhost, nor
+    // folders only the session's own user can read: those are asked in the distro, as
+    // the user Codex runs as (its own mounts and permissions count).
+    const user = this.targetOf(s)?.wslUser
+    const askInside = cwd.startsWith('/mnt/') || !!user
     const known = this.sessions.source(s.sourceId)?.distroRoot
     const roots = known ? [known] : s.distro ? this.platform.distroRoots(s.distro) : []
     const parts = cwd.split('/').filter(Boolean)
@@ -154,9 +155,9 @@ export class Launcher {
         // Mounts under /mnt (a drive with a different letter mapping, a network
         // share) are only seen inside the distro: ask it before calling one gone.
         if (
-          cwd.startsWith('/mnt/') &&
+          askInside &&
           s.distro &&
-          (await this.platform.wslCanRead(s.distro, cwd).catch(() => false))
+          (await this.platform.wslCanRead(s.distro, cwd, user).catch(() => false))
         )
           return 'exists'
         return 'missing'
@@ -392,8 +393,14 @@ export class Launcher {
       // What the folder is on Windows, asked in the distro (`wslpath -w`): a /mnt path is
       // a Windows drive only with the usual mounts. A custom wsl.conf can mount drives
       // elsewhere and make /mnt/c an ordinary Linux folder.
-      const asked = def ? await this.windowsPathIn(def, s.cwd) : undefined
-      const onDrive = asked ? (isUncPath(asked) ? undefined : asked) : undefined
+      // The session doesn't record which distro it ran in, so every distro is asked: a
+      // folder is taken for a Windows folder only when they all agree on which one.
+      const cwd = s.cwd
+      const answers = await Promise.all(list.map((d) => this.windowsPathIn(d, cwd)))
+      const drives = new Set(answers.filter((a): a is string => !!a && !isUncPath(a)))
+      const agreed =
+        list.length > 0 && answers.every((a) => a && !isUncPath(a)) && drives.size === 1
+      const onDrive = agreed ? [...drives][0] : undefined
       if (onDrive)
         return {
           s: this.translatedTo(s, onDrive),
@@ -406,9 +413,11 @@ export class Launcher {
             reason: `${name} ran this session in WSL, in ${s.cwd}. Its history is in the Windows .codex folder, so it resumes with Windows ${name} in the same folder: ${onDrive}.`
           }
         }
-      // Looks like a drive folder, but WSL couldn't confirm it (no distro, the folder is
-      // gone, …): never guessed. Choosing a folder in the dialog runs it there.
-      const guess = asked ? undefined : mntToWindows(s.cwd)
+      // A Linux folder in every distro: WSL-only (below). Anything else (no distro, one
+      // that can't answer, distros that disagree, the folder is gone, …): never guessed.
+      // Choosing a folder in the dialog runs it there.
+      const linuxEverywhere = list.length > 0 && answers.every((a) => a && isUncPath(a))
+      const guess = linuxEverywhere ? undefined : (mntToWindows(cwd) ?? [...drives][0])
       if (guess)
         return {
           s,
@@ -421,7 +430,11 @@ export class Launcher {
             needsFolder: true,
             reason: `${name} ran this session in WSL, in ${s.cwd}. Its history is in the Windows .codex folder, so it resumes with Windows ${name}, in the matching Windows folder.`
           },
-          error: `WSL couldn't confirm which Windows folder ${s.cwd} is (it may be ${guess}). Choose the folder to resume in.`
+          error: `WSL couldn't confirm which Windows folder ${s.cwd} is (${
+            drives.size > 1 || (drives.size > 0 && answers.some((a) => a && isUncPath(a)))
+              ? 'your distros disagree'
+              : `it may be ${guess}`
+          }). Choose the folder to resume in.`
         }
       const distro = opts.distro && list.includes(opts.distro) ? opts.distro : def
       const placement: LaunchPlacement = {

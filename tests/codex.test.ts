@@ -52,7 +52,7 @@ import {
   readCodexText
 } from '../src/main/providers/codex/read'
 import { CompactTextCache } from '../src/main/providers/codex/text-cache'
-import { CodexNames, parseNameIndex } from '../src/main/providers/codex/sessions'
+import { CodexNames, codexHomeIn, parseNameIndex } from '../src/main/providers/codex/sessions'
 import { buildCodexLaunch, codexArgs } from '../src/main/providers/codex/launch'
 import { detectCodexSource } from '../src/main/providers/codex/source'
 import { remoteLaunchOptions } from '../src/main/mobile/remote-launch'
@@ -1924,5 +1924,148 @@ describe('fourth review fixes', () => {
     await names.refresh('codex-windows', home)
     await writeFile(join(home, 'session_index.jsonl'), index('2026-10-22T10:00:00Z') + '\n')
     expect(await names.refresh('codex-windows', home)).toEqual([ID.cli.toLowerCase()])
+  })
+})
+
+// -------------------------------------------------------- fifth review
+
+describe('fifth review fixes', () => {
+  const base = { fork: false, skipPermissions: false }
+  const homeOfS = (s: SessionSummary): string =>
+    dirname(dirname(dirname(dirname(dirname(s.originalPath)))))
+  async function withDesktopSession(cwd: string, id: string) {
+    const t = await setup()
+    const winHome = homeOfS(codexOf(t.sessions.list(), ID.cli))
+    const day = join(winHome, 'sessions', '2026', '10', '25')
+    await mkdir(day, { recursive: true })
+    await writeFile(
+      join(day, `rollout-2026-10-25T10-00-00-${id}.jsonl`),
+      JSON.stringify({ type: 'session_meta', payload: { id, cwd, originator: 'Codex Desktop' } }) +
+        '\n'
+    )
+    await t.sessions.rescan()
+    return t
+  }
+
+  it('translates a /mnt folder only when every distro agrees on the Windows folder', async () => {
+    const id = '019aeeee-0000-7000-8000-00000000000e'
+    const t = await withDesktopSession('/mnt/c/project', id)
+    // Ubuntu mounts drives as usual; Debian has /mnt/c as a Linux folder.
+    const disagree = {
+      ...createFixturesPlatform(t.layout.fixturesDir, t.layout.sourcesDir),
+      wslWindowsPath: async (distro: string, p: string) =>
+        distro === 'Ubuntu'
+          ? 'C:\\project'
+          : `\\\\wsl.localhost\\${distro}${p.replace(/\//g, '\\')}`
+    }
+    const launcher = new Launcher(
+      disagree,
+      t.sessions,
+      () => 'wt',
+      undefined,
+      () => t.settings.value
+    )
+    const p = await launcher.preview({ key: codexOf(t.sessions.list(), id).key, ...base })
+    expect(p.placement?.needsFolder).toBe(true)
+    expect(p.launchError).toMatch(/distros disagree/)
+    // Both agree (the sample platform): translated.
+    const agreed = await t.launcher.preview({ key: codexOf(t.sessions.list(), id).key, ...base })
+    expect(agreed.placement).toMatchObject({ kind: 'translated', cwd: 'C:\\project' })
+  })
+
+  it("doesn't pair an older prompt with a later one across a reply", () => {
+    const ev = (type: string, message: string): string =>
+      JSON.stringify({ type: 'event_msg', payload: { type, message } })
+    const item = (role: string, text: string): string =>
+      JSON.stringify({
+        type: 'response_item',
+        payload: {
+          type: 'message',
+          role,
+          content: [{ type: role === 'user' ? 'input_text' : 'output_text', text }]
+        }
+      })
+    const text = [
+      ev('user_message', 'yes'),
+      ev('agent_message', 'ok'),
+      item('user', 'yes'),
+      ev('user_message', 'yes'),
+      item('assistant', 'done')
+    ].join('\n')
+    const users = buildCodexMessages(text)
+      .filter((m) => m.role === 'user')
+      .map((m) => (m.blocks[0] as { text: string }).text)
+    expect(users).toEqual(['yes', 'yes'])
+  })
+
+  it('a rollout deleted during a read stays gone', async () => {
+    const codex = createCodexProvider()
+    const providers = new ProviderRegistry([claudeProvider, codex])
+    const { sessions } = await setup({ providers })
+    const s = codexOf(sessions.list(), ID.gap)
+    const read = codex.readText
+    let release!: () => void
+    const gate = new Promise<void>((r) => (release = r))
+    codex.readText = async (path, purpose) => {
+      const text = await read(path, purpose)
+      await gate
+      return text
+    }
+    await writeFile(s.originalPath, (await readFile(s.originalPath, 'utf8')) + '\n')
+    const inFlight = sessions.fileChanged(s.sourceId, s.originalPath)
+    await new Promise((r) => setTimeout(r, 30))
+    await rm(s.originalPath)
+    await sessions.fileChanged(s.sourceId, s.originalPath)
+    release()
+    await inFlight
+    expect(codexOf(sessions.list(), ID.gap)?.availability ?? 'gone').not.toBe('live')
+  })
+
+  it('recognises a Codex home by its contents (~/.codex2), never a Claude folder', async () => {
+    const home2 = join(root, 'u', '.codex2')
+    await mkdir(join(home2, 'sessions', '2026', '10'), { recursive: true })
+    expect(await codexHomeIn(home2)).toBe(home2)
+    const claude = join(root, 'u', '.claude')
+    await mkdir(join(claude, 'sessions'), { recursive: true })
+    expect(await codexHomeIn(claude)).toBeUndefined()
+  })
+
+  it('checks a WSL folder inside the distro, as the user Codex runs as', async () => {
+    const t = await setup()
+    const calls: (string | undefined)[][] = []
+    const spy = {
+      ...createFixturesPlatform(t.layout.fixturesDir, t.layout.sourcesDir),
+      wslCanRead: async (distro: string, p: string, user?: string) => {
+        calls.push([distro, p, user])
+        return true
+      }
+    }
+    const launcher = new Launcher(
+      spy,
+      t.sessions,
+      () => 'wt',
+      undefined,
+      () => t.settings.value
+    )
+    const s = codexOf(t.sessions.list(), ID.wsl)
+    const p = await launcher.preview({ key: s.key, ...base, cwdOverride: '/home/beau/private' })
+    expect(p.cwdExists).toBe(true)
+    expect(calls).toContainEqual([s.distro, '/home/beau/private', 'beau'])
+  })
+
+  it('a rollout cut at the reading limit counts as only partly searchable', async () => {
+    const text = await readCodexText(CLI_FILE, 400)
+    expect(analyzeCodex(text).searchPartial).toBe(true)
+    expect(analyzeCodex(await readCodexText(CLI_FILE)).searchPartial).toBeUndefined()
+  })
+
+  it('turning a provider off updates the list at once', async () => {
+    const { sessions, providers } = await setup()
+    let changed = 0
+    sessions.on('changed', () => changed++)
+    providers.setEnabled({ claude: true, codex: false })
+    sessions.dropDisabled()
+    expect(changed).toBe(1)
+    expect(sessions.list().some((x) => x.provider === 'codex')).toBe(false)
   })
 })

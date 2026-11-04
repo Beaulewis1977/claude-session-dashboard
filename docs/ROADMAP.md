@@ -355,8 +355,9 @@ Run typecheck, lint, tests and the build. Commit, push the branch and open a PR 
 - ✅ #3 Session summaries & "Continue fresh" (v1.7.0)
 - ✅ #4 Context size before you resume (v1.8.0)
 - ✅ #5 Phase A: provider refactor (v1.8.1)
+- ✅ #5 Phase B: Codex sessions (PR #28, v1.9.0)
 
-**In progress:** #5 Codex support in phases: A refactor ✅ → B Codex sessions (in review) → C Codex usage & limits → D Codex parity
+**In progress:** #5 Codex support in phases: A refactor ✅ → B Codex sessions ✅ → **next:** C Codex usage & limits → D Codex parity (incl. showing agent-to-agent messages)
 
 **Loose ends:**
 

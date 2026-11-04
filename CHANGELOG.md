@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.9.0 (November 3, 2026)
+
+**Codex support (part 1): browse, read, search, name, tag, resume and fork OpenAI Codex sessions.**
+
+### Codex sessions (PR #28)
+
+- **Browse, read, search, name, tag, resume and fork OpenAI Codex sessions** from Windows, WSL and
+  the Codex desktop app, including compressed `.zst` rollouts and Codex's own thread names.
+- **All / Claude / Codex switch** on the desktop and the phone.
+- **Settings → Providers** to turn Claude or Codex on or off.
+- **Per-session Codex model and reasoning effort.**
+- **Optional Codex archiving** (off by default).
+- **Codex subagents hidden by default.**
+- **Smart handling** of WSL paths and Codex desktop-app sessions.
+- Codex usage / limits and the remaining Codex features come in later releases.
+
 ## 1.8.1 (November 2, 2026)
 
 **An internal restructure with no visible changes: the groundwork for Codex support.**

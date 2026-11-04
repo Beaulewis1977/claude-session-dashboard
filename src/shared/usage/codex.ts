@@ -114,15 +114,7 @@ export function asBridgeReadings(
 // ----------------------------------------------------------------- plans
 
 export type CodexPlan =
-  | 'free'
-  | 'go'
-  | 'plus'
-  | 'pro100'
-  | 'pro200'
-  | 'pro500'
-  | 'business'
-  | 'enterprise'
-  | 'edu'
+  'free' | 'go' | 'plus' | 'pro100' | 'pro200' | 'pro500' | 'business' | 'enterprise' | 'edu'
 
 export const CODEX_PLANS: CodexPlan[] = [
   'plus',
@@ -277,7 +269,13 @@ export function codexPlanSpans(
   }
   if (!changes.length)
     return [
-      { from: '1970-01-01', plan: 'custom', label: 'Plus', mult: codexMult('plus', mults), start: 0 }
+      {
+        from: '1970-01-01',
+        plan: 'custom',
+        label: 'Plus',
+        mult: codexMult('plus', mults),
+        start: 0
+      }
     ]
   const spans: PlanSpan[] = []
   for (const c of changes) {

@@ -42,7 +42,10 @@ export function isUsageSplit(v: unknown): v is UsageSplit {
  */
 export function withSnapshotModels(saved: ModelPrice[], snapshot: ModelPrice[]): ModelPrice[] {
   const have = new Set(saved.map((p) => p.model.toLowerCase()))
-  return [...saved, ...snapshot.filter((p) => !have.has(p.model.toLowerCase())).map((p) => ({ ...p }))]
+  return [
+    ...saved,
+    ...snapshot.filter((p) => !have.has(p.model.toLowerCase())).map((p) => ({ ...p }))
+  ]
 }
 
 export function codexUsageSettings(s: Partial<AppSettings>): CodexUsageSettings {

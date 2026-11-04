@@ -200,7 +200,11 @@ export function registerUsageIpc(deps: UsageIpcDeps): void {
     const w = win()
     const query = cleanQuery(q)
     const prefix =
-      query.provider === 'codex' ? 'codex-usage' : query.provider === 'all' ? 'usage' : 'claude-usage'
+      query.provider === 'codex'
+        ? 'codex-usage'
+        : query.provider === 'all'
+          ? 'usage'
+          : 'claude-usage'
     const opts: Electron.SaveDialogOptions = {
       title: 'Export usage to CSV',
       defaultPath: `${prefix}-${dayKey(now(), localTimeZone())}.csv`,

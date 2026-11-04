@@ -134,11 +134,21 @@ export class CodexUsageStore {
     if (current) {
       for (const f of await listFiles(dir, RECORDS_RE))
         for (const r of await readNdjson<UsageRecord>(join(dir, f)))
-          if (r && typeof r.id === 'string' && typeof r.ts === 'number' && typeof r.key === 'string')
+          if (
+            r &&
+            typeof r.id === 'string' &&
+            typeof r.ts === 'number' &&
+            typeof r.key === 'string'
+          )
             of(r.key).records.push({ ...r, provider: 'codex' })
       for (const f of await listFiles(dir, LIMITS_RE))
         for (const r of await readNdjson<CodexLimitReading>(join(dir, f)))
-          if (r && typeof r.id === 'string' && typeof r.ts === 'number' && typeof r.key === 'string')
+          if (
+            r &&
+            typeof r.id === 'string' &&
+            typeof r.ts === 'number' &&
+            typeof r.key === 'string'
+          )
             of(r.key).readings.push(r)
     } else {
       // An older parser's data: rewrite (empty) and read every session again.

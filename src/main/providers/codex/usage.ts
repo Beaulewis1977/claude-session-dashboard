@@ -209,7 +209,9 @@ export function analyzeCodexUsage(text: string, ctx: CodexUsageContext): UsageAn
     const total = counts(info?.total_token_usage)
     const last = counts(info?.last_token_usage)
     const repeat =
-      !!total && !!prevTotal && total.total_tokens === prevTotal.total_tokens &&
+      !!total &&
+      !!prevTotal &&
+      total.total_tokens === prevTotal.total_tokens &&
       sig(total) === sig(prevTotal)
     let used: Counts | undefined
     if (total && !repeat) {

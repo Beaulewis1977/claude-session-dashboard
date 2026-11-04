@@ -373,11 +373,12 @@ class CodexContextTrack {
       compactions: this.compactions,
       ...(this.base ? { baseTokens: this.base } : {}),
       ...(this.last?.model ? { model: this.last.model } : {}),
-      ...(window ? { windowSize: window, ...(this.last?.model ? { windowModel: this.last.model } : {}) } : {})
+      ...(window
+        ? { windowSize: window, ...(this.last?.model ? { windowModel: this.last.model } : {}) }
+        : {})
     }
     if (this.compactedAfter) {
-      const tokens =
-        (this.base ?? 0) + Math.ceil(this.compactedAfter.chars / CHARS_PER_TOKEN)
+      const tokens = (this.base ?? 0) + Math.ceil(this.compactedAfter.chars / CHARS_PER_TOKEN)
       return {
         tokens,
         from: 'compaction',

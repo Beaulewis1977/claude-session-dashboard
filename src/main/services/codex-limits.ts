@@ -114,7 +114,10 @@ function windowGauge(
 }
 
 /** The newest reading of a limit per window length. */
-function latestByMinutes(readings: CodexLimitReading[], limitId: string): Map<number, CodexLimitReading> {
+function latestByMinutes(
+  readings: CodexLimitReading[],
+  limitId: string
+): Map<number, CodexLimitReading> {
   const out = new Map<number, CodexLimitReading>()
   for (const r of readings) {
     if (r.limitId !== limitId) continue
@@ -128,7 +131,9 @@ function latestByMinutes(readings: CodexLimitReading[], limitId: string): Map<nu
 
 /** Claude Code's pacing advice, in Codex's words. */
 function codexAdvice(a: PaceAdvice | undefined): PaceAdvice | undefined {
-  return a ? { ...a, text: a.text.replace('Open Claude Code', 'Send a message in Codex') } : undefined
+  return a
+    ? { ...a, text: a.text.replace('Open Claude Code', 'Send a message in Codex') }
+    : undefined
 }
 
 export class CodexLimitsService extends EventEmitter<{ changed: [] }> {
@@ -184,7 +189,8 @@ export class CodexLimitsService extends EventEmitter<{ changed: [] }> {
           const x = all[i]
           if (x.limitId !== r.limitId) continue
           const pw = x.windows.find(
-            (y) => y.minutes === w.minutes && y.resetsAt && Math.abs(y.resetsAt - w.resetsAt!) < 120_000
+            (y) =>
+              y.minutes === w.minutes && y.resetsAt && Math.abs(y.resetsAt - w.resetsAt!) < 120_000
           )
           if (pw) {
             prev = pw.pct
@@ -233,8 +239,19 @@ export class CodexLimitsService extends EventEmitter<{ changed: [] }> {
       ...(newestAt !== undefined ? { detectedAt: newestAt } : {})
     }
     if (s.plan !== 'auto')
-      return { ...base, plan: s.plan, label: CODEX_PLAN_LABEL[s.plan], mult: codexMult(s.plan, s.mults) }
-    if (!last) return { ...base, plan: 'plus', label: 'Plus (no plan in the logs yet)', mult: codexMult('plus', s.mults) }
+      return {
+        ...base,
+        plan: s.plan,
+        label: CODEX_PLAN_LABEL[s.plan],
+        mult: codexMult(s.plan, s.mults)
+      }
+    if (!last)
+      return {
+        ...base,
+        plan: 'plus',
+        label: 'Plus (no plan in the logs yet)',
+        mult: codexMult('plus', s.mults)
+      }
     return {
       ...base,
       ...(detected ? { plan: detected } : {}),
@@ -321,16 +338,26 @@ export class CodexLimitsService extends EventEmitter<{ changed: [] }> {
         }
       }
       if (windows.length)
-        extraLimits.push({ limitId: id, label, windows, lastAt, recent: t - lastAt < RECENT_LIMIT_MS })
+        extraLimits.push({
+          limitId: id,
+          label,
+          windows,
+          lastAt,
+          recent: t - lastAt < RECENT_LIMIT_MS
+        })
     }
     extraLimits.sort((a, b) => b.lastAt - a.lastAt)
 
     const health5h = this.health('five_hour')
     const health7d = this.health('seven_day')
     const pace5h =
-      five && !five.expired ? paceOf({ pct: five.pct, resetsAt: five.resetsAt }, 'five_hour', t, s.pace) : undefined
+      five && !five.expired
+        ? paceOf({ pct: five.pct, resetsAt: five.resetsAt }, 'five_hour', t, s.pace)
+        : undefined
     const pace7d =
-      week && !week.expired ? paceOf({ pct: week.pct, resetsAt: week.resetsAt }, 'seven_day', t, s.pace) : undefined
+      week && !week.expired
+        ? paceOf({ pct: week.pct, resetsAt: week.resetsAt }, 'seven_day', t, s.pace)
+        : undefined
     const spans = this.spans()
     const split = (kind: WindowKind, g: GaugeState | undefined, h: HealthReport) => {
       if (!g?.resetsAt || g.expired) return undefined

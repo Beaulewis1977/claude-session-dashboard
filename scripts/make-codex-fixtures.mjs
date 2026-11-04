@@ -164,7 +164,11 @@ function counter(window = 272000) {
       type: 'event_msg',
       payload: {
         type: 'token_count',
-        info: { total_token_usage: { ...total }, last_token_usage: l, model_context_window: window },
+        info: {
+          total_token_usage: { ...total },
+          last_token_usage: l,
+          model_context_window: window
+        },
         rate_limits: rateLimits
       }
     }
@@ -508,7 +512,13 @@ write(
     user('Add rate limiting to the public API.'),
     nowTokens({ input: 41000, cached: 30000, output: 2100, reasoning: 900 }, pro(21, PRO_WEEK)),
     ...patch('call_1', 'src/api/limits.ts', '+export const limiter = rateLimit({ max: 100 })'),
-    { ...nowTokens({ input: 64000, cached: 52000, output: 1800, reasoning: 700 }, pro(23, PRO_WEEK)), dt: 900_000 },
+    {
+      ...nowTokens(
+        { input: 64000, cached: 52000, output: 1800, reasoning: 700 },
+        pro(23, PRO_WEEK)
+      ),
+      dt: 900_000
+    },
     say('Added a limiter of 100 requests per minute to the public routes.')
   ])
 )

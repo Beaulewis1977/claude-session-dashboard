@@ -70,11 +70,7 @@ const DESKTOP_FILE = join(
   '18',
   `rollout-2026-10-18T14-02-11-${ID.desktop}.jsonl.zst`
 )
-const OLD_FILE = join(
-  CODEX,
-  'archived_sessions',
-  `rollout-2026-09-30T10-00-00-${ID.old}.jsonl.zst`
-)
+const OLD_FILE = join(CODEX, 'archived_sessions', `rollout-2026-09-30T10-00-00-${ID.old}.jsonl.zst`)
 
 // ------------------------------------------------------------- helpers
 
@@ -184,7 +180,12 @@ describe('Codex token counts', () => {
     expect(text).not.toContain('base_instructions')
     const { records, codexLimits } = analyzeCodexUsage(text, { ...ctx, sessionId: ID.desktop })
     expect(records).toHaveLength(1)
-    expect(records[0]).toMatchObject({ model: 'gpt-5.5', input: 8000, cacheRead: 6000, output: 700 })
+    expect(records[0]).toMatchObject({
+      model: 'gpt-5.5',
+      input: 8000,
+      cacheRead: 6000,
+      output: 700
+    })
     expect(codexLimits?.[0]).toMatchObject({ planType: 'plus', limitId: 'codex' })
   })
 
@@ -301,7 +302,11 @@ describe('Codex rate_limits', () => {
     const r = parseRateLimits(
       {
         limit_id: 'codex',
-        primary: { used_percent: 12.5, window_minutes: 300, resets_at: sec('2026-10-20T13:00:00Z') },
+        primary: {
+          used_percent: 12.5,
+          window_minutes: 300,
+          resets_at: sec('2026-10-20T13:00:00Z')
+        },
         secondary: {
           used_percent: 40,
           window_minutes: 10080,
@@ -350,7 +355,9 @@ describe('Codex rate_limits', () => {
     expect(parseRateLimits({ primary: { used_percent: 5 } }, ts, meta)).toBeUndefined()
     expect(
       parseRateLimits(
-        { primary: { used_percent: 5, window_minutes: 300, resets_at: sec('2026-10-20T08:00:00Z') } },
+        {
+          primary: { used_percent: 5, window_minutes: 300, resets_at: sec('2026-10-20T08:00:00Z') }
+        },
         ts,
         meta
       )
@@ -384,7 +391,13 @@ describe('Codex rate_limits', () => {
     for (let i = 0; i < 30; i++) {
       total += 10
       const t = new Date(Date.parse('2026-10-20T10:00:00Z') + i * 60_000).toISOString()
-      lines.push(tc(t, { total_token_usage: counts(total, 0, 0), last_token_usage: counts(10, 0, 0) }, rl(i < 20 ? 5 : 6)))
+      lines.push(
+        tc(
+          t,
+          { total_token_usage: counts(total, 0, 0), last_token_usage: counts(10, 0, 0) },
+          rl(i < 20 ? 5 : 6)
+        )
+      )
     }
     const { codexLimits } = analyzeCodexUsage(lines.join('\n'), ctx)
     const at = codexLimits!.map((r) => (r.ts - Date.parse('2026-10-20T10:00:00Z')) / 60_000)
@@ -407,7 +420,15 @@ describe('Codex plans', () => {
 
   it('detects plan changes from the logs and builds the plans over time', () => {
     const r = (ts: string, planType?: string) =>
-      ({ id: ts, ts: Date.parse(ts), key: 'k', source: 's', limitId: 'codex', windows: [], planType }) as CodexLimitReading
+      ({
+        id: ts,
+        ts: Date.parse(ts),
+        key: 'k',
+        source: 's',
+        limitId: 'codex',
+        windows: [],
+        planType
+      }) as CodexLimitReading
     const changes = detectPlanChanges([
       r('2026-09-01T10:00:00Z', 'plus'),
       r('2026-09-02T10:00:00Z'),
@@ -436,10 +457,12 @@ describe('Codex prices', () => {
     // Claude Code's table is the same as before.
     expect(DEFAULT_PRICES.every((p) => p.model.startsWith('claude-'))).toBe(true)
     expect(modelLabel('gpt-6.1-sol')).toBe('GPT-6.1 Sol')
-    expect(unpricedModels(['gpt-5.3-codex', 'GPT-5.3-Codex_spark', 'unknown'], DEFAULT_CODEX_PRICES)).toEqual(['GPT-5.3-Codex_spark'])
+    expect(
+      unpricedModels(['gpt-5.3-codex', 'GPT-5.3-Codex_spark', 'unknown'], DEFAULT_CODEX_PRICES)
+    ).toEqual(['GPT-5.3-Codex_spark'])
   })
 
-  it('adds a newer snapshot\'s models to a saved table, keeping edited rows', () => {
+  it("adds a newer snapshot's models to a saved table, keeping edited rows", () => {
     const saved = [{ ...DEFAULT_CODEX_PRICES[0], input: 99 }]
     const merged = withSnapshotModels(saved, DEFAULT_CODEX_PRICES)
     expect(merged[0].input).toBe(99)
@@ -570,7 +593,12 @@ describe('Codex usage on the sample homes', () => {
     expect(csv.some((l) => l.endsWith(',codex'))).toBe(true)
     expect(csv.some((l) => l.endsWith(',claude'))).toBe(true)
     const perRecord = usage.csv({ period: 'day', provider: 'codex' }, true).split('\r\n')
-    expect(perRecord.slice(1).filter(Boolean).every((l) => l.endsWith(',codex'))).toBe(true)
+    expect(
+      perRecord
+        .slice(1)
+        .filter(Boolean)
+        .every((l) => l.endsWith(',codex'))
+    ).toBe(true)
     const rec: UsageRecord = { ...usage.codexRecords()[0] }
     expect(toCsv([rec], { timeZone: 'UTC', prices: DEFAULT_CODEX_PRICES })).toContain(',codex')
   })
@@ -585,9 +613,17 @@ describe('Codex usage on the sample homes', () => {
       windowSize: 353_400,
       baseTokens: 41_000
     })
-    const limits = new CodexLimitsService(usage, () => limitsSettings(), () => undefined)
+    const limits = new CodexLimitsService(
+      usage,
+      () => limitsSettings(),
+      () => undefined
+    )
     const cost = new ContextCost({
-      limits: { dollarsPerPct: () => undefined, state: async () => ({}) as never, isSubscription: () => true },
+      limits: {
+        dollarsPerPct: () => undefined,
+        state: async () => ({}) as never,
+        isSubscription: () => true
+      },
       usage,
       settings: () => ({ capacityWeights: DEFAULT_WEIGHTS, prices: DEFAULT_PRICES }) as never,
       codex: { limits, prices: () => DEFAULT_CODEX_PRICES }
@@ -603,18 +639,35 @@ describe('Codex usage on the sample homes', () => {
     // A compaction with no reply since: estimated from the summary.
     const compacted = analyzeCodex(
       [
-        tc('2026-10-20T10:00:01Z', { total_token_usage: counts(9000, 0, 100), last_token_usage: counts(9000, 0, 100), model_context_window: 272000 }),
-        JSON.stringify({ timestamp: '2026-10-20T10:05:00Z', type: 'compacted', payload: { message: 'x'.repeat(4000) } })
+        tc('2026-10-20T10:00:01Z', {
+          total_token_usage: counts(9000, 0, 100),
+          last_token_usage: counts(9000, 0, 100),
+          model_context_window: 272000
+        }),
+        JSON.stringify({
+          timestamp: '2026-10-20T10:05:00Z',
+          type: 'compacted',
+          payload: { message: 'x'.repeat(4000) }
+        })
       ].join('\n')
     )
-    expect(compacted.context).toMatchObject({ from: 'compaction', tokens: 9000 + 1000, compactions: 1, preCompactTokens: 9100 })
+    expect(compacted.context).toMatchObject({
+      from: 'compaction',
+      tokens: 9000 + 1000,
+      compactions: 1,
+      preCompactTokens: 9100
+    })
   })
 })
 
 describe('Codex limits on the sample homes', () => {
   it('shows gauges by window length, with stale windows, extra limits and the detected plan', async () => {
     const { usage } = await pipeline()
-    const l = new CodexLimitsService(usage, () => limitsSettings(), () => undefined).state()
+    const l = new CodexLimitsService(
+      usage,
+      () => limitsSettings(),
+      () => undefined
+    ).state()
     expect(l.provider).toBe('codex')
     expect(l.hasData).toBe(true)
     // Weekly: the session running now, 23%, fresh.
@@ -648,7 +701,13 @@ describe('Codex limits on the sample homes', () => {
       () => limitsSettings({ plan: 'pro200', mults: { pro200: 12 } }),
       () => undefined
     ).state()
-    expect(l.plan).toMatchObject({ setting: 'pro200', plan: 'pro200', label: 'Pro $200', mult: 12, detectedCode: 'prolite' })
+    expect(l.plan).toMatchObject({
+      setting: 'pro200',
+      plan: 'pro200',
+      label: 'Pro $200',
+      mult: 12,
+      detectedCode: 'prolite'
+    })
     expect(l.health7d?.plans).toMatchObject([{ label: 'Pro $200', mult: 12 }])
   })
 
@@ -656,7 +715,15 @@ describe('Codex limits on the sample homes', () => {
     const { usage } = await pipeline()
     const svc = new CodexLimitsService(
       usage,
-      () => limitsSettings({ health: { ...DEFAULT_HEALTH, baselineFrom: '2026-10-01', baselineTo: '2026-10-31', minPct: 1 } }),
+      () =>
+        limitsSettings({
+          health: {
+            ...DEFAULT_HEALTH,
+            baselineFrom: '2026-10-01',
+            baselineTo: '2026-10-31',
+            minPct: 1
+          }
+        }),
       () => undefined
     )
     const h = svc.health('seven_day')
@@ -718,7 +785,11 @@ describe('Codex limits on the sample homes', () => {
         }
       ]
     })
-    const l = new CodexLimitsService(usage, () => limitsSettings(), () => undefined).state()
+    const l = new CodexLimitsService(
+      usage,
+      () => limitsSettings(),
+      () => undefined
+    ).state()
     expect(l.fiveHour).toMatchObject({ expired: true, pct: 0, lastPct: 55 })
     expect(l.stale).toBe(true)
     expect(l.sevenDay).toBeUndefined()

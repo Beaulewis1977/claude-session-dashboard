@@ -392,7 +392,15 @@ async function main(): Promise<void> {
   let codexCache: { from: unknown; value: ReturnType<typeof codexUsageSettings> } | undefined
   const codexSettings = (): ReturnType<typeof codexUsageSettings> => {
     const s = settings.value
-    const key = [s.codexPlan, s.codexPlanMults, s.codexHealth, s.codexElsewhere, s.codexPrices, s.meterProvider, s.usageSplit]
+    const key = [
+      s.codexPlan,
+      s.codexPlanMults,
+      s.codexHealth,
+      s.codexElsewhere,
+      s.codexPrices,
+      s.meterProvider,
+      s.usageSplit
+    ]
     if (!codexCache || (codexCache.from as unknown[]).some((v, i) => v !== key[i]))
       codexCache = { from: key, value: codexUsageSettings(s) }
     return codexCache.value

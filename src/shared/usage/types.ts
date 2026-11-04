@@ -106,14 +106,7 @@ export interface UsageAnalysis {
 
 export type Period = 'hour' | 'day' | 'week' | 'month'
 export type Dimension =
-  | 'model'
-  | 'session'
-  | 'project'
-  | 'env'
-  | 'version'
-  | 'billing'
-  | 'source'
-  | 'provider'
+  'model' | 'session' | 'project' | 'env' | 'version' | 'billing' | 'source' | 'provider'
 export type WeekStart = 'monday' | 'sunday'
 
 export interface UsageQuery {

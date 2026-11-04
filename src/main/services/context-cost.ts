@@ -97,7 +97,10 @@ export class ContextCost {
   ) {}
 
   /** A Codex session: always on the ChatGPT plan, cold (see CODEX_CACHE_NOTE). */
-  private codexEstimate(s: SessionSummary, modelChoice: string | undefined): ResumeEstimate | undefined {
+  private codexEstimate(
+    s: SessionSummary,
+    modelChoice: string | undefined
+  ): ResumeEstimate | undefined {
     if (!s.context || !this.deps.codex) return undefined
     const st = this.deps.settings()
     const basis = this.deps.codex.limits.dollarsPerPct()
@@ -116,7 +119,9 @@ export class ContextCost {
       ...(est.windowFrom === 'status-line' ? { windowFrom: 'codex-log' as const } : {}),
       ...(basis?.kind === 'seven_day' ? { pctWindow: 'seven_day' as const } : {}),
       ...(est.unknown === NO_BASELINE
-        ? { unknown: 'Not enough Codex limit history yet to turn tokens into a share of your limit.' }
+        ? {
+            unknown: 'Not enough Codex limit history yet to turn tokens into a share of your limit.'
+          }
         : {}),
       cacheNote: CODEX_CACHE_NOTE
     }
@@ -133,7 +138,10 @@ export class ContextCost {
   ): Promise<ResumeEstimate | undefined> {
     if (!s.context) return undefined
     if (s.provider === 'codex')
-      return this.codexEstimate(s, launch.modelChoice && launch.modelChoice !== 'default' ? launch.modelChoice : undefined)
+      return this.codexEstimate(
+        s,
+        launch.modelChoice && launch.modelChoice !== 'default' ? launch.modelChoice : undefined
+      )
     const st = this.deps.settings()
     const sub = !launch.billingAccountId
     const dollarsPerPct = sub ? this.deps.limits.dollarsPerPct() : undefined

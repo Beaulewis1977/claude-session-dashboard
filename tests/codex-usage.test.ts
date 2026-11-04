@@ -795,3 +795,77 @@ describe('Codex limits on the sample homes', () => {
     expect(l.sevenDay).toBeUndefined()
   })
 })
+
+describe('Ask Claude and settings', () => {
+  it('sends Codex numbers only, in their own section; Claude-only data is as before', async () => {
+    const { buildAskData, buildAskPrompt } = await import('@shared/ask')
+    const base = {
+      now: FIXTURES_NOW,
+      timeZone: 'UTC',
+      plan: 'max5' as const,
+      planHistory: [],
+      records: [],
+      limitHits: [],
+      prices: DEFAULT_PRICES,
+      elsewhere: []
+    }
+    const claudeOnly = buildAskData(base)
+    expect('codex' in claudeOnly).toBe(false)
+    expect(buildAskPrompt('q', claudeOnly)).not.toContain('Codex')
+    const rec: UsageRecord = {
+      id: 'c1',
+      ts: FIXTURES_NOW - 3_600_000,
+      key: 'codex-windows:x',
+      project: 'secret-project',
+      env: 'windows',
+      model: 'gpt-6.1-sol',
+      provider: 'codex',
+      input: 100,
+      output: 50,
+      cacheWrite: 0,
+      cacheRead: 900,
+      reasoning: 20
+    }
+    const withCodex = buildAskData({
+      ...base,
+      codex: {
+        plan: 'Pro $100 (prolite)',
+        multiplier: 5,
+        records: [rec],
+        prices: DEFAULT_CODEX_PRICES,
+        windows: [{ minutes: 10080, pct: 23, resetsAt: FIXTURES_NOW + 86_400_000 }]
+      }
+    })
+    expect(withCodex.codex).toMatchObject({
+      plan: 'Pro $100 (prolite)',
+      planMultiplierVsPlus: 5,
+      limitsNow: [{ windowMinutes: 10080, pct: 23 }],
+      monthlyTotals: [{ month: '2026-10', tokens: 1050, reasoning: 20, responses: 1 }]
+    })
+    // Numbers only: no project names or session keys.
+    expect(JSON.stringify(withCodex.codex)).not.toMatch(/secret-project|codex-windows/)
+    expect(buildAskPrompt('q', withCodex)).toContain('Never combine')
+  })
+
+  it('cleans Codex settings from the renderer', async () => {
+    const { codexSettingsPatch } = await import('@shared/usage/codex-settings')
+    expect(codexSettingsPatch({ codexPlan: 'nope' as never }, {})).toEqual({})
+    expect(codexSettingsPatch({ codexPlan: 'pro200' }, {})).toEqual({ codexPlan: 'pro200' })
+    expect(
+      codexSettingsPatch(
+        { codexPlanMults: { pro100: 6, plus: -1 } as never },
+        { codexPlanMults: { pro200: 12 } }
+      )
+    ).toEqual({ codexPlanMults: { pro200: 12, pro100: 6 } })
+    expect(codexSettingsPatch({ meterProvider: 'both', usageSplit: 'split' }, {})).toEqual({
+      meterProvider: 'both',
+      usageSplit: 'split'
+    })
+    expect(
+      codexSettingsPatch({ codexHealth: { threshold: 2 } as never }, {}).codexHealth
+    ).toMatchObject({
+      threshold: 2,
+      streak: DEFAULT_HEALTH.streak
+    })
+  })
+})

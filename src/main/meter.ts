@@ -18,7 +18,17 @@ export interface MeterDeps {
   lockNavigation: (win: BrowserWindow) => void
 }
 
-export function createMeter(deps: MeterDeps): { closeAll: () => void; restore: () => void } {
+/** The mini meter's height: one row of gauges, or two (both providers). */
+function miniHeight(s: SettingsFile): number {
+  return s.meterProvider === 'both' ? 232 : 148
+}
+
+export function createMeter(deps: MeterDeps): {
+  closeAll: () => void
+  restore: () => void
+  /** Settings changed: fit the mini meter to the rows it now shows. */
+  refit: () => void
+} {
   let tray: Tray | undefined
   let mini: BrowserWindow | undefined
 
@@ -47,7 +57,7 @@ export function createMeter(deps: MeterDeps): { closeAll: () => void; restore: (
     const pos = deps.settings.value.miniMeter
     mini = new BrowserWindow({
       width: 288,
-      height: 148,
+      height: miniHeight(deps.settings.value),
       x: pos?.x,
       y: pos?.y,
       frame: false,
@@ -121,6 +131,12 @@ export function createMeter(deps: MeterDeps): { closeAll: () => void; restore: (
     },
     restore: () => {
       if (deps.settings.value.miniMeter?.open) open()
+    },
+    refit: () => {
+      if (!isOpen()) return
+      const b = mini!.getBounds()
+      const h = miniHeight(deps.settings.value)
+      if (b.height !== h) mini!.setBounds({ ...b, height: h })
     }
   }
 }

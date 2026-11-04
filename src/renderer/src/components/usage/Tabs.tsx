@@ -11,6 +11,7 @@ import { toast } from 'sonner'
 import { CalendarClock, Download, OctagonAlert } from 'lucide-react'
 import type { Dimension, UsageQuery, UsageReport } from '@shared/usage/types'
 import type { LimitsState } from '@shared/usage/limits'
+import type { CodexLimitsState } from '@shared/usage/codex'
 import type { CreditsState } from '@shared/usage/credits'
 import { formatDateTime, formatInt, formatTokens, formatUsd } from '@shared/format'
 import { api } from '@/lib/api'
@@ -33,23 +34,36 @@ const tick = { fill: 'var(--chart-axis)', fontSize: 11 }
 
 export function LimitHistoryTab({
   limits,
-  report
+  report,
+  codex,
+  hideBlocks
 }: {
   limits: LimitsState | null
   report: UsageReport | null
+  /** Leave out the 5-hour blocks (the All view shows them once). */
+  hideBlocks?: boolean
+  /** Codex's history instead (its own "used elsewhere" ranges and limit messages). */
+  codex?: CodexLimitsState | null
 }) {
   const blocks = [...(report?.blocks ?? [])].reverse().slice(0, 8)
+  const isCodex = codex !== undefined
+  const hits = (isCodex ? codex?.limitHits : limits?.limitHits) ?? []
+  const loaded = isCodex ? !!codex : !!limits
   return (
     <div className="space-y-4">
-      <ElsewhereCard />
+      <ElsewhereCard provider={isCodex ? 'codex' : 'claude'} />
       <div className="grid gap-4 lg:grid-cols-2">
         <Card className="p-5">
           <CardHeader
             title="Limit messages"
-            subtitle="Every “usage limit reached” message found in your sessions"
+            subtitle={
+              isCodex
+                ? 'Every time Codex reported a limit was reached'
+                : 'Every “usage limit reached” message found in your sessions'
+            }
           />
           <div className="mt-3 space-y-1">
-            {(limits?.limitHits ?? []).slice(0, 10).map((h) => (
+            {hits.slice(0, 10).map((h) => (
               <div
                 key={h.id}
                 className="flex items-start gap-2.5 rounded-lg px-2 py-1.5 text-xs hover:bg-hover"
@@ -67,57 +81,59 @@ export function LimitHistoryTab({
                 </Badge>
               </div>
             ))}
-            {limits && limits.limitHits.length === 0 && (
+            {loaded && hits.length === 0 && (
               <div className="py-6 text-center text-sm text-muted-foreground">
                 No limit messages found. Nice.
               </div>
             )}
           </div>
         </Card>
-        <Card className="p-5">
-          <CardHeader
-            title="Recent 5-hour blocks"
-            subtitle="From your session logs, grouped like ccusage blocks"
-            info="A block starts at the hour of its first message and lasts 5 hours. Works without the status line bridge."
-          />
-          <div className="mt-3 space-y-1">
-            {blocks.map((b) => (
-              <div
-                key={b.start}
-                className="flex items-center gap-2.5 rounded-lg px-2 py-1.5 text-xs hover:bg-hover"
-              >
-                <CalendarClock className="size-3.5 shrink-0 text-muted-foreground" />
-                <span className="shrink-0 whitespace-nowrap tabular-nums">
-                  {dateFmt.format(b.start)}, {timeFmt.format(b.start)} – {timeFmt.format(b.end)}
-                </span>
-                <span className="flex min-w-0 flex-1 items-center gap-1">
-                  {b.models.slice(0, 3).map((m) => (
-                    <span
-                      key={m}
-                      className="size-2 rounded-full"
-                      title={modelLabel(m)}
-                      style={{ background: modelColor(m, report?.models ?? []) }}
-                    />
-                  ))}
-                  {b.active && (
-                    <Badge variant="accent" className="ml-1">
-                      Active
-                    </Badge>
-                  )}
-                </span>
-                <span className="font-medium tabular-nums">{formatTokens(b.total)}</span>
-                <span className="w-14 text-right text-muted-foreground tabular-nums">
-                  {formatUsd(b.cost)}
-                </span>
-              </div>
-            ))}
-            {report && blocks.length === 0 && (
-              <div className="py-6 text-center text-sm text-muted-foreground">
-                No activity in the last week.
-              </div>
-            )}
-          </div>
-        </Card>
+        {!hideBlocks && (
+          <Card className="p-5">
+            <CardHeader
+              title="Recent 5-hour blocks"
+              subtitle="From your session logs, grouped like ccusage blocks"
+              info="A block starts at the hour of its first message and lasts 5 hours. Works without the status line bridge."
+            />
+            <div className="mt-3 space-y-1">
+              {blocks.map((b) => (
+                <div
+                  key={b.start}
+                  className="flex items-center gap-2.5 rounded-lg px-2 py-1.5 text-xs hover:bg-hover"
+                >
+                  <CalendarClock className="size-3.5 shrink-0 text-muted-foreground" />
+                  <span className="shrink-0 whitespace-nowrap tabular-nums">
+                    {dateFmt.format(b.start)}, {timeFmt.format(b.start)} – {timeFmt.format(b.end)}
+                  </span>
+                  <span className="flex min-w-0 flex-1 items-center gap-1">
+                    {b.models.slice(0, 3).map((m) => (
+                      <span
+                        key={m}
+                        className="size-2 rounded-full"
+                        title={modelLabel(m)}
+                        style={{ background: modelColor(m, report?.models ?? []) }}
+                      />
+                    ))}
+                    {b.active && (
+                      <Badge variant="accent" className="ml-1">
+                        Active
+                      </Badge>
+                    )}
+                  </span>
+                  <span className="font-medium tabular-nums">{formatTokens(b.total)}</span>
+                  <span className="w-14 text-right text-muted-foreground tabular-nums">
+                    {formatUsd(b.cost)}
+                  </span>
+                </div>
+              ))}
+              {report && blocks.length === 0 && (
+                <div className="py-6 text-center text-sm text-muted-foreground">
+                  No activity in the last week.
+                </div>
+              )}
+            </div>
+          </Card>
+        )}
       </div>
     </div>
   )
@@ -405,6 +421,11 @@ export function RawTableTab({
     else if (res.error) toast.error('Export failed', { description: res.error })
   }
   const num = 'px-2 py-1.5 text-right tabular-nums'
+  // Both providers: a breakdown by provider too.
+  const dims =
+    query.provider === 'all'
+      ? [...DIMENSIONS, { value: 'provider' as const, label: 'Provider' }]
+      : DIMENSIONS
   return (
     <div className="space-y-4">
       <Card className="p-5">
@@ -413,12 +434,7 @@ export function RawTableTab({
           subtitle="Every token type for the selected range, grouped by"
           right={
             <>
-              <Segmented
-                ariaLabel="Group by"
-                value={groupBy}
-                onChange={onGroupBy}
-                options={DIMENSIONS}
-              />
+              <Segmented ariaLabel="Group by" value={groupBy} onChange={onGroupBy} options={dims} />
             </>
           }
         />
@@ -427,7 +443,7 @@ export function RawTableTab({
             <thead className="text-subtle-foreground">
               <tr className="border-b border-border">
                 <th className="px-2 py-1.5 text-left font-medium">
-                  {DIMENSIONS.find((d) => d.value === groupBy)?.label}
+                  {dims.find((d) => d.value === groupBy)?.label}
                 </th>
                 {(['input', 'output', 'cacheWrite', 'cacheRead'] as const).map((t) => (
                   <th key={t} className="px-2 py-1.5 text-right font-medium">

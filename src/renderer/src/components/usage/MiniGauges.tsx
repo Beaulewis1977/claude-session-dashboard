@@ -1,9 +1,11 @@
 import { Gauge } from 'lucide-react'
-import { freshnessOf, gaugeSummary, type Freshness } from '@shared/usage/limits'
+import { freshnessOf, gaugeSummary, type Freshness, type GaugeState } from '@shared/usage/limits'
 import { useApp } from '@/lib/store'
 import { cn } from '@/lib/utils'
 import { levelOf, LEVEL_COLOR, useNow } from '@/lib/meter-hooks'
 import { Tooltip } from '../ui/tooltip'
+import { PROVIDER_ICON } from '@/lib/provider-icons'
+import { codexGaugeLine } from '@/lib/codex-meter'
 
 function Dot({
   pct,
@@ -58,8 +60,85 @@ function Dot({
   )
 }
 
+/** Codex's windows as dots: the 5-hour one only while Codex reports it. */
+function CodexDots({ t, withIcon }: { t: number; withIcon?: boolean }) {
+  const codex = useApp((s) => s.codexLimits)
+  if (!codex?.hasData) return null
+  const Icon = PROVIDER_ICON.codex
+  const dot = (label: string, g: typeof codex.fiveHour) => {
+    const f = g && freshnessOf(g, t)
+    return <Dot pct={g && f !== 'stale' ? g.pct : undefined} label={label} freshness={f} />
+  }
+  return (
+    <span className="inline-flex items-center gap-3">
+      {withIcon && <Icon className="size-3 text-subtle-foreground" aria-label="Codex" />}
+      {codex.fiveHourRecent && dot('5h', codex.fiveHour)}
+      {dot('Week', codex.sevenDay)}
+    </span>
+  )
+}
+
 /** The usage gauges, small, for the app's title (status) bar. */
 export function MiniGauges() {
+  const mp = useApp((s) => s.settings.meterProvider ?? 'claude')
+  if (mp === 'claude') return <ClaudeMiniGauges />
+  return <ProviderMiniGauges both={mp === 'both'} />
+}
+
+/** Codex's (or both providers') gauges in the status bar. */
+function ProviderMiniGauges({ both }: { both: boolean }) {
+  const limits = useApp((s) => s.limits)
+  const codex = useApp((s) => s.codexLimits)
+  const view = useApp((s) => s.view)
+  const set = useApp((s) => s.set)
+  const t = useNow()
+  const ClaudeIcon = PROVIDER_ICON.claude
+  const lines = [
+    ...(both && limits
+      ? [
+          gaugeSummary('Claude 5-hour', limits.fiveHour, t),
+          gaugeSummary('Claude week', limits.sevenDay, t)
+        ]
+      : []),
+    ...(codex?.fiveHourRecent ? [codexGaugeLine('Codex 5-hour', codex.fiveHour, t)] : []),
+    codexGaugeLine('Codex week', codex?.sevenDay, t)
+  ]
+  const claude = (g: GaugeState | undefined) => {
+    const f = g && freshnessOf(g, t)
+    return { pct: g && f !== 'stale' ? g.pct : undefined, f }
+  }
+  const c5 = claude(limits?.fiveHour)
+  const c7 = claude(limits?.sevenDay)
+  return (
+    <Tooltip content={lines.join(' · ')} shortcut="Ctrl+U">
+      <button
+        type="button"
+        onClick={() => set({ view: view === 'usage' ? 'sessions' : 'usage' })}
+        className={cn(
+          'no-drag flex h-7 items-center gap-3 rounded-md px-2 text-2xs transition-colors hover:bg-hover',
+          view === 'usage' && 'bg-selected'
+        )}
+      >
+        {both && limits && (limits.fiveHour || limits.sevenDay) && (
+          <span className="inline-flex items-center gap-3">
+            <ClaudeIcon className="size-3 text-subtle-foreground" aria-label="Claude" />
+            <Dot pct={c5.pct} label="5h" freshness={c5.f} />
+            <Dot pct={c7.pct} label="Week" freshness={c7.f} />
+          </span>
+        )}
+        {codex?.hasData ? (
+          <CodexDots t={t} withIcon />
+        ) : (
+          <span className="inline-flex items-center gap-1.5 text-muted-foreground">
+            <Gauge className="size-3.5" /> Usage
+          </span>
+        )}
+      </button>
+    </Tooltip>
+  )
+}
+
+function ClaudeMiniGauges() {
   const limits = useApp((s) => s.limits)
   const view = useApp((s) => s.view)
   const set = useApp((s) => s.set)

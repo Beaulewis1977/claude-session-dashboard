@@ -38,7 +38,16 @@ export function useLiveData(enabled = true): void {
   const set = useApp((s) => s.set)
   useEffect(() => {
     if (!enabled) return
-    const loadLimits = async (): Promise<void> => set({ limits: await api.getLimits() })
+    // Claude Code's and Codex's limits, loaded together (one change event for both).
+    const loadLimits = async (): Promise<void> => {
+      const [limits, codexLimits] = await Promise.all([
+        api.getLimits(),
+        Promise.resolve()
+          .then(() => api.getCodexLimits())
+          .catch(() => null)
+      ])
+      set({ limits, codexLimits })
+    }
     const loadCredits = async (): Promise<void> => set({ credits: await api.getCredits() })
     void loadLimits()
     void loadCredits()

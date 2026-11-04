@@ -20,20 +20,8 @@ import { Button } from '../ui/button'
 import { Tooltip } from '../ui/tooltip'
 import { levelOf, LEVEL_COLOR, useNow } from '@/lib/meter-hooks'
 import { creditsEmptyText } from '@/lib/billing'
+import { when } from '@/lib/usage-format'
 import { Card, CardHeader, CountUp, RingGauge, Skeleton, Sparkline } from './primitives'
-
-const timeFmt = new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' })
-const dayTimeFmt = new Intl.DateTimeFormat(undefined, {
-  weekday: 'short',
-  hour: 'numeric',
-  minute: '2-digit'
-})
-
-function when(ts: number, t: number): string {
-  return ts - t < 20 * 3_600_000 && new Date(ts).getDate() === new Date(t).getDate()
-    ? timeFmt.format(ts)
-    : dayTimeFmt.format(ts)
-}
 
 /**
  * A thin bar: how much is used (fill) against the pace target, cap × elapsed
@@ -130,11 +118,14 @@ function paceText(g: GaugeState, t: number): { text: string; tone: 'calm' | 'war
 export function LimitCard({
   kind,
   limits,
-  onEnable
+  onEnable,
+  compact
 }: {
   kind: 'five_hour' | 'seven_day'
   limits: LimitsState | null
   onEnable: () => void
+  /** A smaller ring (the All view, next to Codex's gauges). */
+  compact?: boolean
 }) {
   const t = useNow()
   const g = kind === 'five_hour' ? limits?.fiveHour : limits?.sevenDay
@@ -166,7 +157,7 @@ export function LimitCard({
       <Card className="p-5">
         <CardHeader title={title} info={info} subtitle="Estimate from session logs" />
         <div className="mt-4 flex items-center gap-5">
-          <RingGauge pct={undefined} dim>
+          <RingGauge pct={undefined} dim {...(compact ? { size: 112, stroke: 9 } : {})}>
             {b ? (
               <>
                 <div className="text-[26px] leading-none font-semibold tracking-tight tabular-nums">
@@ -203,54 +194,137 @@ export function LimitCard({
   if (freshness === 'stale') {
     const b = kind === 'five_hour' ? limits.block : undefined
     return (
-      <Card className="p-5">
-        <CardHeader
-          title={title}
-          info={info}
-          right={<UpdatedLabel ts={g.updatedAt} t={t} freshness={freshness} />}
-        />
-        <div className="mt-4 flex items-center gap-5">
-          <RingGauge pct={undefined} dim>
-            <div className="px-4 text-center text-[13px] leading-tight font-medium text-muted-foreground">
-              No recent reading
-            </div>
-          </RingGauge>
-          <div className="min-w-0 flex-1 space-y-2 text-xs text-muted-foreground">
+      <StaleGaugeCard
+        compact={compact}
+        title={title}
+        info={info}
+        g={g}
+        why={whyNoLiveReading(limits, t, kind)}
+        extra={
+          b && (
             <div>
-              <div className="text-2xs font-medium tracking-wide text-subtle-foreground uppercase">
-                Last known
-              </div>
-              <div className="text-[15px] font-semibold text-foreground tabular-nums">
-                {lastKnown(g, t)}
-              </div>
+              {formatTokens(b.total)} tokens in your logs this block · ends {when(b.end, t)}
             </div>
-            {b && (
-              <div>
-                {formatTokens(b.total)} tokens in your logs this block · ends {when(b.end, t)}
-              </div>
-            )}
-            <p className="leading-relaxed">{whyNoLiveReading(limits, t, kind)}</p>
-          </div>
-        </div>
+          )
+        }
+      >
         {kind === 'seven_day' && <WeeklyBuckets limits={limits} t={t} />}
-      </Card>
+      </StaleGaugeCard>
     )
   }
 
+  return (
+    <LiveGaugeCard
+      compact={compact}
+      title={title}
+      info={info}
+      g={g}
+      paceState={kind === 'five_hour' ? limits.pace5h : limits.pace7d}
+      refreshHint={REFRESH_HINT}
+    >
+      {kind === 'seven_day' && <WeeklyBuckets limits={limits} t={t} />}
+    </LiveGaugeCard>
+  )
+}
+
+/** A window whose newest reading is from before it reset: the last known value and why. */
+export function StaleGaugeCard({
+  title,
+  info,
+  g,
+  why,
+  extra,
+  children,
+  className,
+  compact
+}: {
+  title: string
+  info: string
+  g: GaugeState
+  why?: string
+  extra?: React.ReactNode
+  children?: React.ReactNode
+  className?: string
+  /** A smaller ring (the All view, two providers side by side). */
+  compact?: boolean
+}) {
+  const t = useNow()
+  return (
+    <Card className={cn('p-5', className)}>
+      <CardHeader
+        title={title}
+        info={info}
+        right={<UpdatedLabel ts={g.updatedAt} t={t} freshness={freshnessOf(g, t)} />}
+      />
+      <div className="mt-4 flex items-center gap-5">
+        <RingGauge pct={undefined} dim {...(compact ? { size: 112, stroke: 9 } : {})}>
+          <div className="px-4 text-center text-[13px] leading-tight font-medium text-muted-foreground">
+            No recent reading
+          </div>
+        </RingGauge>
+        <div className="min-w-0 flex-1 space-y-2 text-xs text-muted-foreground">
+          <div>
+            <div className="text-2xs font-medium tracking-wide text-subtle-foreground uppercase">
+              Last known
+            </div>
+            <div className="text-[15px] font-semibold text-foreground tabular-nums">
+              {lastKnown(g, t)}
+            </div>
+          </div>
+          {extra}
+          <p className="leading-relaxed">{why}</p>
+        </div>
+      </div>
+      {children}
+    </Card>
+  )
+}
+
+/** A window with a current reading: the ring, tokens, reset time, pace and its line. */
+export function LiveGaugeCard({
+  title,
+  info,
+  g,
+  paceState,
+  refreshHint,
+  children,
+  className,
+  compact
+}: {
+  title: string
+  info: string
+  g: GaugeState
+  paceState?: PaceState
+  refreshHint: string
+  children?: React.ReactNode
+  className?: string
+  /** A smaller ring (the All view, two providers side by side). */
+  compact?: boolean
+}) {
+  const t = useNow()
+  const freshness = freshnessOf(g, t)
   const pace = paceText(g, t)
-  const paceState = kind === 'five_hour' ? limits.pace5h : limits.pace7d
   const level = levelOf(g.pct)
   const stale = freshness === 'aging'
   return (
-    <Card className="p-5">
+    <Card className={cn('p-5', className)}>
       <CardHeader
         title={title}
         info={info}
         right={<UpdatedLabel ts={g.updatedAt} t={t} freshness={freshness} />}
       />
       <div className="mt-4 flex items-center gap-5">
-        <RingGauge pct={g.pct} target={paceState?.target}>
-          <div className="text-[34px] leading-none font-semibold tracking-[-0.03em] tabular-nums">
+        <RingGauge
+          pct={g.pct}
+          target={paceState?.target}
+          {...(compact ? { size: 112, stroke: 9 } : {})}
+        >
+          <div
+            className={cn(
+              'leading-none font-semibold tracking-[-0.03em] tabular-nums',
+              compact ? 'text-[26px]' : 'text-[34px]'
+            )}
+          >
             <CountUp value={g.pct} format={(n) => `${Math.round(n)}%`} />
           </div>
           <div className="mt-1.5 text-[11px] text-muted-foreground">
@@ -313,10 +387,10 @@ export function LimitCard({
       )}
       {stale && (
         <div className="mt-1 text-[11px] font-medium text-[var(--gauge-warn-text)]">
-          Last updated {ago(g.updatedAt, t)}. {REFRESH_HINT}
+          Last updated {ago(g.updatedAt, t)}. {refreshHint}
         </div>
       )}
-      {kind === 'seven_day' && <WeeklyBuckets limits={limits} t={t} />}
+      {children}
     </Card>
   )
 }

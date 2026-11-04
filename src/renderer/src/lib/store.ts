@@ -11,6 +11,7 @@ import {
 } from '@shared/types'
 import type { CreditsState } from '@shared/usage/credits'
 import type { LimitsState } from '@shared/usage/limits'
+import type { CodexLimitsState } from '@shared/usage/codex'
 import type { LiveSnapshot } from '@shared/live'
 import { EMPTY_SUMMARY_QUEUE, type SummaryQueueState } from '@shared/summary-queue'
 import { EMPTY_FILTERS, type Filters, type SortKey } from './filters'
@@ -80,6 +81,8 @@ interface State {
   settings: AppSettings
   loaded: boolean
   limits: LimitsState | null
+  /** Codex's plan limits, from its logs (null until loaded, or when Codex is off). */
+  codexLimits: CodexLimitsState | null
   credits: CreditsState | null
   /** Running now (null until loaded). */
   live: LiveSnapshot | null
@@ -128,6 +131,7 @@ export const useApp = create<State>((set) => ({
   settings: DEFAULT_SETTINGS,
   loaded: false,
   limits: null,
+  codexLimits: null,
   credits: null,
   live: null,
 

@@ -387,6 +387,8 @@ async function main(): Promise<void> {
     () => settings.value,
     paths.dataDir
   )
+  // The mini meter, once it exists: fit it to what it shows after a settings change.
+  let refitMeter = (): void => undefined
   // Codex's settings (plan, baseline, its own price table), with defaults; worked out
   // again only when the settings change.
   let codexCache: { from: unknown; value: ReturnType<typeof codexUsageSettings> } | undefined
@@ -422,6 +424,7 @@ async function main(): Promise<void> {
     onSettingsChanged: () => {
       usage.emit('changed')
       mobile?.push('settings')
+      refitMeter()
     }
   })
   const bridgeStore = createBridgeStore(paths.dataDir)
@@ -545,6 +548,7 @@ async function main(): Promise<void> {
     dataDir: paths.dataDir,
     usage,
     limits,
+    codex: { limits: codexLimits, prices: () => codexSettings().codexPrices },
     settings,
     runner: printRunner,
     simulate: FIXTURES
@@ -738,6 +742,7 @@ async function main(): Promise<void> {
     loadRenderer,
     lockNavigation
   })
+  refitMeter = meter.refit
   createWindow(settings.value.window)
   meter.restore()
 

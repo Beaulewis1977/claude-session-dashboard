@@ -22,7 +22,15 @@ import type {
 import { formatInt, formatTokens, formatUsd } from '@shared/format'
 import { bucketLabel } from '@/lib/usage-format'
 import { cn } from '@/lib/utils'
-import { modelColor, modelLabel, TOKEN_META, TOKEN_ORDER } from '@/lib/usage-colors'
+import {
+  modelColor,
+  modelLabel,
+  PROVIDER_COLOR,
+  TOKEN_META,
+  TOKEN_ORDER,
+  tokenLabel
+} from '@/lib/usage-colors'
+import { PROVIDER_LABEL } from '@shared/provider'
 import { Segmented } from '../ui/segmented'
 import { Tooltip } from '../ui/tooltip'
 import { Card, CardHeader, CountUp, Skeleton, Sparkline } from './primitives'
@@ -155,14 +163,20 @@ export function ModelChips({
 
 // ----------------------------------------------------------- main chart
 
+const PROVIDERS = ['claude', 'codex'] as const
+
 function ChartTooltip({
   active,
   payload,
-  period
+  period,
+  byProvider,
+  provider
 }: {
   active?: boolean
   payload?: { payload: SeriesPoint }[]
   period: Period
+  byProvider?: boolean
+  provider?: 'claude' | 'codex'
 }) {
   const p = payload?.[0]?.payload
   if (!active || !p) return null
@@ -170,13 +184,27 @@ function ChartTooltip({
     <div className="min-w-[210px] rounded-lg border border-border bg-popover px-3 py-2.5 text-xs text-popover-foreground shadow-xl">
       <div className="mb-1.5 font-medium">{bucketLabel(p, period, true)}</div>
       <div className="space-y-1">
-        {[...TOKEN_ORDER].reverse().map((t) => (
-          <div key={t} className="flex items-center gap-2">
-            <span className="size-2 rounded-sm" style={{ background: TOKEN_META[t].color }} />
-            <span className="flex-1 text-muted-foreground">{TOKEN_META[t].label}</span>
-            <span className="tabular-nums">{formatInt(p[t])}</span>
+        {byProvider
+          ? [...PROVIDERS].reverse().map((id) => (
+              <div key={id} className="flex items-center gap-2">
+                <span className="size-2 rounded-sm" style={{ background: PROVIDER_COLOR[id] }} />
+                <span className="flex-1 text-muted-foreground">{PROVIDER_LABEL[id]}</span>
+                <span className="tabular-nums">{formatInt(p.byProvider?.[id] ?? 0)}</span>
+              </div>
+            ))
+          : [...TOKEN_ORDER].reverse().map((t) => (
+              <div key={t} className="flex items-center gap-2">
+                <span className="size-2 rounded-sm" style={{ background: TOKEN_META[t].color }} />
+                <span className="flex-1 text-muted-foreground">{tokenLabel(t, provider)}</span>
+                <span className="tabular-nums">{formatInt(p[t])}</span>
+              </div>
+            ))}
+        {!byProvider && !!p.reasoning && (
+          <div className="flex items-center gap-2 pl-4 text-subtle-foreground">
+            <span className="flex-1">of which reasoning</span>
+            <span className="tabular-nums">{formatInt(p.reasoning)}</span>
           </div>
-        ))}
+        )}
       </div>
       <div className="mt-1.5 flex items-center gap-2 border-t border-border pt-1.5 font-medium">
         <span className="flex-1">Total</span>
@@ -197,7 +225,11 @@ export function MainChart({
   range,
   models,
   selectedModels,
-  onModels
+  onModels,
+  byProvider,
+  provider,
+  title,
+  extraRight
 }: {
   report: UsageReport | null
   period: Period
@@ -206,17 +238,31 @@ export function MainChart({
   models: string[]
   selectedModels: string[]
   onModels: (m: string[]) => void
+  /** Stack by provider (the All view) instead of by token type. */
+  byProvider?: boolean
+  /** Whose usage this chart shows alone (names token types as that provider does). */
+  provider?: 'claude' | 'codex'
+  title?: string
+  /** More controls (the All view's stacked / split switch). */
+  extraRight?: ReactNode
 }) {
   const data = report?.series ?? []
   const empty = report && !report.loading && data.every((p) => p.total === 0)
   return (
     <Card className="p-5">
       <CardHeader
-        title="Tokens over time"
-        subtitle={`How many tokens you used each ${period === 'hour' ? 'hour' : period}, by type`}
-        info="Cache reads are tokens Claude re-reads from the prompt cache; they are cheap and make up most of the volume in Claude Code. Each API response is counted once."
+        title={title ?? 'Tokens over time'}
+        subtitle={`How many tokens you used each ${period === 'hour' ? 'hour' : period}, ${byProvider ? 'by provider' : 'by type'}`}
+        info={
+          provider === 'codex'
+            ? "From Codex's token counts: input includes cached input (shown apart here), output includes reasoning. Each response is counted once, also when a fork copies its parent's history."
+            : byProvider
+              ? "Claude Code and Codex stacked. Each response is counted once (Codex forks copy their parent's history; those copies are left out)."
+              : 'Cache reads are tokens Claude re-reads from the prompt cache; they are cheap and make up most of the volume in Claude Code. Each API response is counted once.'
+        }
         right={
           <>
+            {extraRight}
             {range}
             <Segmented
               ariaLabel="Group by"
@@ -263,41 +309,89 @@ export function MainChart({
                 width={44}
               />
               <RTooltip
-                content={<ChartTooltip period={period} />}
+                content={
+                  <ChartTooltip period={period} byProvider={byProvider} provider={provider} />
+                }
                 cursor={{ stroke: 'var(--chart-axis)', strokeWidth: 1 }}
                 isAnimationActive={false}
               />
-              {TOKEN_ORDER.map((t) => (
-                <Area
-                  key={t}
-                  type="monotone"
-                  dataKey={t}
-                  name={TOKEN_META[t].label}
-                  stackId="tokens"
-                  stroke="var(--card)"
-                  strokeWidth={1.5}
-                  fill={TOKEN_META[t].color}
-                  fillOpacity={0.88}
-                  activeDot={false}
-                  animationDuration={380}
-                />
-              ))}
+              {byProvider &&
+                PROVIDERS.map((id) => (
+                  <Area
+                    key={id}
+                    type="monotone"
+                    dataKey={(p: SeriesPoint) => p.byProvider?.[id] ?? 0}
+                    name={PROVIDER_LABEL[id]}
+                    stackId="providers"
+                    stroke="var(--card)"
+                    strokeWidth={1.5}
+                    fill={PROVIDER_COLOR[id]}
+                    fillOpacity={0.88}
+                    activeDot={false}
+                    animationDuration={380}
+                  />
+                ))}
+              {!byProvider &&
+                TOKEN_ORDER.map((t) => (
+                  <Area
+                    key={t}
+                    type="monotone"
+                    dataKey={t}
+                    name={TOKEN_META[t].label}
+                    stackId="tokens"
+                    stroke="var(--card)"
+                    strokeWidth={1.5}
+                    fill={TOKEN_META[t].color}
+                    fillOpacity={0.88}
+                    activeDot={false}
+                    animationDuration={380}
+                  />
+                ))}
             </AreaChart>
           </ResponsiveContainer>
         )}
       </div>
       <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
-        {[...TOKEN_ORDER].reverse().map((t) => (
-          <span key={t} className="inline-flex items-center gap-1.5">
-            <span className="size-2.5 rounded-[3px]" style={{ background: TOKEN_META[t].color }} />
-            {TOKEN_META[t].label}
-            {report && (
-              <span className="text-subtle-foreground tabular-nums">
-                {formatTokens(report.totals[t])}
+        {byProvider
+          ? [...PROVIDERS].reverse().map((id) => (
+              <span key={id} className="inline-flex items-center gap-1.5">
+                <span
+                  className="size-2.5 rounded-[3px]"
+                  style={{ background: PROVIDER_COLOR[id] }}
+                />
+                {PROVIDER_LABEL[id]}
+                {report && (
+                  <span className="text-subtle-foreground tabular-nums">
+                    {formatTokens(report.series.reduce((a, p) => a + (p.byProvider?.[id] ?? 0), 0))}
+                  </span>
+                )}
               </span>
-            )}
-          </span>
-        ))}
+            ))
+          : [...TOKEN_ORDER].reverse().map((t) => (
+              <span key={t} className="inline-flex items-center gap-1.5">
+                <span
+                  className="size-2.5 rounded-[3px]"
+                  style={{ background: TOKEN_META[t].color }}
+                />
+                {tokenLabel(t, provider)}
+                {report && (
+                  <span className="text-subtle-foreground tabular-nums">
+                    {formatTokens(report.totals[t])}
+                  </span>
+                )}
+              </span>
+            ))}
+        {!byProvider && !!report?.totals.reasoning && (
+          <Tooltip content="Reasoning tokens are part of the output; they aren't counted twice.">
+            <span className="inline-flex items-center gap-1.5">
+              <span className="size-2.5 rounded-[3px] border border-dashed border-[var(--tok-output)]" />
+              Reasoning (in output)
+              <span className="text-subtle-foreground tabular-nums">
+                {formatTokens(report.totals.reasoning)}
+              </span>
+            </span>
+          </Tooltip>
+        )}
         {report && (
           <span className="ml-auto tabular-nums">
             {formatTokens(report.totals.total)} total · ≈ {formatUsd(report.totals.cost)}

@@ -363,6 +363,8 @@ export interface CodexLimitsState {
   alertsEnabled: boolean
   alertThresholds: number[]
   readings: number
+  /** Every model in Codex's usage (for "new model detected"). */
+  models: string[]
 }
 
 /** Codex's own refresh hint (its limits come with each reply). */

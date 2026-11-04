@@ -11,6 +11,16 @@ import { useNow } from '@/lib/meter-hooks'
 import { useApp } from '@/lib/store'
 import { useThemeEffect } from '@/lib/theme'
 import { RingGauge } from './primitives'
+import { PROVIDER_ICON } from '@/lib/provider-icons'
+import { PROVIDER_LABEL } from '@shared/provider'
+
+/** A provider's icon at the start of its row (both providers shown). */
+function ProviderTag({ p }: { p: 'claude' | 'codex' }) {
+  const Icon = PROVIDER_ICON[p]
+  return (
+    <Icon className="size-3.5 shrink-0 text-subtle-foreground" aria-label={PROVIDER_LABEL[p]} />
+  )
+}
 
 /** The always-on-top mini meter window (#mini). Drag it anywhere; it remembers where. */
 export function MiniMeter() {
@@ -32,6 +42,8 @@ export function MiniMeter() {
 
 function MiniMeterBody() {
   const limits = useApp((s) => s.limits)
+  const codex = useApp((s) => s.codexLimits)
+  const mp = useApp((s) => s.settings.meterProvider ?? 'claude')
   const credits = useApp((s) => s.credits)
   const t = useNow(30_000)
   const remaining = credits?.summaries.reduce((a, s) => a + s.remaining, 0) ?? 0
@@ -82,10 +94,20 @@ function MiniMeterBody() {
       >
         <X className="size-3.5" />
       </button>
-      <div className="flex items-center gap-4">
-        {gauge('5-hour', limits?.fiveHour)}
-        {gauge('Week', limits?.sevenDay)}
-      </div>
+      {mp !== 'codex' && (
+        <div className="flex items-center gap-4">
+          {mp === 'both' && <ProviderTag p="claude" />}
+          {gauge('5-hour', limits?.fiveHour)}
+          {gauge('Week', limits?.sevenDay)}
+        </div>
+      )}
+      {mp !== 'claude' && (
+        <div className="flex items-center gap-4">
+          {mp === 'both' && <ProviderTag p="codex" />}
+          {codex?.fiveHourRecent && gauge(mp === 'both' ? '5-hour' : 'Codex 5h', codex.fiveHour)}
+          {gauge(mp === 'both' ? 'Week' : 'Codex week', codex?.sevenDay)}
+        </div>
+      )}
       {hasCredits && (
         <div className="flex items-center justify-between border-t border-border pt-1.5 text-[11px]">
           <span className="text-muted-foreground">API credits</span>

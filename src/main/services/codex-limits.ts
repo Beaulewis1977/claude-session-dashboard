@@ -138,6 +138,33 @@ function codexAdvice(a: PaceAdvice | undefined): PaceAdvice | undefined {
 
 export class CodexLimitsService extends EventEmitter<{ changed: [] }> {
   private lastSeen = 0
+  /** Worked-out results for the same data, settings and minute (state() is asked for often). */
+  private memo = new Map<string, unknown>()
+  private memoKey = ''
+
+  /** What the results depend on: the data, the settings and the clock (per 30 s). */
+  private stamp(): string {
+    const rs = this.usage.codexLimitReadings()
+    const recs = this.usage.codexRecords()
+    return [
+      rs.length,
+      rs[rs.length - 1]?.ts ?? 0,
+      recs.length,
+      recs[recs.length - 1]?.ts ?? 0,
+      JSON.stringify(this.settings()),
+      Math.floor(now() / 30_000)
+    ].join('|')
+  }
+
+  private cached<T>(name: string, make: () => T): T {
+    const key = this.stamp()
+    if (key !== this.memoKey) {
+      this.memo.clear()
+      this.memoKey = key
+    }
+    if (!this.memo.has(name)) this.memo.set(name, make())
+    return this.memo.get(name) as T
+  }
   private alerted = new Set<string>()
   private started = false
 
@@ -270,6 +297,10 @@ export class CodexLimitsService extends EventEmitter<{ changed: [] }> {
   }
 
   health(kind: WindowKind): HealthReport {
+    return this.cached(`health:${kind}`, () => this.healthNow(kind))
+  }
+
+  private healthNow(kind: WindowKind): HealthReport {
     const s = this.settings()
     return healthReport(bridgeWindowReadings(this.bridge(), kind), this.usage.codexRecords(), {
       kind,
@@ -301,6 +332,10 @@ export class CodexLimitsService extends EventEmitter<{ changed: [] }> {
   }
 
   state(): CodexLimitsState {
+    return this.cached('state', () => this.stateNow())
+  }
+
+  private stateNow(): CodexLimitsState {
     const s = this.settings()
     const t = now()
     const readings = this.readings()
@@ -433,7 +468,8 @@ export class CodexLimitsService extends EventEmitter<{ changed: [] }> {
       limitHits: hits,
       alertsEnabled: s.alertsEnabled,
       alertThresholds: [...s.alertThresholds],
-      readings: readings.length
+      readings: readings.length,
+      models: [...new Set(records.map((r) => r.model))].sort()
     }
   }
 }

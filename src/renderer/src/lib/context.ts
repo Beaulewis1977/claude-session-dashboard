@@ -27,7 +27,7 @@ export function resumeSentence(e: ResumeEstimate): string {
       ? `Resuming costs about ${formatUsd(c.costUsd)} in API credits (it doesn't use your 5-hour window)`
       : `Resuming reloads about ${formatTokens(e.tokens)} tokens on API credits`
   if (c.pct5h !== undefined)
-    return `Resuming may use about ${pctText(c.pct5h)} of your 5-hour window`
+    return `Resuming may use about ${pctText(c.pct5h)} of your ${e.pctWindow === 'seven_day' ? 'weekly limit' : '5-hour window'}`
   return `Resuming reloads about ${formatTokens(e.tokens)} tokens`
 }
 
@@ -81,11 +81,21 @@ const SOURCE: Record<ResumeEstimate['from'], string> = {
   'status-line': "Claude Code's status line"
 }
 
+/** Codex: its own log, not a status line. */
+const CODEX_SOURCE: Record<ResumeEstimate['from'], string> = {
+  usage: "the last response's token count in Codex's log",
+  compaction: 'the compaction summary (no response since the last compaction)',
+  'status-line': "Codex's log"
+}
+
 /** The ⓘ text: how the estimate is worked out. */
 export function estimateExplainer(e: ResumeEstimate): string {
+  const codex = e.windowFrom === 'codex-log' || !!e.cacheNote
   const lines = [
-    `Estimate. The context size (${formatInt(e.tokens)} tokens) comes from ${SOURCE[e.from]}. The window: ${windowSource(e)}`,
-    `Resuming sends the whole conversation again. Priced as ${e.model} at API list prices: the first message writes it to the prompt cache (${CACHE[e.cache]}), and each later message reads it from the cache.`
+    `Estimate. The context size (${formatInt(e.tokens)} tokens) comes from ${(codex ? CODEX_SOURCE : SOURCE)[e.from]}. The window: ${windowSource(e)}`,
+    codex
+      ? `Resuming sends the whole conversation again. Priced as ${e.model} at OpenAI's API list prices (Codex's price table). ${e.cacheNote ?? ''}`.trim()
+      : `Resuming sends the whole conversation again. Priced as ${e.model} at API list prices: the first message writes it to the prompt cache (${CACHE[e.cache]}), and each later message reads it from the cache.`
   ]
   if (e.otherScope)
     lines.push(
@@ -97,7 +107,11 @@ export function estimateExplainer(e: ResumeEstimate): string {
     )
   if (e.billing === 'api') lines.push("On API credits, this doesn't use your 5-hour window.")
   else if (e.basis === 'baseline')
-    lines.push('The share of the 5-hour window comes from your limit-health baseline ($ per 1%).')
+    lines.push(
+      codex
+        ? `The share of your ${e.pctWindow === 'seven_day' ? 'weekly limit' : '5-hour window'} comes from your Codex limit-health baseline ($ per 1%).`
+        : 'The share of the 5-hour window comes from your limit-health baseline ($ per 1%).'
+    )
   else if (e.basis === 'window')
     lines.push(
       "There's no limit-health baseline yet, so the share comes from this window's own use so far (subscription use only)."

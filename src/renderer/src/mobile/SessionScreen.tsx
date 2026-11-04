@@ -473,7 +473,7 @@ export function SessionScreen({ session }: { session: SessionSummary }) {
               ? 'Read-only mode is on (change it on your PC)'
               : caps.remoteControl
                 ? 'Opens on your PC with Remote Control'
-                : `Opens ${product} on your PC (it asks before running commands)`}
+                : `Opens ${product} on your PC (sandboxed, approval on request, no bypass)`}
           </div>
         </footer>
       )}

@@ -5,6 +5,7 @@
 
 import { createHash } from 'node:crypto'
 import { EventEmitter } from 'node:events'
+import { existsSync } from 'node:fs'
 import { readFile, stat } from 'node:fs/promises'
 import { join } from 'node:path'
 import { withStatusLine, type StatusContext } from '@shared/context'
@@ -101,6 +102,9 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
   ) {
     super()
   }
+
+  /** Per session: how many file reads have started (see loadFile). */
+  private loadSeq = new Map<string, number>()
 
   /** Which provider each entry was loaded with (kept when its source goes away). */
   private owner = new Map<string, ProviderId>()
@@ -670,17 +674,23 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
         archivePath: record?.archivePath ?? cached.base.archivePath
       }
       const pv = provider.parseVersion
+      this.loadSeq.set(key, (this.loadSeq.get(key) ?? 0) + 1)
       this.owner.set(key, provider.id)
       this.entries.set(key, { base, size: f.size, mtimeMs: f.mtimeMs, ...(pv ? { pv } : {}) })
       this.queueArchive(src, base)
       return
     }
+    // Overlapping events (a big rollout moved or compressed while it was read): only
+    // the read started last is kept, so an older, slower one can't put stale data back.
+    const seq = (this.loadSeq.get(key) ?? 0) + 1
+    this.loadSeq.set(key, seq)
     let text: string
     try {
       text = await provider.readText(f.path)
     } catch {
       return
     }
+    if (this.loadSeq.get(key) !== seq) return
     // Turned off while the file was being read: nothing of it is kept.
     if (!this.providers.isOn(provider.id)) return
     const { base, searchText } = provider.parseSession(text, f, src)
@@ -746,7 +756,9 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
       if (e.base.availability !== 'live' || !this.isOn(e)) continue
       const provider = this.providerOf(e.base)
       if (provider.id !== 'codex') continue
-      const rec = this.metadata.value.archive[e.base.key]
+      // A record whose copy is gone counts as not archived: the archiver copies it all again.
+      const recorded = this.metadata.value.archive[e.base.key]
+      const rec = recorded && existsSync(recorded.archivePath) ? recorded : undefined
       const add = (t: ArchiveTally): void => {
         const compressed = e.base.filePath.endsWith('.zst')
         t.sessions++
@@ -768,7 +780,7 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
     let archived = 0
     let archivedBytes = 0
     for (const r of Object.values(this.metadata.value.archive))
-      if (r.provider === 'codex') {
+      if (r.provider === 'codex' && existsSync(r.archivePath)) {
         archived++
         archivedBytes += r.size
       }

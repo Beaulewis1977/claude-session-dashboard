@@ -483,10 +483,19 @@ export interface LaunchPlacement {
   distros: string[]
   /** wsl-only: resuming with Windows Codex was opted in. */
   optedIn?: boolean
-  /** Bypass is off and Codex asks before every command, whatever was chosen. */
+  /**
+   * Bypass is off whatever was chosen, and Codex runs in its read-only sandbox
+   * (`-a on-request -s read-only`): a command that would change anything needs approval.
+   * Codex has no policy that asks before every command.
+   */
   askForced?: boolean
   /** The agent's own app can open this session (Codex: `codex://threads/<id>`). */
   appLink?: boolean
+  /**
+   * The folder couldn't be confirmed in WSL (`wslpath`), so it isn't guessed:
+   * nothing is launched until a folder is chosen in the dialog.
+   */
+  needsFolder?: boolean
 }
 
 export interface ContinueFreshRequest {

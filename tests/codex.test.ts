@@ -52,7 +52,7 @@ import {
   readCodexText
 } from '../src/main/providers/codex/read'
 import { CompactTextCache } from '../src/main/providers/codex/text-cache'
-import { parseNameIndex } from '../src/main/providers/codex/sessions'
+import { CodexNames, parseNameIndex } from '../src/main/providers/codex/sessions'
 import { buildCodexLaunch, codexArgs } from '../src/main/providers/codex/launch'
 import { detectCodexSource } from '../src/main/providers/codex/source'
 import { remoteLaunchOptions } from '../src/main/mobile/remote-launch'
@@ -67,7 +67,12 @@ import {
   parseDefaultDistro,
   windowsPathToWsl
 } from '../src/main/core/wsl'
-import { AGENT_ENV_CHARS_REASON, WT_UNC_REASON, type LaunchTools } from '../src/main/core/launch'
+import {
+  AGENT_ENV_CHARS_REASON,
+  CMD_FOLDER_REASON,
+  WT_UNC_REASON,
+  type LaunchTools
+} from '../src/main/core/launch'
 
 const FIXTURES = join(__dirname, '..', 'fixtures')
 const CODEX = join(FIXTURES, 'codex', 'windows', 'Users', 'beau', '.codex')
@@ -1568,7 +1573,8 @@ describe('a session whose folder belongs to the other environment', () => {
     // cmd (and so Windows Terminal) can't start in a \\… folder: PowerShell.
     expect(p.terminal).toBe('powershell')
     expect(p.terminalReason).toBe(WT_UNC_REASON)
-    expect(p.claudeCommand).toContain('-a on-request -s workspace-write')
+    // Read-only sandbox: Codex has no policy that asks before every command.
+    expect(p.claudeCommand).toContain('-a on-request -s read-only')
     expect(p.claudeCommand).toContain('-C ')
     expect(p.claudeCommand).not.toContain('dangerously')
     expect(p.commandLine).not.toContain('dangerously')
@@ -1644,9 +1650,18 @@ describe('a session whose folder belongs to the other environment', () => {
       undefined,
       () => settings.value
     )
-    const onDrive = await launcher.preview({ key: codexOf(sessions.list(), XID.mnt).key, ...base })
-    expect(onDrive.placement).toMatchObject({ runIn: 'windows' })
-    expect(onDrive.launchError).toBeUndefined()
+    // No WSL to confirm what /mnt/c/… is: never guessed, a folder has to be chosen.
+    const key = codexOf(sessions.list(), XID.mnt).key
+    const onDrive = await launcher.preview({ key, ...base })
+    expect(onDrive.placement).toMatchObject({ runIn: 'windows', needsFolder: true })
+    expect(onDrive.launchError).toMatch(/couldn't confirm/)
+    const chosen = await launcher.preview({
+      key,
+      ...base,
+      cwdOverride: 'C:\\Users\\beau\\code\\reddit'
+    })
+    expect(chosen.launchError).toBeUndefined()
+    expect(chosen.claudeCommand).toContain('-C ')
     const linuxOnly = await launcher.preview({
       key: codexOf(sessions.list(), XID.home).key,
       ...base,
@@ -1678,5 +1693,236 @@ describe('a session whose folder belongs to the other environment', () => {
     const p = createCodexProvider()
     expect(p.launch.appLink?.(ID.cli)).toBe(`codex://threads/${ID.cli}`)
     expect(p.launch.appLink?.('not-an-id')).toBeUndefined()
+  })
+})
+
+// ------------------------------------------------------- fourth review
+
+describe('fourth review fixes', () => {
+  const base = { fork: false, skipPermissions: false }
+
+  it('a WSL folder run from Windows is read-only unless approved (no false "every command")', () => {
+    expect(
+      codexArgs({
+        sessionId: ID.cli,
+        fork: false,
+        bypass: false,
+        askPermissions: true,
+        readOnly: true
+      })
+    ).toEqual(['resume', '-a', 'on-request', '-s', 'read-only', ID.cli])
+    expect(
+      codexArgs({ sessionId: ID.cli, fork: false, bypass: false, askPermissions: true })
+    ).toEqual(['resume', '-a', 'on-request', '-s', 'workspace-write', ID.cli])
+  })
+
+  it('a /mnt folder that WSL says is a Linux folder is never taken for C:\\…', async () => {
+    const t = await setup()
+    const winHome = dirname(
+      dirname(dirname(dirname(dirname(codexOf(t.sessions.list(), ID.cli).originalPath))))
+    )
+    const id = '019adddd-0000-7000-8000-00000000000d'
+    const day = join(winHome, 'sessions', '2026', '10', '24')
+    await mkdir(day, { recursive: true })
+    await writeFile(
+      join(day, `rollout-2026-10-24T10-00-00-${id}.jsonl`),
+      JSON.stringify({
+        type: 'session_meta',
+        payload: { id, cwd: '/mnt/c/project', originator: 'Codex Desktop' }
+      }) + '\n'
+    )
+    await t.sessions.rescan()
+    // A custom wsl.conf: drives mounted elsewhere, so /mnt/c is a Linux folder.
+    const customMounts = {
+      ...createFixturesPlatform(t.layout.fixturesDir, t.layout.sourcesDir),
+      wslWindowsPath: async (distro: string, p: string) =>
+        `\\\\wsl.localhost\\${distro}${p.replace(/\//g, '\\')}`
+    }
+    const launcher = new Launcher(
+      customMounts,
+      t.sessions,
+      () => 'wt',
+      undefined,
+      () => t.settings.value
+    )
+    const p = await launcher.preview({ key: codexOf(t.sessions.list(), id).key, ...base })
+    expect(p.placement?.kind).toBe('wsl-only')
+    expect(p.cwd).not.toBe('C:\\project')
+  })
+
+  it('pairs an older event with its item only when they are next to each other', () => {
+    const ev = (type: string, message: string): string =>
+      JSON.stringify({ type: 'event_msg', payload: { type, message } })
+    const item = (role: string, text: string): string =>
+      JSON.stringify({
+        type: 'response_item',
+        payload: {
+          type: 'message',
+          role,
+          content: [{ type: role === 'user' ? 'input_text' : 'output_text', text }]
+        }
+      })
+    const filler = Array.from({ length: 20 }, (_, i) =>
+      JSON.stringify({
+        type: 'response_item',
+        payload: { type: 'reasoning', summary: [{ text: `r${i}` }] }
+      })
+    )
+    const text = [
+      ev('user_message', 'yes'), // an older, event-only turn
+      ev('agent_message', 'done'),
+      ...filler,
+      item('user', 'yes'), // a later, separate turn with the same text
+      ev('user_message', 'yes'), // ... and its own event copy, right next to it
+      item('assistant', 'ok')
+    ].join('\n')
+    const texts = buildCodexMessages(text)
+      .filter((m) => m.role === 'user')
+      .map((m) => (m.blocks[0] as { text: string }).text)
+    expect(texts).toEqual(['yes', 'yes'])
+  })
+
+  it('a folder chosen in the dialog is given to Codex with -C', async () => {
+    const { sessions, launcher } = await setup()
+    const p = await launcher.preview({
+      key: codexOf(sessions.list(), ID.cli).key,
+      ...base,
+      cwdOverride: 'C:\\Users\\beau\\code\\elsewhere'
+    })
+    expect(p.claudeCommand).toMatch(/resume -C '?C:\\Users\\beau\\code\\elsewhere'? /)
+  })
+
+  it('a -C folder cmd would expand (% or !) makes the launch use PowerShell', () => {
+    const cmd = buildCodexLaunch({
+      sessionId: ID.cli,
+      fork: false,
+      skipPermissions: false,
+      terminal: 'cmd',
+      tools: TOOLS,
+      env: 'windows',
+      cwd: 'C:\\work\\%USERNAME%',
+      passCwd: true
+    })
+    expect(cmd).toMatchObject({ terminal: 'powershell', terminalReason: CMD_FOLDER_REASON })
+    // Without -C the folder never reaches cmd's parser (cmd starts in it).
+    const plain = buildCodexLaunch({
+      sessionId: ID.cli,
+      fork: false,
+      skipPermissions: false,
+      terminal: 'cmd',
+      tools: TOOLS,
+      env: 'windows',
+      cwd: 'C:\\work\\%USERNAME%'
+    })
+    expect(plain.terminal).toBe('cmd')
+  })
+
+  it('the copied Windows command quotes its arguments for PowerShell', () => {
+    const cmd = buildCodexLaunch({
+      sessionId: ID.cli,
+      fork: false,
+      skipPermissions: false,
+      terminal: 'powershell',
+      tools: TOOLS,
+      env: 'windows',
+      cwd: "C:\\Users\\beau\\it's here",
+      passCwd: true,
+      agentEnv: { CODEX_HOME: 'C:\\Users\\beau\\.codex' }
+    })
+    expect(cmd.claudeCommand).toBe(
+      `$env:CODEX_HOME = 'C:\\Users\\beau\\.codex'; codex resume -C 'C:\\Users\\beau\\it''s here' ${ID.cli}`
+    )
+  })
+
+  it('keeps images only as their type (no image data in the compact text)', () => {
+    const data = `data:image/png;base64,${'A'.repeat(200_000)}`
+    const line = compactLine(
+      JSON.stringify({
+        type: 'response_item',
+        payload: {
+          type: 'message',
+          role: 'user',
+          content: [
+            { type: 'input_text', text: 'look at this' },
+            { type: 'input_image', image_url: data }
+          ]
+        }
+      })
+    )!
+    expect(line.length).toBeLessThan(1000)
+    expect(JSON.parse(line).payload.content[1]).toEqual({ type: 'input_image' })
+    const blocks = buildCodexMessages(line)[0].blocks
+    expect(blocks.some((b) => b.type === 'image')).toBe(true)
+    const ev = compactLine(
+      JSON.stringify({
+        type: 'event_msg',
+        payload: { type: 'user_message', message: 'hi', images: [data] }
+      })
+    )!
+    expect(ev.length).toBeLessThan(1000)
+  })
+
+  it('an older, slower read of a rollout never replaces a newer one', async () => {
+    const codex = createCodexProvider()
+    const providers = new ProviderRegistry([claudeProvider, codex])
+    const { sessions } = await setup({ providers })
+    const s = codexOf(sessions.list(), ID.cli)
+    const read = codex.readText
+    let release!: () => void
+    const gate = new Promise<void>((r) => (release = r))
+    let calls = 0
+    codex.readText = async (path, purpose) => {
+      const n = ++calls
+      const text = await read(path, purpose)
+      if (n === 1) {
+        await gate
+        // The older read: one more message than the file has now.
+        return (
+          text +
+          '\n' +
+          JSON.stringify({
+            type: 'response_item',
+            payload: {
+              type: 'message',
+              role: 'user',
+              content: [{ type: 'input_text', text: 'STALE PROMPT' }]
+            }
+          })
+        )
+      }
+      return text
+    }
+    const fresh = s.messageCount
+    await writeFile(s.originalPath, (await readFile(s.originalPath, 'utf8')) + '\n')
+    const older = sessions.fileChanged(s.sourceId, s.originalPath)
+    await new Promise((r) => setTimeout(r, 30))
+    await writeFile(s.originalPath, (await readFile(s.originalPath, 'utf8')) + '\n')
+    await sessions.fileChanged(s.sourceId, s.originalPath)
+    release()
+    await older
+    expect(codexOf(sessions.list(), ID.cli).messageCount).toBe(fresh)
+  })
+
+  it('the archive estimate counts a record whose copy is gone as not archived', async () => {
+    const { sessions, metadata } = await setup({ codexArchive: 'all' })
+    const before = sessions.codexArchiveEstimate()
+    expect(before.all.newBytes).toBe(0)
+    const rec = Object.values(metadata.value.archive).find((r) => r.provider === 'codex')!
+    await rm(rec.archivePath)
+    const after = sessions.codexArchiveEstimate()
+    expect(after.all.newBytes).toBeGreaterThan(0)
+    expect(after.archived).toBe(before.archived - 1)
+  })
+
+  it('the same Codex name given again later counts as a change (newest wins)', async () => {
+    const home = join(root, 'names-home')
+    await mkdir(home, { recursive: true })
+    const index = (at: string): string =>
+      JSON.stringify({ id: ID.cli, thread_name: 'Fix login', updated_at: at }) + '\n'
+    await writeFile(join(home, 'session_index.jsonl'), index('2026-10-20T10:00:00Z'))
+    const names = new CodexNames()
+    await names.refresh('codex-windows', home)
+    await writeFile(join(home, 'session_index.jsonl'), index('2026-10-22T10:00:00Z') + '\n')
+    expect(await names.refresh('codex-windows', home)).toEqual([ID.cli.toLowerCase()])
   })
 })

@@ -20,6 +20,7 @@ import { ROW_HEIGHT, SessionRow } from './SessionRow'
 import { RowMenu } from './RowMenu'
 import { BulkBar } from './BulkBar'
 import { RunningSection } from '../live/RunningNow'
+import { PartialSearchNote } from './PartialSearchNote'
 
 function EmptyList({ kind }: { kind: 'none' | 'filtered' | 'search' }) {
   const set = useApp((s) => s.set)
@@ -64,6 +65,7 @@ function EmptyList({ kind }: { kind: 'none' | 'filtered' | 'search' }) {
             ? 'Sessions whose original file is gone (cleaned up by Claude Code, or removed from ~/.codex) show up here.'
             : 'Try a different search or clear the filters.'}
       </p>
+      {kind === 'search' && <PartialSearchNote className="mt-2 max-w-[280px] text-left" />}
       <Button
         variant="outline"
         size="sm"

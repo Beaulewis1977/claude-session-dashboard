@@ -58,6 +58,8 @@ export interface LaunchInput {
    * commands without asking.
    */
   askPermissions?: boolean
+  /** With askPermissions: the read-only sandbox (Codex `-s read-only`). */
+  readOnly?: boolean
   /** `--model` / `--effort` (validated; nothing for Claude Code's default). */
   modelChoice?: ModelChoice
   /** Continue fresh: a new session with this id whose first message is `prompt`. */
@@ -159,7 +161,9 @@ function folderReason(
   tools: LaunchTools,
   agent: AgentSpec,
   /** Other values that go into the terminal's command line (e.g. CODEX_HOME). */
-  values: string[] = []
+  values: string[] = [],
+  /** The folder is also an argument of the agent (Codex `-C`), so it reaches cmd's parser. */
+  cwdIsArg = false
 ): string | undefined {
   // The agent's variables, checked like the folder: Windows Terminal reads ";"
   // and "%", cmd (also the one inside Windows Terminal on Windows) expands "%"
@@ -167,6 +171,10 @@ function folderReason(
   const vals = values.join('\n')
   if (terminal === 'wt' && /[;%!]/.test(vals)) return AGENT_ENV_CHARS_REASON
   if (terminal === 'cmd' && /[%!]/.test(vals)) return AGENT_ENV_CHARS_REASON
+  // On Windows the agent runs through cmd (also in Windows Terminal): a folder passed
+  // as its argument would have %variables% and !variables! expanded.
+  if (cwdIsArg && env === 'windows' && terminal !== 'powershell' && /[%!]/.test(cwd))
+    return CMD_FOLDER_REASON
   // The program that goes inside the terminal's command line.
   const inner = (env === 'wsl' ? tools.wsl : agent.program) ?? ''
   const toolReason =
@@ -492,7 +500,8 @@ export function buildLaunchCommand(input: LaunchInput): LaunchCommand {
 function shortAgentCommand(
   input: Pick<LaunchInput, 'env' | 'distro' | 'wslUser' | 'cwd'>,
   agentEnv: [string, string][],
-  command: string
+  command: string,
+  agent: Pick<AgentSpec, 'bin' | 'args'>
 ): { line: string; note?: string } {
   if (input.env === 'wsl') {
     const line = [...agentEnv.map(([k, v]) => `${k}=${bashArg(v)}`), command].join(' ')
@@ -502,8 +511,11 @@ function shortAgentCommand(
     return { line, ...(note ? { note } : {}) }
   }
   if (!agentEnv.length) return { line: command }
+  // Pasted into PowerShell: its own quoting for every argument (a folder with an
+  // apostrophe would break bash-style quoting there).
   const sets = agentEnv.map(([k, v]) => `$env:${k} = ${psQuote(v)}; `).join('')
-  return { line: `${sets}${command}`, note: `Run it in PowerShell, from ${input.cwd}` }
+  const ps = [agent.bin, ...agent.args.map(psArg)].join(' ')
+  return { line: `${sets}${ps}`, note: `Run it in PowerShell, from ${input.cwd}` }
 }
 
 /** The full launch of any agent: terminal, folder, environment and the agent's command. */
@@ -550,7 +562,8 @@ function build(input: LaunchInput, agent: AgentSpec): Omit<LaunchCommand, 'comma
     input.cwd,
     tools,
     agent,
-    agentEnv.map(([, v]) => v)
+    agentEnv.map(([, v]) => v),
+    input.passCwd === true
   )
   if (folder) {
     input = { ...input, terminal: 'powershell' }
@@ -559,7 +572,7 @@ function build(input: LaunchInput, agent: AgentSpec): Omit<LaunchCommand, 'comma
   const user = input.wslUser ? ['-u', input.wslUser] : []
   // The short command to copy, complete for the shell it's pasted into: with
   // the agent's variables (CODEX_HOME), and where to run it.
-  const short = shortAgentCommand(input, agentEnv, claudeCommand)
+  const short = shortAgentCommand(input, agentEnv, claudeCommand, agent)
   const base = {
     claudeCommand: short.line,
     ...(short.note ? { agentNote: short.note } : {}),

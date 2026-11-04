@@ -303,8 +303,13 @@ export class CodexNames {
     this.bySource.set(sourceId, { stamp, names })
     const before = prev?.names ?? new Map<string, CodexName>()
     const changed: string[] = []
-    for (const id of new Set([...before.keys(), ...names.keys()]))
-      if (before.get(id)?.name !== names.get(id)?.name) changed.push(id)
+    // The time counts too: the same name given again in Codex is newer than a name
+    // given in the dashboard since, so it wins again (newest wins).
+    for (const id of new Set([...before.keys(), ...names.keys()])) {
+      const a = before.get(id)
+      const b = names.get(id)
+      if (a?.name !== b?.name || a?.at !== b?.at) changed.push(id)
+    }
     return changed
   }
 }

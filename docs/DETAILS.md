@@ -979,16 +979,22 @@ root), plus Codex folders added in Settings → Scan sources.
   working folder is a Linux path. Codex always runs where its `.codex` is: its SQLite database
   can't be opened across the WSL / Windows boundary (Codex in WSL with `CODEX_HOME=/mnt/c/…`
   fails with "disk I/O error"). Only the working folder is translated:
-  - `/mnt/c/x` in the Windows `.codex` resumes with Windows Codex in `C:\x`.
+  - `/mnt/c/x` in the Windows `.codex` resumes with Windows Codex in `C:\x`, once the default
+    distro confirms that `/mnt/c/x` is that Windows folder (`wslpath -w`; a custom `wsl.conf`
+    can make `/mnt/c` a Linux folder). If it can't be confirmed, nothing is guessed: a folder has
+    to be chosen in the dialog.
   - `C:\x` in a WSL `.codex` resumes in WSL in `/mnt/c/x` (as that distro mounts it, `wslpath`).
   - A Linux-only folder (`/home/…`) in the Windows `.codex` isn't resumed by default. The dialog
     explains why and offers **Open in Codex app** (`codex://threads/<id>`, the app's own link to a
     local thread) and, opt-in and desktop only, **Resume with Windows Codex in the WSL folder**:
     Windows Codex in `\\wsl.localhost\<distro>\…` (default distro from `wsl -l -v`, Docker's and
-    Rancher's never; another can be picked), always asking before commands (`-a on-request -s
-workspace-write`, bypass off) with a warning that commands run in Windows PowerShell against
-    the Linux files. PowerShell is used, as cmd (also under Windows Terminal) can't start in a
-    `\\…` folder.
+    Rancher's never; another can be picked), bypass off and in Codex's read-only sandbox
+    (`-a on-request -s read-only`: a command that would change anything needs approval; Codex
+    has no policy that asks before every command), with a warning that commands run in Windows
+    PowerShell against the Linux files. PowerShell is used, as cmd (also under Windows Terminal)
+    can't start in a `\\…` folder.
+  - A translated folder, or one chosen in the dialog, is also given to Codex (`-C <folder>`), or
+    Codex asks which folder to use (offering its own conversion, e.g. `C:\mnt\c\…`).
   - "Open terminal here" opens a Linux folder in WSL, a Windows one on Windows.
   - Folder checks: Windows can't see a distro's drive mounts through `\\wsl.localhost`, so a
     `/mnt/c/…` folder is checked as `C:\…`, and other `/mnt/…` folders inside the distro.

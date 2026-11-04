@@ -5,8 +5,9 @@
 //   codex fork   [OPTIONS] [SESSION_ID]   a new session with the same history
 //   -m, --model <MODEL>
 //   -c model_reasoning_effort=<level>     (a bare word is taken as a string)
-//   -a, --ask-for-approval on-request     ask before running what the model decides needs it
-//   -s, --sandbox workspace-write
+//   -a, --ask-for-approval on-request     the model decides when to ask (0.166 has only
+//                                         on-request and never: nothing asks for every command)
+//   -s, --sandbox workspace-write | read-only
 //   --dangerously-bypass-approvals-and-sandbox
 //   -C, --cd <DIR>                        the folder to work in (see passCwd)
 // The terminal starts in the session's folder (as for Claude Code). Built as an
@@ -24,8 +25,17 @@ import {
 import type { CliInput } from '../types'
 
 export const CODEX_BYPASS_FLAG = '--dangerously-bypass-approvals-and-sandbox'
-/** Launches from a phone: Codex asks before it acts, in the workspace sandbox, whatever config.toml says. */
+/**
+ * Launches from a phone: approval on request (the model decides when to ask) and the
+ * workspace sandbox, whatever config.toml says; never the bypass.
+ */
 export const CODEX_ASK_ARGS = ['-a', 'on-request', '-s', 'workspace-write']
+/**
+ * A WSL-only folder run with Windows Codex: the read-only sandbox, so a command can only
+ * read unless it's approved (Codex asks when a command needs more). Codex has no policy
+ * that asks before every command.
+ */
+export const CODEX_READONLY_ARGS = ['-a', 'on-request', '-s', 'read-only']
 
 export interface CodexArgsInput {
   sessionId: string
@@ -33,6 +43,8 @@ export interface CodexArgsInput {
   /** --dangerously-bypass-approvals-and-sandbox (never with askPermissions). */
   bypass: boolean
   askPermissions?: boolean
+  /** With askPermissions: the read-only sandbox instead of workspace-write. */
+  readOnly?: boolean
   modelChoice?: { model?: string; effort?: string }
   /**
    * `-C <dir>`: the folder, given to Codex explicitly. For a session whose recorded
@@ -52,7 +64,7 @@ export function codexArgs(i: CodexArgsInput): string[] {
   return [
     i.fork ? 'fork' : 'resume',
     ...(i.cd ? ['-C', i.cd] : []),
-    ...(i.askPermissions ? CODEX_ASK_ARGS : []),
+    ...(i.askPermissions ? (i.readOnly ? CODEX_READONLY_ARGS : CODEX_ASK_ARGS) : []),
     ...codexModelArgs(i.modelChoice?.model, i.modelChoice?.effort),
     ...(i.bypass ? [CODEX_BYPASS_FLAG] : []),
     i.sessionId
@@ -66,6 +78,7 @@ function argsOf(
     | 'fork'
     | 'skipPermissions'
     | 'askPermissions'
+    | 'readOnly'
     | 'modelChoice'
     | 'newSession'
     | 'continueFresh'
@@ -82,6 +95,7 @@ function argsOf(
     fork: i.fork,
     bypass: i.skipPermissions && i.askPermissions !== true,
     askPermissions: i.askPermissions === true,
+    ...(i.readOnly ? { readOnly: true } : {}),
     modelChoice: i.modelChoice,
     ...(cd ? { cd } : {})
   })

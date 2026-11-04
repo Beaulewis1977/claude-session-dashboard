@@ -53,6 +53,8 @@ export interface CliInput {
   newSession?: boolean
   remoteControl?: RemoteControl
   askPermissions?: boolean
+  /** With askPermissions: the read-only sandbox (Codex `-s read-only`), for a WSL folder run from Windows. */
+  readOnly?: boolean
   modelChoice?: ModelChoice
   continueFresh?: ContinueFreshArgs
 }

@@ -17,6 +17,8 @@ import {
 } from './core/which'
 import {
   isValidDistroName,
+  linuxToUnc,
+  mntToWindows,
   parseDefaultDistro,
   parseDistroList,
   windowsPathToWsl,
@@ -51,6 +53,11 @@ export interface Platform {
    * can't map it (drives not mounted, distro unreachable).
    */
   wslPath(distro: string, windowsPath: string): Promise<string | undefined>
+  /**
+   * A Linux path as Windows sees it, asked in the distro (`wslpath -w`): `C:\…`
+   * for a folder on a mounted Windows drive, `\\wsl.localhost\…` for a Linux one.
+   */
+  wslWindowsPath?(distro: string, linuxPath: string): Promise<string | undefined>
   /** Can this distro read the path? (`test -r` run inside it.) */
   wslCanRead(distro: string, linuxPath: string): Promise<boolean>
 }
@@ -247,6 +254,10 @@ export function createRealPlatform(): Platform {
       const out = (await inDistro(distro, ['wslpath', '-u', windowsPath]))?.trim()
       return out && out.startsWith('/') && !out.includes('\n') ? out : undefined
     },
+    async wslWindowsPath(distro, linuxPath) {
+      const out = (await inDistro(distro, ['wslpath', '-w', linuxPath]))?.trim()
+      return out && /^(?:[A-Za-z]:\\|\\\\)/.test(out) && !out.includes('\n') ? out : undefined
+    },
     async wslCanRead(distro, linuxPath) {
       return (await inDistro(distro, ['test', '-r', linuxPath])) !== undefined
     },
@@ -337,6 +348,9 @@ export function createFixturesPlatform(fixturesDir: string, sourcesDir: string):
     // Sample distros use the default /mnt automount.
     async wslPath(_distro, windowsPath) {
       return windowsPathToWsl(windowsPath)
+    },
+    async wslWindowsPath(distro, linuxPath) {
+      return mntToWindows(linuxPath) ?? linuxToUnc(`\\\\wsl.localhost\\${distro}`, linuxPath)
     },
     async wslCanRead() {
       return true

@@ -32,9 +32,22 @@ import {
   isWindowsPath,
   linuxToUnc,
   mntToWindows,
-  windowsPathToWsl,
   wslRoots
 } from '../core/wsl'
+
+/**
+ * Why place() can't launch it, unless a folder was chosen in the dialog for a
+ * folder it couldn't confirm (then that folder is used).
+ */
+function placeError(
+  placed: { placement?: LaunchPlacement; error?: string },
+  opts: Pick<LaunchOptions, 'cwdOverride'>
+): string | undefined {
+  return placed.placement?.needsFolder && opts.cwdOverride ? undefined : placed.error
+}
+
+/** `\\server\share\…` or `\\wsl.localhost\…`: not a folder on a Windows drive. */
+const isUncPath = (p: string): boolean => /^[\\/]{2}/.test(p)
 import { restoreIfMissing } from '../core/restore'
 import { handoffPath, writeHandoff } from '../core/handoff'
 import { isUuid } from '@shared/jsonl'
@@ -229,15 +242,18 @@ export class Launcher {
     continueFresh?: ContinueFreshArgs
   ): LaunchCommand {
     const p = this.provider(s)
-    // A WSL-only folder run with Windows Codex: it asks before every command, never bypasses.
+    // A WSL-only folder run with Windows Codex: never bypass; read-only sandbox, so a command
+    // that would change anything needs approval (Codex has no 'ask for every command').
     const forced = this.askForced.has(s)
     return p.launch.buildCommand({
       ...this.targetOf(s),
-      // A translated folder is given to the agent too, or it asks which folder to use.
-      ...(this.translated.has(s) ? { passCwd: true } : {}),
+      // A translated or chosen folder is given to the agent too (Codex: -C), or it asks
+      // which folder to use, or uses the one it recorded.
+      ...(this.translated.has(s) || opts.cwdOverride ? { passCwd: true } : {}),
       continueFresh,
       remoteControl: this.remoteControl(s, opts),
       askPermissions: forced || opts.askPermissions === true,
+      ...(forced ? { readOnly: true } : {}),
       modelChoice: this.modelChoice(s),
       env: s.env,
       distro: s.distro,
@@ -286,7 +302,7 @@ export class Launcher {
     return path
   }
 
-  /** Sessions place() put in a WSL-only folder: Codex must ask before every command there. */
+  /** Sessions place() put in a WSL-only folder: never bypass, read-only sandbox (see command()). */
   private askForced = new WeakSet<SessionSummary>()
   /** Sessions place() gave a translated folder: the agent is told it (`-C`), not just started there. */
   private translated = new WeakSet<SessionSummary>()
@@ -314,14 +330,34 @@ export class Launcher {
     return this.distroList
   }
 
-  /** A Windows folder as a distro sees it: asked in the distro, else the default `/mnt/<drive>/…`. */
+  /**
+   * A Windows folder as a distro sees it, asked in the distro (`wslpath -u`, so its
+   * own mounts count). Undefined when the distro can't say: never guessed.
+   */
   private async inDistro(distro: string, windowsPath: string): Promise<string | undefined> {
-    const k = `${distro}|${windowsPath}`
+    return this.askDistro(`u|${distro}|${windowsPath}`, () =>
+      this.platform.wslPath(distro, windowsPath)
+    )
+  }
+
+  /**
+   * A Linux folder as Windows sees it, asked in the distro (`wslpath -w`): `C:\…`
+   * for a mounted Windows drive, `\\wsl.localhost\…` for a Linux folder.
+   */
+  private async windowsPathIn(distro: string, linuxPath: string): Promise<string | undefined> {
+    const ask = this.platform.wslWindowsPath
+    if (!ask) return undefined
+    return this.askDistro(`w|${distro}|${linuxPath}`, () => ask(distro, linuxPath))
+  }
+
+  /** A distro's answer, kept for a few minutes (the dialog asks again on every change). */
+  private async askDistro(
+    k: string,
+    ask: () => Promise<string | undefined>
+  ): Promise<string | undefined> {
     const hit = this.wslFolders.get(k)
     if (hit && Date.now() - hit.at < 5 * 60_000) return hit.path
-    const path =
-      (await this.platform.wslPath(distro, windowsPath).catch(() => undefined)) ??
-      windowsPathToWsl(windowsPath)
+    const path = await ask().catch(() => undefined)
     if (path) this.wslFolders.set(k, { path, at: Date.now() })
     return path
   }
@@ -352,7 +388,12 @@ export class Launcher {
     const appLink = !!p.launch.appLink?.(s.sessionId)
     const name = p.productName
     if (s.env === 'windows' && isLinuxPath(s.cwd)) {
-      const onDrive = mntToWindows(s.cwd)
+      const { list, def } = await this.distros()
+      // What the folder is on Windows, asked in the distro (`wslpath -w`): a /mnt path is
+      // a Windows drive only with the usual mounts. A custom wsl.conf can mount drives
+      // elsewhere and make /mnt/c an ordinary Linux folder.
+      const asked = def ? await this.windowsPathIn(def, s.cwd) : undefined
+      const onDrive = asked ? (isUncPath(asked) ? undefined : asked) : undefined
       if (onDrive)
         return {
           s: this.translatedTo(s, onDrive),
@@ -365,7 +406,23 @@ export class Launcher {
             reason: `${name} ran this session in WSL, in ${s.cwd}. Its history is in the Windows .codex folder, so it resumes with Windows ${name} in the same folder: ${onDrive}.`
           }
         }
-      const { list, def } = await this.distros()
+      // Looks like a drive folder, but WSL couldn't confirm it (no distro, the folder is
+      // gone, …): never guessed. Choosing a folder in the dialog runs it there.
+      const guess = asked ? undefined : mntToWindows(s.cwd)
+      if (guess)
+        return {
+          s,
+          placement: {
+            kind: 'translated',
+            runIn: 'windows',
+            cwd: s.cwd,
+            distros: [],
+            appLink,
+            needsFolder: true,
+            reason: `${name} ran this session in WSL, in ${s.cwd}. Its history is in the Windows .codex folder, so it resumes with Windows ${name}, in the matching Windows folder.`
+          },
+          error: `WSL couldn't confirm which Windows folder ${s.cwd} is (it may be ${guess}). Choose the folder to resume in.`
+        }
       const distro = opts.distro && list.includes(opts.distro) ? opts.distro : def
       const placement: LaunchPlacement = {
         kind: 'wsl-only',
@@ -393,7 +450,8 @@ export class Launcher {
       }
     }
     if (s.env === 'wsl' && isWindowsPath(s.cwd)) {
-      const path = s.distro ? await this.inDistro(s.distro, s.cwd) : windowsPathToWsl(s.cwd)
+      // Asked in the distro that holds the session (its own mounts): never guessed.
+      const path = s.distro ? await this.inDistro(s.distro, s.cwd) : undefined
       const reason = `${name} ran this session on Windows, in ${s.cwd}. Its history is in the ${s.sourceLabel} .codex folder, so it resumes in WSL in the same folder`
       if (!path)
         return {
@@ -403,9 +461,10 @@ export class Launcher {
             runIn: 'wsl',
             cwd: s.cwd,
             distros: [],
+            needsFolder: true,
             reason: `${reason}.`
           },
-          error: `${s.sourceLabel} can't reach ${s.cwd}.`
+          error: `${s.sourceLabel} couldn't say where ${s.cwd} is in WSL. Choose the folder to resume in.`
         }
       return {
         s: this.translatedTo(s, path),
@@ -554,6 +613,7 @@ export class Launcher {
         newSession: opts.newSession,
         remoteControl: this.remoteControl(s, opts),
         askPermissions: forced || opts.askPermissions === true,
+        ...(forced ? { readOnly: true } : {}),
         modelChoice: this.modelChoice(s)
       })
     } catch {
@@ -697,7 +757,8 @@ export class Launcher {
       terminal: cmd?.terminal ?? terminal,
       terminalReason: cmd?.terminalReason,
       billingLabel: this.billingLabel(opts),
-      launchError: this.unsupported(s, opts) ?? placed.error ?? noRestore ?? error ?? folderError,
+      launchError:
+        this.unsupported(s, opts) ?? placeError(placed, opts) ?? noRestore ?? error ?? folderError,
       remoteControlName: this.remoteControl(s, opts)?.name,
       modelChoice,
       ...(context ? { context } : {}),
@@ -765,7 +826,8 @@ export class Launcher {
     // Where it runs (a Codex desktop session's Linux folder, translated). Never opted in
     // to a WSL-only folder from a phone.
     const placed = await this.place(found, ctx.via === 'phone' ? { distro: opts.distro } : opts)
-    if (placed.error) return { ok: false, restored: false, commandLine: '', error: placed.error }
+    const unplaced = placeError(placed, opts)
+    if (unplaced) return { ok: false, restored: false, commandLine: '', error: unplaced }
     const s = placed.s
     if (s.availability === 'imported')
       return {

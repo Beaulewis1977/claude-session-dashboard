@@ -32,8 +32,9 @@ export const CONTEXT_KEEP = 2 * 1024
  * cache by an older version are then read again instead of reused.
  * 1: message text cut like tool output. 2: message text kept whole.
  * 3: context Codex adds (never shown) kept only by its start.
+ * 4: images kept only as their type (the viewer shows a placeholder), not their data.
  */
-export const COMPACT_FORMAT = 3
+export const COMPACT_FORMAT = 4
 
 /** The first line of the compact text: what the reader saw. Parsed by parse.ts. */
 export const READ_NOTE_TYPE = 'csd_read_note'
@@ -122,20 +123,29 @@ function cutTo(s: string, n: number): string {
  * A message as the compact text keeps it. What I wrote and what the agent
  * answered stay whole; text that's never shown (the context Codex adds as
  * user text, and developer/system messages) keeps only its start, so it
- * can't use up the size budget before later prompts and answers. Content
- * items keep their places (provenance is per item index).
+ * can't use up the size budget before later prompts and answers. Images
+ * (often base64 screenshots) keep only their type: the viewer shows a
+ * placeholder. Content items keep their places (provenance is per item index).
  */
 function compactMessage(p: Record<string, unknown>): Record<string, unknown> {
-  if (p.role === 'assistant' || !Array.isArray(p.content)) return p
+  if (!Array.isArray(p.content)) return p
   const user = p.role === 'user'
+  const assistant = p.role === 'assistant'
   const content = p.content.map((c: unknown, i) => {
     if (!c || typeof c !== 'object') return c
     const item = c as Record<string, unknown>
+    if (/image/.test(String(item.type))) return { type: item.type }
+    if (assistant) return item
     if (typeof item.text !== 'string') return user ? item : trimDeep(item)
     if (user && !isContextItem(p, i, item.text)) return item
     return { ...item, text: cutTo(item.text, CONTEXT_KEEP) }
   })
   return { ...p, content }
+}
+
+/** An older `user_message` event's images: only how many (the viewer shows placeholders). */
+function withoutImageData(p: Record<string, unknown>): Record<string, unknown> {
+  return Array.isArray(p.images) && p.images.length ? { ...p, images: p.images.map(() => '') } : p
 }
 
 /** Shorten every long string inside a value (tool output, patches, arguments). */
@@ -206,7 +216,7 @@ export function compactLine(line: string): string | undefined {
       typeof payload.message === 'string' &&
       isInjected(payload.message)
         ? { ...payload, message: cutTo(payload.message, CONTEXT_KEEP) }
-        : payload
+        : withoutImageData(payload)
   } else {
     keep.payload = trimDeep(payload)
   }

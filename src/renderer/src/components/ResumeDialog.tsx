@@ -678,8 +678,10 @@ function ResumeDialogBody({ resume }: { resume: ResumeRequest }) {
             </label>
             {askForced ? (
               <div className="mt-2 pl-[26px] text-xs text-muted-foreground">
-                Off for a WSL folder run with Windows Codex: it asks before every command (
-                <span className="font-mono">-a on-request -s workspace-write</span>).
+                Off for a WSL folder run with Windows Codex. It runs in its read-only sandbox (
+                <span className="font-mono">-a on-request -s read-only</span>): a command that would
+                change anything needs your approval. Codex decides when to ask; it has no setting
+                that asks before every command.
               </div>
             ) : (
               skip && <SkipPermissionsWarning className="mt-2 pl-[26px]" codex={codex} />
@@ -832,8 +834,9 @@ function PlacementNote({
             <TriangleAlert className="mt-px size-3.5 shrink-0" />
             <span>
               Commands run in Windows PowerShell against the Linux files in{' '}
-              <span className="font-mono">{placement.cwd}</span>, not in Linux. Codex asks before
-              every command.
+              <span className="font-mono">{placement.cwd}</span>, not in Linux. Codex runs read-only
+              there: anything that would change files needs your approval (Codex decides when to
+              ask; it can still run commands that only read).
             </span>
           </div>
           {placement.distros.length > 1 && (

@@ -24,6 +24,7 @@ import { useMobile } from './state'
 import { useMobileScope, usePhoneProviders, usePhoneScope } from './scope'
 import { hasSubagents } from '@/lib/scope'
 import { ProviderSwitch } from '@/components/ProviderSwitch'
+import { PartialSearchNote } from '@/components/list/PartialSearchNote'
 import { TerminalSheet } from './TerminalSheet'
 import { canOpenTerminal } from '@shared/terminal'
 
@@ -390,6 +391,7 @@ export function SessionsTab() {
             <SearchX className="size-8 text-subtle-foreground" />
             <div className="mt-3 text-[15px] font-medium text-foreground">No sessions match</div>
             <p className="mt-1 text-[13px]">Try another search, or clear the filters.</p>
+            <PartialSearchNote className="mt-2 justify-center text-[12px]" />
           </div>
         ) : (
           <div style={{ height: v.getTotalSize(), position: 'relative' }}>

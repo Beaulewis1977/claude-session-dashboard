@@ -283,7 +283,7 @@ export function LaunchSheet({
                   <ShieldCheck className="mt-0.5 size-4 shrink-0 text-success" />
                   <span>
                     {codex
-                      ? 'Codex asks before running commands, in its workspace sandbox (never bypassed from the phone)'
+                      ? 'Codex runs in its workspace sandbox and asks for approval when it needs it (never bypassed from the phone)'
                       : 'Your Claude subscription · Claude still asks before running commands'}
                   </span>
                 </li>

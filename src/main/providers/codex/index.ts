@@ -44,7 +44,8 @@ export function createCodexProvider(opts: { textCache?: CompactTextCache } = {})
     // 6: re-read big rollouts whose cached text an older reader cut (see COMPACT_FORMAT), and
     // only Codex's own context tags count as injected. 7: hidden context kept short, legacy
     // and newer messages matched one by one, search covers prompts and answers first.
-    parseVersion: 7,
+    // 8: images kept only as their type; older and newer messages paired only when near.
+    parseVersion: 8,
 
     detectSources: (platform, opts) => detectCodexSources(platform, opts),
     listSessionFiles: (src) => listCodexFiles(codexHomeOf(src)),

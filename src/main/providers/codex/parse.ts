@@ -354,37 +354,48 @@ function eventMessage(l: Line): Msg | undefined {
  * The conversation's messages, by line. Codex has written each message as a
  * `response_item`, as an `event_msg`, or (some versions) as both; a history
  * can mix them (older turns of a session resumed with a newer Codex). So
- * each event is matched to an item one by one: an event whose text an item
- * of the same role also holds is the same message and is left out; the
- * others are kept. Never a whole-file choice, which would drop the older
- * turns.
+ * each event is matched to an item one by one, and only to one written next
+ * to it (Codex writes both forms of a message within a few lines): an event
+ * whose text a nearby, still unmatched item of the same role holds is the
+ * same message and is left out; the others are kept. Never a whole-file
+ * choice (it would drop the older turns), and never a match far away (a
+ * later "yes" isn't an older "yes").
  */
+const PAIR_DISTANCE = 12
+
 function conversation(lines: Line[]): Map<Line, Msg> {
   const out = new Map<Line, Msg>()
   const keyOf = (m: Msg, text = m.texts.join('\n')): string => `${m.role}\0${text.trim()}`
-  const items = new Map<string, number>()
-  const parts = new Set<string>()
-  for (const l of lines) {
+  // Per key, the line numbers of items not matched yet (a split item: by each part too).
+  const free = new Map<string, number[]>()
+  const parts = new Map<number, string[]>()
+  lines.forEach((l, i) => {
     const m = itemMessage(l)
-    if (!m) continue
+    if (!m) return
     out.set(l, m)
-    const k = keyOf(m)
-    items.set(k, (items.get(k) ?? 0) + 1)
-    for (const t of m.texts) parts.add(keyOf(m, t))
+    const keys = [keyOf(m), ...(m.texts.length > 1 ? m.texts.map((t) => keyOf(m, t)) : [])]
+    parts.set(i, keys)
+    for (const k of keys) free.set(k, [...(free.get(k) ?? []), i])
+  })
+  const take = (i: number): void => {
+    for (const k of parts.get(i) ?? [])
+      free.set(
+        k,
+        (free.get(k) ?? []).filter((x) => x !== i)
+      )
   }
-  for (const l of lines) {
+  lines.forEach((l, i) => {
     const m = eventMessage(l)
-    if (!m || (!m.texts.length && !m.images)) continue
-    const k = keyOf(m)
-    const n = items.get(k) ?? 0
-    if (n > 0) {
-      items.set(k, n - 1)
-      continue
+    if (!m || (!m.texts.length && !m.images)) return
+    const near = (free.get(keyOf(m)) ?? [])
+      .filter((j) => Math.abs(j - i) <= PAIR_DISTANCE)
+      .sort((a, b) => Math.abs(a - i) - Math.abs(b - i))[0]
+    if (near !== undefined) {
+      take(near)
+      return
     }
-    // The item may split it into several text parts.
-    if (m.texts.length === 1 && parts.has(k)) continue
     out.set(l, m)
-  }
+  })
   return out
 }
 

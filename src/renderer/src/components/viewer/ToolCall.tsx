@@ -23,8 +23,31 @@ import { CodeBlock, CopyButton } from './Markdown'
 
 type ToolUse = Extract<ContentBlock, { type: 'tool_use' }>
 
+/** Codex's shell tools (its file names differ between versions). */
+const CODEX_SHELL = new Set([
+  'shell',
+  'shell_command',
+  'exec_command',
+  'local_shell',
+  'container.exec'
+])
+
+/** A Codex shell call's command, as text (`["bash", "-lc", "npm test"]` → `npm test`). */
+function codexCommand(i: Record<string, unknown>): string {
+  const c = i.command ?? i.cmd
+  if (typeof c === 'string') return c
+  if (!Array.isArray(c)) return ''
+  const parts = c.filter((x): x is string => typeof x === 'string')
+  if (parts.length === 3 && /^(ba)?sh$|powershell|pwsh|cmd/i.test(parts[0])) return parts[2]
+  return parts.join(' ')
+}
+
 function ToolIcon({ name, className }: { name: string; className?: string }) {
-  if (name === 'Bash' || name === 'PowerShell') return <SquareTerminal className={className} />
+  if (name === 'Bash' || name === 'PowerShell' || CODEX_SHELL.has(name))
+    return <SquareTerminal className={className} />
+  if (name === 'apply_patch') return <FilePen className={className} />
+  if (name === 'web_search') return <Globe className={className} />
+  if (name === 'update_plan') return <ListChecks className={className} />
   if (['Edit', 'MultiEdit', 'Write', 'NotebookEdit'].includes(name))
     return <FilePen className={className} />
   if (name === 'Read' || name === 'NotebookRead') return <FileText className={className} />
@@ -101,6 +124,12 @@ function Todos({ todos }: { todos: { content: string; status: string }[] }) {
 function ToolInput({ tool, cwd }: { tool: ToolUse; cwd?: string }) {
   const i = (tool.input ?? {}) as Record<string, unknown>
   const path = s(i.file_path) || s(i.notebook_path)
+  if (CODEX_SHELL.has(tool.name) && codexCommand(i))
+    return (
+      <CodeBlock language="bash">
+        <code>{codexCommand(i)}</code>
+      </CodeBlock>
+    )
   switch (tool.name) {
     case 'Bash':
     case 'PowerShell':
@@ -138,6 +167,17 @@ function ToolInput({ tool, cwd }: { tool: ToolUse; cwd?: string }) {
       )
     case 'TodoWrite':
       return <Todos todos={todoItems(i)} />
+    case 'apply_patch': {
+      // Codex's patch: its input is the patch text itself.
+      const patch = typeof tool.input === 'string' ? tool.input : s(i.input) || s(i.patch)
+      if (patch)
+        return (
+          <CodeBlock language="diff">
+            <code>{truncateText(patch, 200, 20000).text}</code>
+          </CodeBlock>
+        )
+      break
+    }
     case 'Task':
     case 'Agent':
       if (s(i.prompt))

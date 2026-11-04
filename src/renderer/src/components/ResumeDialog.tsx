@@ -20,7 +20,7 @@ import { useWarmExpiry } from '@/lib/use-warm-expiry'
 import { DEFAULT_CONTEXT_WARNING, shouldWarn } from '@shared/context'
 import { updateMeta } from '@/lib/actions'
 import { summarize } from '@/lib/summaries'
-import type { LaunchPreview, TerminalPref } from '@shared/types'
+import type { LaunchPlacement, LaunchPreview, TerminalPref } from '@shared/types'
 import { api } from '@/lib/api'
 import { showNewSession } from '@/lib/actions'
 import { launchesOnEnter } from '@/lib/dialog-keys'
@@ -34,12 +34,15 @@ import { Segmented } from './ui/segmented'
 import { Tooltip } from './ui/tooltip'
 import { validBilling } from '@/lib/billing'
 import { BillingPicker } from './BillingPicker'
+import { capsOf, providerOf } from '@shared/provider'
 import { BranchPointCard } from './viewer/Branches'
 import { SessionModelControls } from './ModelPicker'
 import { choiceLabel } from '@shared/model-choice'
 import { projectDefault, projectDefaultKey, withProjectDefault } from '@shared/project-key'
 
 export const SKIP_WARNING = 'Claude will not ask before running commands or deleting files.'
+export const BYPASS_WARNING =
+  'Codex will not ask before running commands, and runs them outside its sandbox.'
 
 const TERMINAL_LABEL: Record<TerminalPref, string> = {
   wt: 'Windows Terminal',
@@ -47,11 +50,18 @@ const TERMINAL_LABEL: Record<TerminalPref, string> = {
   cmd: 'Command Prompt'
 }
 
-export function SkipPermissionsWarning({ className }: { className?: string }) {
+export function SkipPermissionsWarning({
+  className,
+  codex = false
+}: {
+  className?: string
+  /** Codex's bypass flag instead of Claude Code's. */
+  codex?: boolean
+}) {
   return (
     <div className={cn('flex items-center gap-1.5 text-xs font-medium text-warning', className)}>
       <TriangleAlert className="size-3.5 shrink-0" />
-      {SKIP_WARNING}
+      {codex ? BYPASS_WARNING : SKIP_WARNING}
     </div>
   )
 }
@@ -108,12 +118,31 @@ function ResumeDialogBody({ resume }: { resume: ResumeRequest }) {
   const info = useApp((s) => s.info)
   const set = useApp((s) => s.set)
   const session = sessions.find((s) => s.key === resume.key)
+  // Codex: no API billing or Remote Control; its own bypass flag.
+  const caps = capsOf(session)
+  const codex = providerOf(session) === 'codex'
 
   const carry = resume.carry
   const [skip, setSkip] = useState(carry?.skip ?? settings.skipPermissionsDefault)
   const [terminal, setTerminal] = useState<TerminalPref>(carry?.terminal ?? settings.terminal)
   const [cwdOverride, setCwdOverride] = useState<string | undefined>(carry?.cwdOverride)
+  // A session whose folder exists only in WSL (see preview.placement): resumed with
+  // Windows Codex in that folder only when opted in here, in the distro picked.
+  const [wslFolder, setWslFolderState] = useState(false)
+  const [distro, setDistro] = useState<string | undefined>(undefined)
+  const setWslFolder = (v: boolean): void => {
+    setWslFolderState(v)
+    // A folder picked for one way of running isn't right for the other.
+    setCwdOverride(undefined)
+  }
+  const pickDistro = (v: string): void => {
+    setDistro(v)
+    setCwdOverride(undefined)
+  }
+  const where = { ...(wslFolder ? { wslFolder } : {}), ...(distro ? { distro } : {}) }
   const [preview, setPreview] = useState<LaunchPreview | null>(null)
+  // Approvals are always on for a WSL-only folder run with Windows Codex (main enforces it too).
+  const askForced = preview?.placement?.askForced === true
   const [launching, setLaunching] = useState(false)
   const [copied, setCopied] = useState(false)
   // "Don't warn for this session": saved right away, but the warning stays until the dialog closes.
@@ -126,14 +155,19 @@ function ResumeDialogBody({ resume }: { resume: ResumeRequest }) {
   const projectKey = projectDefaultKey(session)
   const projectBillingNow = projectDefault(settings.projectBilling, session)
   const [billing, setBilling] = useState(() =>
-    validBilling(carry?.billing ?? projectBillingNow ?? settings.defaultBilling, accounts)
+    caps.apiBilling
+      ? validBilling(carry?.billing ?? projectBillingNow ?? settings.defaultBilling, accounts)
+      : 'subscription'
   )
   const [rememberProject, setRememberProject] = useState(
     () => carry?.rememberProject ?? projectBillingNow !== undefined
   )
   // Remote Control runs only on the subscription: turning one on turns the other off.
   const [remoteControl, setRemoteControlState] = useState(
-    () => (carry?.remoteControl ?? settings.remoteControlDefault) && billing === 'subscription'
+    () =>
+      caps.remoteControl &&
+      (carry?.remoteControl ?? settings.remoteControlDefault) &&
+      billing === 'subscription'
   )
   // The estimate goes up when a warm cache runs out: preview again then.
   const [expired, setExpired] = useState(0)
@@ -172,7 +206,8 @@ function ResumeDialogBody({ resume }: { resume: ResumeRequest }) {
         newSession,
         branch: branchReq(),
         continueFresh: continueReq(),
-        remoteControl
+        remoteControl,
+        ...where
       })
       .then((p) => {
         if (cancelled) return
@@ -198,6 +233,8 @@ function ResumeDialogBody({ resume }: { resume: ResumeRequest }) {
     newSession,
     remoteControl,
     expired,
+    wslFolder,
+    distro,
     // The session's context changed (it grew, shrank or was compacted): a new estimate.
     session?.sizeBytes,
     session?.context?.tokens,
@@ -207,7 +244,10 @@ function ResumeDialogBody({ resume }: { resume: ResumeRequest }) {
     session?.meta.effort,
     settings.defaultModel,
     settings.defaultEffort,
-    settings.projectModels
+    settings.projectModels,
+    settings.codexDefaultModel,
+    settings.codexDefaultEffort,
+    settings.codexProjectModels
   ])
 
   useWarmExpiry(preview?.context?.warmUntil, () => setExpired((n) => n + 1))
@@ -263,12 +303,13 @@ function ResumeDialogBody({ resume }: { resume: ResumeRequest }) {
       newSession,
       branch: branchReq(createOnly),
       continueFresh: continueReq(),
-      remoteControl
+      remoteControl,
+      ...where
     })
     // Per-project default ("always use API credits for this project").
     const current = projectDefault(settings.projectBilling, session)
     const want = rememberProject ? billing : undefined
-    if (session && projectKey && current !== want) {
+    if (session && caps.apiBilling && projectKey && current !== want) {
       const projectBilling = withProjectDefault(settings.projectBilling, session, want, sessions)
       void api.updateSettings({ projectBilling }).then((st) => set({ settings: st }))
     }
@@ -333,7 +374,7 @@ function ResumeDialogBody({ resume }: { resume: ResumeRequest }) {
   }
 
   const pickFolder = async (): Promise<void> => {
-    const picked = await api.pickCwd(session.key)
+    const picked = await api.pickCwd(session.key, where)
     if (picked) setCwdOverride(picked)
   }
 
@@ -466,6 +507,23 @@ function ResumeDialogBody({ resume }: { resume: ResumeRequest }) {
             </div>
           )}
 
+          {preview?.placement && (
+            <PlacementNote
+              placement={preview.placement}
+              onOpenInApp={() =>
+                void api
+                  .openInAgentApp(resume.key)
+                  .then(() => close())
+                  .catch((err: Error) =>
+                    toast.error("Couldn't open the Codex app", { description: err.message })
+                  )
+              }
+              optedIn={wslFolder}
+              onOptIn={setWslFolder}
+              onDistro={pickDistro}
+            />
+          )}
+
           <div>
             <div className="mb-1.5 text-xs font-medium">Working folder</div>
             <div
@@ -501,8 +559,9 @@ function ResumeDialogBody({ resume }: { resume: ResumeRequest }) {
             {cwdOverride && (
               <div className="mt-1.5 flex items-start gap-1.5 text-xs text-muted-foreground">
                 <Info className="mt-px size-3.5 shrink-0" />
-                Claude Code looks sessions up by project folder, so resuming from a different folder
-                may not find it.
+                {codex
+                  ? 'Codex resumes by session id; it will run in the folder you picked.'
+                  : 'Claude Code looks sessions up by project folder, so resuming from a different folder may not find it.'}
                 <button
                   type="button"
                   className="shrink-0 font-medium text-primary hover:underline"
@@ -539,35 +598,41 @@ function ResumeDialogBody({ resume }: { resume: ResumeRequest }) {
             )}
           </div>
 
-          <div>
-            <div className="mb-1.5 flex items-center gap-1.5 text-xs font-medium">
-              Billing
-              <Tooltip
-                content="With an API key, Claude Code may ask once to confirm that it should use the key. The key is only given to this one terminal."
-                side="right"
-              >
-                <Info className="size-3.5 text-subtle-foreground" aria-label="About billing" />
-              </Tooltip>
+          {caps.apiBilling && (
+            <div>
+              <div className="mb-1.5 flex items-center gap-1.5 text-xs font-medium">
+                Billing
+                <Tooltip
+                  content="With an API key, Claude Code may ask once to confirm that it should use the key. The key is only given to this one terminal."
+                  side="right"
+                >
+                  <Info className="size-3.5 text-subtle-foreground" aria-label="About billing" />
+                </Tooltip>
+              </div>
+              <div className="flex flex-wrap items-center gap-3">
+                <BillingPicker value={billing} onChange={pickBilling} />
+                {projectKey && (
+                  <label className="flex cursor-pointer items-center gap-2 text-xs text-muted-foreground">
+                    <Checkbox
+                      checked={rememberProject}
+                      onCheckedChange={(v) => setRememberProject(v === true)}
+                    />
+                    Always use this for {session.projectName}
+                  </label>
+                )}
+              </div>
             </div>
-            <div className="flex flex-wrap items-center gap-3">
-              <BillingPicker value={billing} onChange={pickBilling} />
-              {projectKey && (
-                <label className="flex cursor-pointer items-center gap-2 text-xs text-muted-foreground">
-                  <Checkbox
-                    checked={rememberProject}
-                    onCheckedChange={(v) => setRememberProject(v === true)}
-                  />
-                  Always use this for {session.projectName}
-                </label>
-              )}
-            </div>
-          </div>
+          )}
 
           <div>
             <div className="mb-1.5 flex items-center gap-1.5 text-xs font-medium">
               Model and effort
               <Tooltip
-                content="Saved for this session. Default uses the project's default, then Settings, then Claude Code's own (no flag). An effort level set with CLAUDE_CODE_EFFORT_LEVEL wins over --effort."
+                content={
+                  codex
+                    ? "Saved for this session. Default uses the project's default, then Settings → Codex, then Codex's own (no -m / -c model_reasoning_effort)."
+                    : "Saved for this session. Default uses the project's default, then Settings, then Claude Code's own (no flag). An effort level set with CLAUDE_CODE_EFFORT_LEVEL wins over --effort."
+                }
                 side="right"
               >
                 <Info
@@ -579,27 +644,48 @@ function ResumeDialogBody({ resume }: { resume: ResumeRequest }) {
             <SessionModelControls session={session} />
           </div>
 
-          <RemoteControlOption
-            checked={remoteControl}
-            onChange={setRemoteControl}
-            name={preview?.remoteControlName}
-          />
+          {caps.remoteControl && (
+            <RemoteControlOption
+              checked={remoteControl}
+              onChange={setRemoteControl}
+              name={preview?.remoteControlName}
+            />
+          )}
 
           <div className="rounded-lg border border-border p-3">
-            <label className="flex cursor-pointer items-start gap-2.5">
+            <label
+              className={cn(
+                'flex items-start gap-2.5',
+                askForced ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'
+              )}
+            >
               <Checkbox
-                checked={skip}
+                checked={skip && !askForced}
+                disabled={askForced}
                 onCheckedChange={(v) => setSkip(v === true)}
                 className="mt-0.5"
               />
               <span className="min-w-0">
-                <span className="block text-[13px] font-medium">Skip permission prompts</span>
+                <span className="block text-[13px] font-medium">
+                  {codex ? 'Bypass approvals and sandbox' : 'Skip permission prompts'}
+                </span>
                 <span className="block font-mono text-[11px] text-muted-foreground">
-                  --dangerously-skip-permissions
+                  {codex
+                    ? '--dangerously-bypass-approvals-and-sandbox'
+                    : '--dangerously-skip-permissions'}
                 </span>
               </span>
             </label>
-            {skip && <SkipPermissionsWarning className="mt-2 pl-[26px]" />}
+            {askForced ? (
+              <div className="mt-2 pl-[26px] text-xs text-muted-foreground">
+                Off for a WSL folder run with Windows Codex. It runs in its read-only sandbox (
+                <span className="font-mono">-a on-request -s read-only</span>): a command that would
+                change anything needs your approval. Codex decides when to ask; it has no setting
+                that asks before every command.
+              </div>
+            ) : (
+              skip && <SkipPermissionsWarning className="mt-2 pl-[26px]" codex={codex} />
+            )}
           </div>
 
           <div>
@@ -692,5 +778,77 @@ function ResumeDialogBody({ resume }: { resume: ResumeRequest }) {
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  )
+}
+
+/**
+ * Why a session runs where it does when its folder belongs to the other
+ * environment than its .codex folder, and (for a WSL-only folder) the opt-in to
+ * resume it with Windows Codex there, never with bypass.
+ */
+function PlacementNote({
+  placement,
+  optedIn,
+  onOpenInApp,
+  onOptIn,
+  onDistro
+}: {
+  placement: LaunchPlacement
+  optedIn: boolean
+  onOpenInApp: () => void
+  onOptIn: (v: boolean) => void
+  onDistro: (v: string) => void
+}) {
+  const wslOnly = placement.kind === 'wsl-only'
+  return (
+    <div
+      className={cn(
+        'space-y-2 rounded-lg border px-3 py-2.5 text-xs',
+        wslOnly ? 'border-warning/40 bg-warning-soft' : 'border-border bg-secondary/40'
+      )}
+    >
+      <div className="flex items-start gap-2">
+        <Info className="mt-px size-3.5 shrink-0 text-muted-foreground" />
+        <span>{placement.reason}</span>
+      </div>
+      {placement.appLink && (
+        <div className="pl-[22px]">
+          <Button variant="outline" size="xs" onClick={onOpenInApp}>
+            Open in Codex app
+          </Button>
+        </div>
+      )}
+      {wslOnly && (
+        <label className="flex cursor-pointer items-start gap-2 pl-[22px]">
+          <Checkbox
+            checked={optedIn}
+            onCheckedChange={(v) => onOptIn(v === true)}
+            className="mt-px"
+          />
+          <span className="font-medium">Resume with Windows Codex in the WSL folder</span>
+        </label>
+      )}
+      {wslOnly && optedIn && (
+        <div className="space-y-2 pl-[22px]">
+          <div className="flex items-start gap-1.5 font-medium text-warning">
+            <TriangleAlert className="mt-px size-3.5 shrink-0" />
+            <span>
+              Commands run in Windows PowerShell against the Linux files in{' '}
+              <span className="font-mono">{placement.cwd}</span>, not in Linux. Codex runs read-only
+              there: anything that would change files needs your approval (Codex decides when to
+              ask; it can still run commands that only read).
+            </span>
+          </div>
+          {placement.distros.length > 1 && (
+            <Segmented<string>
+              ariaLabel="WSL distro that holds the folder"
+              value={placement.distro ?? ''}
+              onChange={onDistro}
+              options={placement.distros.map((d) => ({ value: d, label: d }))}
+            />
+          )}
+        </div>
+      )}
+    </div>
   )
 }

@@ -27,6 +27,8 @@ export interface LaunchTools {
   wsl: string
   /** Claude Code for Windows sessions (claude.exe or npm's claude.cmd); undefined if not found. */
   claude?: string
+  /** Codex for Windows sessions (codex.exe or npm's codex.cmd); undefined if not found. */
+  codex?: string
 }
 
 export interface LaunchInput {
@@ -56,10 +58,46 @@ export interface LaunchInput {
    * commands without asking.
    */
   askPermissions?: boolean
+  /** With askPermissions: the read-only sandbox (Codex `-s read-only`). */
+  readOnly?: boolean
   /** `--model` / `--effort` (validated; nothing for Claude Code's default). */
   modelChoice?: ModelChoice
   /** Continue fresh: a new session with this id whose first message is `prompt`. */
   continueFresh?: ContinueFreshArgs
+  /** WSL: run as this Linux user (the owner of the session's home), not the distro's default. */
+  wslUser?: string
+  /**
+   * Give the agent the folder explicitly too (Codex: `-C <cwd>`), for a session
+   * whose recorded folder was translated to this environment's form.
+   */
+  passCwd?: boolean
+  /**
+   * Variables for the agent only (Codex: CODEX_HOME for a Codex folder added in
+   * Settings). Windows: set in PowerShell's script (so PowerShell is used);
+   * WSL: put before the command in bash.
+   */
+  agentEnv?: Record<string, string>
+}
+
+export const AGENT_ENV_CHARS_REASON =
+  "This session's Codex folder has ; % or ! in its name, which Windows Terminal or cmd would change, so PowerShell is used."
+
+const ENV_NAME_RE = /^[A-Z][A-Z0-9_]{0,63}$/
+const WSL_USER_RE = /^[a-z_][a-z0-9_-]{0,31}$/i
+
+/** Checked agent variables: names in capitals, values a full folder path for `env`. */
+function checkedAgentEnv(
+  env: EnvKind,
+  vars: Record<string, string> | undefined
+): [string, string][] {
+  const out: [string, string][] = []
+  for (const [k, v] of Object.entries(vars ?? {})) {
+    if (!ENV_NAME_RE.test(k)) throw new Error(`Invalid variable name: ${k}`)
+    const problem = cwdProblem(env, v)
+    if (problem || v === '~') throw new Error(`This folder can't be passed safely: ${v}`)
+    out.push([k, v])
+  }
+  return out
 }
 
 export interface ContinueFreshArgs {
@@ -85,7 +123,10 @@ export interface LaunchCommand {
   /** Working directory for spawn (Windows sessions only). */
   spawnCwd?: string
   commandLine: string
+  /** The agent's own command (see shortAgentCommand). */
   claudeCommand: string
+  /** Where to run claudeCommand, when that isn't just the session's folder. */
+  agentNote?: string
   claudeArgs: string[]
   /** Extra environment for the child process only. */
   env?: Record<string, string>
@@ -117,20 +158,44 @@ function folderReason(
   terminal: TerminalPref,
   env: EnvKind,
   cwd: string,
-  tools: LaunchTools
+  tools: LaunchTools,
+  agent: AgentSpec,
+  /** Other values that go into the terminal's command line (e.g. CODEX_HOME). */
+  values: string[] = [],
+  /** The folder is also an argument of the agent (Codex `-C`), so it reaches cmd's parser. */
+  cwdIsArg = false
 ): string | undefined {
+  // The agent's variables, checked like the folder: Windows Terminal reads ";"
+  // and "%", cmd (also the one inside Windows Terminal on Windows) expands "%"
+  // and "!" (even inside quotes).
+  const vals = values.join('\n')
+  if (terminal === 'wt' && /[;%!]/.test(vals)) return AGENT_ENV_CHARS_REASON
+  if (terminal === 'cmd' && /[%!]/.test(vals)) return AGENT_ENV_CHARS_REASON
+  // On Windows the agent runs through cmd (also in Windows Terminal): a folder passed
+  // as its argument would have %variables% and !variables! expanded.
+  if (cwdIsArg && env === 'windows' && terminal !== 'powershell' && /[%!]/.test(cwd))
+    return CMD_FOLDER_REASON
   // The program that goes inside the terminal's command line.
-  const inner = (env === 'wsl' ? tools.wsl : tools.claude) ?? ''
+  const inner = (env === 'wsl' ? tools.wsl : agent.program) ?? ''
+  const toolReason =
+    agent.product === 'Claude Code'
+      ? TOOL_PATH_REASON
+      : TOOL_PATH_REASON.replace('Claude Code', agent.product)
   // Windows Terminal splits every argument at ";" and expands %variables% in the line it runs.
   if (terminal === 'wt' && /[;%]/.test(cwd)) return WT_FOLDER_REASON
-  if (terminal === 'wt' && /[;%]/.test(inner + (tools.cmd ?? ''))) return TOOL_PATH_REASON
+  if (terminal === 'wt' && /[;%]/.test(inner + (tools.cmd ?? ''))) return toolReason
   // cmd expands %variables% (and !variables!) even inside quotes.
   if (terminal === 'cmd' && env === 'wsl' && /[%!]/.test(cwd)) return CMD_FOLDER_REASON
-  if (terminal === 'cmd' && /[%!]/.test(inner)) return TOOL_PATH_REASON
+  if (terminal === 'cmd' && /[%!]/.test(inner)) return toolReason
   // cmd would start in C:\Windows instead.
   if (terminal === 'cmd' && env === 'windows' && /^[\\/]{2}/.test(cwd)) return CMD_UNC_REASON
+  // Windows Terminal runs the agent through cmd, which would start in C:\Windows instead.
+  if (terminal === 'wt' && env === 'windows' && /^[\\/]{2}/.test(cwd)) return WT_UNC_REASON
   return undefined
 }
+
+export const WT_UNC_REASON =
+  "Windows Terminal starts the agent through cmd, which can't start in a network or WSL folder (\\\\…), so PowerShell is used instead."
 
 /** Windows' opt-out from looking for programs in the current folder (honoured by cmd.exe and libuv). */
 export const NO_CWD_SEARCH = 'NoDefaultCurrentDirectoryInExePath'
@@ -295,7 +360,12 @@ function psArg(arg: string): string {
 
 /** The `claude …` command as bash reads it (also what's shown as "the claude command"). */
 export function claudeCommandLine(args: string[]): string {
-  return ['claude', ...args.map(bashArg)].join(' ')
+  return agentCommandLine('claude', args)
+}
+
+/** An agent's command (`claude …`, `codex …`) as bash reads it. */
+export function agentCommandLine(bin: string, args: string[]): string {
+  return [bin, ...args.map(bashArg)].join(' ')
 }
 
 /** Quote one argument the way the MSVC runtime / CommandLineToArgvW expects. */
@@ -363,11 +433,19 @@ const isBatch = (path: string): boolean => /\.(cmd|bat)$/i.test(path)
  * arguments. npm's claude.cmd starts `node` by name, so for a batch file the
  * line first turns off cmd's look in the current (project) folder.
  */
-function cmdClaudeLine(claude: string, cArgs: string[], unset: string[] = []): string {
+function cmdClaudeLine(
+  claude: string,
+  cArgs: string[],
+  unset: string[] = [],
+  /** The agent's variables (checked: no `"`, and no `%` `!` `;`, see folderReason). */
+  vars: [string, string][] = []
+): string {
   const guard = isBatch(claude) ? `set ${NO_CWD_SEARCH}=1& ` : ''
   // `set NAME=` with nothing after it removes NAME (after cmd's AutoRun has run).
   const clear = unset.map((k) => `set ${k}=& `).join('')
-  return guard + clear + [`"${claude}"`, ...cArgs.map(cmdArg)].join(' ')
+  // In cmd itself, so it holds in a Windows Terminal window that was already open.
+  const sets = vars.map(([k, v]) => `set "${k}=${v}"& `).join('')
+  return guard + clear + sets + [`"${claude}"`, ...cArgs.map(cmdArg)].join(' ')
 }
 
 /**
@@ -379,12 +457,21 @@ function bashClaudeLine(claudeCommand: string, unset: string[]): string {
   return unset.length ? `unset ${unset.join(' ')} && ${claudeCommand}` : claudeCommand
 }
 
-export function buildLaunchCommand(input: LaunchInput): LaunchCommand {
-  const cmd = build(input)
-  return { ...cmd, commandLine: shownCommand(cmd) }
+/**
+ * The coding agent a terminal runs: its command name in WSL, its absolute
+ * path on Windows, and its arguments (already validated by its provider).
+ */
+export interface AgentSpec {
+  /** "Claude Code", "Codex": for messages. */
+  product: string
+  /** The command in WSL's login shell: "claude", "codex". */
+  bin: string
+  /** Windows: the absolute path (see which.ts); undefined if it wasn't found. */
+  program?: string
+  args: string[]
 }
 
-function build(input: LaunchInput): Omit<LaunchCommand, 'commandLine'> {
+export function buildLaunchCommand(input: LaunchInput): LaunchCommand {
   const cArgs = claudeArgs(
     input.sessionId,
     input.skipPermissions,
@@ -395,12 +482,63 @@ function build(input: LaunchInput): Omit<LaunchCommand, 'commandLine'> {
     input.modelChoice,
     input.continueFresh
   )
-  const claudeCommand = claudeCommandLine(cArgs)
+  return buildAgentLaunch(input, {
+    product: 'Claude Code',
+    bin: 'claude',
+    program: input.tools.claude,
+    args: cArgs
+  })
+}
+
+/**
+ * The agent's own command for "Copy … command": as bash reads it, with the
+ * agent's variables in front (`CODEX_HOME='/x' codex resume …`) in WSL, or as
+ * PowerShell (`$env:CODEX_HOME = 'C:\x'; codex resume …`) on Windows. The
+ * note says where to run it when that isn't just the folder: PowerShell, or
+ * the WSL user whose home the session is in.
+ */
+function shortAgentCommand(
+  input: Pick<LaunchInput, 'env' | 'distro' | 'wslUser' | 'cwd'>,
+  agentEnv: [string, string][],
+  command: string,
+  agent: Pick<AgentSpec, 'bin' | 'args'>
+): { line: string; note?: string } {
+  if (input.env === 'wsl') {
+    const line = [...agentEnv.map(([k, v]) => `${k}=${bashArg(v)}`), command].join(' ')
+    const note = input.wslUser
+      ? `Run it in WSL (${input.distro ?? 'its distro'}) as ${input.wslUser}, from ${input.cwd}`
+      : undefined
+    return { line, ...(note ? { note } : {}) }
+  }
+  if (!agentEnv.length) return { line: command }
+  // Pasted into PowerShell: its own quoting for every argument (a folder with an
+  // apostrophe would break bash-style quoting there).
+  const sets = agentEnv.map(([k, v]) => `$env:${k} = ${psQuote(v)}; `).join('')
+  const ps = [agent.bin, ...agent.args.map(psArg)].join(' ')
+  return { line: `${sets}${ps}`, note: `Run it in PowerShell, from ${input.cwd}` }
+}
+
+/** The full launch of any agent: terminal, folder, environment and the agent's command. */
+export function buildAgentLaunch(input: LaunchInput, agent: AgentSpec): LaunchCommand {
+  const cmd = build(input, agent)
+  return { ...cmd, commandLine: shownCommand(cmd) }
+}
+
+function build(input: LaunchInput, agent: AgentSpec): Omit<LaunchCommand, 'commandLine'> {
+  const cArgs = agent.args
+  const claudeCommand = agentCommandLine(agent.bin, cArgs)
   // Remote Control refuses API-key auth: remove the keys in the final shell
   // too, after its startup profile has run (they're also kept out of its
   // environment, see unsetEnv).
   const unset = input.remoteControl ? REMOTE_CONTROL_UNSET_ENV : []
-  const bashLine = bashClaudeLine(claudeCommand, unset)
+  const agentEnv = checkedAgentEnv(input.env, input.agentEnv)
+  if (input.wslUser !== undefined && !WSL_USER_RE.test(input.wslUser))
+    throw new Error(`Invalid WSL user name: ${input.wslUser}`)
+  // WSL: `NAME=value command` (values are checked paths without quotes or backslashes).
+  const bashLine = bashClaudeLine(
+    [...agentEnv.map(([k, v]) => `${k}=${bashArg(v)}`), claudeCommand].join(' '),
+    unset
+  )
   const problem = cwdProblem(input.env, input.cwd)
   if (problem) throw new Error(problem)
   const tools = input.tools
@@ -418,13 +556,26 @@ function build(input: LaunchInput): Omit<LaunchCommand, 'commandLine'> {
         ? { ANTHROPIC_API_KEY: apiKey, WSLENV: wslenvWithKey(input.wslenv) }
         : { ANTHROPIC_API_KEY: apiKey }
   }
-  const folder = folderReason(input.terminal, input.env, input.cwd, tools)
+  const folder = folderReason(
+    input.terminal,
+    input.env,
+    input.cwd,
+    tools,
+    agent,
+    agentEnv.map(([, v]) => v),
+    input.passCwd === true
+  )
   if (folder) {
     input = { ...input, terminal: 'powershell' }
     terminalReason = folder
   }
+  const user = input.wslUser ? ['-u', input.wslUser] : []
+  // The short command to copy, complete for the shell it's pasted into: with
+  // the agent's variables (CODEX_HOME), and where to run it.
+  const short = shortAgentCommand(input, agentEnv, claudeCommand, agent)
   const base = {
-    claudeCommand,
+    claudeCommand: short.line,
+    ...(short.note ? { agentNote: short.note } : {}),
     claudeArgs: cArgs,
     terminal: input.terminal,
     ...(env ? { env } : {}),
@@ -436,7 +587,7 @@ function build(input: LaunchInput): Omit<LaunchCommand, 'commandLine'> {
     const distro = input.distro ?? ''
     if (!isValidDistroName(distro)) throw new Error(`Invalid WSL distro name: ${distro}`)
     const wsl = checkedTool(tools.wsl, 'wsl.exe')
-    const wslArgs = ['-d', distro, '--cd', input.cwd, '--', 'bash', '-lic', bashLine]
+    const wslArgs = ['-d', distro, ...user, '--cd', input.cwd, '--', 'bash', '-lic', bashLine]
     switch (input.terminal) {
       case 'wt': {
         const wt = checkedTool(tools.wt, 'Windows Terminal')
@@ -450,7 +601,8 @@ function build(input: LaunchInput): Omit<LaunchCommand, 'commandLine'> {
       }
       case 'powershell': {
         const ps = checkedTool(tools.powershell, 'PowerShell')
-        const script = `& ${psQuote(wsl)} -d ${psQuote(distro)} --cd ${psQuote(input.cwd)} -- bash -lic ${psQuote(bashLine)}`
+        const u = input.wslUser ? ` -u ${psQuote(input.wslUser)}` : ''
+        const script = `& ${psQuote(wsl)} -d ${psQuote(distro)}${u} --cd ${psQuote(input.cwd)} -- bash -lic ${psQuote(bashLine)}`
         const args = ['-NoExit', '-Command', script]
         return {
           ...base,
@@ -461,7 +613,8 @@ function build(input: LaunchInput): Omit<LaunchCommand, 'commandLine'> {
       }
       case 'cmd': {
         const cmd = checkedTool(tools.cmd, 'cmd.exe')
-        const line = `"${wsl}" -d ${distro} --cd "${input.cwd}" -- bash -lic "${bashLine}"`
+        const u = input.wslUser ? ` -u ${input.wslUser}` : ''
+        const line = `"${wsl}" -d ${distro}${u} --cd "${input.cwd}" -- bash -lic "${bashLine}"`
         const args = ['/s', '/k', `"${line}"`]
         return {
           ...base,
@@ -474,14 +627,14 @@ function build(input: LaunchInput): Omit<LaunchCommand, 'commandLine'> {
   }
 
   // Windows session
-  const claude = checkedTool(tools.claude, 'Claude Code')
+  const claude = checkedTool(agent.program, agent.product)
   switch (input.terminal) {
     case 'wt': {
       // Windows Terminal puts quotes around an argument with spaces, which
       // gives cmd `/s /k "<line>"`: it drops just those outer quotes.
       const wt = checkedTool(tools.wt, 'Windows Terminal')
       const cmd = checkedTool(tools.cmd, 'cmd.exe')
-      const args = ['-d', input.cwd, cmd, '/s', '/k', cmdClaudeLine(claude, cArgs, unset)]
+      const args = ['-d', input.cwd, cmd, '/s', '/k', cmdClaudeLine(claude, cArgs, unset, agentEnv)]
       return {
         ...base,
         command: wt,
@@ -495,6 +648,7 @@ function build(input: LaunchInput): Omit<LaunchCommand, 'commandLine'> {
       const script = [
         `Set-Location -LiteralPath ${psQuote(input.cwd)};`,
         ...(isBatch(claude) ? [`$env:${NO_CWD_SEARCH} = '1';`] : []),
+        ...agentEnv.map(([k, v]) => `$env:${k} = ${psQuote(v)};`),
         // After the PowerShell profile has run.
         ...unset.map((k) => `Remove-Item Env:${k} -ErrorAction SilentlyContinue;`),
         '&',
@@ -513,7 +667,7 @@ function build(input: LaunchInput): Omit<LaunchCommand, 'commandLine'> {
     case 'cmd': {
       // cmd starts in the folder, so the folder's name never reaches its parser.
       const cmd = checkedTool(tools.cmd, 'cmd.exe')
-      const args = ['/s', '/k', `"${cmdClaudeLine(claude, cArgs, unset)}"`]
+      const args = ['/s', '/k', `"${cmdClaudeLine(claude, cArgs, unset, agentEnv)}"`]
       return {
         ...base,
         command: cmd,

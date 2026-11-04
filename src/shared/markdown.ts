@@ -1,6 +1,7 @@
 // Export a session as a readable Markdown document.
 
 import { formatDateTime } from './format'
+import { PROVIDER_SHORT, providerOf } from './provider'
 import type { ContentBlock, SessionDetail, ToolResult } from './types'
 
 function fence(text: string, lang = ''): string {
@@ -64,6 +65,8 @@ export function blockToMarkdown(b: ContentBlock): string {
 
 export function sessionToMarkdown(detail: SessionDetail): string {
   const s = detail.summary
+  // Whose replies these are: "Claude" or "Codex".
+  const agent = PROVIDER_SHORT[providerOf(s)]
   const lines: string[] = [`# ${s.title}`, '']
   if (s.meta.description)
     lines.push(
@@ -99,7 +102,7 @@ export function sessionToMarkdown(detail: SessionDetail): string {
       lines.push(`**You** ran \`${m.blocks.map(blockToMarkdown).join(' ')}\`${when}`, '')
       continue
     }
-    const who = m.role === 'user' ? '## 🧑 You' : '## 🤖 Claude'
+    const who = m.role === 'user' ? '## 🧑 You' : `## 🤖 ${agent}`
     lines.push(`${who}${when}`, '')
     for (const b of m.blocks)
       lines.push(

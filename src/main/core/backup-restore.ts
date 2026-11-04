@@ -14,7 +14,7 @@
 // Session archive copies are never replaced by a smaller backup copy.
 
 import { createHash } from 'node:crypto'
-import { constants, createReadStream } from 'node:fs'
+import { constants, createReadStream, existsSync } from 'node:fs'
 import { copyFile, lstat, mkdir, readFile, realpath, rename, rm, stat } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import type { RestoreAction, RestoreGroup, RestoreRecord } from '@shared/backup'
@@ -33,6 +33,7 @@ import {
 import { readObjectTo, type ManifestFile } from './backup-store'
 import { writeFileAtomic } from './json-store'
 import { assertRealAppDataWrite, isInside, UnsafeWriteError } from './safe-paths'
+import { contentSizeOf, isZstdPath } from './zstd'
 
 export const PENDING_DIR = 'restore-pending'
 export const SAFETY_DIR = 'restore-backups'
@@ -86,6 +87,10 @@ export async function planRestore(
         : await sha256Of(target, f.p)
     if (here === f.h) items.push({ ...base, action: 'same' })
     else if (mergedOnRestore(f.p)) items.push({ ...base, action: 'merge' })
+    // A compressed copy: what each holds is only known once the backup's is
+    // staged (sizes on disk don't tell); decided when restoring.
+    else if (neverShrinks(f.p) && isZstdPath(f.p))
+      items.push({ ...base, action: 'replace', note: 'Only if it holds more than the copy here' })
     else if (neverShrinks(f.p) && st.size >= f.s)
       items.push({ ...base, action: 'keep', note: 'The copy here is newer' })
     else items.push({ ...base, action: 'replace' })
@@ -228,7 +233,14 @@ export async function applyPendingRestore(
     safetyDir
   }
   const errors: string[] = []
-  for (const it of Array.isArray(plan.items) ? plan.items : []) {
+  const all = Array.isArray(plan.items) ? plan.items : []
+  // Archive copies first: the metadata merge then keeps only records whose copy
+  // is there, so a record never points at a copy that wasn't restored.
+  const archiveFirst = [
+    ...all.filter((it) => neverShrinks(it.rel) && !mergedOnRestore(it.rel)),
+    ...all.filter((it) => !(neverShrinks(it.rel) && !mergedOnRestore(it.rel)))
+  ]
+  for (const it of archiveFirst) {
     try {
       if (!writes(it.action)) continue
       const target = targetPath(dataDir, it.rel)
@@ -238,14 +250,21 @@ export async function applyPendingRestore(
       const cur = await lstat(target).catch(() => undefined)
       const stagedSt = await stat(staged)
       // It may have grown since the preview: still never replace with a smaller copy.
-      if (cur?.isFile() && neverShrinks(it.rel) && cur.size >= stagedSt.size) continue
+      // A compressed one by what it holds (smaller on disk can hold more).
+      if (cur?.isFile() && neverShrinks(it.rel)) {
+        const keepHere = isZstdPath(it.rel)
+          ? (await contentSizeOf(target).catch(() => 0)) >= (await contentSizeOf(staged))
+          : cur.size >= stagedSt.size
+        if (keepHere) continue
+      }
       // By file, not by the planned action: a settings, metadata or accounts file
       // that was missing at preview ("add") still goes through the same rules
       // (no phone server from another PC, archive paths moved to this one).
       if (mergedOnRestore(it.rel)) {
         const current = cur?.isFile() ? await readFile(target, 'utf8') : undefined
         const merged = mergeOnRestore(it.rel, await readFile(staged, 'utf8'), current, {
-          archiveDir: opts.archiveDir
+          archiveDir: opts.archiveDir,
+          exists: (p) => existsSync(p)
         })
         if (cur?.isFile()) await keepCopy(target, join(safetyDir, ...targetRel(it.rel)), dataDir)
         await writeFileAtomic(target, merged, dataDir)

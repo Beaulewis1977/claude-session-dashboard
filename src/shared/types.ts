@@ -14,7 +14,7 @@ import {
 } from './usage/health'
 import { DEFAULT_PACE, type PaceSettings } from './usage/pace'
 import type { SourceHints, SourceLabel } from './source-label'
-import type { ProviderId } from './provider'
+import type { ProviderId, ProviderToggles, ProviderView } from './provider'
 import type { EffortChoice, ProjectModelDefault, ResolvedModel } from './model-choice'
 import { DEFAULT_LIVE_ALERTS, type LiveAlertSettings } from './live-alerts'
 import { DEFAULT_SUMMARY_SETTINGS, type AiSummary, type SummarySettings } from './summary'
@@ -125,6 +125,8 @@ export interface ArchiveRecord {
   archivePath: string
   cwd?: string
   size: number
+  /** Decompressed size of what was copied (Codex; absent: the same as `size`). */
+  contentSize?: number
   sha256: string
   sourceMtimeMs: number
   firstArchivedAt: string
@@ -212,6 +214,23 @@ export interface SessionSummary {
   sourceReason: string
   /** How big the context is (the last reply's usage, compaction, the status line). */
   context?: SessionContext
+  /** The reasoning effort recorded in the session's latest turn (Codex). */
+  reasoningEffort?: string
+  /** A thread another agent thread started (a Codex subagent). */
+  subagent?: { parentId?: string; nickname?: string; role?: string }
+  /** The session this one was forked from, as its own file records it (Codex). */
+  forkedFromId?: string
+  /** Git commit and remote recorded when the session started (Codex). */
+  gitCommit?: string
+  gitRemote?: string
+  /** Which Codex client ran it, as its file records it. */
+  origin?: { originator?: string; source?: string; threadSource?: string }
+  /** Why the conversation shown may not be complete (the viewer says so). */
+  historyNote?: string
+  /** Search across sessions covers only the start of it (very long Codex sessions; the viewer says so). */
+  searchPartial?: boolean
+  /** The file's content size, decompressed (Codex; for archive decisions). */
+  contentBytes?: number
 }
 
 export interface ToolResult {
@@ -308,6 +327,51 @@ export interface AppSettings {
   summaries: SummarySettings
   /** The large-session warning before Resume. */
   contextWarning: ContextWarningSettings
+  // Optional: absent in every settings file written before Codex support
+  // (each has a default, applied where it's read).
+  /** Settings → Providers: which coding agents are on (absent: both). */
+  providers?: ProviderToggles
+  /** The All / Claude / Codex switch (absent: All). Only filters what's shown. */
+  providerView?: ProviderView
+  /** Settings → Archive: which Codex sessions are copied into the archive (absent: none). */
+  codexArchive?: CodexArchiveMode
+  /** Show Codex subagent threads in the list (absent: hidden). */
+  showSubagents?: boolean
+  /** Codex launches: model unless a session or project has its own ("default" = Codex's own). */
+  codexDefaultModel?: string
+  /** Codex launches: reasoning effort unless a session or project has its own. */
+  codexDefaultEffort?: EffortChoice
+  /** Codex per-project model / effort defaults, keyed like projectModels. */
+  codexProjectModels?: Record<string, ProjectModelDefault>
+}
+
+/**
+ * Which Codex sessions are copied into the archive: none, only the ones I
+ * named, pinned or tagged, or all. Codex doesn't delete old sessions itself,
+ * so it's off by default.
+ */
+export type CodexArchiveMode = 'off' | 'marked' | 'all'
+
+export function isCodexArchiveMode(v: unknown): v is CodexArchiveMode {
+  return v === 'off' || v === 'marked' || v === 'all'
+}
+
+export interface ArchiveTally {
+  sessions: number
+  /** Their files' size now. */
+  bytes: number
+  /** What isn't in the archive yet (new sessions, and growth of archived ones). */
+  newBytes: number
+  /** Estimated size in a backup (gzip; compressed rollouts don't shrink). */
+  backupBytes: number
+}
+
+export interface CodexArchiveEstimate {
+  all: ArchiveTally
+  marked: ArchiveTally
+  /** Codex sessions already in the archive, and their size. */
+  archived: number
+  archivedBytes: number
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -384,6 +448,54 @@ export interface LaunchOptions {
   askPermissions?: boolean
   /** Continue fresh: a new session whose first message is this session's summary. */
   continueFresh?: ContinueFreshRequest
+  /**
+   * Opt in to resuming a session whose folder exists only in WSL with Windows
+   * Codex, in that folder through `\\wsl.localhost\…` (see LaunchPlacement).
+   * Desktop only; approvals are then always on.
+   */
+  wslFolder?: boolean
+  /** The WSL distro that holds that folder (unset: the default distro). */
+  distro?: string
+}
+
+/**
+ * A session whose folder belongs to the other environment than the `.codex`
+ * folder that holds it (the Codex desktop app on Windows can run its agent in
+ * WSL and still keeps the session in the Windows `.codex`). Codex always runs
+ * where its `.codex` is (its SQLite database can't be used across the WSL /
+ * Windows boundary); only the working folder is translated:
+ * - `translated`: `/mnt/c/x` → `C:\x` (Windows `.codex`), or `C:\x` →
+ *   `/mnt/c/x` (WSL `.codex`). Resumes as usual.
+ * - `wsl-only`: a Linux-only folder (`/home/…`) in the Windows `.codex`. Not
+ *   resumed unless opted in (`wslFolder`): then Windows Codex runs in
+ *   `\\wsl.localhost\<distro>\…`, always asking before commands.
+ */
+export interface LaunchPlacement {
+  kind: 'translated' | 'wsl-only'
+  /** Where Codex runs. */
+  runIn: EnvKind
+  /** The folder as the run sees it. */
+  cwd: string
+  /** Why, in a sentence or two. */
+  reason: string
+  /** wsl-only: the distro holding the folder, and the ones to choose from. */
+  distro?: string
+  distros: string[]
+  /** wsl-only: resuming with Windows Codex was opted in. */
+  optedIn?: boolean
+  /**
+   * Bypass is off whatever was chosen, and Codex runs in its read-only sandbox
+   * (`-a on-request -s read-only`): a command that would change anything needs approval.
+   * Codex has no policy that asks before every command.
+   */
+  askForced?: boolean
+  /** The agent's own app can open this session (Codex: `codex://threads/<id>`). */
+  appLink?: boolean
+  /**
+   * The folder couldn't be confirmed in WSL (`wslpath`), so it isn't guessed:
+   * nothing is launched until a folder is chosen in the dialog.
+   */
+  needsFolder?: boolean
 }
 
 export interface ContinueFreshRequest {
@@ -435,8 +547,10 @@ export interface BranchPreview {
 export interface LaunchPreview {
   /** Command line as it will be run (for display / copy). */
   commandLine: string
-  /** Just the `claude ...` part. */
+  /** Just the `claude ...` part (for Codex with its CODEX_HOME, when that's set). */
   claudeCommand: string
+  /** Where to run claudeCommand when that isn't just the folder (PowerShell, a WSL user). */
+  agentNote?: string
   terminal: TerminalPref
   /** True if the requested terminal was not found and a fallback is used. */
   fellBack: boolean
@@ -464,6 +578,8 @@ export interface LaunchPreview {
   continueError?: string
   /** Resume / Fork: the context size and what reloading it would cost (estimate). */
   context?: ResumeEstimate
+  /** Runs in the other environment than its home (see LaunchPlacement). */
+  placement?: LaunchPlacement
 }
 
 export interface LaunchResult {

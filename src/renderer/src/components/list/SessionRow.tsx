@@ -23,6 +23,9 @@ import { RemoteBadge } from '../RemoteBadge'
 import { ContextBadge } from '../context/ContextSize'
 import { ModelChoiceBadge } from '../ModelPicker'
 import { useModelChoice } from '@/lib/model-choice'
+import { useScope } from '@/lib/scope'
+import { capsOf, PROVIDER_LABEL, providerOf } from '@shared/provider'
+import { ProviderBadge } from '../ProviderSwitch'
 
 export const ROW_HEIGHT = 104
 
@@ -43,9 +46,9 @@ function preview(s: SessionSummary): { text: string; muted: boolean; summary?: b
     const line = summaryLine(s.meta.aiSummary)
     if (line) return { text: line, muted: false, summary: true }
   }
-  // My dashboard name is the title: show what Claude Code calls it.
+  // My dashboard name is the title: show what Claude Code (or Codex) calls it.
   if (s.titleSource === 'name' && s.claudeName && s.claudeName !== s.title)
-    return { text: `Claude Code: ${s.claudeName}`, muted: true }
+    return { text: `${PROVIDER_LABEL[providerOf(s)]}: ${s.claudeName}`, muted: true }
   if (s.titleSource !== 'first-prompt' && s.firstPrompt) return { text: s.firstPrompt, muted: true }
   if (s.titleSource !== 'summary' && s.summary) return { text: s.summary, muted: true }
   return { text: '', muted: true }
@@ -81,6 +84,7 @@ export const SessionRow = memo(function SessionRow({
   const tags = s.meta.tags ?? []
   const indent = Math.min(depth, 3) * 14
   const choice = useModelChoice(s)
+  const scope = useScope()
   return (
     <div
       role="option"
@@ -181,8 +185,9 @@ export const SessionRow = memo(function SessionRow({
           <ContextBadge context={s.context} />
           <RemoteBadge session={s} compact />
           {s.availability !== 'imported' && <ModelChoiceBadge choice={choice} compact />}
+          {scope.view === 'all' && <ProviderBadge provider={s.provider} />}
           <SourceBadge source={s.source} reason={s.sourceReason} compact />
-          <BillingBadge billing={s.billing} compact />
+          {capsOf(s).apiBilling && <BillingBadge billing={s.billing} compact />}
           {hit &&
             hit.fields.includes('text') &&
             !hit.fields.some((f) => f !== 'text' && f !== 'project') && (

@@ -21,6 +21,10 @@ import { Button } from '@/components/ui/button'
 import { Sheet, SheetContent } from '@/components/ui/sheet'
 import { SessionCard } from './SessionCard'
 import { useMobile } from './state'
+import { useMobileScope, usePhoneProviders, usePhoneScope } from './scope'
+import { hasSubagents } from '@/lib/scope'
+import { ProviderSwitch } from '@/components/ProviderSwitch'
+import { PartialSearchNote } from '@/components/list/PartialSearchNote'
 import { TerminalSheet } from './TerminalSheet'
 import { canOpenTerminal } from '@shared/terminal'
 
@@ -113,7 +117,10 @@ function FilterSheet({ open, onClose }: { open: boolean; onClose: () => void }) 
   const sort = useApp((s) => s.sort)
   const set = useApp((s) => s.set)
   const setFilters = useApp((s) => s.setFilters)
-  const f = useMemo(() => facets(sessions, filters), [sessions, filters])
+  const scope = useMobileScope()
+  const setSubagents = usePhoneScope((s) => s.setSubagents)
+  const f = useMemo(() => facets(sessions, filters, scope), [sessions, filters, scope])
+  const subagents = hasSubagents(sessions) && scope.view !== 'claude'
   const toggle = <K extends keyof Filters>(k: K, v: Filters[K]): void =>
     setFilters({ [k]: filters[k] === v ? EMPTY_FILTERS[k] : v } as Partial<Filters>)
 
@@ -153,6 +160,11 @@ function FilterSheet({ open, onClose }: { open: boolean; onClose: () => void }) 
             >
               All
             </Chip>
+            {subagents && (
+              <Chip active={scope.subagents} onClick={() => setSubagents(!scope.subagents)}>
+                Codex subagents
+              </Chip>
+            )}
           </Group>
           <Group title="When">
             {DATES.map(([k, label]) => (
@@ -176,6 +188,21 @@ function FilterSheet({ open, onClose }: { open: boolean; onClose: () => void }) 
                   onClick={() => toggle('env', e.key)}
                 >
                   {e.label} · {e.count}
+                </Chip>
+              ))}
+            </Group>
+          )}
+          {f.source.length > 0 && (
+            // Which product ran it (Claude Code terminal, Codex CLI, Codex desktop app, …),
+            // like the desktop sidebar's Source section.
+            <Group title="Source">
+              {f.source.map((s) => (
+                <Chip
+                  key={s.key}
+                  active={filters.source === s.key}
+                  onClick={() => toggle('source', s.key)}
+                >
+                  {s.label} · {s.count}
                 </Chip>
               ))}
             </Group>
@@ -249,9 +276,12 @@ export function SessionsTab() {
   // Filtered to one project: its folder (from its latest session) for Open terminal here.
   const projectKeyOf = filters.project ? projectSessionKey(filters.project) : undefined
   const projectSession = projectKeyOf ? sessions.find((x) => x.key === projectKeyOf) : undefined
+  const scope = useMobileScope()
+  const setView = usePhoneScope((s) => s.setView)
+  const enabled = usePhoneProviders()
   const items = useMemo(
-    () => visibleSessions(sessions, filters, sort, hits),
-    [sessions, filters, sort, hits]
+    () => visibleSessions(sessions, filters, sort, hits, scope),
+    [sessions, filters, sort, hits, scope]
   )
   const scrollRef = useRef<HTMLDivElement>(null)
   // eslint-disable-next-line react-hooks/incompatible-library
@@ -327,6 +357,13 @@ export function SessionsTab() {
             )}
           </Button>
         </div>
+        {enabled.length > 1 && (
+          <div className="mt-2.5">
+            <ProviderSwitch value={scope.view} onChange={setView} enabled={enabled} />
+          </div>
+        )}
+        {/* While searching, with or without results: some sessions are searched only in part. */}
+        <PartialSearchNote className="mt-2 px-1 text-[12px]" />
         {projectSession && canOpenTerminal(terminal, projectSession) && (
           <div className="mt-2.5 flex items-center gap-2 rounded-xl border border-border bg-background px-3 py-1.5">
             <FolderOpen className="size-4 shrink-0 text-subtle-foreground" />

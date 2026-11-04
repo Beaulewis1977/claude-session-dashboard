@@ -4,6 +4,7 @@ import {
   CircleHelp,
   Cloud,
   Code,
+  GitFork,
   MessagesSquare,
   Sparkles,
   SquareTerminal,
@@ -23,5 +24,12 @@ export const SOURCE_ICON: Record<SourceLabel, LucideIcon> = {
   cloud: Cloud,
   unknown: CircleHelp,
   'ask-claude': Sparkles,
-  'claude-ai': MessagesSquare
+  'claude-ai': MessagesSquare,
+  'codex-cli': Terminal,
+  'codex-vscode': Code,
+  'codex-desktop': AppWindow,
+  'codex-exec': Workflow,
+  'codex-subagent': GitFork,
+  'codex-claude-code': Sparkles,
+  'codex-unknown': CircleHelp
 }

@@ -10,11 +10,20 @@ import {
   fileExists as exists,
   findOnPath,
   findWindowsClaude,
+  findWindowsCodex,
   findWindowsTerminal,
   systemExe,
   systemRoot
 } from './core/which'
-import { isValidDistroName, parseDistroList, windowsPathToWsl, wslRoots } from './core/wsl'
+import {
+  isValidDistroName,
+  linuxToUnc,
+  mntToWindows,
+  parseDefaultDistro,
+  parseDistroList,
+  windowsPathToWsl,
+  wslRoots
+} from './core/wsl'
 
 export interface Platform {
   fixtures: boolean
@@ -26,6 +35,8 @@ export interface Platform {
   listDistros(): Promise<string[] | undefined>
   /** Undefined means the running state is unknown. */
   listRunningDistros(): Promise<string[] | undefined>
+  /** The default distro (`wsl -l -v`, marked `*`), if there is one. */
+  defaultDistro?(): Promise<string | undefined>
   /** Candidate host paths for a distro's filesystem root, preferred first. */
   distroRoots(distro: string): string[]
   pathExists(p: string): Promise<boolean>
@@ -42,17 +53,24 @@ export interface Platform {
    * can't map it (drives not mounted, distro unreachable).
    */
   wslPath(distro: string, windowsPath: string): Promise<string | undefined>
-  /** Can this distro read the path? (`test -r` run inside it.) */
-  wslCanRead(distro: string, linuxPath: string): Promise<boolean>
+  /**
+   * A Linux path as Windows sees it, asked in the distro (`wslpath -w`): `C:\…`
+   * for a folder on a mounted Windows drive, `\\wsl.localhost\…` for a Linux one.
+   */
+  wslWindowsPath?(distro: string, linuxPath: string): Promise<string | undefined>
+  /** Can this distro read the path? (`test -r` run inside it, as `user` when given.) */
+  wslCanRead(distro: string, linuxPath: string, user?: string): Promise<boolean>
 }
 
-/** Run one program inside a distro (no shell); stdout on exit code 0, else undefined. */
-function inDistro(distro: string, args: string[]): Promise<string | undefined> {
+/** Run one program inside a distro (no shell), as `user` if given; stdout on exit code 0, else undefined. */
+function inDistro(distro: string, args: string[], user?: string): Promise<string | undefined> {
   if (process.platform !== 'win32' || !isValidDistroName(distro)) return Promise.resolve(undefined)
+  if (user !== undefined && !/^[a-z_][a-z0-9_-]{0,31}$/i.test(user))
+    return Promise.resolve(undefined)
   return new Promise((resolve) =>
     execFile(
       systemExe('wsl.exe'),
-      ['-d', distro, '-e', ...args],
+      ['-d', distro, ...(user ? ['-u', user] : []), '-e', ...args],
       { encoding: 'utf8', windowsHide: true, timeout: 20_000 },
       (err, stdout) => resolve(err ? undefined : String(stdout))
     )
@@ -185,6 +203,7 @@ export function createRealPlatform(): Platform {
   const isWindows = process.platform === 'win32'
   let wtCache: string | null | undefined
   let claudeCache: string | undefined
+  let codexCache: string | undefined
   return {
     fixtures: false,
     canLaunch: isWindows,
@@ -200,6 +219,11 @@ export function createRealPlatform(): Platform {
       if (!out) return undefined
       // When nothing runs, wsl prints a sentence instead of names.
       return parseDistroList(out).filter((n) => !/\s/.test(n))
+    },
+    async defaultDistro() {
+      if (!isWindows) return undefined
+      const out = await runWsl(['-l', '-v'])
+      return out ? parseDefaultDistro(out) : undefined
     },
     distroRoots: (distro) => wslRoots(distro),
     pathExists: exists,
@@ -221,6 +245,8 @@ export function createRealPlatform(): Platform {
       // Look again if Claude Code wasn't found, or isn't where it was.
       if (!claudeCache || !(await exists(claudeCache))) claudeCache = await findWindowsClaude()
       tools.claude = claudeCache
+      if (!codexCache || !(await exists(codexCache))) codexCache = await findWindowsCodex()
+      tools.codex = codexCache
       return tools
     },
     spawnDetached(cmd) {
@@ -230,8 +256,12 @@ export function createRealPlatform(): Platform {
       const out = (await inDistro(distro, ['wslpath', '-u', windowsPath]))?.trim()
       return out && out.startsWith('/') && !out.includes('\n') ? out : undefined
     },
-    async wslCanRead(distro, linuxPath) {
-      return (await inDistro(distro, ['test', '-r', linuxPath])) !== undefined
+    async wslWindowsPath(distro, linuxPath) {
+      const out = (await inDistro(distro, ['wslpath', '-w', linuxPath]))?.trim()
+      return out && /^(?:[A-Za-z]:\\|\\\\)/.test(out) && !out.includes('\n') ? out : undefined
+    },
+    async wslCanRead(distro, linuxPath, user) {
+      return (await inDistro(distro, ['test', '-r', linuxPath], user)) !== undefined
     },
     async gitBash() {
       if (!isWindows) return undefined
@@ -291,6 +321,10 @@ export function createFixturesPlatform(fixturesDir: string, sourcesDir: string):
     async listRunningDistros() {
       return parseDistroList(await readFile(join(fixturesDir, 'wsl-list-running.utf16')))
     },
+    async defaultDistro() {
+      // The sample list's first distro stands in for the default.
+      return parseDistroList(await readFile(join(fixturesDir, 'wsl-list.utf16')))[0]
+    },
     distroRoots: (distro) => [join(sourcesDir, 'wsl', distro)],
     async pathExists(p) {
       // Sample cwds are Windows/Linux paths that don't exist here. Pretend they
@@ -306,7 +340,8 @@ export function createFixturesPlatform(fixturesDir: string, sourcesDir: string):
         powershell: 'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe',
         cmd: 'C:\\Windows\\System32\\cmd.exe',
         wsl: 'C:\\Windows\\System32\\wsl.exe',
-        claude: 'C:\\Users\\beau\\.local\\bin\\claude.exe'
+        claude: 'C:\\Users\\beau\\.local\\bin\\claude.exe',
+        codex: 'C:\\Users\\beau\\AppData\\Roaming\\npm\\codex.cmd'
       }
     },
     async spawnDetached() {
@@ -316,8 +351,14 @@ export function createFixturesPlatform(fixturesDir: string, sourcesDir: string):
     async wslPath(_distro, windowsPath) {
       return windowsPathToWsl(windowsPath)
     },
-    async wslCanRead() {
-      return true
+    async wslWindowsPath(distro, linuxPath) {
+      return mntToWindows(linuxPath) ?? linuxToUnc(`\\\\wsl.localhost\\${distro}`, linuxPath)
+    },
+    async wslCanRead(distro, linuxPath) {
+      // Drive mounts (/mnt/c/…) stand for Windows folders, which the samples pretend exist;
+      // Linux folders are looked up in the sample distro.
+      if (linuxPath.startsWith('/mnt/')) return true
+      return exists(join(sourcesDir, 'wsl', distro, ...linuxPath.split('/').filter(Boolean)))
     },
     async runCcusage() {
       return undefined

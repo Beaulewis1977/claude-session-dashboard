@@ -7,6 +7,7 @@ import {
   Ellipsis,
   FileCode,
   GitBranchPlus,
+  Hexagon,
   Image as ImageIcon,
   Layers,
   SquareTerminal,
@@ -24,6 +25,7 @@ import { ErrorBoundary, RenderFailed } from '../ErrorBoundary'
 import { Collapsible, OrphanResult, ToolCall } from './ToolCall'
 import { BranchMarks, type BranchMark } from './Branches'
 import { ClaudeMark } from '../brand'
+import { PROVIDER_SHORT, type ProviderId } from '@shared/provider'
 import {
   ContextMenu,
   ContextMenuContent,
@@ -337,13 +339,15 @@ function AssistantTurn({
   cwd,
   open,
   findQuery,
-  onBranch
+  onBranch,
+  agent = 'claude'
 }: {
   msgs: ChatMessage[]
   cwd?: string
   open: Set<string>
   findQuery?: string
   onBranch?: OnBranch
+  agent?: ProviderId
 }) {
   const first = msgs[0]
   const model = msgs.find((m) => m.model)?.model
@@ -359,10 +363,16 @@ function AssistantTurn({
   }
   return (
     <div className="flex gap-3">
-      <ClaudeMark className="mt-0.5 size-6 shrink-0" />
+      {agent === 'claude' ? (
+        <ClaudeMark className="mt-0.5 size-6 shrink-0" />
+      ) : (
+        <span className="mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-md bg-secondary text-muted-foreground">
+          <Hexagon className="size-3.5" />
+        </span>
+      )}
       <div className="min-w-0 flex-1">
         <div className="mb-3 flex items-center gap-2 text-2xs text-subtle-foreground">
-          <span className="font-medium text-muted-foreground">Claude</span>
+          <span className="font-medium text-muted-foreground">{PROVIDER_SHORT[agent]}</span>
           {first.timestamp && <span>{formatTime(first.timestamp)}</span>}
           {model && (
             <span className="truncate">{model.replace(/^claude-/, '').replace(/-\d{8}$/, '')}</span>
@@ -540,12 +550,15 @@ export const Transcript = memo(function Transcript({
   findQuery,
   onBranch,
   marks,
-  className
+  className,
+  agent = 'claude'
 }: {
   messages: ChatMessage[]
   cwd?: string
   findQuery: string
   onBranch?: OnBranch
+  /** Whose replies these are (the avatar and name). */
+  agent?: ProviderId
   /** Branch markers, keyed by the message they follow. */
   marks?: Map<string, BranchMark[]>
   /** Overrides for the outer padding (narrower on a phone). */
@@ -610,6 +623,7 @@ export const Transcript = memo(function Transcript({
                   open={open}
                   findQuery={findQuery}
                   onBranch={onBranch}
+                  agent={agent}
                 />
               )}
               {t.kind === 'event' && <EventRow msg={t.msg} forceOpen={open.has(t.msg.id)} />}

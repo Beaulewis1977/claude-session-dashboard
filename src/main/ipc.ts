@@ -14,25 +14,33 @@ import {
   toYmd
 } from '@shared/usage/health'
 import { sanitizePace } from '@shared/usage/pace'
-import { cleanEffortChoice, cleanModelChoice, sanitizeProjectModels } from '@shared/model-choice'
+import {
+  CODEX_EFFORT_LEVELS,
+  cleanEffortChoice,
+  cleanModelChoice,
+  DEFAULT_CHOICE,
+  sanitizeProjectModels
+} from '@shared/model-choice'
+import { isProviderView, sanitizeProviderToggles } from '@shared/provider'
 import { normalizeProjectKey } from '@shared/project-key'
 import { sanitizeLiveAlerts } from '@shared/live-alerts'
 import { sanitizeSummarySettings } from '@shared/summary'
 import { sanitizeContextWarning } from '@shared/context'
-import type {
-  AppInfo,
-  AppSettings,
-  BranchRequest,
-  LaunchOptions,
-  SessionMeta,
-  TerminalPref,
-  ThemePref
+import {
+  isCodexArchiveMode,
+  type AppInfo,
+  type AppSettings,
+  type BranchRequest,
+  type LaunchOptions,
+  type SessionMeta,
+  type TerminalPref,
+  type ThemePref
 } from '@shared/types'
 import { archiveStats } from './core/archive'
 import type { JsonStore } from './core/json-store'
 import { handle } from './ipc-guard'
 import { assertUserWrite, isInside } from './core/safe-paths'
-import { windowsPathToWsl } from './core/wsl'
+import { isValidDistroName, windowsPathToWsl } from './core/wsl'
 import type { Platform } from './platform'
 import type { Launcher } from './services/launcher'
 import type { SessionService } from './services/sessions'
@@ -92,7 +100,35 @@ function publicSettings(s: SettingsFile): AppSettings {
     ),
     liveAlerts: sanitizeLiveAlerts(s.liveAlerts),
     summaries: sanitizeSummarySettings(s.summaries),
-    contextWarning: sanitizeContextWarning(s.contextWarning)
+    contextWarning: sanitizeContextWarning(s.contextWarning),
+    ...providerSettings(s)
+  }
+}
+
+/** The Codex-era settings, with their defaults (absent from older settings files). */
+export function providerSettings(
+  s: Partial<SettingsFile>
+): Required<
+  Pick<
+    AppSettings,
+    | 'providers'
+    | 'providerView'
+    | 'codexArchive'
+    | 'showSubagents'
+    | 'codexDefaultModel'
+    | 'codexDefaultEffort'
+    | 'codexProjectModels'
+  >
+> {
+  return {
+    providers: sanitizeProviderToggles(s.providers),
+    providerView: isProviderView(s.providerView) ? s.providerView : 'all',
+    codexArchive: isCodexArchiveMode(s.codexArchive) ? s.codexArchive : 'off',
+    showSubagents: s.showSubagents === true,
+    codexDefaultModel: cleanModelChoice(s.codexDefaultModel) ?? DEFAULT_CHOICE,
+    codexDefaultEffort:
+      cleanEffortChoice(s.codexDefaultEffort, CODEX_EFFORT_LEVELS) ?? DEFAULT_CHOICE,
+    codexProjectModels: sanitizeProjectModels(s.codexProjectModels, CODEX_EFFORT_LEVELS)
   }
 }
 
@@ -128,7 +164,16 @@ function launchOpts(v: unknown): LaunchOptions {
       ? (o.terminal as TerminalPref)
       : undefined,
     remoteControl: o.remoteControl === true,
-    continueFresh: continueRequest(o.continueFresh)
+    continueFresh: continueRequest(o.continueFresh),
+    ...placeOpts(o)
+  }
+}
+
+/** The opt-in for a session in a WSL-only folder, and its distro (see Launcher.place). */
+function placeOpts(o: Record<string, unknown>): Pick<LaunchOptions, 'wslFolder' | 'distro'> {
+  return {
+    ...(o.wslFolder === true ? { wslFolder: true } : {}),
+    ...(typeof o.distro === 'string' && isValidDistroName(o.distro) ? { distro: o.distro } : {})
   }
 }
 
@@ -191,7 +236,26 @@ export function registerIpc(deps: IpcDeps): void {
     const before = settings.value
     const rescanNeeded =
       'scanStoppedDistros' in p && p.scanStoppedDistros !== before.scanStoppedDistros
+    const archiveBefore = providerSettings(before).codexArchive
     settings.update((s) => {
+      if ('providers' in p)
+        s.providers = sanitizeProviderToggles({
+          ...sanitizeProviderToggles(s.providers),
+          ...((p.providers ?? {}) as object)
+        })
+      if (isProviderView(p.providerView)) s.providerView = p.providerView
+      if (isCodexArchiveMode(p.codexArchive)) s.codexArchive = p.codexArchive
+      if (typeof p.showSubagents === 'boolean') s.showSubagents = p.showSubagents
+      if ('codexDefaultModel' in p) {
+        const m = cleanModelChoice(p.codexDefaultModel)
+        if (m) s.codexDefaultModel = m
+      }
+      if ('codexDefaultEffort' in p) {
+        const e = cleanEffortChoice(p.codexDefaultEffort, CODEX_EFFORT_LEVELS)
+        if (e) s.codexDefaultEffort = e
+      }
+      if ('codexProjectModels' in p)
+        s.codexProjectModels = sanitizeProjectModels(p.codexProjectModels, CODEX_EFFORT_LEVELS)
       if (typeof p.skipPermissionsDefault === 'boolean')
         s.skipPermissionsDefault = p.skipPermissionsDefault
       if (TERMINALS.includes(p.terminal as TerminalPref)) s.terminal = p.terminal as TerminalPref
@@ -277,7 +341,12 @@ export function registerIpc(deps: IpcDeps): void {
     deps.onSettingsChanged?.()
     await settings.flush()
     if (p.theme) deps.applyTheme(settings.value.theme)
-    if (rescanNeeded) void rescan()
+    // Turning a provider on or off: scan (and watch) only the ones that are on.
+    const toggled = sessions.providers.setEnabled(providerSettings(settings.value).providers)
+    // A provider turned off leaves the list now, before the (slow) rescan.
+    if (toggled) sessions.dropDisabled()
+    if (rescanNeeded || toggled) void rescan()
+    if (providerSettings(settings.value).codexArchive !== archiveBefore) sessions.archiveWantedNow()
     return publicSettings(settings.value)
   })
   handle('settings:addFolder', async () => {
@@ -314,11 +383,10 @@ export function registerIpc(deps: IpcDeps): void {
 
   handle('archive:stats', async () => ({
     dir: paths.archiveDir,
-    ...(await archiveStats(
-      paths.archiveDir,
-      sessions.providers.all().map((p) => p.archiveExt)
-    ))
+    // Every provider's copies, on or off (a provider that's off keeps its archive).
+    ...(await archiveStats(paths.archiveDir, ['.jsonl', '.jsonl.zst']))
   }))
+  handle('archive:codexEstimate', () => sessions.codexArchiveEstimate())
   handle('import:claudeAi', async () => {
     const w = win()
     const opts: Electron.OpenDialogOptions = {
@@ -348,9 +416,24 @@ export function registerIpc(deps: IpcDeps): void {
 
   handle('launch:preview', (_e, opts) => deps.launcher.preview(launchOpts(opts)))
   handle('launch:run', (_e, opts) => deps.launcher.launch(launchOpts(opts)))
-  handle('launch:pickCwd', async (_e, key) => {
+  handle('launch:openInAgentApp', async (_e, key) => {
     const s = sessions.get(str(key, 'key'))
-    if (!s) return null
+    if (!s) throw new Error('Session not found')
+    // Built here from the session id (never a URL from the renderer), and only the
+    // agent's own app scheme: a local link handled on this PC, not a network call.
+    const link = sessions.providerOf(s).launch.appLink?.(s.sessionId)
+    if (!link || !/^codex:\/\/threads\/[0-9a-f-]{36}$/i.test(link))
+      throw new Error("This session can't be opened in its app.")
+    await shell.openExternal(link)
+  })
+  handle('launch:pickCwd', async (_e, key, where) => {
+    const found = sessions.get(str(key, 'key'))
+    if (!found) return null
+    // As the session will run (WSL for a Codex desktop session with a Linux folder, …).
+    const { s } = await deps.launcher.place(
+      found,
+      placeOpts((where ?? {}) as Record<string, unknown>)
+    )
     const w = win()
     const opts: Electron.OpenDialogOptions = {
       title: 'Choose the working folder',

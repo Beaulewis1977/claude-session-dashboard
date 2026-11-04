@@ -67,12 +67,12 @@ export function computeTitle(
 }
 
 /** Where the title came from, for the name editor. */
-export function titleSourceLabel(source: TitleSource): string {
+export function titleSourceLabel(source: TitleSource, product = 'Claude Code'): string {
   switch (source) {
     case 'name':
       return 'Set in dashboard'
     case 'claude-name':
-      return 'From Claude Code'
+      return `From ${product}`
     case 'summary':
       return "Auto · Claude's summary"
     case 'first-prompt':

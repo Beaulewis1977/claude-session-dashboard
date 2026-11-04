@@ -13,6 +13,7 @@ import {
   EyeOff,
   FileDown,
   FolderOpen,
+  Gauge,
   GitBranch,
   GitFork,
   Hash,
@@ -28,6 +29,7 @@ import {
   Terminal,
   Sparkles,
   TextCursorInput,
+  TriangleAlert,
   WifiOff,
   Zap
 } from 'lucide-react'
@@ -37,6 +39,8 @@ import type { SessionDetail, SessionSummary } from '@shared/types'
 import { formatBytes, formatDateTime } from '@shared/format'
 import { messagePreview } from '@shared/branch'
 import { canUseClaudeName } from '@shared/title'
+import { capsOf, PROVIDER_BIN, PROVIDER_LABEL, providerOf } from '@shared/provider'
+import { ProviderBadge } from '../ProviderSwitch'
 import { api } from '@/lib/api'
 import {
   applyClaudeNames,
@@ -148,6 +152,10 @@ function Header({
     new Date(session.startedAt).toDateString() === new Date(session.lastActivityAt).toDateString()
   const useClaude = canUseClaudeName(session)
   const choice = choiceLabel(useModelChoice(session))
+  // What this session's agent can do (Codex: no Branch / Continue fresh / summaries yet).
+  const caps = capsOf(session)
+  const product = PROVIDER_LABEL[providerOf(session)]
+  const bin = PROVIDER_BIN[providerOf(session)]
 
   return (
     <div className="border-b border-border px-8 pt-5 pb-4">
@@ -182,14 +190,20 @@ function Header({
                     {choice && <span className="font-normal opacity-85">· {choice}</span>}
                   </Button>
                 </Tooltip>
-                <Tooltip
-                  content="Fork into a new session (original stays untouched)"
-                  shortcut={`${MOD}+Shift+Enter`}
-                >
-                  <Button variant="outline" size="md" onClick={() => openResume(session.key, true)}>
-                    <GitFork /> Fork
-                  </Button>
-                </Tooltip>
+                {caps.fork && (
+                  <Tooltip
+                    content="Fork into a new session (original stays untouched)"
+                    shortcut={`${MOD}+Shift+Enter`}
+                  >
+                    <Button
+                      variant="outline"
+                      size="md"
+                      onClick={() => openResume(session.key, true)}
+                    >
+                      <GitFork /> Fork
+                    </Button>
+                  </Tooltip>
+                )}
               </>
             )}
             <Tooltip content="Find in session" shortcut={`${MOD}+F`}>
@@ -206,18 +220,24 @@ function Header({
                 </DropdownMenuTrigger>
               </Tooltip>
               <DropdownMenuContent className="w-64">
-                <DropdownMenuItem onSelect={() => openNewSession(session.key)}>
-                  <Plus /> New session in this folder…
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  disabled={session.availability === 'imported'}
-                  onSelect={() => openContinueFresh(session.key)}
-                >
-                  <Zap /> Continue fresh from summary…
-                </DropdownMenuItem>
-                <DropdownMenuItem onSelect={() => summarize([session.key])}>
-                  <Sparkles /> {session.meta.aiSummary ? 'Regenerate summary' : 'Summarize'}
-                </DropdownMenuItem>
+                {caps.newSession && (
+                  <DropdownMenuItem onSelect={() => openNewSession(session.key)}>
+                    <Plus /> New session in this folder…
+                  </DropdownMenuItem>
+                )}
+                {caps.continueFresh && (
+                  <DropdownMenuItem
+                    disabled={session.availability === 'imported'}
+                    onSelect={() => openContinueFresh(session.key)}
+                  >
+                    <Zap /> Continue fresh from summary…
+                  </DropdownMenuItem>
+                )}
+                {caps.summaries && (
+                  <DropdownMenuItem onSelect={() => summarize([session.key])}>
+                    <Sparkles /> {session.meta.aiSummary ? 'Regenerate summary' : 'Summarize'}
+                  </DropdownMenuItem>
+                )}
                 <DropdownMenuItem
                   disabled={session.availability === 'imported' || !session.cwd}
                   onSelect={() => void openTerminalHere(session.key)}
@@ -232,7 +252,7 @@ function Header({
                   <SquareTerminal /> Copy resume command
                 </DropdownMenuItem>
                 <DropdownMenuItem onSelect={() => void copyResumeCommand(session.key, 'claude')}>
-                  <Copy /> Copy claude command only
+                  <Copy /> Copy {bin} command only
                 </DropdownMenuItem>
                 <DropdownMenuItem onSelect={() => void copySessionId(session.sessionId)}>
                   <Hash /> Copy session ID
@@ -258,7 +278,7 @@ function Header({
                   disabled={!useClaude}
                   onSelect={() => void applyClaudeNames([session.key])}
                 >
-                  <TextCursorInput /> Use name from Claude Code
+                  <TextCursorInput /> Use name from {product}
                 </DropdownMenuItem>
                 <DropdownMenuItem onSelect={() => void togglePinned(session.key)}>
                   {session.meta.pinned ? <PinOff /> : <Pin />}
@@ -282,9 +302,10 @@ function Header({
           />
         </div>
 
-        <SummaryBlock session={session} />
+        {(caps.summaries || session.meta.aiSummary) && <SummaryBlock session={session} />}
 
         <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5">
+          <ProviderBadge provider={session.provider} className="h-5 px-1.5 text-[11px]" />
           {session.availability !== 'imported' && (
             <EnvBadge env={session.env} distro={session.distro} />
           )}
@@ -299,7 +320,7 @@ function Header({
               })
             }
           />
-          <BillingBadge billing={session.billing} />
+          {caps.apiBilling && <BillingBadge billing={session.billing} />}
           <RemoteBadge session={session} />
           {session.meta.pinned && (
             <Badge variant="accent">
@@ -327,8 +348,23 @@ function Header({
             </span>
           </Fact>
           {session.gitBranch && (
-            <Fact icon={GitBranch}>
-              <span className="font-mono text-[11.5px]">{session.gitBranch}</span>
+            <Fact icon={GitBranch} title={session.gitRemote}>
+              <span className="font-mono text-[11.5px]">
+                {session.gitBranch}
+                {session.gitCommit ? ` @ ${session.gitCommit.slice(0, 7)}` : ''}
+              </span>
+            </Fact>
+          )}
+          {session.reasoningEffort && (
+            <Fact icon={Gauge} title="Reasoning effort of the latest turn">
+              {session.models[session.models.length - 1] ?? ''} · {session.reasoningEffort} effort
+            </Fact>
+          )}
+          {session.subagent && (
+            <Fact icon={GitFork} title="A thread another Codex thread started">
+              Subagent
+              {session.subagent.nickname ? ` "${session.subagent.nickname}"` : ''}
+              {session.subagent.role ? ` (${session.subagent.role})` : ''}
             </Fact>
           )}
           <Fact icon={MessageSquare}>
@@ -346,7 +382,7 @@ function Header({
           </Fact>
           <span className="text-xs text-subtle-foreground">
             {formatBytes(session.sizeBytes)}
-            {session.version ? ` · Claude Code ${session.version}` : ''}
+            {session.version ? ` · ${product} ${session.version}` : ''}
           </span>
         </div>
 
@@ -357,11 +393,15 @@ function Header({
           </div>
         )}
 
-        <SessionUsageStrip sessionKey={session.key} version={session.sizeBytes} />
-        <ContextStrip
-          sessionKey={session.key}
-          version={`${session.sizeBytes}:${session.context?.tokens ?? ''}:${session.context?.at ?? ''}:${session.context?.windowSize ?? ''}:${session.billing?.mode ?? ''}:${session.meta.aiSummary?.generatedAt ?? ''}:${session.meta.aiSummary?.editedAt ?? ''}:${session.meta.model ?? ''}`}
-        />
+        {caps.usage && (
+          <>
+            <SessionUsageStrip sessionKey={session.key} version={session.sizeBytes} />
+            <ContextStrip
+              sessionKey={session.key}
+              version={`${session.sizeBytes}:${session.context?.tokens ?? ''}:${session.context?.at ?? ''}:${session.context?.windowSize ?? ''}:${session.billing?.mode ?? ''}:${session.meta.aiSummary?.generatedAt ?? ''}:${session.meta.aiSummary?.editedAt ?? ''}:${session.meta.model ?? ''}`}
+            />
+          </>
+        )}
 
         <div className="mt-3">
           <TagEditor
@@ -374,15 +414,37 @@ function Header({
 
         <BranchesPanel session={session} atPreview={branchPointPreview} />
 
-        {(session.availability !== 'live' || session.malformedLines > 0) && (
+        {(session.availability !== 'live' ||
+          session.malformedLines > 0 ||
+          !!session.historyNote ||
+          !!session.searchPartial) && (
           <div className="mt-3 space-y-2">
+            {session.historyNote && (
+              <Notice tone="warning" icon={TriangleAlert}>
+                <span className="font-medium">History may be incomplete.</span>{' '}
+                {session.historyNote.replace(/^This conversation may be incomplete: /, '')}
+              </Notice>
+            )}
+            {session.searchPartial && (
+              <Notice tone="info" icon={Search}>
+                This conversation is very long, so the search across sessions covers only its first
+                part (prompts and answers first). Find in session searches all of it.
+              </Notice>
+            )}
             {session.availability === 'imported' && (
               <Notice tone="info" icon={MessagesSquare}>
                 Imported from a claude.ai data export into the app&apos;s archive. You can read,
                 search and export it; it has no token stats and can&apos;t be resumed.
               </Notice>
             )}
-            {session.availability === 'archived-only' && (
+            {session.availability === 'archived-only' && !caps.restore && (
+              <Notice tone="warning" icon={Archive}>
+                The original file is gone from <span className="font-mono">~/.codex/sessions</span>.
+                You're viewing the app's archived copy. The app never writes into Codex's folder, so
+                this session can be read, searched and exported, but not resumed from here.
+              </Notice>
+            )}
+            {session.availability === 'archived-only' && caps.restore && (
               <Notice tone="warning" icon={Archive}>
                 The original file is gone from <span className="font-mono">.claude/projects</span>{' '}
                 (Claude Code cleans up old sessions). You're viewing the app's archived copy. Resume
@@ -549,9 +611,14 @@ export function SessionViewer({
               messages={messages}
               cwd={session.cwd}
               findQuery={effectiveQuery}
-              // Imported claude.ai conversations are view only: no branching.
-              onBranch={session.availability === 'imported' ? undefined : onBranch}
+              // Imported claude.ai conversations are view only, and Codex has no Branch from here.
+              onBranch={
+                session.availability === 'imported' || !capsOf(session).branch
+                  ? undefined
+                  : onBranch
+              }
               marks={marks}
+              agent={providerOf(session)}
             />
           ) : error ? (
             <div className="py-16 text-center text-sm text-muted-foreground">

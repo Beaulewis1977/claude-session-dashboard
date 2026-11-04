@@ -9,6 +9,12 @@ import { DEFAULT_PROVIDER, type ProviderId } from '@shared/provider'
 import type { ArchiveRecord } from '@shared/types'
 import { assertAppDataWrite, assertRealAppDataWrite } from './safe-paths'
 import { copyShared } from './shared-copy'
+import { contentSizeOf, hasZstdMagic, isZstdPath, zstdContentSize } from './zstd'
+
+/** ".jsonl.zst" or ".jsonl" (the archive's two kinds of copies). */
+function extOf(p: string): string {
+  return p.endsWith('.jsonl.zst') ? '.jsonl.zst' : p.slice(p.lastIndexOf('.'))
+}
 
 export function safeSegment(s: string): string {
   return s.replace(/[^A-Za-z0-9._-]+/g, '_').slice(0, 100) || '_'
@@ -55,6 +61,12 @@ export interface ArchiveInput {
   distro?: string
   originalPath: string
   cwd?: string
+  /**
+   * The session's content size, decompressed (agents whose files may be
+   * re-encoded, e.g. Codex compressing a rollout to .zst). Compared instead
+   * of the file size, so a compressed file with more in it is still copied.
+   */
+  contentSize?: number
 }
 
 export type ArchiveDecision = 'copy' | 'skip'
@@ -67,11 +79,29 @@ export type ArchiveDecision = 'copy' | 'skip'
 export function shouldArchive(
   record: ArchiveRecord | undefined,
   sourceSize: number,
-  archiveExists: boolean
+  archiveExists: boolean,
+  contentSize?: number
 ): ArchiveDecision {
   if (!record || !archiveExists) return 'copy'
+  if (contentSize !== undefined)
+    return contentSize > (record.contentSize ?? record.size) ? 'copy' : 'skip'
   if (sourceSize > record.size) return 'copy'
   return 'skip'
+}
+
+/**
+ * How much a copy adds to the archive (for estimates), the way archiveSession
+ * writes it: the same encoding replaces the copy (it grows by the difference),
+ * another encoding writes a whole new copy beside the old one.
+ */
+export function archiveGrowth(
+  record: Pick<ArchiveRecord, 'archivePath' | 'size'> | undefined,
+  sourceSize: number,
+  ext?: string
+): number {
+  if (!record) return sourceSize
+  if (ext && extOf(record.archivePath) !== ext) return sourceSize
+  return Math.max(0, sourceSize - record.size)
 }
 
 async function fileExists(p: string): Promise<boolean> {
@@ -90,9 +120,17 @@ export async function archiveSession(
   appDataDir: string
 ): Promise<ArchiveRecord | undefined> {
   const src = await stat(input.originalPath)
-  const dest =
-    existing?.archivePath ?? archivePathFor(archiveDir, input.sourceId, input.sessionId, input.ext)
-  const decision = shouldArchive(existing, src.size, await fileExists(dest))
+  const fresh = archivePathFor(archiveDir, input.sourceId, input.sessionId, input.ext)
+  // Same encoding: the same copy grows. Another encoding (a rollout Codex compressed):
+  // a new copy next to it, so the old one is never overwritten.
+  const sameKind = !existing || !input.ext || extOf(existing.archivePath) === input.ext
+  const dest = existing && sameKind ? existing.archivePath : fresh
+  const decision = shouldArchive(
+    existing,
+    src.size,
+    await fileExists(existing?.archivePath ?? dest),
+    input.contentSize
+  )
   if (decision === 'skip') {
     // Keep the record's descriptive fields fresh without touching the copy.
     if (existing && input.cwd && existing.cwd !== input.cwd) return { ...existing, cwd: input.cwd }
@@ -106,11 +144,24 @@ export async function archiveSession(
   await copyShared(input.originalPath, tmp)
   try {
     const copied = await stat(tmp)
-    // Never replace a larger archive copy with a smaller one (the file may have
-    // been truncated between stat and copy).
-    if (existing && copied.size < existing.size && (await fileExists(dest))) {
+    // A compressed copy is measured by what it holds: recompressed better, it can
+    // be smaller on disk with more in it. One cut off mid-copy doesn't decode.
+    const compressed = isZstdPath(dest) && (await hasZstdMagic(tmp))
+    const content = compressed ? await zstdContentSize(tmp).catch(() => undefined) : undefined
+    if (compressed && content === undefined) {
       await unlink(tmp)
       return undefined
+    }
+    // Never replace a larger archive copy with a smaller one (the file may have
+    // been truncated between stat and copy).
+    if (existing && dest === existing.archivePath && (await fileExists(dest))) {
+      const shrank = compressed
+        ? content! < (existing.contentSize ?? (await contentSizeOf(dest).catch(() => 0)))
+        : copied.size < existing.size
+      if (shrank) {
+        await unlink(tmp)
+        return undefined
+      }
     }
     const sha256 = await sha256File(tmp)
     await rename(tmp, dest)
@@ -128,6 +179,10 @@ export async function archiveSession(
       archivePath: dest,
       cwd: input.cwd ?? existing?.cwd,
       size: copied.size,
+      // A compressed copy: what it was measured to hold (the parse may be older).
+      ...((content ?? input.contentSize) !== undefined
+        ? { contentSize: content ?? input.contentSize }
+        : {}),
       sha256,
       sourceMtimeMs: src.mtimeMs,
       firstArchivedAt: existing?.firstArchivedAt ?? now,

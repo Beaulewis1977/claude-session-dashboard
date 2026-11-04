@@ -26,6 +26,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Tooltip } from '@/components/ui/tooltip'
+import { PartialSearchNote } from './PartialSearchNote'
 
 const SORT_LABELS: Record<SortKey, string> = {
   activity: 'Last activity',
@@ -300,6 +301,7 @@ export function ListToolbar({ count }: { count: number }) {
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
+      <PartialSearchNote className="mt-1 pl-0.5" />
       {chips.length > 0 && (
         <div className="mt-1.5 flex flex-wrap items-center gap-1">
           {chips.map((c) => (

@@ -1,14 +1,15 @@
 // The provider interface: everything about one coding agent's sessions that
 // the generic services (catalogue, archive, launcher, usage, limits, Running
 // now, summaries) need, so they never read an agent's files or build its
-// commands themselves. ClaudeProvider (./claude) is the only one so far.
+// commands themselves: ClaudeProvider (./claude) and CodexProvider (./codex).
 
-import type { ProviderId } from '@shared/provider'
+import type { ProviderCapabilities, ProviderId } from '@shared/provider'
 import type { BranchMode, BranchPlanOk } from '@shared/branch'
 import type { MessageStart } from '@shared/lineage'
 import type { HookEvent, RunningFile } from '@shared/live'
 import type { HandoffMode } from '@shared/summary'
 import type { DetectedSource, SourceContext } from '@shared/source-label'
+import type { EffortLevels } from '@shared/model-choice'
 import type { BridgeReading } from '@shared/usage/bridge'
 import type { UsageContext } from '@shared/usage/parse'
 import type { UsageAnalysis } from '@shared/usage/types'
@@ -42,15 +43,7 @@ export type BaseSummary = Omit<
 
 export type SourceRef = Pick<SourceInfo, 'id' | 'label' | 'env' | 'distro'>
 
-/** What a provider's sessions can do (unsupported actions are refused). */
-export interface ProviderCapabilities {
-  fork: boolean
-  branch: boolean
-  continueFresh: boolean
-  remoteControl: boolean
-  /** Launch on an API account's key instead of the subscription. */
-  apiBilling: boolean
-}
+export type { ProviderCapabilities }
 
 /** The agent's own command (`claude …`), without the terminal around it. */
 export interface CliInput {
@@ -60,6 +53,8 @@ export interface CliInput {
   newSession?: boolean
   remoteControl?: RemoteControl
   askPermissions?: boolean
+  /** With askPermissions: the read-only sandbox (Codex `-s read-only`), for a WSL folder run from Windows. */
+  readOnly?: boolean
   modelChoice?: ModelChoice
   continueFresh?: ContinueFreshArgs
 }
@@ -108,7 +103,21 @@ export interface SessionProvider {
     isSessionFile(path: string): boolean
   }
 
+  /** The effort levels its launches accept. */
+  readonly effortLevels: EffortLevels
+  /**
+   * Bumped when its parsing changes, so the startup cache reads its files again
+   * (Claude Code has none: its cache is versioned with the whole cache file).
+   */
+  readonly parseVersion?: number
+
   // -------------------------------------------------------------- parsing
+  /**
+   * A session file's text as the parsing functions below take it. `purpose`:
+   * "view" (showing or searching it) may stop early on a huge file; "summary"
+   * (the default) reads it to the end.
+   */
+  readText(path: string, purpose?: 'summary' | 'view'): Promise<string>
   parseSession(
     text: string,
     file: Omit<SessionFile, 'mtimeMs'>,
@@ -124,9 +133,18 @@ export interface SessionProvider {
   /** A title for the dashboard's own runs (Ask, summaries), from their first prompt. */
   ownRunTitle(firstPrompt: string | undefined): string | undefined
 
+  /** The agent's own names for its sessions (e.g. Codex thread names), when they're kept outside the session files. */
+  names?: {
+    get(sourceId: string, sessionId: string): { name: string; at?: string } | undefined
+    /** Re-read a source's names if they changed; returns the session ids whose name changed. */
+    refresh(src: ResolvedSource): Promise<string[]>
+  }
+
   // -------------------------------------------------------------- archive
   /** File extension of the archive copy (".jsonl"). */
   readonly archiveExt: string
+  /** The archive copy's extension for one file, when it varies (Codex: ".jsonl" or ".jsonl.zst"). */
+  archiveExtOf?(originalPath: string): string
   /** The folder name an archived session was in, from its original path. */
   projectDirOf(originalPath: string): string
 
@@ -140,6 +158,17 @@ export interface SessionProvider {
     commandLine(input: CliInput): string
     /** Continue fresh: the first message pointing at the handoff file. */
     handoffPrompt(path: string): { prompt: string; mode: HandoffMode } | undefined
+    /** Who and which home the agent runs as for a source (Codex: the WSL user, or CODEX_HOME). */
+    target?(src: ResolvedSource): Pick<LaunchInput, 'wslUser' | 'agentEnv'>
+    /**
+     * Its sessions can have a folder from the other environment than the home
+     * that holds them (Codex: the desktop app on Windows runs its agent in
+     * WSL). The agent still runs where its home is; only the folder is
+     * translated (see Launcher.place).
+     */
+    crossEnvFolders?: boolean
+    /** A link that opens the session in the agent's own app (Codex: `codex://threads/<id>`). */
+    appLink?(sessionId: string): string | undefined
     /** The file a new session with this id would have, next to the session's own. */
     sessionFilePath(s: SessionSummary, sessionId: string): string
   }

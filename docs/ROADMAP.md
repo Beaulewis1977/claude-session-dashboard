@@ -3,6 +3,7 @@
 Ideas to build next, with the details and a ready-to-paste prompt for each.
 
 **Current state (Oct 31, 2026):** v1.4.0 installed. It includes:
+
 - session browsing, names synced from `/rename`, and per-session model and effort;
 - live limits, usage tracking, and limit-health detection;
 - phone companion, Remote Control and terminal access over Tailscale;
@@ -28,17 +29,17 @@ The loop for every feature:
 
 ## Suggested order
 
-| # | Feature | Why this order | Size |
-|---|---------|----------------|------|
-| 1 | Live sessions & "Claude needs you" alerts | Biggest day-to-day win | Medium |
-| 2 | Archive backup | Quick, and protects everything else | Small |
-| 3 | Session summaries & "Continue fresh" | Makes old sessions readable and cheaper to resume | Medium |
-| 4 | Context size before resume | Builds on #3 | Small |
-| 5 | Codex support (Claude, Codex, or both together) | Big; easier once the features above exist | Large |
-| 6 | What each session changed (git links) | Nice to have | Medium |
-| 7 | Ask across all sessions | Most advanced; best done last | Medium–Large |
+| #   | Feature                                         | Why this order                                    | Size         |
+| --- | ----------------------------------------------- | ------------------------------------------------- | ------------ |
+| 1   | Live sessions & "Claude needs you" alerts       | Biggest day-to-day win                            | Medium       |
+| 2   | Archive backup                                  | Quick, and protects everything else               | Small        |
+| 3   | Session summaries & "Continue fresh"            | Makes old sessions readable and cheaper to resume | Medium       |
+| 4   | Context size before resume                      | Builds on #3                                      | Small        |
+| 5   | Codex support (Claude, Codex, or both together) | Big; easier once the features above exist         | Large        |
+| 6   | What each session changed (git links)           | Nice to have                                      | Medium       |
+| 7   | Ask across all sessions                         | Most advanced; best done last                     | Medium–Large |
 
-You can do Codex earlier if you're using it a lot. Its prompt tells the agent to bring every existing feature to Codex, so features built *before* it get Codex support for free. For features built *after* it, each prompt includes a Codex line.
+You can do Codex earlier if you're using it a lot. Its prompt tells the agent to bring every existing feature to Codex, so features built _before_ it get Codex support for free. For features built _after_ it, each prompt includes a Codex line.
 
 ---
 
@@ -49,11 +50,13 @@ You can do Codex earlier if you're using it a lot. Its prompt tells the agent to
 **Why it matters:** with several sessions running, you stop checking terminals to see who's stuck. The dashboard becomes your control center, not just a history browser.
 
 **How it works:**
+
 - Claude Code's official **hooks** (Notification, Stop, and others) run a small script on each event. The dashboard uses this the same way the status line bridge works.
 - Running sessions also show up in `~/.claude/sessions/*.json`, with PID, session and name.
 - Installing the hooks changes `~/.claude/settings.json`. It's opt-in, shows you the exact change, backs up first, and can be undone, the same as live limits.
 
 **Details:**
+
 - A "Running now" sidebar entry and a section at the top of the list. Each running session has a status chip: Working, Needs approval, Idle, or Done.
 - Phone push notifications (when the dashboard is installed to the home screen) and desktop toasts. Per-session mute.
 - Actions: **Focus terminal** (brings that window forward), **Open on phone** (Remote Control), **Copy resume command**.
@@ -83,6 +86,7 @@ Goal: a "Running now" view of active Claude Code sessions, with alerts when a se
 
 Run typecheck, lint, tests and the build. Commit, push the branch and open a PR into main. Do NOT merge, do NOT push to main, and do NOT add or run GitHub Actions. Give me the PR link and a short summary.
 ```
+
 </details>
 
 ---
@@ -94,6 +98,7 @@ Run typecheck, lint, tests and the build. Commit, push the branch and open a PR 
 **Why it matters:** Claude Code deletes sessions after 30 days, so the dashboard's archive is now the **only** copy of your older work. If your PC dies, it's gone without a backup.
 
 **Details:**
+
 - Choose a destination folder. The cloud service, if any, does the syncing. The app makes **no network calls**.
 - Incremental: only new or changed files are copied. Daily by default, plus a "Back up now" button.
 - Optional encryption with a password you set. Without the password, the backup can't be read.
@@ -120,6 +125,7 @@ Goal: scheduled, incremental, optionally encrypted backups of the app's data (ar
 
 Run typecheck, lint, tests and the build. Commit, push the branch and open a PR into main. Do NOT merge, do NOT push to main, and do NOT add or run GitHub Actions. Give me the PR link and a short summary.
 ```
+
 </details>
 
 ---
@@ -127,12 +133,14 @@ Run typecheck, lint, tests and the build. Commit, push the branch and open a PR 
 ## 3. Session summaries & "Continue fresh"
 
 **What it is:**
+
 - A short summary for each session: what was done, which files changed, decisions made, and open to-dos. Shown on the session card and at the top of the viewer.
-- **"Continue fresh":** starts a *new* session seeded with that summary instead of resuming the whole huge history.
+- **"Continue fresh":** starts a _new_ session seeded with that summary instead of resuming the whole huge history.
 
 **Why it matters:** old sessions become readable at a glance. Resuming a long session reloads its whole history and uses a lot of your 5-hour window, so a summary handoff is much cheaper.
 
 **Details:**
+
 - Generated with `claude -p` on your subscription, only when you ask (per session or in bulk), or automatically for sessions over a size you choose (opt-in).
 - The summary is stored in the app's data. It can be edited and regenerated, and shows the date and model used.
 - "Continue fresh" opens a terminal with a new session in the same folder, with the summary as the first message, and links the new session to the old one ("continued from").
@@ -160,6 +168,7 @@ Goal: AI summaries of sessions, and "Continue fresh" to start a new session from
 
 Run typecheck, lint, tests and the build. Commit, push the branch and open a PR into main. Do NOT merge, do NOT push to main, and do NOT add or run GitHub Actions. Give me the PR link and a short summary.
 ```
+
 </details>
 
 ---
@@ -171,6 +180,7 @@ Run typecheck, lint, tests and the build. Commit, push the branch and open a PR 
 **Why it matters:** it connects your usage tracking to everyday choices, so you don't burn a big chunk of your limit just by reopening an old session.
 
 **Details:**
+
 - Context size comes from the last assistant turn's usage in the log (input + cache tokens), and from the status line's `context_window` when available.
 - The estimate of the 5-hour cost uses your limit-health baseline. It's labeled as an estimate.
 - A size badge on cards (S / M / L / XL) and a sort by size.
@@ -197,6 +207,7 @@ Goal: show each session's context size and warn before resuming a large one.
 
 Run typecheck, lint, tests and the build. Commit, push the branch and open a PR into main. Do NOT merge, do NOT push to main, and do NOT add or run GitHub Actions. Give me the PR link and a short summary.
 ```
+
 </details>
 
 ---
@@ -207,20 +218,20 @@ Run typecheck, lint, tests and the build. Commit, push the branch and open a PR 
 
 **What carries over to Codex:**
 
-| Feature | Codex | Notes |
-|---|---|---|
-| Browse, read, search, archive | ✅ | From `~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl` (and `.jsonl.zst`), on Windows + WSL |
-| Names, descriptions, tags, pin, hide | ✅ | Plus Codex's own thread names, if it stores them (the agent checks) |
-| Resume | ✅ | `codex resume <id>` in the right folder |
-| Fork / branch from a message | ⚠️ | Only if Codex supports it; otherwise hidden for Codex |
-| Model & effort per session | ✅ | Codex's own flags (`-m`, reasoning effort config), checked with `codex --help` |
-| Usage & token tracking | ✅ | From `token_count` events (cumulative, so it computes deltas) |
-| Live plan limits (5-hour / weekly) | ✅ | Codex writes `rate_limits` into its logs, **with history**, no bridge needed |
-| Limit health ("is it nerfed?") and pacing | ✅ | Separate plan setting and baseline for ChatGPT plans |
-| Phone companion | ✅ | View, rename, start `codex resume` on the PC |
-| Live phone control | ⚠️ | Through OpenAI's own Codex Remote (ChatGPT app and Codex desktop app), if available on Windows. The dashboard links to it |
-| Copy buttons, export, branching tree, stats | ✅ | Same viewer |
-| Bypass-approvals toggle | ✅ | Mirrors Claude's skip-permissions setting, never used for phone launches |
+| Feature                                     | Codex | Notes                                                                                                                     |
+| ------------------------------------------- | ----- | ------------------------------------------------------------------------------------------------------------------------- |
+| Browse, read, search, archive               | ✅    | From `~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl` (and `.jsonl.zst`), on Windows + WSL                                  |
+| Names, descriptions, tags, pin, hide        | ✅    | Plus Codex's own thread names, if it stores them (the agent checks)                                                       |
+| Resume                                      | ✅    | `codex resume <id>` in the right folder                                                                                   |
+| Fork / branch from a message                | ⚠️    | Only if Codex supports it; otherwise hidden for Codex                                                                     |
+| Model & effort per session                  | ✅    | Codex's own flags (`-m`, reasoning effort config), checked with `codex --help`                                            |
+| Usage & token tracking                      | ✅    | From `token_count` events (cumulative, so it computes deltas)                                                             |
+| Live plan limits (5-hour / weekly)          | ✅    | Codex writes `rate_limits` into its logs, **with history**, no bridge needed                                              |
+| Limit health ("is it nerfed?") and pacing   | ✅    | Separate plan setting and baseline for ChatGPT plans                                                                      |
+| Phone companion                             | ✅    | View, rename, start `codex resume` on the PC                                                                              |
+| Live phone control                          | ⚠️    | Through OpenAI's own Codex Remote (ChatGPT app and Codex desktop app), if available on Windows. The dashboard links to it |
+| Copy buttons, export, branching tree, stats | ✅    | Same viewer                                                                                                               |
+| Bypass-approvals toggle                     | ✅    | Mirrors Claude's skip-permissions setting, never used for phone launches                                                  |
 
 **Safety:** never read `~/.codex/auth.json` or call OpenAI/ChatGPT account endpoints. Logs only.
 
@@ -254,6 +265,7 @@ Goal: add OpenAI Codex as a second provider, with feature parity wherever Codex 
 
 Work in steps and commit after each. Run typecheck, lint, tests and the build. Push the branch and open a PR into main. Do NOT merge, do NOT push to main, and do NOT add or run GitHub Actions. Give me the PR link, a feature-parity table (✅/⚠️/❌ with reasons), and anything that didn't work on my machine.
 ```
+
 </details>
 
 ---
@@ -263,6 +275,7 @@ Work in steps and commit after each. Run typecheck, lint, tests and the build. P
 **What it is:** each session is linked to the commits, branches and PRs it produced, and you can see the actual code changes. It answers "which session made this change?" and "what did that session actually do?"
 
 **Details:**
+
 - Matches commits to sessions by repo folder, time window, branch, and Claude's commit trailers (for example the `Claude-Session` line) when present.
 - A "Changes" tab in the viewer with the list of commits and files, a diff view, and a link to the PR on GitHub.
 - Search by file path: "which sessions touched `bridge.ts`?"
@@ -291,6 +304,7 @@ Goal: link sessions to the git commits, branches and PRs they produced, and show
 
 Run typecheck, lint, tests and the build. Commit, push the branch and open a PR into main. Do NOT merge, do NOT push to main, and do NOT add or run GitHub Actions. Give me the PR link and a short summary.
 ```
+
 </details>
 
 ---
@@ -302,6 +316,7 @@ Run typecheck, lint, tests and the build. Commit, push the branch and open a PR 
 **Why it matters:** your session history becomes a searchable memory of your work, not just a list.
 
 **Details:**
+
 - Two steps: a fast local search finds the most relevant sessions and messages, then Claude answers using only those snippets, through `claude -p` on your subscription.
 - Answers always cite their sources (session + message), and each citation opens the viewer at that message.
 - Opt-in. A preview shows exactly what will be sent, and you can limit it to selected projects or dates.
@@ -326,6 +341,7 @@ Goal: ask questions across my whole session history and get answers with citatio
 
 Run typecheck, lint, tests and the build. Commit, push the branch and open a PR into main. Do NOT merge, do NOT push to main, and do NOT add or run GitHub Actions. Give me the PR link and a short summary.
 ```
+
 </details>
 
 ---
@@ -333,15 +349,17 @@ Run typecheck, lint, tests and the build. Commit, push the branch and open a PR 
 ## Status & loose ends
 
 **Done:**
+
 - ✅ #1 Live sessions & "Claude needs you" alerts (v1.6.0)
 - ✅ #2 Archive backup (v1.6.0)
 - ✅ #3 Session summaries & "Continue fresh" (v1.7.0)
 - ✅ #4 Context size before you resume (v1.8.0)
 - ✅ #5 Phase A: provider refactor (v1.8.1)
 
-**In progress:** #5 Codex support in phases: A refactor ✅ → B Codex sessions → C Codex usage & limits → D Codex parity
+**In progress:** #5 Codex support in phases: A refactor ✅ → B Codex sessions (in review) → C Codex usage & limits → D Codex parity
 
 **Loose ends:**
+
 - Flaky test: a terminal test occasionally fails from a timing race in full runs, but passes in isolation. Find the race and make it reliable.
 - Phone companion still uses the deprecated sync safeStorage encrypt/decrypt calls; switch to the async API in a small PR.
 

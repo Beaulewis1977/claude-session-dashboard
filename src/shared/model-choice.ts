@@ -19,9 +19,20 @@ import {
 
 /** The levels `claude --effort` accepts (v2.1.316). */
 export const EFFORT_LEVELS = ['low', 'medium', 'high', 'xhigh', 'max'] as const
-export type EffortLevel = (typeof EFFORT_LEVELS)[number]
+/**
+ * The levels Codex offers for `model_reasoning_effort` (the
+ * `supported_reasoning_levels` of the models in Codex 0.164's model list on
+ * this PC). Passed as `-c model_reasoning_effort=<level>`.
+ */
+export const CODEX_EFFORT_LEVELS = ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'] as const
+export type ClaudeEffortLevel = (typeof EFFORT_LEVELS)[number]
+export type CodexEffortLevel = (typeof CODEX_EFFORT_LEVELS)[number]
+/** Any provider's level (each provider checks against its own list). */
+export type EffortLevel = ClaudeEffortLevel | CodexEffortLevel
 /** "default" = no `--effort` flag. */
 export type EffortChoice = EffortLevel | 'default'
+/** A provider's list of effort levels. */
+export type EffortLevels = readonly EffortLevel[]
 
 /** "default" = no `--model` flag. */
 export const DEFAULT_CHOICE = 'default'
@@ -31,7 +42,8 @@ export const EFFORT_LABEL: Record<EffortLevel, string> = {
   medium: 'Medium',
   high: 'High',
   xhigh: 'Extra high',
-  max: 'Max'
+  max: 'Max',
+  ultra: 'Ultra'
 }
 
 /** Short labels for badges ("Opus · XHigh"). */
@@ -40,7 +52,8 @@ const EFFORT_SHORT: Record<EffortLevel, string> = {
   medium: 'Med',
   high: 'High',
   xhigh: 'XHigh',
-  max: 'Max'
+  max: 'Max',
+  ultra: 'Ultra'
 }
 
 /** Aliases Claude Code documents for `--model`, for the picker. */
@@ -58,8 +71,8 @@ export function isValidModel(v: unknown): v is string {
   return typeof v === 'string' && MODEL_RE.test(v)
 }
 
-export function isEffortLevel(v: unknown): v is EffortLevel {
-  return typeof v === 'string' && (EFFORT_LEVELS as readonly string[]).includes(v)
+export function isEffortLevel(v: unknown, levels: EffortLevels = EFFORT_LEVELS): v is EffortLevel {
+  return typeof v === 'string' && (levels as readonly string[]).includes(v)
 }
 
 /** A stored model choice: a valid model, "default", or undefined (not set / invalid). */
@@ -70,9 +83,12 @@ export function cleanModelChoice(v: unknown): string | undefined {
   return isValidModel(s) ? s : undefined
 }
 
-export function cleanEffortChoice(v: unknown): EffortChoice | undefined {
+export function cleanEffortChoice(
+  v: unknown,
+  levels: EffortLevels = EFFORT_LEVELS
+): EffortChoice | undefined {
   if (v === DEFAULT_CHOICE) return DEFAULT_CHOICE
-  return isEffortLevel(v) ? v : undefined
+  return isEffortLevel(v, levels) ? v : undefined
 }
 
 export interface ProjectModelDefault {
@@ -88,19 +104,38 @@ export interface ModelSettings {
   projectModels: Record<string, ProjectModelDefault>
 }
 
+/** Codex's launch defaults in the app's settings (kept apart from Claude Code's). */
+export interface CodexModelSettings {
+  codexDefaultModel?: string
+  codexDefaultEffort?: EffortChoice
+  codexProjectModels?: Record<string, ProjectModelDefault>
+}
+
+/** Codex's defaults in the shape resolveModelChoice takes. */
+export function codexModelSettings(s: CodexModelSettings): Partial<ModelSettings> {
+  return {
+    defaultModel: s.codexDefaultModel,
+    defaultEffort: s.codexDefaultEffort,
+    projectModels: s.codexProjectModels
+  }
+}
+
 /** Same keys as the billing defaults (see project-key.ts). */
 export const projectModelKey = projectDefaultKey
 export { projectKeyLabel, type ProjectRef }
 
 /** Validate per-project defaults from a settings file or the renderer. */
-export function sanitizeProjectModels(v: unknown): Record<string, ProjectModelDefault> {
+export function sanitizeProjectModels(
+  v: unknown,
+  levels: EffortLevels = EFFORT_LEVELS
+): Record<string, ProjectModelDefault> {
   const out: Record<string, ProjectModelDefault> = {}
   if (!v || typeof v !== 'object' || Array.isArray(v)) return out
   for (const [k, raw] of Object.entries(v).slice(0, 500)) {
     if (!k || k.length >= 1000 || !raw || typeof raw !== 'object') continue
     const r = raw as Record<string, unknown>
     const model = cleanModelChoice(r.model)
-    const effort = cleanEffortChoice(r.effort)
+    const effort = cleanEffortChoice(r.effort, levels)
     const key = normalizeProjectKey(k)
     if (!key || (model === undefined && effort === undefined)) continue
     out[key] = {
@@ -138,7 +173,9 @@ function pick<T extends string>(
 export function resolveModelChoice(
   meta: { model?: string; effort?: string } | undefined,
   project: ProjectRef | undefined,
-  settings: Partial<ModelSettings>
+  settings: Partial<ModelSettings>,
+  /** The provider's effort levels (Claude Code's by default). */
+  levels: EffortLevels = EFFORT_LEVELS
 ): ResolvedModel {
   const key = projectModelKey(project)
   const projectDefault =
@@ -151,9 +188,9 @@ export function resolveModelChoice(
     ['settings', cleanModelChoice(settings.defaultModel)]
   ])
   const e = pick<EffortChoice>([
-    ['session', cleanEffortChoice(meta?.effort)],
-    ['project', cleanEffortChoice(projectDefault?.effort)],
-    ['settings', cleanEffortChoice(settings.defaultEffort)]
+    ['session', cleanEffortChoice(meta?.effort, levels)],
+    ['project', cleanEffortChoice(projectDefault?.effort, levels)],
+    ['settings', cleanEffortChoice(settings.defaultEffort, levels)]
   ])
   return {
     model: m.value,
@@ -161,6 +198,24 @@ export function resolveModelChoice(
     modelFrom: m.from,
     effortFrom: e.from
   }
+}
+
+/**
+ * Codex's flags for a choice: `-m <model>` and `-c model_reasoning_effort=<level>`
+ * (the value is a bare word, which Codex reads as a literal string). Nothing for "default".
+ */
+export function codexModelArgs(model?: string, effort?: string): string[] {
+  const out: string[] = []
+  if (model !== undefined && model !== DEFAULT_CHOICE) {
+    if (!isValidModel(model)) throw new Error(`Invalid model: ${model}`)
+    out.push('-m', model)
+  }
+  if (effort !== undefined && effort !== DEFAULT_CHOICE) {
+    if (!isEffortLevel(effort, CODEX_EFFORT_LEVELS))
+      throw new Error(`Invalid effort level: ${effort}`)
+    out.push('-c', `model_reasoning_effort=${effort}`)
+  }
+  return out
 }
 
 /** The `claude` flags for a choice. Nothing for "default". */

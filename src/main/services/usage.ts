@@ -322,8 +322,9 @@ export class UsageService extends EventEmitter<{ changed: [] }> {
     let changed = false
     try {
       for (const s of list) {
-        // Imported claude.ai conversations have no token usage.
+        // Imported claude.ai conversations have no token usage; Codex usage comes in Phase C.
         if (s.availability === 'imported') continue
+        if (!sessionProvider(this.sessions, s).capabilities.usage) continue
         const { sig, subagents } = await this.signature(s)
         if (!force && this.index.sessions[s.key] === sig) continue
         if (this.stale.delete(s.key)) this.purge(s.key)

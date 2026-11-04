@@ -1,8 +1,9 @@
 // Launches requested from a paired phone.
 //
 // A phone can only ask for Resume, Fork, Branch or Continue fresh of a
-// session the app knows.
-// The options are fixed here, whatever the phone sends: Remote Control on,
+// session the app knows (Codex sessions: Resume and Fork only).
+// The options are fixed here, whatever the phone sends: Remote Control on
+// (Claude Code; Codex has none, and asks before acting, in its workspace sandbox),
 // the Claude subscription (never an API key), permission prompts kept
 // (never --dangerously-skip-permissions), the session's own folder, and the
 // terminal chosen in Settings. Nothing else can be run.
@@ -15,6 +16,7 @@ import type {
   SessionSummary,
   TerminalPref
 } from '@shared/types'
+import { PROVIDER_LABEL, providerOf, type ProviderId } from '@shared/provider'
 import type { LaunchContext } from '../services/launcher'
 import type { StoredDevice } from './devices'
 import { RateLimiter } from './rate-limit'
@@ -64,15 +66,18 @@ export function parseLaunchRequest(v: unknown): RemoteLaunchRequest | { error: s
 /** The only launch options a phone can produce. */
 export function remoteLaunchOptions(
   req: RemoteLaunchRequest,
-  terminal: TerminalPref
+  terminal: TerminalPref,
+  provider: ProviderId = 'claude'
 ): LaunchOptions {
   return {
     key: req.key,
     fork: req.kind === 'fork',
+    // Never --dangerously-skip-permissions or --dangerously-bypass-approvals-and-sandbox.
     skipPermissions: false,
-    // Prompts on, whatever the user's settings or Claude Code's default say.
+    // Prompts on, whatever the user's settings or the agent's own default say.
     askPermissions: true,
-    remoteControl: true,
+    // Remote Control is Claude Code's (on the Claude subscription).
+    ...(provider === 'claude' ? { remoteControl: true } : {}),
     terminal,
     ...(req.kind === 'branch' && req.branch ? { branch: { ...req.branch } } : {}),
     // A new id is picked on the PC; the phone can't choose one.
@@ -99,6 +104,11 @@ export class RemoteLauncher {
     if (!s) return { error: "That session isn't on this PC." }
     if (s.availability === 'imported')
       return { error: 'Conversations imported from claude.ai can be read, not resumed.' }
+    const provider = providerOf(s)
+    if (provider !== 'claude' && (req.kind === 'branch' || req.kind === 'continue'))
+      return {
+        error: `${VERB[req.kind]} isn't available for ${PROVIDER_LABEL[provider]} sessions.`
+      }
     if (req.kind === 'branch' && !this.deps.settings().branchConfirmed)
       return {
         error:
@@ -128,7 +138,7 @@ export class RemoteLauncher {
     let p: LaunchPreview
     try {
       p = await this.deps.preview({
-        ...remoteLaunchOptions(req, st.terminal),
+        ...remoteLaunchOptions(req, st.terminal, providerOf(s)),
         branch: req.branch
       })
     } catch (err) {
@@ -214,7 +224,7 @@ export class RemoteLauncher {
       this.deps.log({ device, action: 'launch', detail: `${what} refused: ${why}`, ok: false })
       return { ok: false, error: `Not launched: ${why}.` }
     }
-    const res = await this.deps.launch(remoteLaunchOptions(req, now.terminal), {
+    const res = await this.deps.launch(remoteLaunchOptions(req, now.terminal, providerOf(s)), {
       via: 'phone',
       device: device.name,
       stillAllowed: () =>
@@ -227,7 +237,7 @@ export class RemoteLauncher {
     this.deps.log({
       device,
       action: 'launch',
-      detail: `${what} “${s.title}” with Remote Control${res.ok ? '' : `: ${res.error ?? 'failed'}`}`,
+      detail: `${what} “${s.title}”${providerOf(s) === 'claude' ? ' with Remote Control' : ` (${PROVIDER_LABEL[providerOf(s)]})`}${res.ok ? '' : `: ${res.error ?? 'failed'}`}`,
       ok: res.ok
     })
     return {

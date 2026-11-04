@@ -4,6 +4,7 @@ import type {
   AppInfo,
   AppSettings,
   ArchiveStats,
+  CodexArchiveEstimate,
   LaunchOptions,
   LaunchPreview,
   LaunchResult,
@@ -97,6 +98,8 @@ export interface CsdApi {
   addExtraFolder(): Promise<AppSettings>
   removeExtraFolder(folder: string): Promise<AppSettings>
   getArchiveStats(): Promise<ArchiveStats>
+  /** What "Archive Codex sessions" would copy, per mode (sizes, backup estimate). */
+  getCodexArchiveEstimate(): Promise<CodexArchiveEstimate>
   /** Pick a claude.ai export zip and import it. Null when the dialog was cancelled. */
   importClaudeAi(): Promise<ImportResult | null>
   openArchiveFolder(): Promise<void>
@@ -105,7 +108,10 @@ export interface CsdApi {
 
   previewLaunch(opts: LaunchOptions): Promise<LaunchPreview>
   launch(opts: LaunchOptions): Promise<LaunchResult>
-  pickCwd(key: string): Promise<string | null>
+  /** Open the session in its agent's own app (Codex: `codex://threads/<id>`). Desktop only. */
+  openInAgentApp(key: string): Promise<void>
+  /** `where`: the choices made in the dialog for a session whose folder is in the other environment. */
+  pickCwd(key: string, where?: Pick<LaunchOptions, 'wslFolder' | 'distro'>): Promise<string | null>
 
   exportMarkdown(key: string): Promise<ExportResult>
   copyText(text: string): Promise<void>

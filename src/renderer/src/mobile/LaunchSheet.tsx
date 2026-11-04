@@ -17,6 +17,7 @@ import {
 } from 'lucide-react'
 import type { RemoteLaunchPreview, RemoteLaunchRequest, RemoteLaunchResult } from '@shared/mobile'
 import { CLAUDE_CODE_WEB_URL } from '@shared/mobile'
+import { providerOf } from '@shared/provider'
 import type { SessionSummary, TerminalPref } from '@shared/types'
 import { now } from '@shared/clock'
 import { effortLabel, modelLabel } from '@shared/model-choice'
@@ -73,6 +74,8 @@ export function LaunchSheet({
   onSwitch?: (t: LaunchTarget) => void
 }) {
   const settings = useApp((st) => st.settings)
+  // Codex: no Remote Control or Claude app link; it asks before acting, in its sandbox.
+  const codex = providerOf(session) === 'codex'
   // "Don't warn for this session": saved right away; the warning stays while the sheet is open.
   const [warnOffAtOpen] = useState(() => session.meta.noContextWarning === true)
   const [dontWarn, setDontWarnState] = useState(warnOffAtOpen)
@@ -84,7 +87,7 @@ export function LaunchSheet({
   const [busy, setBusy] = useState(false)
   const [result, setResult] = useState<Launched | null>(null)
   const [error, setError] = useState<string>()
-  const fresh = useFreshRemoteUrl(result?.ok ? result : null, result?.at ?? 0)
+  const fresh = useFreshRemoteUrl(result?.ok && !codex ? result : null, result?.at ?? 0)
   const [waitedLong, setWaitedLong] = useState(false)
 
   // The estimate goes up when a warm cache runs out: ask the PC again then.
@@ -105,10 +108,10 @@ export function LaunchSheet({
   }, [expired, session.sizeBytes, session.context?.tokens, session.context?.at])
 
   useEffect(() => {
-    if (!result?.ok || fresh) return
+    if (!result?.ok || fresh || codex) return
     const t = window.setTimeout(() => setWaitedLong(true), 45_000)
     return () => window.clearTimeout(t)
-  }, [result, fresh])
+  }, [result, fresh, codex])
 
   const go = async (): Promise<void> => {
     if (busy) return
@@ -165,6 +168,11 @@ export function LaunchSheet({
               <div className="text-[14px] leading-relaxed">
                 {result.simulated ? (
                   <>Fixtures mode: the command was built but nothing was started.</>
+                ) : codex ? (
+                  <>
+                    A terminal opened on your PC running Codex with this session. Continue it there
+                    (or over SSH).
+                  </>
                 ) : (
                   <>
                     A terminal opened on your PC with Remote Control on. Continue the session in the
@@ -173,30 +181,35 @@ export function LaunchSheet({
                 )}
               </div>
             </div>
-            <a
-              href={fresh ?? CLAUDE_CODE_WEB_URL}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-primary text-[15px] font-semibold text-primary-foreground active:bg-primary-hover"
-            >
-              <MonitorSmartphone className="size-5" /> Open in Claude app{' '}
-              <ExternalLink className="size-4 opacity-80" />
-            </a>
-            <div className="flex items-center justify-center gap-2 text-[12.5px] text-muted-foreground">
-              {fresh ? (
-                <>
-                  <CircleCheck className="size-3.5 text-success" /> Linked straight to this session
-                </>
-              ) : waitedLong || result.simulated ? (
-                <>Find it by name in the Claude app’s Code tab.</>
-              ) : (
-                <>
-                  <Loader2 className="size-3.5 animate-spin" /> Waiting for Remote Control to
-                  connect…
-                </>
-              )}
-            </div>
-            {!result.simulated && (
+            {!codex && (
+              <>
+                <a
+                  href={fresh ?? CLAUDE_CODE_WEB_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-primary text-[15px] font-semibold text-primary-foreground active:bg-primary-hover"
+                >
+                  <MonitorSmartphone className="size-5" /> Open in Claude app{' '}
+                  <ExternalLink className="size-4 opacity-80" />
+                </a>
+                <div className="flex items-center justify-center gap-2 text-[12.5px] text-muted-foreground">
+                  {fresh ? (
+                    <>
+                      <CircleCheck className="size-3.5 text-success" /> Linked straight to this
+                      session
+                    </>
+                  ) : waitedLong || result.simulated ? (
+                    <>Find it by name in the Claude app’s Code tab.</>
+                  ) : (
+                    <>
+                      <Loader2 className="size-3.5 animate-spin" /> Waiting for Remote Control to
+                      connect…
+                    </>
+                  )}
+                </div>
+              </>
+            )}
+            {!result.simulated && !codex && (
               <p className="rounded-lg bg-secondary/70 px-3 py-2.5 text-[12.5px] leading-relaxed text-muted-foreground">
                 {target.kind === 'continue'
                   ? 'The new session starts from the summary, not the whole history. The earlier conversation is here in the dashboard.'
@@ -227,23 +240,27 @@ export function LaunchSheet({
                     )}
                   </span>
                 </li>
-                <li className="flex items-start gap-2.5">
-                  <Smartphone className="mt-0.5 size-4 shrink-0 text-info" />
-                  <span>
-                    Remote Control on
-                    {preview.remoteControlName && (
-                      <span className="text-muted-foreground">
-                        {' '}
-                        as “{preview.remoteControlName}”
-                      </span>
-                    )}
-                  </span>
-                </li>
+                {!codex && (
+                  <li className="flex items-start gap-2.5">
+                    <Smartphone className="mt-0.5 size-4 shrink-0 text-info" />
+                    <span>
+                      Remote Control on
+                      {preview.remoteControlName && (
+                        <span className="text-muted-foreground">
+                          {' '}
+                          as “{preview.remoteControlName}”
+                        </span>
+                      )}
+                    </span>
+                  </li>
+                )}
                 <li className="flex items-start gap-2.5">
                   <Sparkles className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
                   <span>
                     {preview.modelChoice?.model ? (
                       <b>{modelLabel(preview.modelChoice.model)}</b>
+                    ) : codex ? (
+                      'Codex’s default model'
                     ) : (
                       'Claude Code’s default model'
                     )}
@@ -252,9 +269,11 @@ export function LaunchSheet({
                     )}
                     {preview.modelChoice?.model && (
                       <span className="mt-0.5 block truncate font-mono text-[11.5px] text-muted-foreground">
-                        --model {preview.modelChoice.model}
+                        {codex ? '-m' : '--model'} {preview.modelChoice.model}
                         {preview.modelChoice.effort
-                          ? ` --effort ${preview.modelChoice.effort}`
+                          ? codex
+                            ? ` -c model_reasoning_effort=${preview.modelChoice.effort}`
+                            : ` --effort ${preview.modelChoice.effort}`
                           : ''}
                       </span>
                     )}
@@ -262,7 +281,11 @@ export function LaunchSheet({
                 </li>
                 <li className="flex items-start gap-2.5">
                   <ShieldCheck className="mt-0.5 size-4 shrink-0 text-success" />
-                  <span>Your Claude subscription · Claude still asks before running commands</span>
+                  <span>
+                    {codex
+                      ? 'Codex runs in its workspace sandbox and asks for approval when it needs it (never bypassed from the phone)'
+                      : 'Your Claude subscription · Claude still asks before running commands'}
+                  </span>
                 </li>
                 {target.kind === 'fork' && (
                   <li className="flex items-start gap-2.5 text-muted-foreground">

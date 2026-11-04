@@ -3,6 +3,7 @@
 import type { SearchHit } from '@shared/api'
 import type { SessionSummary } from '@shared/types'
 import { SOURCE_LABELS, type SourceLabel } from '@shared/source-label'
+import { inProviderView, type ProviderView } from '@shared/provider'
 
 export type SortKey = 'activity' | 'started' | 'name' | 'context' | 'relevance'
 export type Visibility = 'visible' | 'hidden' | 'archived' | 'all'
@@ -94,7 +95,38 @@ export function inDateRange(iso: string | undefined, range: DateRange): boolean 
   return true
 }
 
-export function matchesFilters(s: SessionSummary, f: Filters, ignore?: keyof Filters): boolean {
+/**
+ * What the whole app shows: the All / Claude / Codex switch, and whether
+ * Codex subagent threads are listed. Applied before every filter (the list,
+ * search results, the sidebar's counts).
+ */
+export interface Scope {
+  view: ProviderView
+  /** Codex subagent threads (hidden unless turned on, or their source is picked). */
+  subagents: boolean
+}
+
+export const ALL_SCOPE: Scope = { view: 'all', subagents: true }
+
+export const SUBAGENT_SOURCE = 'codex-subagent'
+
+export function inScope(
+  s: Pick<SessionSummary, 'provider' | 'subagent' | 'source'>,
+  scope: Scope,
+  source?: string | null
+): boolean {
+  if (!inProviderView(scope.view, s)) return false
+  if (s.subagent && !scope.subagents && source !== SUBAGENT_SOURCE) return false
+  return true
+}
+
+export function matchesFilters(
+  s: SessionSummary,
+  f: Filters,
+  ignore?: keyof Filters,
+  scope: Scope = ALL_SCOPE
+): boolean {
+  if (!inScope(s, scope, f.source)) return false
   if (ignore !== 'visibility') {
     const hidden = s.meta.hidden === true
     if (f.visibility === 'visible' && hidden) return false
@@ -147,9 +179,12 @@ export function visibleSessions(
   sessions: SessionSummary[],
   filters: Filters,
   sort: SortKey,
-  hits: Map<string, SearchHit> | null
+  hits: Map<string, SearchHit> | null,
+  scope: Scope = ALL_SCOPE
 ): SessionSummary[] {
-  const filtered = sessions.filter((s) => matchesFilters(s, filters) && (!hits || hits.has(s.key)))
+  const filtered = sessions.filter(
+    (s) => matchesFilters(s, filters, undefined, scope) && (!hits || hits.has(s.key))
+  )
   return sortSessions(filtered, sort, hits)
 }
 
@@ -161,7 +196,7 @@ export interface Facet {
 }
 
 /** Counts for the sidebar, honouring every filter except the facet's own. */
-export function facets(sessions: SessionSummary[], filters: Filters) {
+export function facets(sessions: SessionSummary[], filters: Filters, scope: Scope = ALL_SCOPE) {
   const env = new Map<string, Facet>()
   const project = new Map<string, Facet>()
   const tag = new Map<string, Facet>()
@@ -171,8 +206,14 @@ export function facets(sessions: SessionSummary[], filters: Filters) {
     if (
       matchesFilters(
         s,
-        { ...filters, source: s.source === 'ask-claude' ? 'ask-claude' : filters.source },
-        'source'
+        {
+          ...filters,
+          // The dashboard's own runs and Codex subagents count here, so they can be picked.
+          source:
+            s.source === 'ask-claude' || s.source === SUBAGENT_SOURCE ? s.source : filters.source
+        },
+        'source',
+        scope
       )
     ) {
       const f = source.get(s.source) ?? {
@@ -184,22 +225,23 @@ export function facets(sessions: SessionSummary[], filters: Filters) {
       source.set(s.source, f)
     }
     if (s.source === 'ask-claude') continue
+    if (!inScope(s, scope, filters.source)) continue
     if (s.meta.hidden) views.hidden++
     else views.visible++
     if (s.availability === 'archived-only') views.archived++
-    if (matchesFilters(s, filters, 'env')) {
+    if (matchesFilters(s, filters, 'env', scope)) {
       const k = envKey(s)
       const f = env.get(k) ?? { key: k, label: envLabel(k), count: 0 }
       f.count++
       env.set(k, f)
     }
-    if (matchesFilters(s, filters, 'project')) {
+    if (matchesFilters(s, filters, 'project', scope)) {
       const k = projectKey(s)
       const f = project.get(k) ?? { key: k, label: s.projectName, count: 0, detail: s.cwd }
       f.count++
       project.set(k, f)
     }
-    if (matchesFilters(s, filters, 'tag')) {
+    if (matchesFilters(s, filters, 'tag', scope)) {
       for (const t of s.meta.tags ?? []) {
         const f = tag.get(t) ?? { key: t, label: t, count: 0 }
         f.count++

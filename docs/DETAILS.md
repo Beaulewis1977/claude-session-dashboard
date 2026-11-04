@@ -875,10 +875,10 @@ tests/         Vitest unit and integration tests
 Everything that depends on one coding agent's files and commands sits behind a **provider**
 (`src/main/providers/types.ts`). The generic services (the catalogue, watcher, archive,
 launcher, branching, lineage, usage, live limits, Running now and summaries) ask the session's
-provider instead of reading Claude Code's formats themselves. Claude Code is the only provider so
-far (`providers/claude/`); it wires in the existing Claude modules (`shared/jsonl.ts`,
-`shared/branch.ts`, `shared/usage/parse.ts`, `core/launch.ts`, the status line and hook bridges)
-unchanged. Codex will be a second provider (roadmap feature 5).
+provider instead of reading Claude Code's formats themselves. There are two providers:
+`providers/claude/` wires in the existing Claude modules (`shared/jsonl.ts`, `shared/branch.ts`,
+`shared/usage/parse.ts`, `core/launch.ts`, the status line and hook bridges) unchanged, and
+`providers/codex/` reads OpenAI Codex sessions (roadmap feature 5; see "Codex" below).
 
 A provider supplies:
 
@@ -905,7 +905,113 @@ archive, every launch variant, usage, limits, limit health, Running now, context
 the phone API, backup) and compares it with a snapshot taken before providers existed
 (`tests/golden/`, America/Chicago and UTC, with a frozen clock and machine-independent paths).
 `UPDATE_GOLDEN=1 npx vitest run tests/provider-parity.test.ts` rewrites the snapshot; do that only
-for an intended change, and check the diff.
+for an intended change, and check the diff. The snapshot runs Claude Code only (`defaultProviders()`);
+the app itself registers both providers.
+
+**Metadata keys.** `metadata.json` keeps a Claude Code session under its bare session id (as
+always) and a Codex session under `codex:<id>` (`metaKey()` in `shared/provider.ts`). A Claude
+Code id can't contain ":", so the two can never collide, and nothing stored before Codex changes.
+
+**Capabilities** live in one table (`PROVIDER_CAPABILITIES` in `shared/provider.ts`) that the main
+process enforces and the renderer uses to hide what a provider can't do.
+
+**Settings → Providers** turns Claude Code or Codex off (never both). A provider that's off isn't
+scanned, watched, archived or shown (desktop, switch and phone); its metadata and archive copies
+stay, so turning it back on brings everything back. The All / Claude / Codex switch is separate: it
+only filters what's shown (desktop: kept in the app's settings; phone: kept on each phone).
+
+### Codex
+
+Read only, from every Codex home: `%USERPROFILE%\.codex` and `~/.codex` of every WSL user (and
+root), plus Codex folders added in Settings → Scan sources. An added folder counts as a Codex
+home by its contents, whatever its name (a custom `CODEX_HOME` such as `~/.codex2`): a `sessions`
+folder plus Codex's name index, `config.toml`, `archived_sessions` or `sessions/YYYY` folders.
+
+| What         | Where                                                                                                                                                                                                                     |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Sessions     | `sessions/YYYY/MM/DD/rollout-<time>-<uuid>.jsonl`, or `.jsonl.zst` once Codex has compressed it, plus `archived_sessions/` (`codex archive`)                                                                              |
+| Thread names | `session_index.jsonl` (`{id, thread_name, updated_at}` per line; per id the newest wins, an empty name clears it). They compete with names set in the dashboard by the same "newest wins" rule as Claude Code's `/rename` |
+| Never opened | `auth.json` and anything credential-like (the reader refuses such paths; `tests/codex-auth.test.ts` watches every file call), the SQLite databases, config                                                                |
+
+- **Reading** (`providers/codex/read.ts`): rollouts are streamed, decompressed with
+  [fzstd](https://github.com/101arrowz/fzstd) (pure JS), split into lines and compacted: the
+  instructions repeated in every turn (`world_state`, `base_instructions`), tool lists,
+  encrypted reasoning and duplicated progress events are dropped, and very long tool output and
+  arguments are cut (prompts and answers are kept whole). Text that's never shown (the context
+  Codex adds as user text, developer messages) keeps only its first 2 KB, so it can't use up the
+  size budget before later prompts and answers.
+  Real rollouts can be more than 500 MB decompressed (more than a JavaScript string can hold);
+  the compact text stops growing at 48 MB, and the viewer then says the history may be
+  incomplete. It says the same when the rollout's own entry numbers (`ordinal`) don't start at 0
+  or skip. Rollouts over 64 MB decompressed keep their compact text in the app's cache folder
+  (`cache/codex/`, keyed by the reader's format version, path, size and time, never backed up), so
+  opening one later doesn't decompress gigabytes again (a 397 MB `.zst` opened in 23 s before,
+  20 ms after). Copies an older reader made are removed and read again.
+  Codex's newer "paginated" history keeps the whole conversation in the rollout
+  (`thread_history_*.sqlite` is a projection of it), so the label alone doesn't trigger the note.
+- **Parsing** (`providers/codex/parse.ts`): `session_meta` (id, cwd, originator, CLI version,
+  source, subagent parent, fork parent, git commit/branch/remote), `turn_context` (model, reasoning
+  effort), `response_item` messages, reasoning summaries and tool calls with their outputs, and the
+  older `event_msg` messages (matched to items one by one, so a history that mixes both keeps its
+  older turns without doubling the newer ones). Search covers the first 1,000,000 characters
+  (prompts and answers first, then reasoning and tool calls); the viewer says when a session goes
+  past it (Find in session searches all of it). Messages between agents (`agent_message` items
+  with an author and recipient) aren't shown yet. Context Codex adds as user text (environment, AGENTS.md,
+  instructions, plugin suggestions) is never a prompt. Who wrote each item comes from the
+  rollout itself: newer Codex records it per item (`internal_chat_message_metadata_passthrough`:
+  `content_item_metadata[i].provenance.type` "user" / "harness" / …, and `content_item_kinds[i]`
+  "user.text" / "environments.environment_context" / …). Older rollouts don't, so there only
+  Codex's own context tags count; a prompt that merely looks like one (`<user_input>…`) stays a
+  prompt. Source labels come from `originator` (the desktop app records
+  `source: "vscode"`): Codex CLI, Codex · VS Code, Codex desktop app, Codex exec, Codex subagent,
+  Codex · from Claude Code (Claude Code's Codex plugin).
+- **Launching** (`providers/codex/launch.ts`, checked with `codex --help` 0.163/0.164):
+  `codex resume <id>` / `codex fork <id>` in the session's folder (Windows Terminal + cmd with
+  `codex.cmd` by full path; WSL via `wsl.exe --cd … -- bash -lic`), `-m <model>`,
+  `-c model_reasoning_effort=<level>` (low … xhigh, max, ultra), and
+  `--dangerously-bypass-approvals-and-sandbox` when "Skip permission prompts" is on. Phone launches
+  never bypass: they add `-a on-request -s workspace-write`. Codex has its own model and effort
+  defaults (Settings → Resume) and project defaults, apart from Claude Code's. `CODEX_HOME` is
+  always set to the session's own home (set in cmd itself on Windows, in front of the command in
+  WSL, which also runs as the home's user), so a `CODEX_HOME` the app or a login profile already
+  has can't send it to another home. In WSL the real binary runs (`command codex`), so a `codex`
+  shell function or alias in `~/.bashrc` that sets its own `CODEX_HOME` can't replace it.
+- **Sessions that ran in the other environment**: the Codex desktop app on Windows can run its agent
+  in WSL and still keeps the session in the Windows `.codex`, so that folder holds sessions whose
+  working folder is a Linux path. Codex always runs where its `.codex` is: its SQLite database
+  can't be opened across the WSL / Windows boundary (Codex in WSL with `CODEX_HOME=/mnt/c/…`
+  fails with "disk I/O error"). Only the working folder is translated:
+  - `/mnt/c/x` in the Windows `.codex` resumes with Windows Codex in `C:\x`, once every WSL
+    distro confirms that `/mnt/c/x` is that same Windows folder (`wslpath -w`; the session
+    doesn't record its distro, and a custom `wsl.conf` can make `/mnt/c` a Linux folder). If it
+    can't be confirmed, or the distros disagree, nothing is guessed: a folder has to be chosen.
+  - `C:\x` in a WSL `.codex` resumes in WSL in `/mnt/c/x` (as that distro mounts it, `wslpath`).
+  - A Linux-only folder (`/home/…`) in the Windows `.codex` isn't resumed by default. The dialog
+    explains why and offers **Open in Codex app** (`codex://threads/<id>`, the app's own link to a
+    local thread) and, opt-in and desktop only, **Resume with Windows Codex in the WSL folder**:
+    Windows Codex in `\\wsl.localhost\<distro>\…` (default distro from `wsl -l -v`, Docker's and
+    Rancher's never; another can be picked), bypass off and in Codex's read-only sandbox
+    (`-a on-request -s read-only`: a command that would change anything needs approval; Codex
+    has no policy that asks before every command), with a warning that commands run in Windows
+    PowerShell against the Linux files. PowerShell is used, as cmd (also under Windows Terminal)
+    can't start in a `\\…` folder.
+  - A translated folder, or one chosen in the dialog, is also given to Codex (`-C <folder>`), or
+    Codex asks which folder to use (offering its own conversion, e.g. `C:\mnt\c\…`).
+  - "Open terminal here" opens a Linux folder in WSL, a Windows one on Windows.
+  - Folder checks: Windows can't see a distro's drive mounts through `\\wsl.localhost`, nor
+    folders only the session's own WSL user can read. Those are checked inside the distro
+    (`test -r`), as the user Codex will run as.
+- **Not for Codex** (hidden): Branch from here (it would write into `~/.codex`), Continue fresh and
+  summaries (later phase), New session in this folder, Remote Control, API billing, Running now,
+  usage and limits (Phase C). A Codex session whose file is gone can be read but not resumed: the
+  app never copies files back into `~/.codex`.
+- **Archive**: Settings → Archive → "Archive Codex sessions": Off (default; Codex doesn't delete
+  old sessions itself), Named, pinned or tagged, or All. The size it would copy, and about what a
+  backup grows by (only for copies that are new or hold more), are shown before it's turned on.
+  Copies go to `archive\codex-<source>\` as they are (compressed files stay compressed); a session
+  Codex later compresses keeps its plain copy. Compressed copies are compared by what they hold
+  (decompressed), not their size on disk, when archiving and when restoring a backup; a restore
+  keeps each archive record with the copy it restored.
 
 ## Decisions and notes
 

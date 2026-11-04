@@ -1,7 +1,6 @@
 // "Branch from here": plan a cut at a message and create the new session file.
 
 import { randomUUID } from 'node:crypto'
-import { readFile } from 'node:fs/promises'
 import { branchName } from '@shared/branch'
 import { isUuid } from '@shared/jsonl'
 import type { BranchPreview, BranchRequest, SessionSummary } from '@shared/types'
@@ -31,7 +30,7 @@ export class BranchService {
   private async plan(s: SessionSummary, req: BranchRequest): Promise<PlannedBranch> {
     let text: string
     try {
-      text = await readFile(s.filePath, 'utf8')
+      text = await sessionProvider(this.sessions, s).readText(s.filePath)
     } catch {
       throw new BranchError("This session's file can't be read right now.")
     }

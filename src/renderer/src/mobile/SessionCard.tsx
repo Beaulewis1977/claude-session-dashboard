@@ -11,6 +11,8 @@ import { ContextBadge } from '@/components/context/ContextSize'
 import { SourceBadge } from '@/components/SourceBadge'
 import { ModelChoiceBadge } from '@/components/ModelPicker'
 import { useModelChoice } from '@/lib/model-choice'
+import { ProviderBadge } from '@/components/ProviderSwitch'
+import { useMobileScope } from './scope'
 
 const ACTIONS_WIDTH = 144
 
@@ -47,6 +49,7 @@ export const SessionCard = memo(function SessionCard({
   const tags = s.meta.tags ?? []
   const text = preview(s)
   const choice = useModelChoice(s)
+  const { view } = useMobileScope()
 
   const end = (): void => {
     const st = start.current
@@ -164,6 +167,7 @@ export const SessionCard = memo(function SessionCard({
           <ContextBadge context={s.context} />
           <RemoteBadge session={s} compact />
           {s.availability !== 'imported' && <ModelChoiceBadge choice={choice} compact />}
+          {view === 'all' && <ProviderBadge provider={s.provider} />}
           <SourceBadge source={s.source} reason={s.sourceReason} compact />
           {s.availability === 'archived-only' && (
             <span className="inline-flex items-center gap-1 rounded bg-warning-soft px-1 text-[10px] font-medium text-warning">

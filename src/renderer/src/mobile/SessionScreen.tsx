@@ -20,7 +20,8 @@ import {
   Search,
   Smartphone,
   SquareTerminal,
-  TextCursorInput
+  TextCursorInput,
+  TriangleAlert
 } from 'lucide-react'
 import type { SessionDetail, SessionSummary } from '@shared/types'
 import { formatDateTime } from '@shared/format'
@@ -54,6 +55,8 @@ import {
   TitleSourceLine
 } from '@/components/viewer/MetaEditors'
 import { canUseClaudeName } from '@shared/title'
+import { capsOf, PROVIDER_LABEL, providerOf } from '@shared/provider'
+import { ProviderBadge } from '@/components/ProviderSwitch'
 import { FindBar } from '@/components/viewer/FindBar'
 import { SessionUsageStrip } from '@/components/viewer/SessionUsage'
 import { ContextStrip } from '@/components/context/ContextSize'
@@ -164,6 +167,9 @@ export function SessionScreen({ session }: { session: SessionSummary }) {
   const messages = useMemo(() => detail?.messages ?? [], [detail])
   const find = useFind(contentRef, scrollRef, findOpen ? findQuery : '', detail)
   const viewOnly = session.availability === 'imported'
+  // What this session's agent can do (Codex: Resume and Fork, no Remote Control).
+  const caps = capsOf(session)
+  const product = PROVIDER_LABEL[providerOf(session)]
   const choice = choiceLabel(useModelChoice(session))
   const onBranch = useCallback<OnBranch>(
     (id, mode) => setLaunch({ kind: 'branch', at: id, mode }),
@@ -237,7 +243,7 @@ export function SessionScreen({ session }: { session: SessionSummary }) {
               disabled={!canUseClaudeName(session)}
               onSelect={() => write(() => applyClaudeNames([session.key]))}
             >
-              <TextCursorInput /> Use name from Claude Code
+              <TextCursorInput /> Use name from {product}
             </DropdownMenuItem>
             <DropdownMenuItem onSelect={() => write(() => togglePinned(session.key))}>
               {session.meta.pinned ? <PinOff /> : <Pin />}
@@ -290,12 +296,17 @@ export function SessionScreen({ session }: { session: SessionSummary }) {
               focusNonce={0}
             />
           </div>
-          <SummaryBlock
-            session={session}
-            readOnly={readOnly}
-            onContinue={viewOnly ? undefined : () => setLaunch({ kind: 'continue' })}
-          />
+          {(caps.summaries || session.meta.aiSummary) && (
+            <SummaryBlock
+              session={session}
+              readOnly={readOnly}
+              onContinue={
+                viewOnly || !caps.continueFresh ? undefined : () => setLaunch({ kind: 'continue' })
+              }
+            />
+          )}
           <div className="mt-3 flex flex-wrap items-center gap-1.5">
+            <ProviderBadge provider={session.provider} />
             {!viewOnly && <EnvBadge env={session.env} distro={session.distro} />}
             <RemoteBadge session={session} />
             {session.meta.pinned && (
@@ -374,12 +385,27 @@ export function SessionScreen({ session }: { session: SessionSummary }) {
           </div>
         )}
         <div ref={contentRef}>
+          {session.historyNote && (
+            <div className="mx-3 mt-3 flex items-start gap-2 rounded-xl border border-warning/25 bg-warning-soft px-3 py-2.5 text-[13px] leading-snug">
+              <TriangleAlert className="mt-0.5 size-4 shrink-0 text-warning" />
+              <span>
+                <b>History may be incomplete.</b>{' '}
+                {session.historyNote.replace(/^This conversation may be incomplete: /, '')}
+              </span>
+            </div>
+          )}
+          {session.searchPartial && (
+            <div className="mx-3 mt-3 rounded-xl border border-border bg-secondary/40 px-3 py-2.5 text-[13px] leading-snug text-muted-foreground">
+              This conversation is very long, so searching sessions covers only its first part.
+            </div>
+          )}
           {detail ? (
             <Transcript
               messages={messages}
               cwd={session.cwd}
               findQuery={findOpen ? findQuery : ''}
-              onBranch={viewOnly || readOnly ? undefined : onBranch}
+              onBranch={viewOnly || readOnly || !caps.branch ? undefined : onBranch}
+              agent={providerOf(session)}
               className="px-3 pt-4 pb-28"
             />
           ) : error ? (
@@ -430,20 +456,24 @@ export function SessionScreen({ session }: { session: SessionSummary }) {
               <Play className="fill-current" /> Resume on PC
               {choice && <span className="truncate font-normal opacity-85">· {choice}</span>}
             </Button>
-            <Button
-              variant="outline"
-              className="h-11 flex-1 text-[15px]"
-              disabled={readOnly}
-              onClick={() => setLaunch({ kind: 'fork' })}
-            >
-              <GitFork /> Fork
-            </Button>
+            {caps.fork && (
+              <Button
+                variant="outline"
+                className="h-11 flex-1 text-[15px]"
+                disabled={readOnly}
+                onClick={() => setLaunch({ kind: 'fork' })}
+              >
+                <GitFork /> Fork
+              </Button>
+            )}
           </div>
           <div className="mt-1.5 flex items-center justify-center gap-1 text-[11.5px] text-muted-foreground">
             <Smartphone className="size-3" />
             {readOnly
               ? 'Read-only mode is on (change it on your PC)'
-              : 'Opens on your PC with Remote Control'}
+              : caps.remoteControl
+                ? 'Opens on your PC with Remote Control'
+                : `Opens ${product} on your PC (sandboxed, approval on request, no bypass)`}
           </div>
         </footer>
       )}

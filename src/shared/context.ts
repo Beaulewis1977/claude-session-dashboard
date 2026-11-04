@@ -306,6 +306,8 @@ export type WindowFrom =
   | 'model'
   /** The context is already bigger than 200k, so it must be a 1M window. */
   | 'size'
+  /** Codex's own log (`model_context_window` in its token counts). */
+  | 'codex-log'
 
 export interface ContextWindow {
   size: number
@@ -591,6 +593,10 @@ export interface ResumeEstimate {
   basis?: 'baseline' | 'window'
   /** Why there's no % (or no price). */
   unknown?: string
+  /** The % is of the weekly limit, not the 5-hour window (Codex plans without one). */
+  pctWindow?: 'seven_day'
+  /** A caveat about the prompt cache (Codex: whether it's warm can't be known). */
+  cacheNote?: string
 }
 
 export const NO_BASELINE =

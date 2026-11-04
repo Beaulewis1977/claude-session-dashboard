@@ -186,6 +186,13 @@ export const RPC: Record<string, RpcMethod> = {
     kind: 'read',
     args: ([k, a, b]) => [k, a, b]
   },
+  // Codex's limits come from its logs: nothing about the PC's files in them.
+  getCodexLimits: { channel: 'codexLimits:state', kind: 'read', args: none },
+  compareCodexHealth: {
+    channel: 'codexLimits:compareHealth',
+    kind: 'read',
+    args: ([k, a, b]) => [k, a, b]
+  },
   // Terminal access: where the phone's SSH app connects (host, user, port,
   // shell), and whether it's set up. Never the setup itself.
   getTerminalAccess: { channel: 'terminal:phoneInfo', kind: 'read', args: none },

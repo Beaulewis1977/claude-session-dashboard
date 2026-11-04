@@ -324,6 +324,10 @@ export interface ScoreOptions {
   isSubscription?: (key: string) => boolean
   /** Use this baseline instead of computing one from `windows` (e.g. for the open window alone). */
   baseline?: Baseline | null
+  /** Plans over time, when they don't come from `planHistory` (Codex: detected from its logs). */
+  spans?: PlanSpan[]
+  /** The product in messages (absent: "Claude"). */
+  product?: string
 }
 
 const RESET_TOLERANCE = 60 * 60_000
@@ -445,7 +449,8 @@ export function scoreWindows(
   const { kind, prices, now, settings } = opts
   const isSub = opts.isSubscription ?? (() => true)
   const len = windowLength(kind)
-  const spans = planSpans(opts.planHistory, opts.currentPlan)
+  const spans = opts.spans ?? planSpans(opts.planHistory, opts.currentPlan)
+  const product = opts.product ?? 'Claude'
   const elsewhere = opts.elsewhere ?? []
   const priceAs = settings.familyPricing ? familyPricer(prices) : (m: string) => m
   const windows: WindowScore[] = []
@@ -546,11 +551,11 @@ export function scoreWindows(
     }
     const share = (w.untrackedPct / w.pct) * 100
     if (!w.excluded && share >= settings.untrackedLimit && w.untrackedPct > w.untrackedClear) {
-      w.warning = `About ${Math.round(share)}% of this window's usage isn't in the local logs, or each 1% bought less. Used Claude elsewhere? Mark the time range so it's left out.`
+      w.warning = `About ${Math.round(share)}% of this window's usage isn't in the local logs, or each 1% bought less. Used ${product} elsewhere? Mark the time range so it's left out.`
     } else if (w.excluded === 'untracked') {
-      w.warning = `${Math.round((w.untrackedClear / w.pct) * 100)}% of this window's usage happened while nothing ran on this computer (claude.ai, mobile, cloud…). Left out.`
+      w.warning = `${Math.round((w.untrackedClear / w.pct) * 100)}% of this window's usage happened while nothing ran on this computer (${product === 'Claude' ? 'claude.ai, mobile, cloud' : 'ChatGPT, Codex cloud'}…). Left out.`
     } else if (w.excluded === 'elsewhere') {
-      w.warning = 'You marked this time as "used Claude elsewhere". Left out.'
+      w.warning = `You marked this time as "used ${product} elsewhere". Left out.`
     } else if (w.excluded === 'plan-change') {
       w.warning = 'Your plan changed during this window, so its 1% has no single size. Left out.'
     }
@@ -801,7 +806,7 @@ export function healthReport(
     baseline,
     verdict: verdictOf(windows, baseline, opts.settings),
     skippedLow,
-    plans: planSpans(opts.planHistory, opts.currentPlan),
+    plans: opts.spans ?? planSpans(opts.planHistory, opts.currentPlan),
     settings: opts.settings
   }
 }

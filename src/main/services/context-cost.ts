@@ -4,12 +4,45 @@
 // gauge's subscription filter (API-billed use doesn't move the limit).
 
 import { now } from '@shared/clock'
-import { estimateResume, pctPerWeightedToken, type ResumeEstimate } from '@shared/context'
+import {
+  estimateResume,
+  NO_BASELINE,
+  pctPerWeightedToken,
+  type ResumeEstimate
+} from '@shared/context'
 import { projectDefault } from '@shared/project-key'
 import { summaryMarkdown } from '@shared/summary'
 import type { AppSettings, SessionSummary } from '@shared/types'
+import type { ModelPrice } from '@shared/usage/pricing'
+import type { CodexLimitsService } from './codex-limits'
 import type { LimitsService } from './limits'
 import type { UsageService } from './usage'
+
+/**
+ * Codex logs no cache writes (uncached input is billed as input) and say
+ * nothing about how long a prompt cache stays warm, so a Codex resume is
+ * priced cold: the whole context at the input price.
+ */
+export const CODEX_CACHE_NOTE =
+  "Codex's logs don't say how long its prompt cache stays warm, so this assumes a cold start: the whole context at the input price."
+
+/** Codex's price table for a resume estimate: every write at the input price. */
+function coldPrices(table: ModelPrice[]): ModelPrice[] {
+  return table.map((p) => ({
+    ...p,
+    cacheWrite5m: p.input,
+    cacheWrite1h: p.input,
+    ...(p.longContext
+      ? {
+          longContext: {
+            ...p.longContext,
+            cacheWrite5m: p.longContext.input,
+            cacheWrite1h: p.longContext.input
+          }
+        }
+      : {})
+  }))
+}
 
 /**
  * The launch bills the same account the session's prompt cache belongs to.
@@ -58,8 +91,36 @@ export class ContextCost {
       limits: Pick<LimitsService, 'dollarsPerPct' | 'state' | 'isSubscription'>
       usage: Pick<UsageService, 'allRecords'>
       settings: () => AppSettings
+      /** Codex sessions: its own baseline and price table. */
+      codex?: { limits: Pick<CodexLimitsService, 'dollarsPerPct'>; prices: () => ModelPrice[] }
     }
   ) {}
+
+  /** A Codex session: always on the ChatGPT plan, cold (see CODEX_CACHE_NOTE). */
+  private codexEstimate(s: SessionSummary, modelChoice: string | undefined): ResumeEstimate | undefined {
+    if (!s.context || !this.deps.codex) return undefined
+    const st = this.deps.settings()
+    const basis = this.deps.codex.limits.dollarsPerPct()
+    const est = estimateResume({
+      ctx: { ...s.context, lastReplyAt: undefined, cache1hShare: undefined },
+      modelChoice,
+      billing: 'subscription',
+      sameScope: true,
+      prices: coldPrices(this.deps.codex.prices()),
+      weights: st.capacityWeights,
+      dollarsPerPct: basis?.value,
+      now: now()
+    })
+    return {
+      ...est,
+      ...(est.windowFrom === 'status-line' ? { windowFrom: 'codex-log' as const } : {}),
+      ...(basis?.kind === 'seven_day' ? { pctWindow: 'seven_day' as const } : {}),
+      ...(est.unknown === NO_BASELINE
+        ? { unknown: 'Not enough Codex limit history yet to turn tokens into a share of your limit.' }
+        : {}),
+      cacheNote: CODEX_CACHE_NOTE
+    }
+  }
 
   /**
    * The estimate for a launch of `s`. `billingAccountId` undefined: the
@@ -71,6 +132,8 @@ export class ContextCost {
     launch: { billingAccountId?: string; modelChoice?: string }
   ): Promise<ResumeEstimate | undefined> {
     if (!s.context) return undefined
+    if (s.provider === 'codex')
+      return this.codexEstimate(s, launch.modelChoice && launch.modelChoice !== 'default' ? launch.modelChoice : undefined)
     const st = this.deps.settings()
     const sub = !launch.billingAccountId
     const dollarsPerPct = sub ? this.deps.limits.dollarsPerPct() : undefined

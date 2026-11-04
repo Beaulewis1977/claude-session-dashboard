@@ -48,7 +48,8 @@ const WINDOW_FROM: Record<ResumeEstimate['windowFrom'], string> = {
   variant: 'the [1m] variant chosen for the launch',
   'status-line': "Claude Code's status line for this session",
   model: "the model's own window in Claude Code's model configuration",
-  size: 'the context is already past 200k, so it runs on a 1M window'
+  size: 'the context is already past 200k, so it runs on a 1M window',
+  'codex-log': "Codex's own session log (its model_context_window)"
 }
 
 /** Where the window size comes from (hover text). */

@@ -14,11 +14,13 @@ import {
   type TrendGroupBy
 } from '@shared/usage/trends'
 import type { CcusageComparison, Dimension, Period, UsageQuery } from '@shared/usage/types'
+import { isProviderView } from '@shared/provider'
 import { assertUserWrite } from './core/safe-paths'
 import { handle } from './ipc-guard'
 import type { Platform } from './platform'
 import type { BridgeInstaller } from './services/bridge'
 import type { LimitsService } from './services/limits'
+import type { CodexLimitsService } from './services/codex-limits'
 import type { SessionService } from './services/sessions'
 import type { UsageService } from './services/usage'
 
@@ -30,7 +32,8 @@ const DIMENSIONS: Dimension[] = [
   'env',
   'version',
   'billing',
-  'source'
+  'source',
+  'provider'
 ]
 
 export function cleanQuery(v: unknown): UsageQuery {
@@ -45,13 +48,17 @@ export function cleanQuery(v: unknown): UsageQuery {
       ? o.models.filter((m): m is string => typeof m === 'string').slice(0, 50)
       : undefined,
     groupBy: DIMENSIONS.includes(o.groupBy as Dimension) ? (o.groupBy as Dimension) : undefined,
-    sessionKey: typeof o.sessionKey === 'string' ? o.sessionKey : undefined
+    sessionKey: typeof o.sessionKey === 'string' ? o.sessionKey : undefined,
+    // Absent: Claude Code's usage, as before Codex.
+    ...(isProviderView(o.provider) && o.provider !== 'claude' ? { provider: o.provider } : {})
   }
 }
 
 export interface UsageIpcDeps {
   usage: UsageService
   limits: LimitsService
+  /** Codex's plan limits (from its logs). */
+  codexLimits?: CodexLimitsService
   installer: BridgeInstaller
   sessions: SessionService
   platform: Platform
@@ -93,6 +100,9 @@ export function registerUsageIpc(deps: UsageIpcDeps): void {
   deps.limits.on('changed', () => {
     for (const w of BrowserWindow.getAllWindows()) w.webContents.send('limits:changed')
   })
+  deps.codexLimits?.on('changed', () => {
+    for (const w of BrowserWindow.getAllWindows()) w.webContents.send('limits:changed')
+  })
 
   const action = (v: unknown): 'install' | 'uninstall' =>
     v === 'uninstall' ? 'uninstall' : 'install'
@@ -102,6 +112,13 @@ export function registerUsageIpc(deps: UsageIpcDeps): void {
     return src
   }
   handle('limits:state', () => deps.limits.state())
+  handle('codexLimits:state', () => deps.codexLimits?.state() ?? null)
+  handle('codexLimits:compareHealth', (_e, kind, a, b) => {
+    const ra = compareRange(a)
+    const rb = compareRange(b)
+    if (!ra || !rb || !deps.codexLimits) return null
+    return deps.codexLimits.compare(kind === 'seven_day' ? 'seven_day' : 'five_hour', ra, rb)
+  })
   handle('limits:rescan', async () => {
     await deps.rescanSources?.()
     await deps.installer
@@ -181,16 +198,19 @@ export function registerUsageIpc(deps: UsageIpcDeps): void {
   })
   handle('usage:exportCsv', async (_e, q, perRecord) => {
     const w = win()
+    const query = cleanQuery(q)
+    const prefix =
+      query.provider === 'codex' ? 'codex-usage' : query.provider === 'all' ? 'usage' : 'claude-usage'
     const opts: Electron.SaveDialogOptions = {
       title: 'Export usage to CSV',
-      defaultPath: `claude-usage-${dayKey(now(), localTimeZone())}.csv`,
+      defaultPath: `${prefix}-${dayKey(now(), localTimeZone())}.csv`,
       filters: [{ name: 'CSV', extensions: ['csv'] }]
     }
     const res = w ? await dialog.showSaveDialog(w, opts) : await dialog.showSaveDialog(opts)
     if (res.canceled || !res.filePath) return { saved: false }
     try {
       assertUserWrite(res.filePath)
-      await writeFile(res.filePath, usage.csv(cleanQuery(q), perRecord === true), 'utf8')
+      await writeFile(res.filePath, usage.csv(query, perRecord === true), 'utf8')
       return { saved: true, path: res.filePath }
     } catch (err) {
       return { saved: false, error: (err as Error).message }

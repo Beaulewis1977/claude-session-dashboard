@@ -72,6 +72,8 @@ import { registerAskIpc } from './ipc-ask'
 import { registerSummaryIpc } from './ipc-summaries'
 import { registerContextIpc } from './ipc-context'
 import { ContextCost, publishContextReadings } from './services/context-cost'
+import { CodexLimitsService } from './services/codex-limits'
+import { codexUsageSettings } from '@shared/usage/codex-settings'
 import { sanitizeContextWarning } from '@shared/context'
 import { PrintRunner } from './services/print-runner'
 import { sanitizeSummarySettings, SUMMARY_USAGE_KEY, SUMMARY_USAGE_LABEL } from '@shared/summary'
@@ -385,9 +387,20 @@ async function main(): Promise<void> {
     () => settings.value,
     paths.dataDir
   )
+  // Codex's settings (plan, baseline, its own price table), with defaults; worked out
+  // again only when the settings change.
+  let codexCache: { from: unknown; value: ReturnType<typeof codexUsageSettings> } | undefined
+  const codexSettings = (): ReturnType<typeof codexUsageSettings> => {
+    const s = settings.value
+    const key = [s.codexPlan, s.codexPlanMults, s.codexHealth, s.codexElsewhere, s.codexPrices, s.meterProvider, s.usageSplit]
+    if (!codexCache || (codexCache.from as unknown[]).some((v, i) => v !== key[i]))
+      codexCache = { from: key, value: codexUsageSettings(s) }
+    return codexCache.value
+  }
   const usage = new UsageService(sessions, usagePaths(paths.dataDir, paths.archiveDir), () => ({
     weekStart: settings.value.weekStart,
-    prices: settings.value.prices
+    prices: settings.value.prices,
+    codexPrices: codexSettings().codexPrices
   }))
   registerIpc({
     platform,
@@ -445,10 +458,40 @@ async function main(): Promise<void> {
     undefined,
     sourceOf
   )
+  const codexLimits = new CodexLimitsService(
+    usage,
+    () => {
+      const c = codexSettings()
+      return {
+        plan: c.codexPlan,
+        mults: c.codexPlanMults,
+        health: c.codexHealth,
+        elsewhere: c.codexElsewhere,
+        prices: c.codexPrices,
+        pace: settings.value.pace,
+        weights: settings.value.capacityWeights,
+        alertsEnabled: settings.value.alertsEnabled,
+        alertThresholds: settings.value.alertThresholds
+      }
+    },
+    (title, body) => {
+      mobile.toast(title, body)
+      if (!Notification.isSupported()) return
+      const n = new Notification({ title, body, icon: join(appRoot, 'resources', 'icon.png') })
+      n.on('click', () => showUsage())
+      n.show()
+    },
+    sourceOf
+  )
   bridgeGuess = (sid) => limits.billingOf(sid)
   sessions.contextResolver = (sid) => limits.contextOf(sid)
   publishContextReadings(limits, sessions)
-  const contextCost = new ContextCost({ limits, usage, settings: () => settings.value })
+  const contextCost = new ContextCost({
+    limits,
+    usage,
+    settings: () => settings.value,
+    codex: { limits: codexLimits, prices: () => codexSettings().codexPrices }
+  })
   launcher.contextEstimate = (s, l) => contextCost.estimate(s, l)
   registerContextIpc({ sessions, launcher, cost: contextCost })
   usage.on('changed', () => limits.emit('changed'))
@@ -456,6 +499,7 @@ async function main(): Promise<void> {
   registerUsageIpc({
     usage,
     limits,
+    codexLimits,
     installer,
     sessions,
     platform,
@@ -638,6 +682,7 @@ async function main(): Promise<void> {
   sessions.on('changed', migrateBillingKeys)
   usage.on('changed', () => mobile.push('usage'))
   limits.on('changed', () => mobile.push('limits'))
+  codexLimits.on('changed', () => mobile.push('limits'))
 
   // Running now and session alerts (the opt-in hook bridge, see services/hooks.ts).
   const hooksStore = createHooksStore(paths.dataDir)
@@ -713,6 +758,7 @@ async function main(): Promise<void> {
         .catch((err: unknown) => console.warn('could not refresh bridge scripts', err))
     )
     .then(() => Promise.all([usage.start(), limits.start()]))
+    .then(() => codexLimits.start())
     .then(() => accounts.startAutoRefresh())
     .then(async () => {
       if (FIXTURES) await seedFixtureBridge(paths.dataDir, sessions, installer)

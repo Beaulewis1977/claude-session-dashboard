@@ -356,9 +356,9 @@ Run typecheck, lint, tests and the build. Commit, push the branch and open a PR 
 - ✅ #4 Context size before you resume (v1.8.0)
 - ✅ #5 Phase A: provider refactor (v1.8.1)
 - ✅ #5 Phase B: Codex sessions (PR #28, v1.9.0)
-- 🔄 #5 Phase C: Codex usage & limits (branch `feat/codex-usage-limits`, in review)
+- ✅ #5 Phase C: Codex usage & limits (PR #30, v1.10.0)
 
-**In progress:** #5 Codex support in phases: A refactor ✅ → B Codex sessions ✅ → C Codex usage & limits (in review) → **next:** D Codex parity (incl. showing agent-to-agent messages, Codex trends)
+**In progress:** #5 Codex support in phases: A refactor ✅ → B Codex sessions ✅ → C Codex usage & limits ✅ → **next:** D Codex parity (incl. showing agent-to-agent messages, Codex trends)
 
 **Loose ends:**
 

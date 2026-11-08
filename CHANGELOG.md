@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.10.0 (November 8, 2026)
+
+**Codex support (part 2): Codex usage and limits, side by side with Claude.**
+
+### Codex usage & limits (PR #30)
+
+- **Codex token usage per model, session, project and client**, with fork-aware de-duplication.
+- **Live Codex limits** (5-hour, weekly and per-model limits like Spark) with history, stale
+  handling and 75/90% alerts.
+- **Codex plan detection, limit health and pacing**, with their own baseline.
+- **Codex context size and resume warnings.**
+- **All view** with side-by-side Claude and Codex gauges and stacked / split charts.
+- **Tray, mini meter and status bar** can show Claude, Codex or both.
+- **CSV export** has a provider column.
+
 ## 1.9.0 (November 3, 2026)
 
 **Codex support (part 1): browse, read, search, name, tag, resume and fork OpenAI Codex sessions.**

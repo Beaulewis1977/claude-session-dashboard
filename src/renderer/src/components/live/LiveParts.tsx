@@ -1,8 +1,18 @@
 // Pieces of "Running now": the status chip, the time line and the actions.
 
-import { AppWindow, Bell, BellOff, Copy, Smartphone, TriangleAlert } from 'lucide-react'
+import {
+  AppWindow,
+  Bell,
+  BellOff,
+  Copy,
+  ExternalLink,
+  Smartphone,
+  TriangleAlert
+} from 'lucide-react'
 import { STATE_LABEL, type LiveSession } from '@shared/live'
+import { capsOf, providerOf } from '@shared/provider'
 import type { SessionSummary } from '@shared/types'
+import { toast } from 'sonner'
 import { api } from '@/lib/api'
 import { copyLiveResume, focusLive, liveMuted, toggleMute } from '@/lib/live-sessions'
 import { cn } from '@/lib/utils'
@@ -23,13 +33,17 @@ export function StatusChip({
   className,
   large
 }: {
-  live: Pick<LiveSession, 'state' | 'failed' | 'background'>
+  live: Pick<LiveSession, 'state' | 'failed' | 'background' | 'guess'>
   className?: string
   large?: boolean
 }) {
   const c = CHIP[live.state]
   const label =
-    live.failed && live.state !== 'working' ? 'Stopped with an error' : STATE_LABEL[live.state]
+    live.failed && live.state !== 'working'
+      ? 'Stopped with an error'
+      : live.state === 'approval' && live.guess
+        ? 'Needs approval?'
+        : STATE_LABEL[live.state]
   return (
     <span
       className={cn(
@@ -38,7 +52,13 @@ export function StatusChip({
         live.failed && live.state !== 'working' ? 'bg-destructive/10 text-destructive' : c.box,
         className
       )}
-      title={live.background ? 'A background shell command is still running' : undefined}
+      title={
+        live.background
+          ? 'A background shell command is still running'
+          : live.state === 'approval' && live.guess
+            ? 'Probably: a command that needs approval has waited a while. Turn on Codex alerts (Settings → Session alerts) for exact approvals.'
+            : undefined
+      }
     >
       <span
         className={cn(
@@ -95,7 +115,29 @@ export function OpenOnPhone({ live, size = 'xs' }: { live: LiveSession; size?: '
   )
 }
 
-/** Focus terminal · Open on phone · Copy resume command · Mute. */
+/** Open a Codex thread in the Codex app (desktop only; `codex://threads/<id>`). */
+export function OpenInCodexApp({ live, size = 'xs' }: { live: LiveSession; size?: 'xs' | 'sm' }) {
+  return (
+    <Tooltip content="Open in the Codex app">
+      <Button
+        variant="ghost"
+        size={size}
+        aria-label="Open in Codex app"
+        onClick={() =>
+          void api
+            .openInAgentApp(live.key)
+            .catch((err: unknown) =>
+              toast.error("Couldn't open the Codex app", { description: (err as Error).message })
+            )
+        }
+      >
+        <ExternalLink /> {size === 'sm' && 'Open in Codex app'}
+      </Button>
+    </Tooltip>
+  )
+}
+
+/** Focus terminal · Open on phone (Claude) or in the Codex app · Copy resume command · Mute. */
 export function LiveActions({
   live,
   summary,
@@ -108,6 +150,7 @@ export function LiveActions({
   const muted = liveMuted(live, summary)
   const label = (text: string): string | false => size === 'sm' && text
   const ended = live.state === 'exited'
+  const codex = providerOf(live) === 'codex'
   return (
     <div className="flex shrink-0 items-center gap-0.5">
       <Tooltip
@@ -116,7 +159,9 @@ export function LiveActions({
             ? 'It has ended'
             : live.env === 'wsl'
               ? 'Bring its Windows Terminal tab forward (found by the session name)'
-              : 'Bring its terminal window (and tab) forward'
+              : codex
+                ? 'Bring forward the window of the Codex process that has it open'
+                : 'Bring its terminal window (and tab) forward'
         }
       >
         <span>
@@ -131,7 +176,9 @@ export function LiveActions({
           </Button>
         </span>
       </Tooltip>
-      <OpenOnPhone live={live} size={size} />
+      {codex
+        ? !api.remote && <OpenInCodexApp live={live} size={size} />
+        : capsOf(live).remoteControl && <OpenOnPhone live={live} size={size} />}
       <Tooltip content="Copy resume command">
         <Button
           variant="ghost"
@@ -167,7 +214,11 @@ export function UnverifiedNote({ live }: { live: LiveSession }) {
   return (
     <span
       className="inline-flex items-center gap-1 text-warning"
-      title="The app can't check this process (for example, a stopped WSL distro), so it may have ended."
+      title={
+        providerOf(live) === 'codex'
+          ? 'No Codex process has this thread locked (the Codex app may not lock it), so its state comes from recent activity in its session file.'
+          : "The app can't check this process (for example, a stopped WSL distro), so it may have ended."
+      }
     >
       <TriangleAlert className="size-3" /> unconfirmed
     </span>

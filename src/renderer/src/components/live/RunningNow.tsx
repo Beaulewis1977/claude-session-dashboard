@@ -8,9 +8,11 @@ import type { LiveSession } from '@shared/live'
 import type { SessionSummary } from '@shared/types'
 import { useLiveList, useNow, liveMuted, liveTitle, timeLine } from '@/lib/live-sessions'
 import { useApp } from '@/lib/store'
-import { useScope } from '@/lib/scope'
+import { useEnabledProviders, useScope } from '@/lib/scope'
+import { inProviderView, providerOf } from '@shared/provider'
 import { cn } from '@/lib/utils'
 import { EnvDot } from '../EnvBadge'
+import { ProviderBadge } from '../ProviderSwitch'
 import { Button } from '../ui/button'
 import { LiveActions, StatusChip, UnverifiedNote } from './LiveParts'
 
@@ -38,12 +40,15 @@ function CompactRow({
   live,
   summary,
   t,
-  selected
+  selected,
+  badge
 }: {
   live: LiveSession
   summary?: SessionSummary
   t: number
   selected: boolean
+  /** Show whose session it is (the All view). */
+  badge: boolean
 }) {
   const time = timeLine(live, t)
   const line = live.detail && live.state === 'approval' ? live.detail : time.state
@@ -68,6 +73,7 @@ function CompactRow({
           <span className="min-w-0 flex-1 truncate text-[12.5px] font-medium">
             {liveTitle(live, summary)}
           </span>
+          {badge && <ProviderBadge provider={live.provider} />}
           <StatusChip live={live} />
         </span>
         <span className="block w-full truncate pl-3.5 text-2xs text-subtle-foreground">{line}</span>
@@ -85,14 +91,15 @@ function CompactRow({
 
 /** At the top of the session list. Hidden when nothing runs. */
 export function RunningSection() {
-  const list = useLiveList()
+  const view = useScope().view
+  const list = useLiveList(view)
   const selectedKey = useApp((s) => s.selectedKey)
   const set = useApp((s) => s.set)
   const [open, setOpen] = useState(readOpen)
   const t = useNow()
-  // Running now is Claude Code's (Codex has none yet): not in the Codex view.
-  const view = useScope().view
-  if (!list.length || view === 'codex') return null
+  const enabled = useEnabledProviders()
+  const badge = view === 'all' && enabled.length > 1
+  if (!list.length) return null
   const toggle = (): void => {
     setOpen(!open)
     try {
@@ -134,6 +141,7 @@ export function RunningSection() {
               summary={summary}
               t={t}
               selected={live.key === selectedKey}
+              badge={badge}
             />
           ))}
       {open && list.length > SECTION_MAX && (
@@ -149,7 +157,17 @@ export function RunningSection() {
   )
 }
 
-function Card({ live, summary, t }: { live: LiveSession; summary?: SessionSummary; t: number }) {
+function Card({
+  live,
+  summary,
+  t,
+  badge
+}: {
+  live: LiveSession
+  summary?: SessionSummary
+  t: number
+  badge: boolean
+}) {
   const time = timeLine(live, t)
   const muted = liveMuted(live, summary)
   return (
@@ -172,6 +190,7 @@ function Card({ live, summary, t }: { live: LiveSession; summary?: SessionSummar
             >
               {liveTitle(live, summary)}
             </button>
+            {badge && <ProviderBadge provider={live.provider} />}
             {muted && (
               <span className="shrink-0 text-2xs text-warning" title="Alerts muted">
                 muted
@@ -225,11 +244,13 @@ function Card({ live, summary, t }: { live: LiveSession; summary?: SessionSummar
 function Group({
   title,
   items,
-  t
+  t,
+  badge
 }: {
   title: string
   items: { live: LiveSession; summary?: SessionSummary }[]
   t: number
+  badge: boolean
 }) {
   if (!items.length) return null
   return (
@@ -238,7 +259,7 @@ function Group({
         {title} <span className="tabular-nums">{items.length}</span>
       </h2>
       {items.map((x) => (
-        <Card key={x.live.key} live={x.live} summary={x.summary} t={t} />
+        <Card key={x.live.key} live={x.live} summary={x.summary} t={t} badge={badge} />
       ))}
     </div>
   )
@@ -246,14 +267,26 @@ function Group({
 
 /** The full view (sidebar → Running now). */
 export function RunningView() {
-  const list = useLiveList()
+  const view = useScope().view
+  const enabled = useEnabledProviders()
+  const list = useLiveList(view)
+  const badge = view === 'all' && enabled.length > 1
   const hooks = useApp((s) => s.live?.hooks ?? [])
   const set = useApp((s) => s.set)
   const t = useNow()
   const needs = list.filter((x) => x.live.state === 'approval' || x.live.state === 'idle')
   const working = list.filter((x) => x.live.state === 'working')
   const ended = list.filter((x) => x.live.state === 'exited')
-  const alertsOn = hooks.some((h) => h.installed)
+  // Session alerts are on somewhere for the agents in this view.
+  const alertsOn = hooks.some(
+    (h) => h.installed && inProviderView(view, h) && enabled.includes(providerOf(h))
+  )
+  const who =
+    view === 'codex'
+      ? 'Codex threads'
+      : view === 'claude' || !enabled.includes('codex')
+        ? 'Claude Code sessions'
+        : 'Claude Code sessions and Codex threads'
   return (
     <div className="h-full overflow-y-auto bg-surface">
       <div className="mx-auto max-w-[860px] px-8 pt-6 pb-10">
@@ -263,7 +296,7 @@ export function RunningView() {
               <Zap className="size-5 text-primary" /> Running now
             </h1>
             <p className="mt-0.5 text-[13px] text-muted-foreground">
-              Claude Code sessions running on this PC and in WSL, and what each one is doing.
+              {who} running on this PC and in WSL, and what each one is doing.
             </p>
           </div>
           <Button
@@ -282,9 +315,9 @@ export function RunningView() {
                 Turn on session alerts for exact states
               </div>
               <div className="mt-0.5 text-muted-foreground">
-                Without them, states come from Claude Code&apos;s session files and recent activity.
-                With them, you get &ldquo;needs approval&rdquo; and &ldquo;finished&rdquo; the
-                moment they happen, as desktop and phone alerts.
+                Without them, states come from the session files and recent activity (and a Codex
+                approval is only a guess). With them, you get &ldquo;needs approval&rdquo; the
+                moment it happens, as desktop and phone alerts.
               </div>
             </div>
             <Button
@@ -308,9 +341,9 @@ export function RunningView() {
           </div>
         ) : (
           <div className="mt-5 space-y-6">
-            <Group title="Needs you" items={needs} t={t} />
-            <Group title="Working" items={working} t={t} />
-            <Group title="Recently ended" items={ended} t={t} />
+            <Group title="Needs you" items={needs} t={t} badge={badge} />
+            <Group title="Working" items={working} t={t} badge={badge} />
+            <Group title="Recently ended" items={ended} t={t} badge={badge} />
           </div>
         )}
       </div>

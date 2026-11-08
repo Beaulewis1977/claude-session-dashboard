@@ -21,7 +21,10 @@ import { useApp } from '@/lib/store'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { StatusChip, UnverifiedNote } from '@/components/live/LiveParts'
+import { ProviderBadge } from '@/components/ProviderSwitch'
+import { providerOf } from '@shared/provider'
 import { useMobile } from './state'
+import { useMobileScope, usePhoneProviders } from './scope'
 import { turnPushOn, usePushState } from './push'
 
 function PushBanner() {
@@ -62,7 +65,17 @@ function PushBanner() {
   )
 }
 
-function Card({ live, summary, t }: { live: LiveSession; summary?: SessionSummary; t: number }) {
+function Card({
+  live,
+  summary,
+  t,
+  badge
+}: {
+  live: LiveSession
+  summary?: SessionSummary
+  t: number
+  badge: boolean
+}) {
   const select = useApp((s) => s.select)
   const readOnly = useMobile((s) => s.me?.readOnly) ?? false
   const time = timeLine(live, t)
@@ -82,6 +95,7 @@ function Card({ live, summary, t }: { live: LiveSession; summary?: SessionSummar
       >
         <div className="flex min-w-0 items-center gap-2">
           <StatusChip live={live} large />
+          {badge && <ProviderBadge provider={live.provider} />}
           {muted && <BellOff className="size-3.5 shrink-0 text-warning" aria-label="Muted" />}
           <span className="ml-auto shrink-0 text-[12px] text-muted-foreground">
             {live.env === 'wsl' ? `WSL: ${live.distro ?? ''}` : 'Windows'}
@@ -114,6 +128,10 @@ function Card({ live, summary, t }: { live: LiveSession; summary?: SessionSummar
           >
             <Smartphone /> Open in Claude
           </Button>
+        ) : providerOf(live) === 'codex' ? (
+          <span className="text-[12px] text-subtle-foreground">
+            Answer it in its terminal or the Codex app
+          </span>
         ) : (
           <span className="inline-flex items-center gap-1 text-[12px] text-subtle-foreground">
             <Radio className="size-3.5" /> No Remote Control
@@ -148,7 +166,10 @@ function Card({ live, summary, t }: { live: LiveSession; summary?: SessionSummar
 }
 
 export function RunningTab() {
-  const list = useLiveList()
+  const view = useMobileScope().view
+  const list = useLiveList(view)
+  const providers = usePhoneProviders()
+  const badge = view === 'all' && providers.length > 1
   const loaded = useApp((s) => s.live !== null)
   const t = useNow()
   return (
@@ -158,7 +179,11 @@ export function RunningTab() {
         <p className="text-[13px] text-muted-foreground">
           {list.length
             ? `${list.filter((x) => x.live.state !== 'exited').length} running on your PC`
-            : 'Claude Code sessions on your PC'}
+            : view === 'codex'
+              ? 'Codex threads on your PC'
+              : view === 'claude'
+                ? 'Claude Code sessions on your PC'
+                : 'Sessions on your PC'}
         </p>
       </header>
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain pt-3 pb-4">
@@ -179,7 +204,7 @@ export function RunningTab() {
           </div>
         ) : (
           list.map(({ live, summary }) => (
-            <Card key={live.key} live={live} summary={summary} t={t} />
+            <Card key={live.key} live={live} summary={summary} t={t} badge={badge} />
           ))
         )}
       </div>

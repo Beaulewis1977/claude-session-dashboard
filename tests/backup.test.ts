@@ -668,6 +668,18 @@ describe('BackupService', () => {
     decrypt: async (b: Buffer) => b.toString().slice('dpapi:'.length)
   }
 
+  // Every store a test opened. A store saves on a short timer after a change;
+  // one still pending when the test ends would write into the data folder
+  // while it's being removed (ENOTEMPTY on Windows). Flush them first.
+  const opened: { svc: BackupService; store: ReturnType<typeof createBackupStore> }[] = []
+  afterEach(async () => {
+    for (const { svc, store } of opened.splice(0)) {
+      svc.stop()
+      await svc.idle()
+      await store.flush()
+    }
+  })
+
   async function service() {
     const store = createBackupStore(dataDir)
     await store.load()
@@ -681,6 +693,7 @@ describe('BackupService', () => {
       minObjectAgeMs: 0
     })
     await svc.init()
+    opened.push({ svc, store })
     return { svc, store }
   }
 

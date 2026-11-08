@@ -566,6 +566,11 @@ describe('Ask Claude service: billing check and cancelling', () => {
   it('Cancel during the subscription check stops that process and returns at once', async () => {
     let authCancelled = 0
     let questions = 0
+    // Cancel once the status check has really started (run() gets there only
+    // after a few awaits): a fixed sleep could end before that under load, and
+    // the cancel would then hit an earlier step instead.
+    let checking: () => void = () => undefined
+    const inCheck = new Promise<void>((r) => (checking = r))
     const ask = new AskService({
       store: createAskStore(dir),
       dataDir: dir,
@@ -577,13 +582,14 @@ describe('Ask Claude service: billing check and cancelling', () => {
           questions++
           return { done: Promise.resolve(ok), cancel: () => undefined }
         }
+        checking()
         // A status check that would take its full 30 s.
         return { done: new Promise<RunResult>(() => undefined), cancel: () => authCancelled++ }
       }
     })
     const p = await ask.preview('Have my limits dropped?')
     const pending = ask.run(p.id)
-    await new Promise((r) => setTimeout(r, 10))
+    await inCheck
     ask.cancel(p.id)
     const t = Date.now()
     expect(await pending).toMatchObject({ ok: false, error: 'Cancelled.' })

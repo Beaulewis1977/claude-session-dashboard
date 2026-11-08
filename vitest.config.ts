@@ -19,7 +19,12 @@ export default defineConfig({
           name: 'node',
           include: ['tests/**/*.test.ts'],
           exclude: [BROWSER_TESTS],
-          sequence: { groupOrder: 0 }
+          sequence: { groupOrder: 0 },
+          // The fixture tests copy and scan sample homes: well under a second
+          // alone, but several seconds on a loaded machine (two suites at once
+          // took them to 2-9 s). Waits inside tests are explicit, so this only
+          // bounds a slow run; it never makes a passing test slower.
+          testTimeout: 30_000
         }
       },
       {

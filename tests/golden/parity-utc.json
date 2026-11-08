@@ -21538,6 +21538,17 @@
    "handoffs": {},
    "lineage": [
     [
+     "windows:0d1e2f3a-4b5c-4d6e-8f70-81920a1b2c3d",
+     {
+      "atMessageId": "1ec8b537-0a08-4f05-afef-2372b39ad796",
+      "atTime": "2026-10-22T08:41:51.000Z",
+      "parentKey": "windows:2b6d8e4f-1a3c-4e5f-8a7b-9c0d1e2f3a4b",
+      "parentSessionId": "2b6d8e4f-1a3c-4e5f-8a7b-9c0d1e2f3a4b",
+      "shared": 4,
+      "via": "app"
+     }
+    ],
+    [
      "windows:b7a1c2d3-e4f5-4a6b-8c7d-9e0f1a2b3c4d",
      {
       "atMessageId": "1ec8b537-0a08-4f05-afef-2372b39ad796",
@@ -22867,6 +22878,14 @@
      "gitBranch": "main",
      "key": "windows:0d1e2f3a-4b5c-4d6e-8f70-81920a1b2c3d",
      "lastActivityAt": "2026-10-22T08:41:51.000Z",
+     "lineage": {
+      "atMessageId": "1ec8b537-0a08-4f05-afef-2372b39ad796",
+      "atTime": "2026-10-22T08:41:51.000Z",
+      "parentKey": "windows:2b6d8e4f-1a3c-4e5f-8a7b-9c0d1e2f3a4b",
+      "parentSessionId": "2b6d8e4f-1a3c-4e5f-8a7b-9c0d1e2f3a4b",
+      "shared": 4,
+      "via": "app"
+     },
      "malformedLines": 0,
      "messageCount": 4,
      "meta": {

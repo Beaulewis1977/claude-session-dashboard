@@ -393,7 +393,22 @@ async function services(root: string, opts: { seed: boolean }) {
     live,
     summaries,
     lineage,
+    /**
+     * Wait for the lineage refresh that a session change schedules.
+     * SessionService announces a change on a timer and LineageService
+     * refreshes on its own timer after that, so right after `sessions.idle()`
+     * a session the app just branched may or may not have its lineage yet,
+     * depending on load. `refresh()` runs that same recompute now; if the
+     * timer's refresh is already running it waits for it and computes once
+     * more, so the lineage always matches the current session list. A timer
+     * that fires later recomputes the same result and changes nothing.
+     */
+    async settled() {
+      await sessions.idle()
+      await lineage.refresh()
+    },
     async idle() {
+      await this.settled()
       await sessions.idle()
       await usage.idle()
       await Promise.all([metadata.flush(), settings.flush(), accountsStore.flush()])
@@ -471,7 +486,9 @@ function launchVariants(s: SessionSummary, branchAt?: string): [string, LaunchOp
 
 async function captureState(svc: Services, norm: (s: string) => string) {
   const { sessions, usage, limits, live, summaries, launcher } = svc
-  // Background syncs (the app's own timers) may still be running: wait first.
+  // Background syncs and the lineage refresh (the app's own timers) may still
+  // be pending: wait for them first.
+  await svc.settled()
   await usage.idle()
   const usageStatus = usage.status()
   const dig = (v: unknown): string => digestOf(v, norm)

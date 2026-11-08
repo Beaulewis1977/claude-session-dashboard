@@ -1015,13 +1015,13 @@ folder plus Codex's name index, `config.toml`, `archived_sessions` or `sessions/
   are not counted.
   - **Counted once.** Codex sends an event again with an unchanged total (when only the limits
     moved): skipped. A fork's rollout (`codex fork`, `forked_from_id`) starts with a copy of its
-    parent's events, written when the fork is made (0–10 ms after its start in real rollouts), so
-    an event's identity is its fork lineage (the first thread of its `forked_from_id` chain) plus
-    its exact counts (running total and last usage) and which occurrence of them it is in its
-    file: never its time or file. A fork's copy (written when the fork was made) counts once when
-    an ancestor held the same event before the fork was made (the parent's, at its real time), in
-    any reading order; a matching response the parent or a sibling made after that, or one the
-    fork wrote later, is a separate response and counts too. With the parent gone everywhere, the
+    parent's events, mostly written when the fork is made (0–10 ms after its start in 137 of 141
+    real forks; a few wrote them seconds later), so an event's identity is its fork lineage (the
+    first thread of its `forked_from_id` chain) plus its exact counts (running total and last
+    usage) and which occurrence of them it is in its file: never its time or file. A fork's copy
+    counts once when an ancestor held the same event before the fork was made (the parent's, at
+    its real time), whenever the fork wrote it, in any reading order; a matching response the
+    parent or a sibling made after that is a separate response and counts too. With the parent gone everywhere, the
     siblings' copies count once. Copies whose identity differs from their original's (rows an
     older parser made, next to rows of this one) are matched by their numbers (a reading's with
     its reset date, so a current window is never taken for an old one with the same percentage;

@@ -1724,6 +1724,31 @@ describe('review fixes: absolute reset dates, the last progress notice', () => {
     }
   })
 
+  it('counts copies a fork wrote seconds after it was made once (seen in real rollouts)', () => {
+    const store = new CodexUsageStore()
+    store.setLineage([
+      { sessionId: 'p', startedAt: '2026-10-20T09:59:00Z' },
+      { sessionId: 'f', forkedFromId: 'p', startedAt: '2026-10-21T09:00:00Z' }
+    ])
+    const history = [
+      ev('2026-10-20T10:00:00Z', [100, 10], [100, 10]),
+      ev('2026-10-20T10:01:00Z', [300, 20], [200, 10])
+    ]
+    put(store, 'w:p', 'p', [...history, ev('2026-10-21T09:30:00Z', [400, 30], [100, 10])])
+    // Copies written 6.8 s after the fork was made, then the fork's own response
+    // (the same counts as the parent's own one from after the fork: both count).
+    put(store, 'w:f', 'f', [
+      ev('2026-10-21T09:00:06.700Z', [100, 10], [100, 10]),
+      ev('2026-10-21T09:00:06.800Z', [300, 20], [200, 10]),
+      ev('2026-10-21T09:20:00Z', [400, 30], [100, 10])
+    ])
+    const recs = store.records()
+    expect(recs.filter((x) => x.key === 'w:p')).toHaveLength(3)
+    expect(recs.filter((x) => x.key === 'w:f').map((x) => x.ts)).toEqual([
+      Date.parse('2026-10-21T09:20:00Z')
+    ])
+  })
+
   it('tells the alerts once the Codex sessions are read, before the Claude Code scan', async () => {
     const { sessions, paths } = await pipeline()
     const fresh = await mkdtemp(join(tmpdir(), 'csd-codex-trail-'))

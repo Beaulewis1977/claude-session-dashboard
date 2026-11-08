@@ -38,9 +38,10 @@ interface Link {
 }
 
 /**
- * Codex writes a fork's copy of its parent's events right when it creates
- * the fork (0-10 ms after its meta line in real rollouts), and the parent's
- * originals all came before it; the fork's own responses come seconds later.
+ * Codex writes a fork's copy of its parent's events when it creates the fork:
+ * in 137 of 141 real forks 0-10 ms after its meta line (the parent's originals
+ * all came before it). Where events match by number only (not by identity),
+ * rows from the fork's first second are taken as copies.
  */
 const COPY_MS = 1000
 
@@ -272,11 +273,10 @@ export class CodexUsageStore {
   /**
    * The copies of one event (same identity: one to one by construction) that
    * count. The same session (a rollout found in two homes, or its archive
-   * copy) counts once. A copy in a fork is copied history when it was written
-   * when the fork was made and an ancestor held the event from before then:
-   * only the ancestor's counts. A matching response of an ancestor's from
-   * after the fork was made, or one the fork wrote later, is an independent
-   * response (both count). Copies left in forks of one parent that holds none
+   * copy) counts once. A copy in a fork is copied history when an ancestor
+   * held the event from before the fork was made: only the ancestor's counts.
+   * A matching response of an ancestor's from after the fork was made is an
+   * independent response (both count). Copies left in forks of one parent that holds none
    * of them: those made when their fork was (or, with no start time known,
    * all of them when the parent is missing everywhere) count once.
    */
@@ -301,10 +301,14 @@ export class CodexUsageStore {
     }
     const anc = (x: T) => CodexUsageStore.ancestors(links, sidOf(x))
     const startOf = (x: T) => links.get(sidOf(x))?.start
+    // The identity is exact (lineage, running total, last usage, occurrence),
+    // so an ancestor's event from before the fork was made is the original
+    // whenever the fork wrote its copy: most forks write their copies within
+    // milliseconds, but some real ones a few seconds later (one wrote 5,164
+    // copies over 6 s). An ancestor's matching event from after that is an
+    // independent response, and both count.
     const kept = one.filter((c) => {
       const start = startOf(c)
-      // Written after its fork was made: the fork's own response.
-      if (start !== undefined && c.ts > start + COPY_MS) return true
       const a = anc(c)
       return !one.some((d) => d !== c && a.has(sidOf(d)) && (start === undefined || d.ts <= start))
     })

@@ -85,7 +85,7 @@ function windowGauge(
   t: number,
   weights: CapacityWeights
 ): GaugeState | undefined {
-  const w = r.windows.find((x) => x.minutes === minutes)
+  const w = r.windows.find((x) => canon(x.minutes) === minutes)
   if (!w) return undefined
   const windowStart = w.resetsAt ? w.resetsAt - minutes * 60_000 : undefined
   const expired = !!w.resetsAt && t >= w.resetsAt
@@ -113,6 +113,12 @@ function windowGauge(
 }
 
 /** The newest reading of a limit per window length. */
+/** A window length with older Codex's 299 / 10079 counted as 300 / 10080. */
+function canon(minutes: number): number {
+  const k = windowKindOf(minutes)
+  return k === 'five_hour' ? 300 : k === 'seven_day' ? 10_080 : minutes
+}
+
 function latestByMinutes(
   readings: CodexLimitReading[],
   limitId: string
@@ -121,8 +127,9 @@ function latestByMinutes(
   for (const r of readings) {
     if (r.limitId !== limitId) continue
     for (const w of r.windows) {
-      const cur = out.get(w.minutes)
-      if (!cur || r.ts >= cur.ts) out.set(w.minutes, r)
+      const m = canon(w.minutes)
+      const cur = out.get(m)
+      if (!cur || r.ts >= cur.ts) out.set(m, r)
     }
   }
   return out

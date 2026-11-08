@@ -1032,6 +1032,13 @@ folder plus Codex's name index, `config.toml`, `archived_sessions` or `sessions/
   never the slot: newer Codex reports the weekly window as `primary` and, on Pro, no 5-hour window
   at all. Other lengths get their own gauge. Another `limit_id` (e.g. "GPT-5.3-Codex-Spark") is a
   separate limit: a small gauge when read in the last 30 days, else folded under "Other limits".
+  **Accounts:** two ChatGPT sign-ins on different plans can write into one Codex home (seen in
+  real logs: `plus` and `prolite` readings interleaved). auth.json is never read, so `plan_type` is
+  the account marker: the gauges, pace and limit health follow the account with the newest
+  reading (its readings, and the usage of sessions that reported that plan), and another
+  `plan_type` gets its own small gauge ("another sign-in or an earlier plan": a plan change on one
+  account looks the same). Two accounts on the same plan can't be told apart. Older Codex wrote
+  299 / 10079 minutes for the same windows; within 2 minutes counts as the same window.
   A reading shares its event's identity, so a fork's copied readings never pose as current ones; a
   window that had already reset when it was read is dropped. Unchanged readings are kept once every
   10 minutes (and the last one of each file), so "updated" stays right. Stale handling is Claude's:

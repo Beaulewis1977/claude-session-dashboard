@@ -932,3 +932,28 @@ describe('Ask Claude and settings', () => {
     })
   })
 })
+
+describe('older window lengths', () => {
+  it('counts 299 and 300 minutes as one 5-hour window in every gauge list', () => {
+    const r = (ts: number, minutes: number, pct: number): CodexLimitReading => ({
+      id: `r${ts}`,
+      ts,
+      key: 'k',
+      source: 's',
+      limitId: 'codex_other',
+      windows: [{ pct, minutes, resetsAt: FIXTURES_NOW + 3_600_000 }]
+    })
+    const usage = Object.assign(new EventEmitter(), {
+      codexRecords: () => [] as UsageRecord[],
+      codexLimitReadings: () => [r(FIXTURES_NOW - 9_000, 299, 40), r(FIXTURES_NOW - 1_000, 300, 45)]
+    })
+    const l = new CodexLimitsService(
+      usage,
+      () => limitsSettings(),
+      () => undefined
+    ).state()
+    expect(l.extraLimits[0].windows.map((w) => [w.minutes, w.label, w.gauge.pct])).toEqual([
+      [300, '5-hour window', 45]
+    ])
+  })
+})

@@ -1015,17 +1015,24 @@ folder plus Codex's name index, `config.toml`, `archived_sessions` or `sessions/
   are not counted.
   - **Counted once.** Codex sends an event again with an unchanged total (when only the limits
     moved): skipped. A fork's rollout (`codex fork`, `forked_from_id`) starts with a copy of its
-    parent's events, with new timestamps, so an event's identity is its fork lineage (the first
-    thread of its `forked_from_id` chain, from the catalogue) plus its exact counts (running total
-    and last usage): never its time or file. A copy and its original are one response; the
-    earliest copy wins (the parent's, at its real time), in any reading order, and a session read
-    again keeps the copies other sessions hold. A parent that's gone everywhere is its fork's
-    lineage itself, so siblings still match. Unrelated sessions are never merged. Subagent threads
+    parent's events, written when the fork is made (0–10 ms after its start in real rollouts), so
+    an event's identity is its fork lineage (the first thread of its `forked_from_id` chain) plus
+    its exact counts (running total and last usage) and which occurrence of them it is in its
+    file: never its time or file. A fork's copy counts once when an ancestor holds the same event
+    from before the fork was made (the parent's, at its real time), in any reading order; a
+    matching response the parent or a sibling made after that is a separate response and counts
+    too. With the parent gone everywhere, the siblings' copies made when each fork was made count
+    once. A session read again keeps the copies other sessions hold, and a session whose rollout is
+    gone keeps its rows and its fork links (saved in `codex-index.json`). Unrelated sessions are
+    never merged. Subagent threads
     don't copy their parent's usage: they're real usage and are counted in full. A resume appends to
     the same rollout; a total that went down counts only the new event's own usage.
   - Kept in the app's data folder apart from Claude Code's (`usage\codex-records-YYYY-MM.ndjson`,
     `codex-limits-YYYY-MM.ndjson`, `codex-index.json`); Claude Code's records, reports, limits and
-    parity snapshots are unchanged. Recalculate reads both again.
+    parity snapshots are unchanged. Recalculate reads both again. After an update that changes how
+    Codex usage is read, every rollout is read again in the background (the rest of the app starts
+    without waiting); a session that's offline or unreadable then keeps its earlier rows until it
+    can be read.
 - **Limits** from `rate_limits` in the same events: `primary` and `secondary` windows with
   `used_percent`, `window_minutes` and `resets_at`, plus `limit_id` / `limit_name`, `plan_type`
   and `credits`. Which window is which comes from `window_minutes` (300 = 5-hour, 10080 = weekly),

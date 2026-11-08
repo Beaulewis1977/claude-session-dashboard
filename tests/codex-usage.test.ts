@@ -6,7 +6,7 @@
 // scripts/make-codex-fixtures.mjs).
 
 import { EventEmitter } from 'node:events'
-import { cp, mkdtemp, rm } from 'node:fs/promises'
+import { cp, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -1118,5 +1118,199 @@ describe('review fixes: counting and limit history', () => {
     rs.unshift(reading('late', FIXTURES_NOW - 120_000, 'pro', 92))
     usage.emit('changed')
     expect(notify).toHaveBeenCalledTimes(2)
+  })
+})
+
+describe('review fixes: migration, fork timing, gone forks, plan changes, model limits', () => {
+  const ev = (ts: string, total: number[], last: number[]) =>
+    tc(ts, {
+      total_token_usage: counts(total[0], 0, total[1]),
+      last_token_usage: counts(last[0], 0, last[1])
+    })
+  const meta = (key: string, sid: string) => ({ ...ctx, key, sessionId: sid, lineageRoot: 'p' })
+  const add = (store: CodexUsageStore, key: string, sid: string, text: string[]) => {
+    const a = analyzeCodexUsage(text.join('\n'), meta(key, sid))
+    store.set(key, a.records, a.codexLimits ?? [])
+  }
+  // The parent's history, then (after the fork was made at 09:00) one more response.
+  const history = [
+    ev('2026-10-20T10:00:00Z', [100, 10], [100, 10]),
+    ev('2026-10-20T10:01:00Z', [300, 20], [200, 10])
+  ]
+  const parent = [...history, ev('2026-10-21T09:30:00Z', [400, 30], [100, 10])]
+  // Codex writes a fork's copies right when it makes the fork, then its own responses.
+  const copies = (start: string) => [
+    ev(start, [100, 10], [100, 10]),
+    ev(start, [300, 20], [200, 10])
+  ]
+  const fork = [
+    ...copies('2026-10-21T09:00:00.005Z'),
+    ev('2026-10-21T09:20:00Z', [400, 30], [100, 10])
+  ]
+
+  it('counts a fork response that matches a later one of its parent (copies still once)', () => {
+    const store = new CodexUsageStore()
+    store.setLineage([
+      { sessionId: 'p', startedAt: '2026-10-20T09:59:00Z' },
+      { sessionId: 'f', forkedFromId: 'p', startedAt: '2026-10-21T09:00:00Z' }
+    ])
+    add(store, 'w:p', 'p', parent)
+    add(store, 'w:f', 'f', fork)
+    const recs = store.records()
+    expect(recs.filter((x) => x.key === 'w:p')).toHaveLength(3)
+    // Only the fork's own response: its copies of the history are the parent's.
+    expect(recs.filter((x) => x.key === 'w:f').map((x) => x.ts)).toEqual([
+      Date.parse('2026-10-21T09:20:00Z')
+    ])
+    expect(new Set(recs.map((x) => x.id)).size).toBe(recs.length)
+  })
+
+  it('with the parent gone, siblings count its copied history once and own matches twice', () => {
+    const store = new CodexUsageStore()
+    store.setLineage([
+      { sessionId: 'a', forkedFromId: 'p', startedAt: '2026-10-21T09:00:00Z' },
+      { sessionId: 'b', forkedFromId: 'p', startedAt: '2026-10-22T08:00:00Z' }
+    ])
+    add(store, 'w:a', 'a', fork)
+    add(store, 'w:b', 'b', [
+      ...copies('2026-10-22T08:00:00.004Z'),
+      ev('2026-10-22T08:30:00Z', [400, 30], [100, 10])
+    ])
+    const recs = store.records()
+    expect(recs).toHaveLength(4)
+    const own = recs.filter((x) => x.ts >= Date.parse('2026-10-21T09:10:00Z'))
+    expect(own.map((x) => x.key)).toEqual(['w:a', 'w:b'])
+  })
+
+  it("keeps a gone fork's links, so its copies of the parent's history never count again", async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'csd-codex-lineage-'))
+    try {
+      const store = new CodexUsageStore()
+      store.setLineage([
+        { sessionId: 'p', startedAt: '2026-10-20T09:59:00Z' },
+        { sessionId: 'f', forkedFromId: 'p', startedAt: '2026-10-21T09:00:00Z' }
+      ])
+      add(store, 'w:p', 'p', parent)
+      add(store, 'w:f', 'f', fork)
+      await store.flush(dir, dir)
+      // Next start: the fork's rollout is gone from the catalogue, its rows stay.
+      const next = new CodexUsageStore()
+      await next.load(dir)
+      next.setLineage([{ sessionId: 'p', startedAt: '2026-10-20T09:59:00Z' }])
+      expect(next.records()).toHaveLength(4)
+      expect(next.roots().get('f')).toBe('p')
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  it("an update keeps an older parser's rows until that session is read again", async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'csd-codex-migrate-'))
+    try {
+      const old = new CodexUsageStore()
+      add(old, 'w:p', 'p', parent)
+      // An unrelated session (other counts).
+      add(old, 'w:q', 'q', [
+        ev('2026-10-20T12:00:00Z', [111, 11], [111, 11]),
+        ev('2026-10-20T12:01:00Z', [222, 22], [111, 11])
+      ])
+      old.index['w:p'] = 'old'
+      await old.flush(dir, dir)
+      // As if an older parser wrote them.
+      const idxPath = join(dir, 'codex-index.json')
+      const idx = JSON.parse(await readFile(idxPath, 'utf8'))
+      await writeFile(idxPath, JSON.stringify({ ...idx, version: 1 }))
+
+      const store = new CodexUsageStore()
+      await store.load(dir)
+      expect(store.index).toEqual({})
+      expect(store.records()).toHaveLength(5)
+      // w:p is read again; w:q's rollout is offline this time.
+      add(store, 'w:p', 'p', parent.slice(0, 1))
+      store.index['w:p'] = 'sig'
+      await store.flush(dir, dir)
+      const again = new CodexUsageStore()
+      await again.load(dir)
+      expect(again.records().filter((x) => x.key === 'w:q')).toHaveLength(2)
+      expect(again.records().filter((x) => x.key === 'w:p')).toHaveLength(1)
+      const saved = JSON.parse(await readFile(idxPath, 'utf8'))
+      expect(saved.legacy).toEqual(['w:q'])
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  const r = (
+    id: string,
+    ago: number,
+    planType: string,
+    windows: { pct: number; minutes: number }[],
+    limitId = 'codex'
+  ): CodexLimitReading => ({
+    id,
+    ts: FIXTURES_NOW - ago,
+    key: 'k',
+    source: 's',
+    limitId,
+    planType,
+    windows: windows.map((w) => ({ ...w, resetsAt: FIXTURES_NOW + 3_600_000 }))
+  })
+  const svc = (readings: CodexLimitReading[], over: Partial<CodexLimitsSettings> = {}) =>
+    new CodexLimitsService(
+      Object.assign(new EventEmitter(), {
+        codexRecords: () => [] as UsageRecord[],
+        codexLimitReadings: () => readings
+      }),
+      () => limitsSettings(over),
+      () => undefined
+    )
+  const report = (value: number) => ({ baseline: { value }, plans: [{ start: 0, mult: 1 }] })
+
+  it('one account on a weekly-only plan now: no 5-hour gauge or baseline from the earlier plan', () => {
+    const rs = [
+      r('a', 2 * 86_400_000, 'plus', [
+        { pct: 40, minutes: 300 },
+        { pct: 20, minutes: 10080 }
+      ]),
+      r('b', 60_000, 'prolite', [{ pct: 7, minutes: 10080 }])
+    ]
+    const s = svc(rs, { accounts: 'one' })
+    const st = s.state()
+    expect(st.fiveHourRecent).toBe(false)
+    expect(st.fiveHour).toBeUndefined()
+    expect(st.sevenDay?.pct).toBe(7)
+    // A 5-hour baseline (from the earlier plan) is never used for estimates.
+    vi.spyOn(s, 'health').mockImplementation(
+      (kind) => (kind === 'five_hour' ? report(0.5) : { plans: [] }) as never
+    )
+    expect(s.dollarsPerPct()).toBeUndefined()
+    // While the plan in force has a 5-hour window, its baseline is used.
+    const both = svc([...rs, r('c', 1_000, 'prolite', [{ pct: 3, minutes: 300 }])], {
+      accounts: 'one'
+    })
+    vi.spyOn(both, 'health').mockImplementation(
+      (kind) => (kind === 'five_hour' ? report(0.5) : { plans: [] }) as never
+    )
+    expect(both.dollarsPerPct()?.kind).toBe('five_hour')
+  })
+
+  it("shows each sign-in's model limits apart (a Spark gauge never mixes two)", () => {
+    const rs = [
+      r('m1', 120_000, 'plus', [{ pct: 50, minutes: 10080 }]),
+      r('x1', 110_000, 'plus', [{ pct: 61, minutes: 300 }], 'codex_spark'),
+      r('m2', 60_000, 'prolite', [{ pct: 4, minutes: 10080 }]),
+      r('x2', 50_000, 'prolite', [{ pct: 2, minutes: 10080 }], 'codex_spark')
+    ]
+    const st = svc(rs).state()
+    const spark = st.extraLimits.filter((b) => b.limitId.startsWith('codex_spark'))
+    expect(spark.map((b) => [b.limitId, b.windows.map((w) => w.gauge.pct)])).toEqual([
+      ['codex_spark', [2]],
+      ['codex_spark@plus', [61]]
+    ])
+    expect(spark[1].label).toContain('another sign-in')
+    // One account: one Spark limit, the newest of each window.
+    const one = svc(rs, { accounts: 'one' }).state()
+    expect(one.extraLimits.map((b) => b.limitId)).toEqual(['codex_spark'])
+    expect(one.extraLimits[0].windows.map((w) => w.gauge.pct)).toEqual([61, 2])
   })
 })

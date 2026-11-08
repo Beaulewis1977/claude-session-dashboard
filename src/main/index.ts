@@ -772,8 +772,14 @@ async function main(): Promise<void> {
         .then(() => hooks.refreshScripts(sessions.sources))
         .catch((err: unknown) => console.warn('could not refresh bridge scripts', err))
     )
-    .then(() => Promise.all([usage.start(), limits.start()]))
-    .then(() => codexLimits.start())
+    // Usage indexing runs alongside the rest: a full re-read of the history
+    // (a parser update) can take minutes, and nothing below needs it.
+    // Codex alerts start once it's done (the readings already there never alert).
+    .then(() => {
+      void Promise.all([usage.start(), limits.start()])
+        .then(() => codexLimits.start())
+        .catch((err: unknown) => console.warn('usage start failed', err))
+    })
     .then(() => accounts.startAutoRefresh())
     .then(async () => {
       if (FIXTURES) await seedFixtureBridge(paths.dataDir, sessions, installer)

@@ -291,15 +291,14 @@ export class CodexLimitsService extends EventEmitter<{ changed: [] }> {
     return all.filter((r) => r.plan === acct)
   }
 
-  plan(): CodexPlanInfo {
-    const s = this.settings()
+  /**
+   * The plan the followed account is on now and since when: its newest plan,
+   * since that plan was first seen in the latest run of it (one-account mode
+   * can have several plans over time; a separate sign-in has one).
+   */
+  private currentPlan(): { code?: string; since: number } {
     const acct = this.account()
-    // Each plan once, by when it was first seen (accounts can alternate).
-    const changes = detectPlanChanges(this.readings()).filter(
-      (c, i, all) => all.findIndex((x) => x.code === c.code) === i
-    )
     const mine = this.mainReadings()
-    // One account: its newest plan, since that plan was first seen in the latest run of it.
     const newest = [...mine].reverse().find((r) => r.planType)?.planType
     const code = acct === '*' ? newest : acct || undefined
     let since = 0
@@ -308,6 +307,40 @@ export class CodexLimitsService extends EventEmitter<{ changed: [] }> {
         if (mine[i].planType && mine[i].planType !== code) break
         if (mine[i].planType === code) since = mine[i].ts
       }
+    return { ...(code ? { code } : {}), since }
+  }
+
+  /**
+   * The followed account's main readings under the plan it's on now: what
+   * the gauges show. An earlier plan's windows (e.g. a 5-hour window the
+   * current plan doesn't have) never show as current; limit health still
+   * uses the whole history, each window at the multiplier of its plan.
+   */
+  private currentReadings(): CodexLimitReading[] {
+    const { since } = this.currentPlan()
+    const main = this.mainReadings()
+    return since ? main.filter((r) => r.ts >= since) : main
+  }
+
+  /** Whether the plan in force now has a 5-hour window (it showed one lately). */
+  private currentHasFiveHour(): boolean {
+    const cur = this.currentReadings()
+    const last = cur[cur.length - 1]
+    return cur.some(
+      (r) =>
+        last.ts - r.ts < RECENT_LIMIT_MS &&
+        r.windows.some((w) => windowKindOf(w.minutes) === 'five_hour')
+    )
+  }
+
+  plan(): CodexPlanInfo {
+    const s = this.settings()
+    // Each plan once, by when it was first seen (accounts can alternate).
+    const changes = detectPlanChanges(this.readings()).filter(
+      (c, i, all) => all.findIndex((x) => x.code === c.code) === i
+    )
+    const mine = this.mainReadings()
+    const { code, since } = this.currentPlan()
     const last = code ? { code, ts: since } : undefined
     const detected = last ? planOfCode(last.code) : undefined
     const newestAt = mine.length ? mine[mine.length - 1].ts : undefined
@@ -381,7 +414,12 @@ export class CodexLimitsService extends EventEmitter<{ changed: [] }> {
    * window's if there is one, else the weekly one (plans without a 5-hour window).
    */
   dollarsPerPct(): { value: number; kind: WindowKind } | undefined {
-    for (const kind of ['five_hour', 'seven_day'] as WindowKind[]) {
+    // Only the windows the plan in force now has (an earlier plan's 5-hour
+    // baseline says nothing about a weekly-only plan).
+    const kinds: WindowKind[] = this.currentHasFiveHour()
+      ? ['five_hour', 'seven_day']
+      : ['seven_day']
+    for (const kind of kinds) {
       const h = this.health(kind)
       if (h.baseline) return { value: h.baseline.value * planAt(h.plans, now()).mult, kind }
     }
@@ -397,10 +435,11 @@ export class CodexLimitsService extends EventEmitter<{ changed: [] }> {
     const t = now()
     const readings = this.readings()
     const records = this.accountRecords()
-    const bridge = this.bridge()
+    // The gauges: the plan in force now only (see currentReadings).
+    const main = this.currentReadings()
+    const bridge = asBridgeReadings(main, MAIN_LIMIT_ID)
     const five = gauge(bridge, records, 'five_hour', t, s.weights)
     const week = gauge(bridge, records, 'seven_day', t, s.weights)
-    const main = this.mainReadings()
     const lastMain = main[main.length - 1]
     const fiveHourRecent = main.some(
       (r) =>
@@ -415,9 +454,21 @@ export class CodexLimitsService extends EventEmitter<{ changed: [] }> {
     }
 
     const extraLimits: CodexLimitBucket[] = []
-    const ids = [...new Set(readings.map((r) => r.limitId))].filter((id) => id !== MAIN_LIMIT_ID)
-    for (const id of ids) {
-      const latest = latestByMinutes(readings, id)
+    const acct = this.account()
+    // Model limits (e.g. Spark) per account too: a sign-in's percentages never
+    // show under another's. One-account mode: all of them are one account's.
+    const groups = new Map<string, { id: string; plan?: string; rs: CodexLimitReading[] }>()
+    for (const r of readings) {
+      if (r.limitId === MAIN_LIMIT_ID) continue
+      const plan = acct === '*' ? undefined : (r.planType ?? '')
+      const k = JSON.stringify([r.limitId, plan ?? null])
+      let g = groups.get(k)
+      if (!g) groups.set(k, (g = { id: r.limitId, ...(plan !== undefined ? { plan } : {}), rs: [] }))
+      g.rs.push(r)
+    }
+    for (const { id, plan, rs } of groups.values()) {
+      const latest = latestByMinutes(rs, id)
+      const other = plan !== undefined && plan !== acct
       // The limit's own model, when its name says which (e.g. "GPT-5.3-Codex-Spark").
       const windows: CodexWindowGauge[] = []
       let lastAt = 0
@@ -432,15 +483,16 @@ export class CodexLimitsService extends EventEmitter<{ changed: [] }> {
       }
       if (windows.length)
         extraLimits.push({
-          limitId: id,
-          label,
+          limitId: other ? `${id}@${plan || 'none'}` : id,
+          label: other
+            ? `${label} · ${plan ? codeLabel(plan) : 'plan not reported'} · another sign-in or an earlier plan`
+            : label,
           windows,
           lastAt,
           recent: t - lastAt < RECENT_LIMIT_MS
         })
     }
     // Another account's main limit (another plan_type in the same logs): its own gauges.
-    const acct = this.account()
     const others = [
       ...new Set(readings.filter((r) => r.limitId === MAIN_LIMIT_ID).map((r) => r.planType ?? ''))
     ].filter((p) => acct !== '*' && p !== acct && p !== '')
@@ -497,6 +549,7 @@ export class CodexLimitsService extends EventEmitter<{ changed: [] }> {
       return w ? splitWindow(w, records, s.prices, this.sourceOf, () => true, false) : undefined
     }
 
+    // Capacity changes with the plan: the plan in force now.
     const cap5 = impliedCapacity(bridge, records, 'five_hour', s.weights)
     const cap7 = impliedCapacity(bridge, records, 'seven_day', s.weights)
     const hits = readings

@@ -2,10 +2,11 @@
 //
 // Every session's own copy of what its rollout holds is kept (a fork's file
 // repeats its parent's events, see providers/codex/usage.ts). Across
-// sessions, events with the same identity are one response: the earliest
-// copy wins (the parent's, at its real time), so nothing is counted twice,
-// whatever order the files are read in, and a session parsed again (or
-// gone) never loses a response another session also holds.
+// sessions, events with the same identity are told apart by ancestry and
+// time (see pick): a fork's copy of history its parent already holds counts
+// once, while independent responses that happen to match all count. A
+// session parsed again (or gone) never loses a response another session also
+// holds, and a session that's gone keeps its rows and its fork links.
 
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -28,6 +29,19 @@ interface Copies {
   readings: CodexLimitReading[]
 }
 
+/** A session's place in its fork chain: its parent and when it was created. */
+interface Link {
+  parent: string | null
+  start?: number
+}
+
+/**
+ * Codex writes a fork's copy of its parent's events right when it creates
+ * the fork (0-10 ms after its meta line in real rollouts), and the parent's
+ * originals all came before it; the fork's own responses come seconds later.
+ */
+const COPY_MS = 1000
+
 function month(ts: number): string {
   const d = new Date(ts)
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`
@@ -45,6 +59,7 @@ export class CodexUsageStore {
   index: Record<string, string> = {}
   private dirtyMonths = new Set<string>()
   private indexDirty = false
+  private lineageDirty = false
 
   get size(): number {
     return this.records().length
@@ -58,12 +73,20 @@ export class CodexUsageStore {
     return [...this.bySession.keys()]
   }
 
+  /**
+   * Sessions whose rows an older parser made and that haven't been read
+   * again yet (offline, unreadable or gone during an update): their rows stay
+   * until the session is parsed again.
+   */
+  private legacy = new Set<string>()
+
   /** Replace one session's copies (it was parsed again). */
   set(key: string, records: UsageRecord[], readings: CodexLimitReading[], sig?: string): void {
     const old = this.bySession.get(key)
     for (const x of [...(old?.records ?? []), ...(old?.readings ?? []), ...records, ...readings])
       this.dirtyMonths.add(month(x.ts))
     this.bySession.set(key, { records, readings })
+    if (this.legacy.delete(key)) this.indexDirty = true
     if (sig !== undefined) {
       this.index[key] = sig
       this.indexDirty = true
@@ -77,6 +100,7 @@ export class CodexUsageStore {
     if (this.bySession.size || Object.keys(this.index).length) this.indexDirty = true
     this.bySession.clear()
     this.index = {}
+    this.legacy.clear()
     this.winners = undefined
   }
 
@@ -90,37 +114,65 @@ export class CodexUsageStore {
     return this.resolve().readings
   }
 
-  /** Each known Codex session's parent (`forkedFromId`), by session id; null: not a fork. */
-  private parents = new Map<string, string | null>()
+  /**
+   * Each known Codex session's fork link, by session id. Saved with the
+   * index: a session whose rollout is gone keeps its rows, so it keeps its
+   * link too (else its copies of its parent's history would count again).
+   */
+  private parents = new Map<string, Link>()
 
-  /** The catalogue's fork links, for telling copied history from independent responses. */
-  setLineage(sessions: { sessionId: string; forkedFromId?: string }[]): void {
-    const next = new Map(sessions.map((x) => [x.sessionId, x.forkedFromId ?? null] as const))
-    const same =
-      next.size === this.parents.size && [...next].every(([k, v]) => this.parents.get(k) === v)
-    if (same) return
-    this.parents = next
+  /** The catalogue's fork links (added to the known ones), for telling copied history apart. */
+  setLineage(sessions: { sessionId: string; forkedFromId?: string; startedAt?: string }[]): void {
+    let changed = false
+    for (const x of sessions) {
+      const t = x.startedAt ? Date.parse(x.startedAt) : Number.NaN
+      const next: Link = {
+        parent: x.forkedFromId ?? null,
+        ...(Number.isFinite(t) ? { start: t } : {})
+      }
+      const cur = this.parents.get(x.sessionId)
+      if (cur && cur.parent === next.parent && cur.start === next.start) continue
+      this.parents.set(x.sessionId, next)
+      changed = true
+    }
+    if (!changed) return
+    this.lineageDirty = true
     this.winners = undefined
+  }
+
+  /** Every known session's lineage root (see lineageRoots), gone sessions included. */
+  roots(): Map<string, string> {
+    return lineageRoots(
+      [...this.parents].map(([sessionId, l]) => ({
+        sessionId,
+        ...(l.parent ? { forkedFromId: l.parent } : {})
+      }))
+    )
   }
 
   private ancestors(sid: string | undefined): Set<string> {
     const out = new Set<string>()
-    let p = sid ? this.parents.get(sid) : undefined
+    let p = sid ? this.parents.get(sid)?.parent : undefined
     while (p && !out.has(p)) {
       out.add(p)
-      p = this.parents.get(p)
+      p = this.parents.get(p)?.parent
     }
     return out
   }
 
+  private startOf(sid: string | undefined): number | undefined {
+    return sid ? this.parents.get(sid)?.start : undefined
+  }
+
   /**
    * The copies of one event that count. The same session (a rollout found in
-   * two homes, or its archive copy) counts once. A copy in a fork whose
-   * ancestor also holds it is copied history: only the ancestor's counts.
-   * Copies left in unrelated forks are independent responses that happen to
-   * match (both count), unless the parent they would share is missing
-   * everywhere: then they're taken to be its copied history (the earliest
-   * counts).
+   * two homes, or its archive copy) counts once. A copy in a fork is copied
+   * history when an ancestor holds it from before the fork was made: only the
+   * ancestor's counts. An ancestor's matching response from after the fork
+   * was made is an independent one (both count). Copies left in forks of one
+   * parent that holds none of them: those made when their fork was (or, with
+   * no start time known, all of them when the parent is missing everywhere)
+   * are its copied history and count once; the rest are independent.
    */
   private pick<T extends { id: string; ts: number; key: string }>(
     copies: T[],
@@ -142,18 +194,33 @@ export class CodexUsageStore {
     }
     const kept = one.filter((c) => {
       const anc = this.ancestors(sidOf(c))
-      return !one.some((d) => d !== c && anc.has(sidOf(d) ?? ''))
+      const start = this.startOf(sidOf(c))
+      return !one.some(
+        (d) =>
+          d !== c && anc.has(sidOf(d) ?? '') && (start === undefined || d.ts <= start + COPY_MS)
+      )
     })
     if (kept.length <= 1) return kept
+    let out = kept
     const anc0 = this.ancestors(sidOf(kept[0]))
     const common = [...anc0].filter((a) => kept.every((k) => this.ancestors(sidOf(k)).has(a)))
-    if (common.length && !common.some((a) => this.parents.has(a))) {
-      let e = kept[0]
-      for (const k of kept) if (better(k, e)) e = k
-      return [e]
+    if (common.length) {
+      const parentGone = !common.some((a) => this.parents.has(a))
+      const copied = kept.filter((k) => {
+        const start = this.startOf(sidOf(k))
+        return start === undefined ? parentGone : k.ts <= start + COPY_MS
+      })
+      if (copied.length > 1) {
+        let e = copied[0]
+        for (const k of copied) if (better(k, e)) e = k
+        out = kept.filter((k) => k === e || !copied.includes(k))
+      }
     }
+    if (out.length <= 1) return out
     // Independent: each keeps its own id, so lists and tables can tell them apart.
-    return kept.map((k, i) => (i === 0 ? k : { ...k, id: `${k.id}:${sidOf(k) ?? k.key}` }))
+    return out
+      .sort((a, b) => (better(a, b) ? -1 : 1))
+      .map((k, i) => (i === 0 ? k : { ...k, id: `${k.id}:${sidOf(k) ?? k.key}` }))
   }
 
   private resolve(): { records: UsageRecord[]; readings: CodexLimitReading[] } {
@@ -183,11 +250,25 @@ export class CodexUsageStore {
       const idx = JSON.parse(await readFile(join(dir, INDEX), 'utf8')) as {
         version?: number
         sessions?: Record<string, string>
+        legacy?: string[]
+        lineage?: Record<string, [string | null, number | null]>
       }
       if (idx.version === CODEX_USAGE_VERSION && idx.sessions) {
         this.index = idx.sessions
         current = true
+        if (Array.isArray(idx.legacy))
+          for (const k of idx.legacy) if (typeof k === 'string') this.legacy.add(k)
       }
+      // Fork links don't depend on the parser: kept across updates.
+      if (idx.lineage && typeof idx.lineage === 'object')
+        for (const [sid, v] of Object.entries(idx.lineage)) {
+          if (!Array.isArray(v)) continue
+          const [parent, start] = v
+          this.parents.set(sid, {
+            parent: typeof parent === 'string' ? parent : null,
+            ...(typeof start === 'number' && Number.isFinite(start) ? { start } : {})
+          })
+        }
     } catch {
       // first run
     }
@@ -197,7 +278,9 @@ export class CodexUsageStore {
       if (!c) copies.set(key, (c = { records: [], readings: [] }))
       return c
     }
-    if (current) {
+    // An older parser's rows are kept too, until each session is read again
+    // (one that's offline or unreadable during the update keeps its history).
+    {
       for (const f of await listFiles(dir, RECORDS_RE))
         for (const r of await readNdjson<UsageRecord>(join(dir, f)))
           if (
@@ -216,19 +299,22 @@ export class CodexUsageStore {
             typeof r.key === 'string'
           )
             of(r.key).readings.push(r)
-    } else {
-      // An older parser's data: rewrite (empty) and read every session again.
-      for (const f of [...(await listFiles(dir, RECORDS_RE)), ...(await listFiles(dir, LIMITS_RE))])
-        this.dirtyMonths.add(f.replace(/^codex-(?:records|limits)-|\.ndjson$/g, ''))
+    }
+    if (!current) {
+      // Every session is read again; until then its old rows stand.
       this.index = {}
+      for (const k of copies.keys()) this.legacy.add(k)
       // Nothing is written while there's no Codex data at all.
-      this.indexDirty = this.dirtyMonths.size > 0
+      this.indexDirty = copies.size > 0
     }
     this.bySession = copies
     this.winners = undefined
   }
 
   async flush(dir: string, dataDir: string): Promise<void> {
+    // The index (with the fork links) goes with the rows; nothing is written without Codex data.
+    const hasData = this.bySession.size > 0 || Object.keys(this.index).length > 0
+    if (hasData && (this.dirtyMonths.size || this.lineageDirty)) this.indexDirty = true
     if (this.dirtyMonths.size) {
       const months = [...this.dirtyMonths]
       this.dirtyMonths.clear()
@@ -247,9 +333,17 @@ export class CodexUsageStore {
     }
     if (this.indexDirty) {
       this.indexDirty = false
+      this.lineageDirty = false
+      const lineage: Record<string, [string | null, number | null]> = {}
+      for (const [sid, l] of this.parents) lineage[sid] = [l.parent, l.start ?? null]
       await writeFileAtomic(
         join(dir, INDEX),
-        JSON.stringify({ version: CODEX_USAGE_VERSION, sessions: this.index }),
+        JSON.stringify({
+          version: CODEX_USAGE_VERSION,
+          sessions: this.index,
+          ...(this.legacy.size ? { legacy: [...this.legacy] } : {}),
+          lineage
+        }),
         dataDir
       )
     }

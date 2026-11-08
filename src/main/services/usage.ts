@@ -33,7 +33,7 @@ import { assertAppDataWrite, assertRealAppDataWrite, isInside } from '../core/sa
 import { copyShared } from '../core/shared-copy'
 import { sessionProvider } from '../providers/registry'
 import type { SessionService } from './sessions'
-import { CodexUsageStore, lineageRoots } from './codex-usage'
+import { CodexUsageStore } from './codex-usage'
 import type { SessionProvider } from '../providers/types'
 
 // 2: dedupe follows ccusage (session-scoped requestless ids, sidechain replays).
@@ -374,9 +374,10 @@ export class UsageService extends EventEmitter<{ changed: [] }> {
         if (!provider.capabilities.usage) continue
         if (provider.id === 'codex') {
           if (!roots) {
-            const codexList = list.filter((x) => x.provider === 'codex')
-            roots = lineageRoots(codexList)
-            this.codex.setLineage(codexList)
+            // The catalogue's links added to the saved ones (a fork whose
+            // rollout is gone still descends from its parent).
+            this.codex.setLineage(list.filter((x) => x.provider === 'codex'))
+            roots = this.codex.roots()
           }
           if (await this.syncCodex(s, provider, roots.get(s.sessionId) ?? s.sessionId, force))
             changed = true

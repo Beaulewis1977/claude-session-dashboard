@@ -8,7 +8,7 @@ import { mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile } from 'node:
 import { tmpdir } from 'node:os'
 import { join, resolve, win32 } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { buildAskData, subscriptionCheck } from '@shared/ask'
 import { convertClaudeAiExport } from '@shared/claude-ai'
 import { computeLineage, type LineageInput } from '@shared/lineage'
@@ -530,11 +530,25 @@ describe('archive files shared under the old naming (PR #2 review)', () => {
       await writeFile(shared, text)
     }
 
-    // Locked for a moment: the import waits, then repairs as usual.
-    await lock()
-    setTimeout(() => void unlock(), 250)
+    // Locked for a moment: the import waits, then repairs as usual. Its wait
+    // before trying again is faked, so the file comes back exactly while the
+    // import is waiting. (A real timer could land mid-unlock, between removing
+    // the folder and writing the file, where the import rightly sees "missing".)
     const zip = await l.exportOf([0])
-    expect(await importClaudeAiExport(zip, l.paths, l.metadata)).toMatchObject({ ok: true })
+    await lock()
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    let importing: ReturnType<typeof importClaudeAiExport>
+    try {
+      importing = importClaudeAiExport(zip, l.paths, l.metadata)
+      // The first read failed and the import is waiting to retry. (Not
+      // vi.waitFor: with fake timers it advances them while it polls.)
+      while (vi.getTimerCount() === 0) await new Promise((r) => setImmediate(r))
+      await unlock()
+      vi.advanceTimersToNextTimer()
+    } finally {
+      vi.useRealTimers()
+    }
+    expect(await importing).toMatchObject({ ok: true })
     expect(await l.textOf(0)).toContain('payload-0')
     expect(await l.textOf(1)).toContain('payload-1')
 

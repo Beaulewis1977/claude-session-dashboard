@@ -17,7 +17,7 @@ import { createHooksStore, HooksInstaller } from '../src/main/services/hooks'
 import { LiveService } from '../src/main/services/live'
 import type { SessionService } from '../src/main/services/sessions'
 
-const TID = '01a1bcd4-9e22-7511-b475-70f7803c33fd'
+const TID = '019b0000-0000-7000-8000-00000000c0de'
 
 let root: string
 beforeEach(async () => {

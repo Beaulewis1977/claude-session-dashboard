@@ -51,7 +51,7 @@ const output = (ms: number, id = 'call-1'): string =>
 
 const roll = (...lines: string[]): RolloutState => reduceRollout(emptyRollout(), lines)
 
-const TID = '01a1bcd4-9e22-7511-b475-70f7803c33fd'
+const TID = '019b0000-0000-7000-8000-00000000c0de'
 const thread = (over: Partial<CodexThreadInput> = {}): CodexThreadInput => ({
   sourceId: 'codex-windows',
   env: 'windows',
@@ -156,17 +156,17 @@ describe('rollout events', () => {
 describe('/proc/locks and lock files', () => {
   const PROC = [
     '3: FLOCK  ADVISORY  WRITE 372 00:3d:800 0 EOF',
-    '5: POSIX  ADVISORY  READ 69434 08:30:1715 128 128',
+    '5: POSIX  ADVISORY  READ 51234 08:30:1715 128 128',
     '7: FLOCK  ADVISORY  READ 69593 08:30:734223 0 EOF',
-    '17: FLOCK  ADVISORY  WRITE 69434 08:30:5490614 0 EOF',
-    '17: -> FLOCK  ADVISORY  WRITE 70000 08:30:5490614 0 EOF',
+    '17: FLOCK  ADVISORY  WRITE 51234 08:30:4711001 0 EOF',
+    '17: -> FLOCK  ADVISORY  WRITE 70000 08:30:4711001 0 EOF',
     'garbage'
   ].join('\n')
 
   it('keeps only exclusive flocks, with holder, device and inode', () => {
     expect(parseProcLocks(PROC)).toEqual([
       { pid: 372, dev: '00:3d', inode: '800' },
-      { pid: 69434, dev: '08:30', inode: '5490614' }
+      { pid: 51234, dev: '08:30', inode: '4711001' }
     ])
   })
 
@@ -395,8 +395,8 @@ describe('Codex states', () => {
   })
 
   it('subagents never get a row: their parent shows their work and their approvals', () => {
-    const PARENT = '01a198d8-e073-7463-8395-40aed01d8978'
-    const SUB = '01a198d8-f68d-7bf3-a26a-49043d6fa31f'
+    const PARENT = '019b0000-0000-7000-8000-0000000000c3'
+    const SUB = '019b0000-0000-7000-8000-0000000000d4'
     const idle = roll(started(T0 - 90_000, 'p'), complete(T0 - 60_000, 'p'))
     const parent = thread({ threadId: PARENT, rollout: idle })
     const sub = thread({ threadId: SUB, info: { label: 'codex-subagent', parentId: PARENT } })

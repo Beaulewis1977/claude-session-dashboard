@@ -235,7 +235,7 @@ export interface ProcLock {
 
 /**
  * The exclusive (WRITE) FLOCK locks in `/proc/locks` text. Lines like
- * `19: FLOCK  ADVISORY  WRITE 69434 08:30:4505 0 EOF`. Blocked waiters
+ * `19: FLOCK  ADVISORY  WRITE 51234 08:30:4505 0 EOF`. Blocked waiters
  * (`-> ...`) and POSIX/OFD locks aren't Codex's thread locks.
  */
 export function parseProcLocks(text: string): ProcLock[] {

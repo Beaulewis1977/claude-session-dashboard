@@ -13,8 +13,8 @@ import {
   type ProcLockIndex
 } from '../src/main/providers/codex/live'
 
-const A = '019dbbec-30b8-7813-99b5-b121a31f8414'
-const B = '019e1e68-6c13-73d1-9b42-a738398966de'
+const A = '019b0000-0000-7000-8000-0000000000a1'
+const B = '019b0000-0000-7000-8000-0000000000b2'
 
 interface Calls {
   probe: string[]
@@ -67,7 +67,7 @@ describe('WSL: /proc/locks and inodes only', () => {
   const base = (procLocks: string, cmdlines: Record<number, string>) =>
     fakeFs({
       dirs: { [locks]: [`${A}.lock`, `${B}.lock`, '.coordination.lock'] },
-      inodes: { [join(locks, `${A}.lock`)]: 5490614n, [join(locks, `${B}.lock`)]: 2289n },
+      inodes: { [join(locks, `${A}.lock`)]: 4711001n, [join(locks, `${B}.lock`)]: 2289n },
       small: {
         [join(root, 'proc', 'locks')]: procLocks,
         ...Object.fromEntries(
@@ -77,13 +77,13 @@ describe('WSL: /proc/locks and inodes only', () => {
     })
 
   it('a lock is held when /proc/locks lists its inode for a Codex process', async () => {
-    const { fs, calls } = base('17: FLOCK  ADVISORY  WRITE 69434 08:30:5490614 0 EOF\n', {
-      69434: '/home/beau/.local/bin/codex\0resume\0' + A + '\0'
+    const { fs, calls } = base('17: FLOCK  ADVISORY  WRITE 51234 08:30:4711001 0 EOF\n', {
+      51234: '/home/beau/.local/bin/codex\0resume\0' + A + '\0'
     })
     const r = new CodexLiveReader(fs)
     const out = await r.locks({ env: 'wsl', home, distroRoot: root })
     expect(out.map((l) => [l.threadId, l.held, l.pid])).toEqual([
-      [A, true, 69434],
+      [A, true, 51234],
       [B, false, undefined]
     ])
     // Never opened, read or locked a lock file: only stat for its inode.
@@ -100,7 +100,7 @@ describe('WSL: /proc/locks and inodes only', () => {
   })
 
   it('the same inode held by another program (a reused PID, another file system) is not Codex', async () => {
-    const { fs } = base('9: FLOCK  ADVISORY  WRITE 4242 00:3d:5490614 0 EOF\n', {
+    const { fs } = base('9: FLOCK  ADVISORY  WRITE 4242 00:3d:4711001 0 EOF\n', {
       4242: '/usr/bin/dockerd\0'
     })
     const out = await new CodexLiveReader(fs).locks({ env: 'wsl', home, distroRoot: root })
@@ -110,7 +110,7 @@ describe('WSL: /proc/locks and inodes only', () => {
   it('an unreadable /proc (a stopped distro) means "can’t tell", never "running"', async () => {
     const { fs } = fakeFs({
       dirs: { [locks]: [`${A}.lock`] },
-      inodes: { [join(locks, `${A}.lock`)]: 5490614n },
+      inodes: { [join(locks, `${A}.lock`)]: 4711001n },
       small: {}
     })
     const out = await new CodexLiveReader(fs).locks({ env: 'wsl', home, distroRoot: root })

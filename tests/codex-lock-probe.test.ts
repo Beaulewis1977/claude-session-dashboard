@@ -76,7 +76,7 @@ afterEach(async () => {
 
 describe.runIf(process.platform === 'win32')('Windows lock probe vs a real lock', () => {
   it('never blocks, delays or breaks taking, rewriting and releasing the lock', async () => {
-    const path = join(dir, '01a1bcd4-9e22-7511-b475-70f7803c33fd.lock')
+    const path = join(dir, '019b0000-0000-7000-8000-00000000c0de.lock')
     await writeFile(path, '')
     const ps = win32.join(systemRoot(), 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe')
     const child = spawn(ps, ['-NoProfile', '-NonInteractive', '-Command', CODEX_STAND_IN], {

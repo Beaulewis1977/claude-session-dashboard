@@ -463,7 +463,8 @@ export class CodexLimitsService extends EventEmitter<{ changed: [] }> {
       const plan = acct === '*' ? undefined : (r.planType ?? '')
       const k = JSON.stringify([r.limitId, plan ?? null])
       let g = groups.get(k)
-      if (!g) groups.set(k, (g = { id: r.limitId, ...(plan !== undefined ? { plan } : {}), rs: [] }))
+      if (!g)
+        groups.set(k, (g = { id: r.limitId, ...(plan !== undefined ? { plan } : {}), rs: [] }))
       g.rs.push(r)
     }
     for (const { id, plan, rs } of groups.values()) {

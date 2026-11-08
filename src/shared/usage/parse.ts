@@ -19,6 +19,12 @@ export interface UsageContext {
   file?: string
   /** Time zone for /usage reset times without one. Default: the machine's. */
   timeZone?: string
+  /** Codex: the first thread of the session's fork chain (copies of its events share an identity). */
+  lineageRoot?: string
+  /** Codex: the source id of its home. */
+  source?: string
+  /** Codex: its version, for the version breakdown. */
+  version?: string
 }
 
 const STDOUT_RE = /<local-command-stdout>([\s\S]*?)<\/local-command-stdout>/

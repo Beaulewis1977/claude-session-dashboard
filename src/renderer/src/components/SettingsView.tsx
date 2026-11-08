@@ -32,6 +32,8 @@ import { SkipPermissionsWarning } from './ResumeDialog'
 import { AccountsSettings } from './settings/AccountsSettings'
 import { LiveLimitsSettings } from './settings/LiveLimitsSettings'
 import { UsageSettings } from './settings/UsageSettings'
+import { useEnabledProviders } from '@/lib/scope'
+import { CodexUsageSettings } from './settings/CodexUsageSettings'
 import { HealthSettings } from './settings/HealthSettings'
 import { MobileSettingsSection } from './settings/MobileSettings'
 import { AlertsSettings } from './settings/AlertsSettings'
@@ -178,6 +180,8 @@ export function SettingsView() {
   useEffect(() => {
     void api.getArchiveStats().then(setArchive)
   }, [scan.phase, sources])
+
+  const codexOn = useEnabledProviders().includes('codex')
 
   // Opened from a link to one section (e.g. the API credits card).
   const section = useApp((s) => s.settingsSection)
@@ -357,6 +361,7 @@ export function SettingsView() {
 
         <UsageSettings update={update} />
         <HealthSettings update={update} />
+        {codexOn && <CodexUsageSettings update={update} />}
 
         <ProvidersSettings update={update} />
 

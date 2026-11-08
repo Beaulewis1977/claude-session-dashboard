@@ -250,6 +250,8 @@ export const webApi: CsdApi = {
   getLimits: () => rpc('getLimits'),
   compareHealth: (k, a, b) => rpc('compareHealth', k, a, b),
   onLimitsChanged: (cb) => subscribe('limits', cb),
+  getCodexLimits: () => rpc('getCodexLimits'),
+  compareCodexHealth: (k, a, b) => rpc('compareCodexHealth', k, a, b),
   planBridge: onPc('Live limits setup'),
   applyBridge: onPc('Live limits setup'),
   openBackupFolder: onPc('Opening folders'),

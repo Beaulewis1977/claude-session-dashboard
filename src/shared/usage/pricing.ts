@@ -4,6 +4,7 @@
 // are never fetched at runtime, and the table is fully editable in Settings.
 
 import snapshot from './litellm-prices.json'
+import openaiSnapshot from './openai-prices.json'
 
 export interface PriceTier {
   input: number
@@ -49,6 +50,43 @@ export const DEFAULT_PRICES: ModelPrice[] = (snapshot.models as SnapshotRow[]).m
   return p
 })
 
+/** Date and source of the bundled OpenAI snapshot (Codex's price table). */
+export const CODEX_PRICES_FILLED_IN: string = openaiSnapshot.date
+export const CODEX_PRICES_COMMIT: string = openaiSnapshot.commit
+
+/** "gpt-5.3-codex" → "GPT-5.3 Codex", "gpt-6.1-sol" → "GPT-6.1 Sol". */
+export function openAiModelLabel(model: string): string | undefined {
+  const m = /^gpt-(\d+(?:\.\d+)?)((?:-[a-z0-9]+)*)$/i.exec(model)
+  if (!m) return undefined
+  const rest = m[2]
+    .split('-')
+    .filter(Boolean)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(' ')
+  return `GPT-${m[1]}${rest ? ` ${rest}` : ''}`
+}
+
+/** Codex's own price table: OpenAI's API prices (a separate table from Claude Code's). */
+export const DEFAULT_CODEX_PRICES: ModelPrice[] = (openaiSnapshot.models as SnapshotRow[]).map(
+  (r) => {
+    const p: ModelPrice = {
+      model: r.model,
+      label: openAiModelLabel(r.model) ?? r.model,
+      input: r.input,
+      output: r.output,
+      cacheWrite5m: r.cacheWrite5m,
+      cacheWrite1h: r.cacheWrite1h,
+      cacheRead: r.cacheRead
+    }
+    if (r.longContext) p.longContext = { ...r.longContext }
+    return p
+  }
+)
+
+/** OpenAI rows ("gpt-5.6") match only their own id or a dated copy of it, never a sized variant ("gpt-5.6-luna"). */
+const OPENAI_ROW = /^(?:gpt-|codex-|o\d)/
+const DATE_SUFFIX = /^-(?:\d{4}-\d{2}-\d{2}|\d{8})$/
+
 /** Find the price entry for a model id: exact match first, then the longest prefix. */
 export function findPrice(model: string, table: ModelPrice[]): ModelPrice | undefined {
   const id = model.toLowerCase()
@@ -57,6 +95,7 @@ export function findPrice(model: string, table: ModelPrice[]): ModelPrice | unde
     const m = row.model.toLowerCase()
     if (id === m) return row
     if (id.startsWith(m + '-') || id.startsWith(m + '@') || id.startsWith(m + '[')) {
+      if (OPENAI_ROW.test(m) && !DATE_SUFFIX.test(id.slice(m.length))) continue
       if (!best || m.length > best.model.length) best = row
     }
   }
@@ -112,6 +151,8 @@ export function recordCost(r: CostInput & { loggedCost?: number }, table: ModelP
 
 /** Short, friendly model name: "claude-sonnet-4-5-20250929" → "Sonnet 4.5". */
 export function modelLabel(model: string): string {
+  const gpt = openAiModelLabel(model)
+  if (gpt) return gpt
   const m = /^claude-(?:(\d)-(\d)-)?([a-z]+)(?:-(\d{1,2})(?!\d))?(?:-(\d)(?!\d))?/i.exec(model)
   if (!m) return model
   if (model.endsWith('-fast')) return `${modelLabel(model.slice(0, -5))} (fast)`
@@ -157,6 +198,16 @@ export function sanitizePrices(v: unknown): ModelPrice[] | undefined {
     out.push(price)
   }
   return out
+}
+
+/** Models seen in usage that have no row in the price table ("new model detected"). */
+export function unpricedModels(models: Iterable<string>, table: ModelPrice[]): string[] {
+  const out = new Set<string>()
+  for (const m of models) {
+    if (!m || m === 'unknown' || m.startsWith('<')) continue
+    if (!findPrice(m.replace(/-fast$/, ''), table)) out.add(m)
+  }
+  return [...out].sort()
 }
 
 /**

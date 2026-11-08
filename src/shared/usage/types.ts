@@ -1,7 +1,9 @@
 // Types for Phase 5: token usage, limits, credits and trends.
 
 import type { EnvKind } from '../types'
+import type { ProviderView } from '../provider'
 import type { UsageCommandReading } from './usage-command'
+import type { CodexLimitReading } from './codex'
 
 export const TOKEN_TYPES = ['input', 'output', 'cacheWrite', 'cacheRead'] as const
 export type TokenType = (typeof TOKEN_TYPES)[number]
@@ -48,6 +50,15 @@ export interface UsageRecord extends TokenCounts {
   aka?: string[]
   /** The app's own runs (summaries): when the run started; `ts` is when it finished. */
   startTs?: number
+  /** Codex usage (absent: Claude Code). Codex records are kept apart from Claude Code's. */
+  provider?: 'codex'
+  /** Codex: reasoning tokens, a part of `output` (never added to the total again). */
+  reasoning?: number
+  /**
+   * Codex: the `plan_type` its limits reported (which ChatGPT account ran it, as far as
+   * the logs tell: two sign-ins on different plans can share one Codex home).
+   */
+  plan?: string
 }
 
 /** One user turn: a prompt and everything Claude did until the next prompt. */
@@ -92,12 +103,15 @@ export interface UsageAnalysis {
   limitHits: LimitHit[]
   /** Limit readings from /usage output recorded in the transcript. */
   usageReadings: UsageCommandReading[]
+  /** Codex: plan limit readings from its token_count events. */
+  codexLimits?: CodexLimitReading[]
 }
 
 // --------------------------------------------------------------- reports
 
 export type Period = 'hour' | 'day' | 'week' | 'month'
-export type Dimension = 'model' | 'session' | 'project' | 'env' | 'version' | 'billing' | 'source'
+export type Dimension =
+  'model' | 'session' | 'project' | 'env' | 'version' | 'billing' | 'source' | 'provider'
 export type WeekStart = 'monday' | 'sunday'
 
 export interface UsageQuery {
@@ -110,12 +124,16 @@ export interface UsageQuery {
   /** Dimension for the breakdown table. */
   groupBy?: Dimension
   sessionKey?: string
+  /** Whose usage: Claude Code's (absent), Codex's, or both. */
+  provider?: ProviderView
 }
 
 export interface Totals extends TokenCounts {
   total: number
   cost: number
   responses: number
+  /** Codex reasoning tokens (part of output); absent when there are none. */
+  reasoning?: number
 }
 
 export interface SeriesPoint extends Totals {
@@ -124,6 +142,8 @@ export interface SeriesPoint extends Totals {
   /** Bucket start, epoch ms (local time). */
   start: number
   byModel: Record<string, number>
+  /** Tokens per provider, in reports covering both (absent otherwise). */
+  byProvider?: Record<string, number>
 }
 
 export interface BreakdownRow extends Totals {
@@ -187,6 +207,8 @@ export interface UsageStatus {
   files: number
   parsing: boolean
   lastUpdated?: number
+  /** Codex responses (absent when there are none). */
+  codexRecords?: number
 }
 
 export interface CcusageDay {

@@ -24,6 +24,8 @@ import type {
   WeekStart
 } from '@shared/usage/types'
 import type { SessionSummary } from '@shared/types'
+import type { CodexLimitReading } from '@shared/usage/codex'
+import type { ProviderView } from '@shared/provider'
 import { SUMMARY_USAGE_KEY, SUMMARY_USAGE_LABEL } from '@shared/summary'
 import { writeFileAtomic } from '../core/json-store'
 import { listFiles, readNdjson, writeNdjson } from '../core/ndjson'
@@ -31,6 +33,8 @@ import { assertAppDataWrite, assertRealAppDataWrite, isInside } from '../core/sa
 import { copyShared } from '../core/shared-copy'
 import { sessionProvider } from '../providers/registry'
 import type { SessionService } from './sessions'
+import { CodexUsageStore } from './codex-usage'
+import type { SessionProvider } from '../providers/types'
 
 // 2: dedupe follows ccusage (session-scoped requestless ids, sidechain replays).
 // 3: /usage output is read as limit readings (backfill).
@@ -48,6 +52,8 @@ interface IndexFile {
 export interface UsageSettings {
   weekStart: WeekStart
   prices: ModelPrice[]
+  /** Codex's own price table (absent: Codex usage is shown without cost). */
+  codexPrices?: ModelPrice[]
 }
 
 export interface UsagePaths {
@@ -66,7 +72,10 @@ function storageMonth(ts: number): string {
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`
 }
 
-export class UsageService extends EventEmitter<{ changed: [] }> {
+/** How often a scan says what Codex sessions it has read so far (for the limit alerts). */
+const CODEX_PROGRESS_MS = 5_000
+
+export class UsageService extends EventEmitter<{ changed: []; 'codex-progress': [] }> {
   private records = new UsageDeduper()
   /** Sessions whose stored records predate the current parser (purged on reparse). */
   private stale = new Set<string>()
@@ -93,6 +102,8 @@ export class UsageService extends EventEmitter<{ changed: [] }> {
   private loaded = false
   private cachedList: UsageRecord[] | undefined
   private lastUpdated: number | undefined
+  /** Codex usage and limits: their own store and files, never mixed into Claude Code's. */
+  private codex = new CodexUsageStore()
 
   constructor(
     private readonly sessions: SessionService,
@@ -105,9 +116,16 @@ export class UsageService extends EventEmitter<{ changed: [] }> {
   // ------------------------------------------------------------- lifecycle
 
   async start(): Promise<void> {
-    await this.load()
+    await this.whenLoaded()
     this.sessions.on('changed', () => this.scheduleSync())
     await this.sync()
+  }
+
+  private loading?: Promise<void>
+
+  /** Resolves once the saved usage data is loaded (before the logs are scanned). */
+  whenLoaded(): Promise<void> {
+    return (this.loading ??= this.load())
   }
 
   scheduleSync(delay = 1500): void {
@@ -143,6 +161,7 @@ export class UsageService extends EventEmitter<{ changed: [] }> {
     this.turns.clear()
     this.hits.clear()
     this.usageCmd.clear()
+    this.codex.clear()
     this.index = { version: INDEX_VERSION, sessions: {} }
     // Rewrite every existing month file (possibly as empty).
     for (const m of months) this.dirtyMonths.add(m)
@@ -157,12 +176,39 @@ export class UsageService extends EventEmitter<{ changed: [] }> {
   // ---------------------------------------------------------------- queries
 
   status(): UsageStatus {
+    const codex = this.codex.size
     return {
       records: this.records.size,
       files: Object.keys(this.index.sessions).length,
       parsing: this.parsing || !this.loaded,
-      lastUpdated: this.lastUpdated
+      lastUpdated: this.lastUpdated,
+      ...(codex ? { codexRecords: codex } : {})
     }
+  }
+
+  /** Codex usage, one record per response (forks' copies counted once), sorted by time. */
+  codexRecords(): UsageRecord[] {
+    return this.codex.records()
+  }
+
+  /** Codex plan limit readings from every rollout, sorted by time. */
+  codexLimitReadings(): CodexLimitReading[] {
+    return this.codex.readings()
+  }
+
+  /** Records of one view: Claude Code's (as before), Codex's, or both. */
+  recordsOf(view: ProviderView): UsageRecord[] {
+    if (view === 'claude') return this.allRecords()
+    if (view === 'codex') return this.codexRecords()
+    return [...this.allRecords(), ...this.codexRecords()].sort((a, b) => a.ts - b.ts)
+  }
+
+  /** The price table for a view's records (the two tables never share a model id). */
+  pricesOf(view: ProviderView): ModelPrice[] {
+    const s = this.settings()
+    if (view === 'claude') return s.prices
+    if (view === 'codex') return s.codexPrices ?? []
+    return [...s.prices, ...(s.codexPrices ?? [])]
   }
 
   allRecords(): UsageRecord[] {
@@ -208,12 +254,16 @@ export class UsageService extends EventEmitter<{ changed: [] }> {
     sourceOf?: (key: string) => string
   ): UsageReport {
     const s = this.settings()
-    return buildReport(this.allRecords(), query, {
+    const view = query.provider ?? 'claude'
+    return buildReport(view === 'claude' ? this.allRecords() : this.recordsOf(view), query, {
       timeZone: localTimeZone(),
       weekStart: s.weekStart,
-      prices: s.prices,
+      prices: this.pricesOf(view),
       now: now(),
-      loading: !this.loaded || (this.parsing && this.records.size === 0),
+      loading:
+        !this.loaded ||
+        (this.parsing && (view === 'codex' ? this.codex.size : this.records.size) === 0),
+      ...(view === 'all' ? { byProvider: true } : {}),
       billingOf,
       sourceOf,
       sessionLabel: (key) => {
@@ -226,16 +276,18 @@ export class UsageService extends EventEmitter<{ changed: [] }> {
 
   sessionUsage(key: string): SessionUsage {
     const s = this.settings()
-    const recs = this.allRecords().filter((r) => r.key === key)
+    const view: ProviderView = this.codex.has(key) ? 'codex' : 'claude'
+    const prices = this.pricesOf(view)
+    const recs = this.recordsOf(view).filter((r) => r.key === key)
     const totals = emptyTotals()
-    for (const r of recs) addRecord(totals, r, estimateCost(r, s.prices))
+    for (const r of recs) addRecord(totals, r, estimateCost(r, prices))
     return {
       key,
       ...totals,
       byModel: breakdown(recs, 'model', {
         timeZone: localTimeZone(),
         weekStart: s.weekStart,
-        prices: s.prices,
+        prices,
         now: now()
       }),
       firstAt: recs[0]?.ts,
@@ -244,13 +296,14 @@ export class UsageService extends EventEmitter<{ changed: [] }> {
   }
 
   csv(query: UsageQuery, perRecord: boolean): string {
-    const recs = this.allRecords().filter(
+    const view = query.provider ?? 'claude'
+    const recs = this.recordsOf(view).filter(
       (r) =>
         (query.from === undefined || r.ts >= query.from) &&
         (query.to === undefined || r.ts < query.to) &&
         (!query.models?.length || query.models.includes(r.model))
     )
-    return toCsv(recs, { timeZone: localTimeZone(), prices: this.settings().prices }, perRecord)
+    return toCsv(recs, { timeZone: localTimeZone(), prices: this.pricesOf(view) }, perRecord)
   }
 
   // ---------------------------------------------------------------- private
@@ -294,8 +347,12 @@ export class UsageService extends EventEmitter<{ changed: [] }> {
       if (r && typeof r.id === 'string' && typeof r.ts === 'number' && r.key === SUMMARY_USAGE_KEY)
         this.dashboard.set(r.id, r)
     }
+    await this.codex.load(dir)
     this.loaded = true
     this.invalidate()
+    // A view that asked while loading showed "loading": the saved data is here
+    // (the scan after it says nothing when no file changed).
+    this.emit('changed')
   }
 
   private purge(key: string): void {
@@ -315,16 +372,60 @@ export class UsageService extends EventEmitter<{ changed: [] }> {
   }
 
   private async syncNow(force: boolean): Promise<void> {
-    if (!this.loaded) await this.load()
+    if (!this.loaded) await this.whenLoaded()
     const list = this.sessions.list()
     if (!list.length) return
     this.parsing = true
     let changed = false
     try {
+      // Codex first, the most recently active first: a session running now
+      // (whose limits may just have crossed an alert line) is read within
+      // seconds, also on a long re-read after an update. Each step of the way
+      // is announced (at most every few seconds) for those alerts.
+      const codex = list
+        .filter(
+          (s) =>
+            s.availability !== 'imported' &&
+            sessionProvider(this.sessions, s).id === 'codex' &&
+            sessionProvider(this.sessions, s).capabilities.usage
+        )
+        .sort((a, b) => (b.lastActivityAt ?? '').localeCompare(a.lastActivityAt ?? ''))
+      if (codex.length) {
+        // The catalogue's links added to the saved ones (a fork whose
+        // rollout is gone still descends from its parent).
+        this.codex.setLineage(list.filter((x) => x.provider === 'codex'))
+        const roots = this.codex.roots()
+        // At once for the first session read, then at most every few seconds;
+        // what was read within that time is told when it's over or when the
+        // Codex sessions are done, whichever comes first (never only after
+        // the Claude Code scan).
+        let told = 0
+        let later: NodeJS.Timeout | undefined
+        const tell = () => {
+          if (later) clearTimeout(later)
+          later = undefined
+          told = Date.now()
+          this.emit('codex-progress')
+        }
+        try {
+          for (const s of codex) {
+            const provider = sessionProvider(this.sessions, s)
+            if (!(await this.syncCodex(s, provider, roots.get(s.sessionId) ?? s.sessionId, force)))
+              continue
+            changed = true
+            const wait = told + CODEX_PROGRESS_MS - Date.now()
+            if (wait <= 0) tell()
+            else later ??= setTimeout(tell, wait)
+          }
+        } finally {
+          if (later) tell()
+        }
+      }
       for (const s of list) {
-        // Imported claude.ai conversations have no token usage; Codex usage comes in Phase C.
+        // Imported claude.ai conversations have no token usage.
         if (s.availability === 'imported') continue
-        if (!sessionProvider(this.sessions, s).capabilities.usage) continue
+        const provider = sessionProvider(this.sessions, s)
+        if (!provider.capabilities.usage || provider.id === 'codex') continue
         const { sig, subagents } = await this.signature(s)
         if (!force && this.index.sessions[s.key] === sig) continue
         if (this.stale.delete(s.key)) this.purge(s.key)
@@ -348,6 +449,39 @@ export class UsageService extends EventEmitter<{ changed: [] }> {
       this.scheduleSave()
       this.emit('changed')
     }
+  }
+
+  /** Parse one Codex session if its file (or its lineage) changed. */
+  private async syncCodex(
+    s: SessionSummary,
+    provider: SessionProvider,
+    root: string,
+    force: boolean
+  ): Promise<boolean> {
+    const sig = [s.filePath, s.sizeBytes, s.lastActivityAt ?? '', root].join('|')
+    if (!force && this.codex.index[s.key] === sig) return false
+    let text: string
+    try {
+      text = provider.usage.readText
+        ? await provider.usage.readText(s.filePath)
+        : await readFile(s.filePath, 'utf8')
+    } catch {
+      return false
+    }
+    const a = provider.usage.analyze(text, {
+      key: s.key,
+      project: s.projectName,
+      env: s.env,
+      sessionId: s.sessionId,
+      file: basename(s.filePath),
+      lineageRoot: root,
+      source: s.sourceId,
+      ...(s.version ? { version: s.version } : {})
+    })
+    this.codex.set(s.key, a.records, a.codexLimits ?? [], sig)
+    // Let other work (IPC) run between files on big histories.
+    await new Promise((r) => setImmediate(r))
+    return true
   }
 
   private async parseFile(path: string, s: SessionSummary): Promise<boolean> {
@@ -471,6 +605,7 @@ export class UsageService extends EventEmitter<{ changed: [] }> {
         this.indexDirty = false
         await writeFileAtomic(join(dir, 'index.json'), JSON.stringify(this.index), dataDir)
       }
+      await this.codex.flush(dir, dataDir)
     } catch (err) {
       console.warn('could not save usage data', err)
     }

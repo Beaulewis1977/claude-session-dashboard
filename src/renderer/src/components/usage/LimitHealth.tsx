@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { createContext, useContext, useEffect, useMemo, useState } from 'react'
 import {
   Bar,
   CartesianGrid,
@@ -34,7 +34,8 @@ import {
   type WindowSplit
 } from '@shared/usage/health'
 import type { CostParts } from '@shared/usage/pricing'
-import { whyNoLiveReading, type LimitsState } from '@shared/usage/limits'
+import { asOf, whyNoLiveReading, type LimitsState } from '@shared/usage/limits'
+import { codexWhyNoReading, type CodexLimitsState } from '@shared/usage/codex'
 import { formatDateTime, formatTokens } from '@shared/format'
 import { now } from '@shared/clock'
 import { api } from '@/lib/api'
@@ -51,6 +52,12 @@ import { Tooltip } from '../ui/tooltip'
 import { Card, CardHeader, Skeleton } from './primitives'
 
 type Kind = 'five_hour' | 'seven_day'
+
+/**
+ * Whose limit health a card shows. Codex's has its own normal dates,
+ * "used elsewhere" ranges and comparisons (never Claude Code's).
+ */
+const HealthOf = createContext<'claude' | 'codex'>('claude')
 
 const tick = { fill: 'var(--chart-axis)', fontSize: 11 }
 const dateFmt = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' })
@@ -144,7 +151,12 @@ function RangeInputs({
 
 function BaselinePicker({ report }: { report: HealthReport }) {
   const save = useSaveSettings()
+  const codex = useContext(HealthOf) === 'codex'
+  const key = codex ? 'codexHealth' : 'health'
   const s = report.settings
+  // The plan in force now, and since when (the suggestion: normal dates within it).
+  const current = report.plans[report.plans.length - 1]
+  const sinceYmd = current && current.start > 0 ? current.from : undefined
   const [open, setOpen] = useState(false)
   const [draft, setDraft] = useState({ from: s.baselineFrom ?? '', to: s.baselineTo ?? '' })
   const b = report.baseline
@@ -170,6 +182,25 @@ function BaselinePicker({ report }: { report: HealthReport }) {
           Days when your limits felt normal. Their median $ per 1% (per 1x of plan) becomes the
           baseline every window is compared with.
         </p>
+        {codex && current && (
+          <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">
+            Tip: pick dates within your current plan,{' '}
+            <span className="font-medium text-foreground">
+              {current.label ?? planLabel(current)}
+            </span>
+            {sinceYmd ? ` (since ${shortDate(sinceYmd)})` : ''}, so a multiplier guess doesn&apos;t
+            skew the baseline.
+            {sinceYmd && (
+              <button
+                type="button"
+                className="ml-1 font-medium text-primary hover:underline"
+                onClick={() => setDraft({ from: sinceYmd, to: toYmd(now()) })}
+              >
+                Use these
+              </button>
+            )}
+          </p>
+        )}
         <div className="mt-3">
           <RangeInputs value={draft} onChange={setDraft} />
         </div>
@@ -179,7 +210,7 @@ function BaselinePicker({ report }: { report: HealthReport }) {
               variant="ghost"
               size="sm"
               onClick={() => {
-                void save({ health: { ...s, baselineFrom: undefined, baselineTo: undefined } })
+                void save({ [key]: { ...s, baselineFrom: undefined, baselineTo: undefined } })
                 setOpen(false)
               }}
             >
@@ -192,7 +223,7 @@ function BaselinePicker({ report }: { report: HealthReport }) {
             disabled={!draft.from}
             onClick={() => {
               void save({
-                health: { ...s, baselineFrom: draft.from, baselineTo: draft.to || draft.from }
+                [key]: { ...s, baselineFrom: draft.from, baselineTo: draft.to || draft.from }
               })
               setOpen(false)
             }}
@@ -433,6 +464,7 @@ function CompareSide({ label, side }: { label: string; side: HealthCompare['a'] 
 }
 
 function CompareBox({ kind, report }: { kind: Kind; report: HealthReport }) {
+  const codex = useContext(HealthOf) === 'codex'
   const back = (d: number): string => toYmd(now() - d * 86_400_000)
   const [a, setA] = useState<CompareRange>(() => ({
     from: report.settings.baselineFrom ?? back(60),
@@ -444,13 +476,13 @@ function CompareBox({ kind, report }: { kind: Kind; report: HealthReport }) {
     // Wait until both ranges are filled in: a half-typed date isn't a range.
     if (!a.from || !a.to || !b.from || !b.to) return
     let off = false
-    void api.compareHealth(kind, a, b).then((r) => {
+    void (codex ? api.compareCodexHealth(kind, a, b) : api.compareHealth(kind, a, b)).then((r) => {
       if (!off && r) setRes(r)
     })
     return () => {
       off = true
     }
-  }, [kind, a, b, report])
+  }, [kind, a, b, report, codex])
   const ch = res?.changePct
   return (
     <div className="mt-4 rounded-xl border border-border bg-surface/50 p-3">
@@ -497,18 +529,40 @@ function CompareBox({ kind, report }: { kind: Kind; report: HealthReport }) {
 const EXPLAIN =
   'Each window gets one score: the API-equivalent dollars of your local Claude Code usage since it started (tokens priced at your price table, one rate per model family), divided by the % of the limit it reached. That is "$ per 1%": how much work 1% buys. The baseline is the median on your normal dates, per 1x of plan, so Pro, Max 5x and Max 20x share one baseline. A possible reduction is flagged only when several windows in a row fall below baseline ÷ threshold. Usage outside this computer (claude.ai, mobile, cloud) makes 1% look smaller, so windows with clear outside usage are left out. Big token-mix shifts can move the score too. A trend indicator, not proof.'
 
+const CODEX_EXPLAIN =
+  "The same score as for Claude Code, from Codex's own logs: each window's API-equivalent dollars of your local Codex usage (priced at the Codex price table) divided by the % of the limit it reached. The baseline is the median on your normal dates, per 1x of plan, with Codex's own plan multipliers (relative to Plus) and its own normal dates, never mixed with Claude Code's. Usage that isn't in your local logs (ChatGPT, Codex cloud tasks, another computer) makes 1% look smaller. A trend indicator, not proof."
+
 export function LimitHealthCard({
   limits,
+  codex,
   onAsk
 }: {
   limits: LimitsState | null
+  /** Show Codex's limit health instead (its own baseline, plans and wording). */
+  codex?: CodexLimitsState | null
   onAsk: () => void
 }) {
-  const [kind, setKind] = useState<Kind>('five_hour')
+  const isCodex = codex !== undefined
+  // A Codex plan without a 5-hour window starts on the weekly one.
+  // Until one is picked, a Codex plan without a 5-hour window shows the weekly one
+  // (worked out from the data, which can arrive after the first render).
+  const [picked, setKind] = useState<Kind | null>(null)
+  const kind: Kind =
+    picked ?? (isCodex && codex && !codex.fiveHourRecent ? 'seven_day' : 'five_hour')
   const [compare, setCompare] = useState(false)
-  const report = kind === 'five_hour' ? limits?.health5h : limits?.health7d
+  const src = isCodex ? codex : limits
+  const report = kind === 'five_hour' ? src?.health5h : src?.health7d
   const t = useNow()
-  if (!limits) {
+  const why = (k: Kind): string | undefined =>
+    isCodex
+      ? codex
+        ? codexWhyNoReading(codex, k, (ts) => asOf(ts, t))
+        : undefined
+      : limits
+        ? whyNoLiveReading(limits, t, k)
+        : undefined
+  const hasData = isCodex ? !!codex?.hasData : !!limits?.hasBridgeData
+  if (!src) {
     return (
       <Card className="p-5">
         <Skeleton className="h-4 w-28" />
@@ -518,94 +572,95 @@ export function LimitHealthCard({
     )
   }
   return (
-    <Card className="p-5">
-      <CardHeader
-        title="Limit health"
-        info={EXPLAIN}
-        subtitle="How much work each 1% of your limit buys, per window, against your normal"
-        right={
-          <>
-            <Button variant="ghost" size="xs" onClick={onAsk}>
-              <Sparkles className="text-primary" /> Ask Claude
-            </Button>
-            <Segmented
-              ariaLabel="Window"
-              value={kind}
-              onChange={setKind}
-              options={[
-                { value: 'five_hour', label: '5-hour' },
-                { value: 'seven_day', label: 'Weekly' }
-              ]}
-            />
-          </>
-        }
-      />
-      {limits.hasBridgeData && whyNoLiveReading(limits, t, kind) && (
-        <div className="mt-3 flex items-start gap-2 rounded-lg bg-warning-soft px-3 py-2 text-xs text-[var(--gauge-warn-text)]">
-          <TriangleAlert className="mt-px size-3.5 shrink-0" />
-          <span>
-            <span className="font-medium">The current window isn't scored yet.</span>{' '}
-            {whyNoLiveReading(limits, t, kind)}
-          </span>
-        </div>
-      )}
-      {report ? (
-        <>
-          <div className="mt-4 flex flex-wrap items-start justify-between gap-3">
-            <Verdict report={report} />
-            <div className="flex flex-wrap items-center gap-2">
-              <BaselinePicker report={report} />
-              <Button
-                variant={compare ? 'secondary' : 'ghost'}
-                size="xs"
-                aria-pressed={compare}
-                onClick={() => setCompare((v) => !v)}
-              >
-                <ArrowLeftRight /> Compare
+    <HealthOf.Provider value={isCodex ? 'codex' : 'claude'}>
+      <Card className="p-5">
+        <CardHeader
+          title={isCodex ? 'Codex limit health' : 'Limit health'}
+          info={isCodex ? CODEX_EXPLAIN : EXPLAIN}
+          subtitle="How much work each 1% of your limit buys, per window, against your normal"
+          right={
+            <>
+              <Button variant="ghost" size="xs" onClick={onAsk}>
+                <Sparkles className="text-primary" /> Ask Claude
               </Button>
-            </div>
+              <Segmented
+                ariaLabel="Window"
+                value={kind}
+                onChange={setKind}
+                options={[
+                  { value: 'five_hour', label: '5-hour' },
+                  { value: 'seven_day', label: 'Weekly' }
+                ]}
+              />
+            </>
+          }
+        />
+        {hasData && why(kind) && (
+          <div className="mt-3 flex items-start gap-2 rounded-lg bg-warning-soft px-3 py-2 text-xs text-[var(--gauge-warn-text)]">
+            <TriangleAlert className="mt-px size-3.5 shrink-0" />
+            <span>
+              <span className="font-medium">The current window isn't scored yet.</span> {why(kind)}
+            </span>
           </div>
-          <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-muted-foreground">
-            <span className="inline-flex items-center gap-1.5">
-              <span className="size-2 rounded-sm bg-[var(--gauge-calm)]" /> Window
-            </span>
-            <span className="inline-flex items-center gap-1.5">
-              <span className="size-2 rounded-sm bg-[var(--gauge-warn)]" /> Below flag line
-            </span>
-            <span className="inline-flex items-center gap-1.5">
-              <span className="size-2 rounded-sm border border-dashed border-[var(--chart-axis)]" />{' '}
-              Left out (used elsewhere, or a plan change)
-            </span>
-            <span className="inline-flex items-center gap-1.5">
-              <span className="h-0.5 w-3 bg-foreground/55" /> Baseline × plan
-            </span>
-            <span className="inline-flex items-center gap-1.5">
-              <span className="h-0 w-3 border-t border-dashed border-[var(--gauge-warn-text)]" />{' '}
-              Flag line (÷ {report.settings.threshold})
-            </span>
-            {report.baseline && (
-              <span className="ml-auto tabular-nums">
-                Baseline {perPctText(report.baseline.value)} per 1% per 1x
+        )}
+        {report ? (
+          <>
+            <div className="mt-4 flex flex-wrap items-start justify-between gap-3">
+              <Verdict report={report} />
+              <div className="flex flex-wrap items-center gap-2">
+                <BaselinePicker report={report} />
+                <Button
+                  variant={compare ? 'secondary' : 'ghost'}
+                  size="xs"
+                  aria-pressed={compare}
+                  onClick={() => setCompare((v) => !v)}
+                >
+                  <ArrowLeftRight /> Compare
+                </Button>
+              </div>
+            </div>
+            <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-muted-foreground">
+              <span className="inline-flex items-center gap-1.5">
+                <span className="size-2 rounded-sm bg-[var(--gauge-calm)]" /> Window
               </span>
-            )}
-          </div>
-          <div className="mt-2">
-            <HealthChart report={report} />
-          </div>
-          {report.plans.length > 1 && (
-            <div className="mt-1 text-[11px] text-subtle-foreground">
-              Plans:{' '}
-              {report.plans.map((p) => `${planLabel(p)} from ${shortDate(p.from)}`).join(' · ')}
+              <span className="inline-flex items-center gap-1.5">
+                <span className="size-2 rounded-sm bg-[var(--gauge-warn)]" /> Below flag line
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <span className="size-2 rounded-sm border border-dashed border-[var(--chart-axis)]" />{' '}
+                Left out (used elsewhere, or a plan change)
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <span className="h-0.5 w-3 bg-foreground/55" /> Baseline × plan
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <span className="h-0 w-3 border-t border-dashed border-[var(--gauge-warn-text)]" />{' '}
+                Flag line (÷ {report.settings.threshold})
+              </span>
+              {report.baseline && (
+                <span className="ml-auto tabular-nums">
+                  Baseline {perPctText(report.baseline.value)} per 1% per 1x
+                </span>
+              )}
             </div>
-          )}
-          {compare && <CompareBox kind={kind} report={report} />}
-        </>
-      ) : (
-        <div className="px-6 py-8 text-center text-sm leading-relaxed text-muted-foreground">
-          {whyNoLiveReading(limits, t, kind) ?? 'No windows to score yet.'}
-        </div>
-      )}
-    </Card>
+            <div className="mt-2">
+              <HealthChart report={report} />
+            </div>
+            {report.plans.length > 1 && (
+              <div className="mt-1 text-[11px] text-subtle-foreground">
+                Plans:{' '}
+                {report.plans.map((p) => `${planLabel(p)} from ${shortDate(p.from)}`).join(' · ')}
+              </div>
+            )}
+            {compare && <CompareBox kind={kind} report={report} />}
+          </>
+        ) : (
+          <div className="px-6 py-8 text-center text-sm leading-relaxed text-muted-foreground">
+            {why(kind) ?? 'No windows to score yet.'}
+          </div>
+        )}
+      </Card>
+    </HealthOf.Provider>
   )
 }
 
@@ -622,12 +677,14 @@ const SOURCE_SHADES = [
 function SplitRow({
   title,
   split,
-  reason
+  reason,
+  elsewhereLabel = 'Elsewhere (cloud, claude.ai, mobile)'
 }: {
   title: string
   split?: WindowSplit
   /** Why there's no split for this window. */
   reason?: string
+  elsewhereLabel?: string
 }) {
   if (!split) {
     return (
@@ -649,7 +706,7 @@ function SplitRow({
     ...(split.elsewhere >= 0.5
       ? [
           {
-            label: 'Elsewhere (cloud, claude.ai, mobile)',
+            label: elsewhereLabel,
             pct: split.elsewhere,
             color: 'var(--model-other)',
             dashed: true
@@ -696,8 +753,16 @@ function SplitRow({
   )
 }
 
-export function WhereItWent({ limits }: { limits: LimitsState | null }) {
+export function WhereItWent({
+  limits,
+  codex
+}: {
+  limits: LimitsState | null
+  /** Show Codex's windows instead. */
+  codex?: CodexLimitsState | null
+}) {
   const t = useNow()
+  if (codex !== undefined) return codex ? <CodexWhereItWent codex={codex} t={t} /> : null
   if (!limits) return null
   const est = limits.split5h?.estimated || limits.split7d?.estimated
   return (
@@ -723,6 +788,37 @@ export function WhereItWent({ limits }: { limits: LimitsState | null }) {
   )
 }
 
+function CodexWhereItWent({ codex, t }: { codex: CodexLimitsState; t: number }) {
+  const why = (k: Kind): string | undefined => codexWhyNoReading(codex, k, (ts) => asOf(ts, t))
+  const est = codex.split5h?.estimated || codex.split7d?.estimated
+  const label = 'Elsewhere (ChatGPT, Codex cloud)'
+  return (
+    <Card className="p-5">
+      <CardHeader
+        title="Where your Codex limits went"
+        subtitle="The current windows, split by the Codex client that used them"
+        info={`Local usage is split by each client's share of the API-equivalent cost (CLI, VS Code, the desktop app, subagents…). "Elsewhere" is the part your local logs don't explain: ChatGPT, Codex cloud tasks or another computer.${est ? ' It is estimated from your Codex baseline $ per 1%.' : ' Without a baseline, only rises while nothing ran here count.'}`}
+      />
+      <div className="mt-4 space-y-4">
+        {codex.fiveHourRecent && (
+          <SplitRow
+            title="5-hour window"
+            split={codex.split5h}
+            reason={why('five_hour')}
+            elsewhereLabel={label}
+          />
+        )}
+        <SplitRow
+          title="Weekly"
+          split={codex.split7d}
+          reason={why('seven_day')}
+          elsewhereLabel={label}
+        />
+      </div>
+    </Card>
+  )
+}
+
 // --------------------------------------------------- "used Claude elsewhere"
 
 const toLocalInput = (ts: number): string => {
@@ -731,21 +827,27 @@ const toLocalInput = (ts: number): string => {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`
 }
 
-export function ElsewhereCard() {
+export function ElsewhereCard({ provider = 'claude' }: { provider?: 'claude' | 'codex' }) {
   const settings = useApp((s) => s.settings)
   const save = useSaveSettings()
+  const codex = provider === 'codex'
+  const key = codex ? 'codexElsewhere' : 'elsewhere'
   const [open, setOpen] = useState(false)
   const [draft, setDraft] = useState(() => ({
     from: toLocalInput(now() - 2 * 3_600_000),
     to: toLocalInput(now()),
     note: ''
   }))
-  const list = settings.elsewhere
+  const list = (codex ? settings.codexElsewhere : settings.elsewhere) ?? []
   return (
     <Card className="p-5">
       <CardHeader
-        title="Used Claude elsewhere"
-        subtitle="Times you used claude.ai, the apps or a cloud session, so they don't read as a cut"
+        title={codex ? 'Used Codex elsewhere' : 'Used Claude elsewhere'}
+        subtitle={
+          codex
+            ? "Times you used ChatGPT, Codex cloud tasks or another computer, so they don't read as a cut"
+            : "Times you used claude.ai, the apps or a cloud session, so they don't read as a cut"
+        }
         info="Windows that overlap these times are left out of the baseline and the verdict. Saved in the app's settings only."
         right={
           <Popover open={open} onOpenChange={setOpen}>
@@ -776,7 +878,7 @@ export function ElsewhereCard() {
                   <span className="mb-1 block text-2xs text-muted-foreground">Note (optional)</span>
                   <Input
                     value={draft.note}
-                    placeholder="e.g. claude.ai on my phone"
+                    placeholder={codex ? 'e.g. Codex cloud task' : 'e.g. claude.ai on my phone'}
                     onChange={(e) => setDraft({ ...draft, note: e.target.value })}
                   />
                 </label>
@@ -792,7 +894,7 @@ export function ElsewhereCard() {
                       return
                     }
                     void save({
-                      elsewhere: [
+                      [key]: [
                         ...list,
                         { id: `e-${from}-${to}`, from, to, note: draft.note || undefined }
                       ]
@@ -825,7 +927,7 @@ export function ElsewhereCard() {
               type="button"
               aria-label="Remove"
               className="rounded p-0.5 text-subtle-foreground hover:bg-secondary hover:text-foreground"
-              onClick={() => void save({ elsewhere: list.filter((x) => x.id !== e.id) })}
+              onClick={() => void save({ [key]: list.filter((x) => x.id !== e.id) })}
             >
               <X className="size-3.5" />
             </button>

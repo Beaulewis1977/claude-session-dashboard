@@ -270,6 +270,22 @@ export interface AskDataInput {
   limitHits: LimitHit[]
   prices: ModelPrice[]
   elsewhere: { from: number; to: number }[]
+  /** Codex's usage and limits (numbers only), when Codex is on. Its own baseline and plan. */
+  codex?: AskCodexInput
+}
+
+export interface AskCodexInput {
+  /** "Pro $100 (prolite)": fixed labels, and plan_type only when shaped like a code. */
+  plan: string
+  multiplier: number
+  health5h?: HealthReport
+  health7d?: HealthReport
+  pace5h?: PaceState
+  pace7d?: PaceState
+  records: UsageRecord[]
+  prices: ModelPrice[]
+  /** Current windows: length in minutes and % (only current ones). */
+  windows: { minutes: number; pct: number; resetsAt?: number }[]
 }
 
 function localIso(ts: number, timeZone: string): string {
@@ -352,6 +368,64 @@ function paceData(p?: PaceState) {
 const MODEL_ID_RE = /^[A-Za-z0-9][A-Za-z0-9._:@/-]{0,79}$/
 const MINOR_VERSION_RE = /^\d{1,4}\.\d{1,4}$/
 
+const PLAN_TEXT_RE = /^[A-Za-z0-9 $().,_-]{1,60}$/
+
+/** Codex's part: the same kind of numbers, from Codex's own records and limits. */
+function codexData(c: AskCodexInput, tz: string, now: number) {
+  const months = new Map<
+    string,
+    { tokens: number; reasoning: number; costUsd: number; responses: number }
+  >()
+  const days = new Map<string, { tokens: number; costUsd: number; responses: number }>()
+  const byModel = new Map<string, number>()
+  const dayCut = now - 62 * 86_400_000
+  for (const r of c.records) {
+    const tokens = r.input + r.output + r.cacheRead + r.cacheWrite
+    const p = costParts(r, c.prices)
+    const cost = p.input + p.output + p.cacheRead + p.cacheWrite
+    const m = monthKey(r.ts, tz)
+    const mm = months.get(m) ?? { tokens: 0, reasoning: 0, costUsd: 0, responses: 0 }
+    mm.tokens += tokens
+    mm.reasoning += r.reasoning ?? 0
+    mm.costUsd += cost
+    mm.responses++
+    months.set(m, mm)
+    if (r.ts >= dayCut) {
+      const d = dayKey(r.ts, tz)
+      const dd = days.get(d) ?? { tokens: 0, costUsd: 0, responses: 0 }
+      dd.tokens += tokens
+      dd.costUsd += cost
+      dd.responses++
+      days.set(d, dd)
+    }
+    const model = MODEL_ID_RE.test(r.model) ? r.model : 'other'
+    byModel.set(model, (byModel.get(model) ?? 0) + tokens)
+  }
+  return {
+    plan: PLAN_TEXT_RE.test(c.plan) ? c.plan : 'unknown',
+    planMultiplierVsPlus: c.multiplier,
+    limitsNow: c.windows.map((w) => ({
+      windowMinutes: w.minutes,
+      pct: r2(w.pct),
+      resetsAt: w.resetsAt ? localIso(w.resetsAt, tz) : null
+    })),
+    fiveHour: healthData(c.health5h, 60, tz),
+    sevenDay: healthData(c.health7d, 16, tz),
+    paceNow: { fiveHour: paceData(c.pace5h), sevenDay: paceData(c.pace7d) },
+    dailyTotals: [...days.entries()]
+      .sort()
+      .map(([date, d]) => ({ date, ...d, costUsd: r2(d.costUsd) })),
+    monthlyTotals: [...months.entries()]
+      .sort()
+      .slice(-13)
+      .map(([month, d]) => ({ month, ...d, costUsd: r2(d.costUsd) })),
+    tokensByModel: [...byModel.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 20)
+      .map(([model, tokens]) => ({ model, tokens }))
+  }
+}
+
 /** The aggregated numbers sent with a question. No text from any session. */
 export function buildAskData(i: AskDataInput) {
   const tz = i.timeZone
@@ -419,7 +493,8 @@ export function buildAskData(i: AskDataInput) {
     markedElsewhere: i.elsewhere.map((e) => ({
       from: localIso(e.from, tz),
       to: localIso(e.to, tz)
-    }))
+    })),
+    ...(i.codex ? { codex: codexData(i.codex, tz, i.now) } : {})
   }
 }
 
@@ -434,6 +509,11 @@ export function buildAskPrompt(question: string, data: AskData): string {
     'Answer the question using only the JSON data below. Be concise and concrete: cite dates, percentages and ratios.',
     'Say how confident you are, and mention caveats that matter (usage outside this computer, token mix shifts, few windows).',
     'Use short Markdown: a one-line answer first, then a few bullets.',
+    ...('codex' in data
+      ? [
+          'The "codex" section is OpenAI Codex on a ChatGPT plan, measured separately (its own plan, multipliers relative to Plus, and baseline). Never combine its percentages or baseline with Claude\'s.'
+        ]
+      : []),
     '',
     `Question: ${q}`,
     '',

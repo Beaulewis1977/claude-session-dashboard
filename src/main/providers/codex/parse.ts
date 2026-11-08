@@ -19,6 +19,7 @@
 // Lines are parsed defensively: anything unexpected is skipped, and lines
 // that aren't JSON objects are counted as malformed.
 
+import type { SessionContext } from '@shared/context'
 import type { ChatMessage, ContentBlock, ToolResult } from '@shared/types'
 import { READ_NOTE_TYPE, type ReadNote } from './read'
 import { isContextItem, isInjected, whoWrote } from './provenance'
@@ -65,6 +66,8 @@ export interface CodexAnalysis {
   searchPartial?: boolean
   /** Decompressed size of the file (from the reader). */
   contentBytes?: number
+  /** Context size at the end (from the last token_count), see codexContext. */
+  context?: SessionContext
 }
 
 interface Line {
@@ -251,6 +254,8 @@ export function analyzeCodex(text: string, fileSessionId?: string): CodexAnalysi
   let minT = Infinity
   let maxT = -Infinity
   const messages = conversation(lines)
+  const ctx = new CodexContextTrack()
+  let model: string | undefined
   for (const l of lines) {
     const t = l.timestamp ? Date.parse(l.timestamp) : NaN
     if (Number.isFinite(t)) {
@@ -258,9 +263,18 @@ export function analyzeCodex(text: string, fileSessionId?: string): CodexAnalysi
       maxT = Math.max(maxT, t)
     }
     const p = l.payload
+    if (l.type === 'event_msg' && p.type === 'token_count') {
+      ctx.tokenCount(p, l.timestamp, model)
+      continue
+    }
+    if (l.type === 'compacted') {
+      ctx.compacted(p, l.timestamp)
+      continue
+    }
     if (l.type === 'turn_context') {
       const m = str(p.model)
       if (m) models.add(m)
+      model = m ?? model
       a.effort = str(p.effort) ?? a.effort
       a.cwd ??= str(p.cwd)
       continue
@@ -312,7 +326,74 @@ export function analyzeCodex(text: string, fileSessionId?: string): CodexAnalysi
   if (total > CODEX_SEARCH_LIMIT || note?.cutLines || note?.hugeLines) a.searchPartial = true
   a.historyNote = historyNote(lines, note)
   if (note) a.contentBytes = note.bytes
+  const context = ctx.result()
+  if (context) a.context = context
   return a
+}
+
+/** Rough characters per token, for a compaction summary (as for Claude Code). */
+const CHARS_PER_TOKEN = 4
+
+/**
+ * Codex's context size: what its next request sends, the last response's
+ * `last_token_usage.total_tokens` (Codex's own "tokens in the context
+ * window"), out of `info.model_context_window`. After a compaction with no
+ * response since, an estimate: the session's setup (its first request's
+ * input) plus the compaction summary.
+ */
+class CodexContextTrack {
+  private last?: { tokens: number; at?: string; model?: string; window?: number }
+  private base?: number
+  private compactions = 0
+  private compactedAfter?: { at?: string; chars: number }
+
+  tokenCount(p: Record<string, unknown>, at: string | undefined, model: string | undefined): void {
+    const info = p.info as Record<string, unknown> | null | undefined
+    if (!info || typeof info !== 'object') return
+    const last = info.last_token_usage as Record<string, unknown> | undefined
+    const n = (v: unknown): number => (typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : 0)
+    const tokens = n(last?.total_tokens) || n(last?.input_tokens) + n(last?.output_tokens)
+    if (!tokens) return
+    this.base ??= n(last?.input_tokens) || undefined
+    const window = n(info.model_context_window) || undefined
+    this.last = { tokens, at, model, window }
+    this.compactedAfter = undefined
+  }
+
+  compacted(p: Record<string, unknown>, at: string | undefined): void {
+    this.compactions++
+    const msg = typeof p.message === 'string' ? p.message : ''
+    this.compactedAfter = { at, chars: msg.length }
+  }
+
+  result(): SessionContext | undefined {
+    if (!this.last && !this.compactedAfter) return undefined
+    const window = this.last?.window
+    const common = {
+      compactions: this.compactions,
+      ...(this.base ? { baseTokens: this.base } : {}),
+      ...(this.last?.model ? { model: this.last.model } : {}),
+      ...(window
+        ? { windowSize: window, ...(this.last?.model ? { windowModel: this.last.model } : {}) }
+        : {})
+    }
+    if (this.compactedAfter) {
+      const tokens = (this.base ?? 0) + Math.ceil(this.compactedAfter.chars / CHARS_PER_TOKEN)
+      return {
+        tokens,
+        from: 'compaction',
+        ...(this.compactedAfter.at ? { at: this.compactedAfter.at } : {}),
+        ...(this.last ? { preCompactTokens: this.last.tokens } : {}),
+        ...common
+      }
+    }
+    return {
+      tokens: this.last!.tokens,
+      from: 'usage',
+      ...(this.last!.at ? { at: this.last!.at } : {}),
+      ...common
+    }
+  }
 }
 
 interface Msg {

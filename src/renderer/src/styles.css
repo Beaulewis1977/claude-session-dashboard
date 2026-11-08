@@ -69,6 +69,11 @@
   --model-haiku: #1baf7a;
   --model-fable: #6250d6;
   --model-other: #898781;
+  /* OpenAI models (Codex): their own hues, apart from the Claude families. */
+  --model-gpt-1: #0e9488;
+  --model-gpt-2: #c0438f;
+  --model-gpt-3: #6b8e23;
+  --model-gpt-4: #5b6bbf;
   --gauge-track: rgb(24 24 27 / 0.07);
   --gauge-calm: #4f7fd1;
   --gauge-warn: #e8a210;
@@ -154,6 +159,10 @@
   --model-haiku: #199e70;
   --model-fable: #9085e9;
   --model-other: #898781;
+  --model-gpt-1: #2bb5a8;
+  --model-gpt-2: #e06aad;
+  --model-gpt-3: #94b84a;
+  --model-gpt-4: #8592e0;
   --gauge-track: rgb(255 255 255 / 0.07);
   --gauge-calm: #6d9be6;
   --gauge-warn: #fab219;

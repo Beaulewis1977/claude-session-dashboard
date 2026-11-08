@@ -26,6 +26,23 @@ const FAMILY_VAR: Record<string, string> = {
   mythos: '--model-fable'
 }
 
+const GPT_VARS = ['--model-gpt-1', '--model-gpt-2', '--model-gpt-3', '--model-gpt-4']
+
+/** One colour per provider in charts that show both. */
+export const PROVIDER_COLOR: Record<'claude' | 'codex', string> = {
+  claude: 'var(--model-opus)',
+  codex: 'var(--model-gpt-1)'
+}
+
+/** Token type names as each provider calls them (Codex: "cached input"). */
+export function tokenLabel(t: TokenType, provider?: 'claude' | 'codex'): string {
+  if (provider === 'codex') {
+    if (t === 'cacheRead') return 'Cached input'
+    if (t === 'input') return 'Input (not cached)'
+  }
+  return TOKEN_META[t].label
+}
+
 function versionRank(model: string): number {
   const nums = (model.match(/\d+/g) ?? []).filter((n) => n.length < 4).map(Number)
   return nums.reduce((a, n, i) => a + n / 10 ** i, 0)
@@ -36,6 +53,16 @@ function versionRank(model: string): number {
  * older versions mixed toward the surface (the legend always names them).
  */
 export function modelColor(model: string, allModels: string[]): string {
+  // OpenAI models (Codex): one hue each, from the same palette, in a stable order.
+  if (/^gpt-|^codex-/i.test(model)) {
+    const gpts = [...new Set(allModels.filter((m) => /^gpt-|^codex-/i.test(m)))].sort()
+    const i = Math.max(0, gpts.indexOf(model))
+    const v = GPT_VARS[i % GPT_VARS.length]
+    const round = Math.floor(i / GPT_VARS.length)
+    return round === 0
+      ? `var(${v})`
+      : `color-mix(in oklab, var(${v}) ${Math.max(40, 100 - round * 25)}%, var(--card))`
+  }
   const fam = family(model)
   const v = FAMILY_VAR[fam]
   if (!v) return 'var(--model-other)'

@@ -22,6 +22,7 @@ import type {
   UsageStatus
 } from './usage/types'
 import type { BridgeApplyResult, BridgePlan, LimitsState } from './usage/limits'
+import type { CodexLimitsState } from './usage/codex'
 import type { CompareRange, HealthCompare } from './usage/health'
 import type { AskHistoryItem } from './ask'
 import type { AiSummary, SummaryEstimate } from './summary'
@@ -140,7 +141,15 @@ export interface CsdApi {
     a: CompareRange,
     b: CompareRange
   ): Promise<HealthCompare | null>
+  /** Also fires when Codex's limits change. */
   onLimitsChanged(cb: () => void): () => void
+  /** Codex's plan limits, from its session logs (null: Codex is off). */
+  getCodexLimits(): Promise<CodexLimitsState | null>
+  compareCodexHealth(
+    kind: 'five_hour' | 'seven_day',
+    a: CompareRange,
+    b: CompareRange
+  ): Promise<HealthCompare | null>
   planBridge(sourceId: string, action: 'install' | 'uninstall'): Promise<BridgePlan>
   applyBridge(
     sourceId: string,

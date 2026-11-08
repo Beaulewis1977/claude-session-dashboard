@@ -119,7 +119,7 @@ export const PROVIDER_CAPABILITIES: Record<ProviderId, ProviderCapabilities> = {
     live: true
   },
   // Codex (Phase B): `codex resume` and `codex fork`; no Branch from here (it would
-  // write into ~/.codex), no Continue fresh or summaries yet, usage in Phase C.
+  // write into ~/.codex), no Continue fresh or summaries yet. Phase C: usage and limits.
   codex: {
     fork: true,
     branch: false,
@@ -128,7 +128,7 @@ export const PROVIDER_CAPABILITIES: Record<ProviderId, ProviderCapabilities> = {
     apiBilling: false,
     newSession: false,
     summaries: false,
-    usage: false,
+    usage: true,
     restore: false,
     live: false
   }

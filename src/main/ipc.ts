@@ -26,6 +26,7 @@ import { normalizeProjectKey } from '@shared/project-key'
 import { sanitizeLiveAlerts } from '@shared/live-alerts'
 import { sanitizeSummarySettings } from '@shared/summary'
 import { sanitizeContextWarning } from '@shared/context'
+import { codexSettingsPatch, codexUsageSettings } from '@shared/usage/codex-settings'
 import {
   isCodexArchiveMode,
   type AppInfo,
@@ -101,7 +102,8 @@ function publicSettings(s: SettingsFile): AppSettings {
     liveAlerts: sanitizeLiveAlerts(s.liveAlerts),
     summaries: sanitizeSummarySettings(s.summaries),
     contextWarning: sanitizeContextWarning(s.contextWarning),
-    ...providerSettings(s)
+    ...providerSettings(s),
+    ...codexUsageSettings(s)
   }
 }
 
@@ -337,6 +339,7 @@ export function registerIpc(deps: IpcDeps): void {
         })
       if (typeof p.adminRefreshMinutes === 'number' && p.adminRefreshMinutes >= 0)
         s.adminRefreshMinutes = Math.min(1440, Math.round(p.adminRefreshMinutes))
+      Object.assign(s, codexSettingsPatch(p, s))
     })
     deps.onSettingsChanged?.()
     await settings.flush()

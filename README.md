@@ -116,6 +116,10 @@ Everything stays on your PC and your own private network.
   session gets Claude Code's own default (which the app can't see), so both are compared in tokens.
   The context window follows the launch's model too: `[1m]` variants and models with a native 1M
   window (Opus 4.7+, Sonnet 5+, Haiku 5.5, Fable 5+) count 1M, others 200k.
+- **Codex sessions** get the same badge, stats and warning: the size is the last response's tokens
+  from Codex's own log, out of the window Codex logged (`model_context_window`). The % uses Codex's
+  own limit-health baseline (its weekly limit on plans without a 5-hour window). Codex's logs don't
+  say how long its prompt cache stays warm, so a Codex resume is always priced cold.
 
 ### Usage and limits
 
@@ -130,7 +134,15 @@ Everything stays on your PC and your own private network.
 - **Ask Claude** about your usage ("Have my limits dropped?") through your own Claude Code, on your
   plan. Only aggregated numbers are sent, and you see them first.
 - **At a glance:** gauges in the title bar, a tray icon with the 5-hour %, and an always-on-top mini
-  meter.
+  meter. Each can show Claude, Codex or both (Settings → Codex usage & limits).
+- **Codex too, with no setup:** Codex writes its token counts and plan limits into its own session
+  logs, so its usage (input, cached input, output, reasoning; per model, session, project,
+  environment, client, day, week, month) and its limits (5-hour and weekly gauges, told apart by
+  their length, plus any separate limit such as one model's own) show with full history. Each
+  response is counted once, also when a fork copies its parent's history. Codex has its own plan
+  (detected from the logs, e.g. "Pro $100 (prolite)", or chosen), multipliers, limit-health baseline
+  and price table. The **All / Claude / Codex** switch picks whose usage you see: in All, each
+  provider keeps its own gauges (never one combined %) and the chart stacks or splits by provider.
 
 ### Running now and session alerts
 

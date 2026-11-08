@@ -60,7 +60,7 @@ afterEach(async () => {
   await rm(root, { recursive: true, force: true, maxRetries: 5 })
 })
 
-it('never opens, stats, copies or reads auth.json while scanning, archiving and reading Codex sessions', async () => {
+it('never opens, stats, copies or reads auth.json while scanning, archiving, reading and counting Codex usage', async () => {
   const { prepareFixtures, fixturesLayout } = await import('../src/main/fixtures')
   const { createFixturesPlatform } = await import('../src/main/platform')
   const { appPaths, createMetadataStore, createSettingsStore } =
@@ -101,6 +101,16 @@ it('never opens, stats, copies or reads auth.json while scanning, archiving and 
   sessions.searchKeys('checkout')
   await sessions.rescan()
   await sessions.idle()
+  // Usage and limits: every rollout read again in full (token_count events).
+  const { UsageService, usagePaths } = await import('../src/main/services/usage')
+  const usage = new UsageService(sessions, usagePaths(paths.dataDir, paths.archiveDir), () => ({
+    weekStart: 'monday',
+    prices: []
+  }))
+  await usage.start()
+  await usage.idle()
+  expect(usage.codexRecords().length).toBeGreaterThan(0)
+  expect(usage.codexLimitReadings().length).toBeGreaterThan(0)
 
   // The scan really went through the Codex home…
   expect(touched.some((p) => /[\\/]\.codex[\\/]sessions/.test(p))).toBe(true)

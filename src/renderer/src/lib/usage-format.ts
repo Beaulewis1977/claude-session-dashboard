@@ -38,3 +38,17 @@ export function formatMetric(m: MetricDef, v: number | undefined, precise = fals
       return Math.round(v).toLocaleString('en-US')
   }
 }
+
+const timeFmt = new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' })
+const dayTimeFmt = new Intl.DateTimeFormat(undefined, {
+  weekday: 'short',
+  hour: 'numeric',
+  minute: '2-digit'
+})
+
+/** "2:47 PM" later today, else "Thu 9:00 AM": when a window resets or a limit is hit. */
+export function when(ts: number, t: number): string {
+  return ts - t < 20 * 3_600_000 && new Date(ts).getDate() === new Date(t).getDate()
+    ? timeFmt.format(ts)
+    : dayTimeFmt.format(ts)
+}

@@ -13,6 +13,7 @@ import {
   type PlanChange
 } from './usage/health'
 import { DEFAULT_PACE, type PaceSettings } from './usage/pace'
+import type { CodexPlan, CodexPlanSetting } from './usage/codex'
 import type { SourceHints, SourceLabel } from './source-label'
 import type { ProviderId, ProviderToggles, ProviderView } from './provider'
 import type { EffortChoice, ProjectModelDefault, ResolvedModel } from './model-choice'
@@ -343,7 +344,31 @@ export interface AppSettings {
   codexDefaultEffort?: EffortChoice
   /** Codex per-project model / effort defaults, keyed like projectModels. */
   codexProjectModels?: Record<string, ProjectModelDefault>
+  // Codex usage & limits (Phase C). Kept apart from Claude Code's plan, baseline and prices.
+  /** Codex plan for limit health: detected from the logs (absent: "auto") or chosen. */
+  codexPlan?: CodexPlanSetting
+  /**
+   * Different plan_types in Codex's logs are separate sign-ins (absent) or one
+   * account that changed plan (the logs can't tell which).
+   */
+  codexAccounts?: CodexAccounts
+  /** Codex plan multipliers (relative to Plus), where changed from the defaults. */
+  codexPlanMults?: Partial<Record<CodexPlan, number>>
+  /** Codex limit health: its own normal dates, threshold and streak. */
+  codexHealth?: HealthSettings
+  /** Time ranges marked as "used Codex elsewhere" (ChatGPT, Codex cloud…). */
+  codexElsewhere?: ElsewhereRange[]
+  /** Codex's price table: OpenAI API prices (absent: the bundled snapshot). */
+  codexPrices?: ModelPrice[]
+  /** Tray icon, mini meter and status bar: whose limits (absent: Claude). */
+  meterProvider?: MeterProvider
+  /** Usage charts in the All view: stacked or split by provider (absent: stacked). */
+  usageSplit?: UsageSplit
 }
+
+export type MeterProvider = 'claude' | 'codex' | 'both'
+export type CodexAccounts = 'separate' | 'one'
+export type UsageSplit = 'stacked' | 'split'
 
 /**
  * Which Codex sessions are copied into the archive: none, only the ones I

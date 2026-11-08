@@ -1002,9 +1002,81 @@ folder plus Codex's name index, `config.toml`, `archived_sessions` or `sessions/
     folders only the session's own WSL user can read. Those are checked inside the distro
     (`test -r`), as the user Codex will run as.
 - **Not for Codex** (hidden): Branch from here (it would write into `~/.codex`), Continue fresh and
-  summaries (later phase), New session in this folder, Remote Control, API billing, Running now,
-  usage and limits (Phase C). A Codex session whose file is gone can be read but not resumed: the
-  app never copies files back into `~/.codex`.
+  summaries (later phase), New session in this folder, Remote Control, API billing, Running now. A
+  Codex session whose file is gone can be read but not resumed: the app never copies files back
+  into `~/.codex`.
+- **Usage** (Phase C): from each rollout's `event_msg` / `token_count` events, read in full (also
+  `.jsonl.zst` and very large files; only those lines are kept). Per response:
+  `info.last_token_usage` (in real rollouts it always equals the change in
+  `info.total_token_usage`), or the change in the running total for older Codex that writes no last
+  usage. `input_tokens` includes `cached_input_tokens` (shown as cached input; input is the rest),
+  and `output_tokens` includes `reasoning_output_tokens` (shown, never added again), so the totals
+  are Codex's own `total_tokens`. Codex's newer `token_usage_record` lines repeat the same usage and
+  are not counted.
+  - **Counted once.** Codex sends an event again with an unchanged total (when only the limits
+    moved): skipped. A fork's rollout (`codex fork`, `forked_from_id`) starts with a copy of its
+    parent's events, mostly written when the fork is made (0–10 ms after its start in 137 of 141
+    real forks; a few wrote them seconds later), so an event's identity is its fork lineage (the
+    first thread of its `forked_from_id` chain) plus its exact counts (running total and last
+    usage) and which occurrence of them it is in its file: never its time or file. A fork's copy
+    counts once when an ancestor held the same event before the fork was made (the parent's, at
+    its real time), whenever the fork wrote it, in any reading order; a matching response the
+    parent or a sibling made after that is a separate response and counts too. With the parent gone everywhere, the
+    siblings' copies count once. Copies whose identity differs from their original's (rows an
+    older parser made, next to rows of this one) are matched by their numbers (a reading's with
+    its reset date, so a current window is never taken for an old one with the same percentage;
+    only a reset time older Codex gave relative to the event is left out), the same rule, one to one: one row
+    an ancestor held stands for one copy. A session read again keeps the copies other sessions
+    hold, and a session whose rollout is gone keeps its rows and its fork links (saved in
+    `codex-index.json`); a gone fork whose link was never saved is linked to the session whose
+    earlier rows its first rows repeat, one to one and in order. Unrelated sessions are never
+    merged. Subagent threads don't copy their parent's usage: they're real usage and are counted in
+    full. A resume appends to the same rollout; a total that went down counts only the new event's
+    own usage.
+  - Kept in the app's data folder apart from Claude Code's (`usage\codex-records-YYYY-MM.ndjson`,
+    `codex-limits-YYYY-MM.ndjson`, `codex-index.json`); Claude Code's records, reports, limits and
+    parity snapshots are unchanged. Recalculate reads both again. After an update that changes how
+    Codex usage is read, every rollout is read again in the background (the rest of the app starts
+    without waiting); a session that's offline or unreadable then keeps its earlier rows until it
+    can be read. Codex's 75 / 90% alerts watch from the moment the saved data is loaded, so a
+    crossing the scan finds still alerts, and a re-read of saved readings never does. The scan
+    reads the most recently active Codex sessions first and reports its progress every few
+    seconds and once the Codex sessions are read (before the Claude Code scan), so a crossing in a
+    running session alerts within seconds, also during a long re-read.
+- **Limits** from `rate_limits` in the same events: `primary` and `secondary` windows with
+  `used_percent`, `window_minutes` and `resets_at`, plus `limit_id` / `limit_name`, `plan_type`
+  and `credits`. Which window is which comes from `window_minutes` (300 = 5-hour, 10080 = weekly),
+  never the slot: newer Codex reports the weekly window as `primary` and, on Pro, no 5-hour window
+  at all. Other lengths get their own gauge. Another `limit_id` (e.g. "GPT-5.3-Codex-Spark") is a
+  separate limit: a small gauge when read in the last 30 days, else folded under "Other limits".
+  **Accounts:** two ChatGPT sign-ins on different plans can write into one Codex home (seen in
+  real logs: `plus` and `prolite` readings interleaved). auth.json is never read, so `plan_type` is
+  the account marker: the gauges, pace and limit health follow the account with the newest
+  reading (its readings, and the usage of sessions that reported that plan), and another
+  `plan_type` gets its own small gauge ("another sign-in or an earlier plan": a plan change on one
+  account looks the same). Two accounts on the same plan can't be told apart. Older Codex wrote
+  299 / 10079 minutes for the same windows; within 2 minutes counts as the same window.
+  A reading shares its event's identity, so a fork's copied readings never pose as current ones; a
+  window that had already reset when it was read is dropped. Unchanged readings are kept once every
+  10 minutes (and the last one of each file), so "updated" stays right. Stale handling is Claude's:
+  a reading from before the window reset shows "No recent reading" and the last value "as of …".
+  Alerts at the same thresholds as Claude's, for readings from the last 30 minutes.
+- **Plan and limit health**: Codex's own plan, from the newest `plan_type` ("plus", "prolite" =
+  Pro $100 (an inference: Pro has no 5-hour window, which matches), "pro" = Pro $200, "team" =
+  Business…), always shown with the raw code; or chosen in Settings. Plan changes in the logs
+  become plan spans from the day each was first seen. Multipliers relative to Plus (defaults:
+  Plus 1, Pro $100 5, Pro $200 10, Pro $500 25, Business / Enterprise / Edu / Go / Free 1; OpenAI
+  publishes none) are editable. Its baseline, normal dates, threshold, streak and "used elsewhere"
+  ranges are separate from Claude Code's; normal dates within the current plan work best.
+- **Prices**: Codex has its own price table: OpenAI's API prices from a bundled LiteLLM snapshot
+  (`scripts/make-price-snapshot.mjs --openai`, never fetched at runtime), editable. A row matches its
+  own model id or a dated copy, never a sized variant (`gpt-5.6` doesn't price `gpt-5.6-luna`).
+  Models in the logs without a price are listed as "new model detected", with a button to add a row.
+- **Context size**: the last response's `last_token_usage.total_tokens` (Codex's own "tokens in
+  the context window") out of `info.model_context_window`; after a compaction with no response since,
+  the session's first input plus the compaction summary. Resume estimates are priced cold at the
+  input price: Codex logs report no cache writes and nothing about how long a cache stays warm.
+- **Never**: `auth.json` or any credential file, and no OpenAI or ChatGPT endpoint. Logs only.
 - **Archive**: Settings → Archive → "Archive Codex sessions": Off (default; Codex doesn't delete
   old sessions itself), Named, pinned or tagged, or All. The size it would copy, and about what a
   backup grows by (only for copies that are new or hold more), are shown before it's turned on.

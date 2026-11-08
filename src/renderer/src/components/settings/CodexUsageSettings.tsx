@@ -225,6 +225,25 @@ export function CodexUsageSettings({
       </Row>
 
       <Row
+        label="Different plans in the logs are"
+        hint={
+          (settings.codexAccounts ?? 'separate') === 'separate'
+            ? "Separate sign-ins: each plan_type keeps its own gauges and history (the gauges follow the newest). The logs can't tell a second sign-in from a plan change."
+            : 'One account that changed plan: one history, each window scored at the multiplier of its plan, so a Plus baseline carries over to Pro.'
+        }
+      >
+        <Segmented<'separate' | 'one'>
+          ariaLabel="Different plans in the logs are"
+          value={settings.codexAccounts ?? 'separate'}
+          onChange={(v) => void update({ codexAccounts: v })}
+          options={[
+            { value: 'separate', label: 'Separate sign-ins' },
+            { value: 'one', label: 'One account' }
+          ]}
+        />
+      </Row>
+
+      <Row
         label="Tray, mini meter and status bar"
         hint="Whose limits they show. Usage alerts (75% / 90%, set above) work for both."
       >

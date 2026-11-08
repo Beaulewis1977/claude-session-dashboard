@@ -373,7 +373,11 @@ export class UsageService extends EventEmitter<{ changed: [] }> {
         const provider = sessionProvider(this.sessions, s)
         if (!provider.capabilities.usage) continue
         if (provider.id === 'codex') {
-          roots ??= lineageRoots(list.filter((x) => x.provider === 'codex'))
+          if (!roots) {
+            const codexList = list.filter((x) => x.provider === 'codex')
+            roots = lineageRoots(codexList)
+            this.codex.setLineage(codexList)
+          }
           if (await this.syncCodex(s, provider, roots.get(s.sessionId) ?? s.sessionId, force))
             changed = true
           continue

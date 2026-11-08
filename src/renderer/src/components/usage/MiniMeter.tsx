@@ -36,6 +36,12 @@ export function MiniMeter() {
     })
   }, [set])
   useLiveData(ready)
+  // Settings changed in the main window (e.g. whose limits it shows): every settings
+  // change also announces a usage change, so read them again then.
+  useEffect(() => {
+    if (!ready) return
+    return api.onUsageChanged(() => void api.getSettings().then((s) => set({ settings: s })))
+  }, [ready, set])
   if (!ready) return <div className="h-full bg-background" />
   return <MiniMeterBody />
 }

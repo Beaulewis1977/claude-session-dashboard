@@ -16,7 +16,8 @@ import { listFiles, readNdjson, writeNdjson } from '../core/ndjson'
 
 /** Bumped when the Codex usage parser changes: every Codex session is read again. */
 // 2: records carry the plan_type of the account that ran them; 299/10079-minute windows.
-export const CODEX_USAGE_VERSION = 2
+// 3: identities count repeats within a file; readings without a plan take their session's.
+export const CODEX_USAGE_VERSION = 3
 
 const RECORDS_RE = /^codex-records-\d{4}-\d{2}\.ndjson$/
 const LIMITS_RE = /^codex-limits-\d{4}-\d{2}\.ndjson$/
@@ -89,23 +90,87 @@ export class CodexUsageStore {
     return this.resolve().readings
   }
 
+  /** Each known Codex session's parent (`forkedFromId`), by session id; null: not a fork. */
+  private parents = new Map<string, string | null>()
+
+  /** The catalogue's fork links, for telling copied history from independent responses. */
+  setLineage(sessions: { sessionId: string; forkedFromId?: string }[]): void {
+    const next = new Map(sessions.map((x) => [x.sessionId, x.forkedFromId ?? null] as const))
+    const same =
+      next.size === this.parents.size && [...next].every(([k, v]) => this.parents.get(k) === v)
+    if (same) return
+    this.parents = next
+    this.winners = undefined
+  }
+
+  private ancestors(sid: string | undefined): Set<string> {
+    const out = new Set<string>()
+    let p = sid ? this.parents.get(sid) : undefined
+    while (p && !out.has(p)) {
+      out.add(p)
+      p = this.parents.get(p)
+    }
+    return out
+  }
+
+  /**
+   * The copies of one event that count. The same session (a rollout found in
+   * two homes, or its archive copy) counts once. A copy in a fork whose
+   * ancestor also holds it is copied history: only the ancestor's counts.
+   * Copies left in unrelated forks are independent responses that happen to
+   * match (both count), unless the parent they would share is missing
+   * everywhere: then they're taken to be its copied history (the earliest
+   * counts).
+   */
+  private pick<T extends { id: string; ts: number; key: string }>(
+    copies: T[],
+    sidOf: (x: T) => string | undefined
+  ): T[] {
+    if (copies.length === 1) return copies
+    const bySid = new Map<string, T>()
+    for (const c of copies) {
+      const k = sidOf(c) ?? c.key
+      const e = bySid.get(k)
+      if (!e || better(c, e)) bySid.set(k, c)
+    }
+    const one = [...bySid.values()]
+    // Fork links not known yet (before the first scan): the earliest copy only.
+    if (!this.parents.size) {
+      let e = one[0]
+      for (const k of one) if (better(k, e)) e = k
+      return [e]
+    }
+    const kept = one.filter((c) => {
+      const anc = this.ancestors(sidOf(c))
+      return !one.some((d) => d !== c && anc.has(sidOf(d) ?? ''))
+    })
+    if (kept.length <= 1) return kept
+    const anc0 = this.ancestors(sidOf(kept[0]))
+    const common = [...anc0].filter((a) => kept.every((k) => this.ancestors(sidOf(k)).has(a)))
+    if (common.length && !common.some((a) => this.parents.has(a))) {
+      let e = kept[0]
+      for (const k of kept) if (better(k, e)) e = k
+      return [e]
+    }
+    // Independent: each keeps its own id, so lists and tables can tell them apart.
+    return kept.map((k, i) => (i === 0 ? k : { ...k, id: `${k.id}:${sidOf(k) ?? k.key}` }))
+  }
+
   private resolve(): { records: UsageRecord[]; readings: CodexLimitReading[] } {
     if (this.winners) return this.winners
-    const recs = new Map<string, UsageRecord>()
-    const reads = new Map<string, CodexLimitReading>()
+    const recs = new Map<string, UsageRecord[]>()
+    const reads = new Map<string, CodexLimitReading[]>()
     for (const c of this.bySession.values()) {
-      for (const r of c.records) {
-        const e = recs.get(r.id)
-        if (!e || better(r, e)) recs.set(r.id, r)
-      }
-      for (const r of c.readings) {
-        const e = reads.get(r.id)
-        if (!e || better(r, e)) reads.set(r.id, r)
-      }
+      for (const r of c.records) recs.set(r.id, [...(recs.get(r.id) ?? []), r])
+      for (const r of c.readings) reads.set(r.id, [...(reads.get(r.id) ?? []), r])
     }
     this.winners = {
-      records: [...recs.values()].sort((a, b) => a.ts - b.ts),
-      readings: [...reads.values()].sort((a, b) => a.ts - b.ts)
+      records: [...recs.values()]
+        .flatMap((c) => this.pick(c, (r) => r.sid))
+        .sort((a, b) => a.ts - b.ts),
+      readings: [...reads.values()]
+        .flatMap((c) => this.pick(c, (r) => r.sessionId))
+        .sort((a, b) => a.ts - b.ts)
     }
     return this.winners
   }

@@ -51,6 +51,8 @@ export interface CodexLimitReading {
   limitName?: string
   /** `plan_type` as Codex wrote it, e.g. "plus", "prolite". */
   planType?: string
+  /** `planType` wasn't in this reading: taken from its own session's other readings. */
+  planInferred?: true
   windows: CodexLimitWindow[]
   credits?: { hasCredits: boolean; unlimited: boolean; balance?: string }
   /** `rate_limit_reached_type`, when Codex says a limit was hit. */

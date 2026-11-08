@@ -2,7 +2,7 @@
 // optional in the settings file (absent in every file written before them)
 // and never shared with Claude Code's plan, baseline or price table.
 
-import type { AppSettings, MeterProvider, UsageSplit } from '../types'
+import type { AppSettings, CodexAccounts, MeterProvider, UsageSplit } from '../types'
 import {
   sanitizeCodexMults,
   sanitizeCodexPlan,
@@ -20,6 +20,7 @@ import { DEFAULT_CODEX_PRICES, sanitizePrices, type ModelPrice } from './pricing
 
 export interface CodexUsageSettings {
   codexPlan: CodexPlanSetting
+  codexAccounts: CodexAccounts
   codexPlanMults: Partial<Record<CodexPlan, number>>
   codexHealth: HealthSettings
   codexElsewhere: ElsewhereRange[]
@@ -52,6 +53,7 @@ export function codexUsageSettings(s: Partial<AppSettings>): CodexUsageSettings 
   const prices = sanitizePrices(s.codexPrices)
   return {
     codexPlan: sanitizeCodexPlan(s.codexPlan) ?? 'auto',
+    codexAccounts: s.codexAccounts === 'one' ? 'one' : 'separate',
     codexPlanMults: sanitizeCodexMults(s.codexPlanMults) ?? {},
     codexHealth: s.codexHealth ? sanitizeHealth(s.codexHealth) : { ...DEFAULT_HEALTH },
     codexElsewhere: sanitizeElsewhere(s.codexElsewhere),
@@ -73,11 +75,10 @@ export function codexSettingsPatch(
     const v = sanitizeCodexPlan(p.codexPlan)
     if (v) out.codexPlan = v
   }
-  if ('codexPlanMults' in p)
-    out.codexPlanMults = {
-      ...(sanitizeCodexMults(cur.codexPlanMults) ?? {}),
-      ...(sanitizeCodexMults(p.codexPlanMults) ?? {})
-    }
+  // The whole map: the renderer sends every override (Reset sends none).
+  if ('codexPlanMults' in p) out.codexPlanMults = sanitizeCodexMults(p.codexPlanMults) ?? {}
+  if (p.codexAccounts === 'separate' || p.codexAccounts === 'one')
+    out.codexAccounts = p.codexAccounts
   if ('codexHealth' in p)
     out.codexHealth = sanitizeHealth({
       ...(cur.codexHealth ?? DEFAULT_HEALTH),

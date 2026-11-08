@@ -914,12 +914,17 @@ describe('Ask Claude and settings', () => {
     const { codexSettingsPatch } = await import('@shared/usage/codex-settings')
     expect(codexSettingsPatch({ codexPlan: 'nope' as never }, {})).toEqual({})
     expect(codexSettingsPatch({ codexPlan: 'pro200' }, {})).toEqual({ codexPlan: 'pro200' })
+    // The whole map (Reset sends {}), never merged with the old one.
+    expect(codexSettingsPatch({ codexPlanMults: {} }, { codexPlanMults: { pro200: 12 } })).toEqual({
+      codexPlanMults: {}
+    })
     expect(
       codexSettingsPatch(
         { codexPlanMults: { pro100: 6, plus: -1 } as never },
         { codexPlanMults: { pro200: 12 } }
       )
-    ).toEqual({ codexPlanMults: { pro200: 12, pro100: 6 } })
+    ).toEqual({ codexPlanMults: { pro100: 6 } })
+    expect(codexSettingsPatch({ codexAccounts: 'one' }, {})).toEqual({ codexAccounts: 'one' })
     expect(codexSettingsPatch({ meterProvider: 'both', usageSplit: 'split' }, {})).toEqual({
       meterProvider: 'both',
       usageSplit: 'split'
@@ -955,5 +960,163 @@ describe('older window lengths', () => {
     expect(l.extraLimits[0].windows.map((w) => [w.minutes, w.label, w.gauge.pct])).toEqual([
       [300, '5-hour window', 45]
     ])
+  })
+})
+
+describe('review fixes: counting and limit history', () => {
+  const ev = (ts: string, total: number[], last: number[], rl: unknown = null) =>
+    tc(
+      ts,
+      {
+        total_token_usage: counts(total[0], 0, total[1]),
+        last_token_usage: counts(last[0], 0, last[1])
+      },
+      rl
+    )
+  const parent = [
+    ev('2026-10-20T10:00:00Z', [100, 10], [100, 10]),
+    ev('2026-10-20T10:01:00Z', [300, 20], [200, 10])
+  ]
+  // Two sibling forks copy the parent, then each makes one response with the same counts.
+  const sibling = [...parent, ev('2026-10-21T09:00:00Z', [400, 30], [100, 10])]
+  const meta = (key: string, sid: string) => ({ ...ctx, key, sessionId: sid, lineageRoot: 'p' })
+
+  it('counts matching responses in sibling forks twice, their copied history once', () => {
+    const store = new CodexUsageStore()
+    store.setLineage([
+      { sessionId: 'p' },
+      { sessionId: 'a', forkedFromId: 'p' },
+      { sessionId: 'b', forkedFromId: 'p' }
+    ])
+    for (const [k, sid, text] of [
+      ['w:p', 'p', parent],
+      ['w:a', 'a', sibling],
+      ['w:b', 'b', sibling]
+    ] as const) {
+      const r = analyzeCodexUsage(text.join('\n'), meta(k, sid))
+      store.set(k, r.records, r.codexLimits ?? [])
+    }
+    const recs = store.records()
+    expect(recs.filter((r) => r.key === 'w:p')).toHaveLength(2)
+    expect(
+      recs
+        .filter((r) => r.key !== 'w:p')
+        .map((r) => r.key)
+        .sort()
+    ).toEqual(['w:a', 'w:b'])
+    expect(new Set(recs.map((r) => r.id)).size).toBe(recs.length)
+  })
+
+  it("takes siblings' shared events as copied history when their parent is gone", () => {
+    const store = new CodexUsageStore()
+    store.setLineage([
+      { sessionId: 'a', forkedFromId: 'p' },
+      { sessionId: 'b', forkedFromId: 'p' }
+    ])
+    for (const [k, sid] of [
+      ['w:a', 'a'],
+      ['w:b', 'b']
+    ] as const) {
+      const r = analyzeCodexUsage(parent.join('\n'), meta(k, sid))
+      store.set(k, r.records, [])
+    }
+    expect(store.records()).toHaveLength(2)
+  })
+
+  it('counts a response after a counter reset even when its counts match an earlier one', () => {
+    const text = [
+      ev('2026-10-20T10:00:00Z', [100, 10], [100, 10]),
+      ev('2026-10-20T11:00:00Z', [100, 10], [100, 10])
+    ]
+    // The second one is a repeat (same total), so a reset in between makes it new usage:
+    const reset = [
+      text[0],
+      tc('2026-10-20T10:30:00Z', {
+        total_token_usage: counts(5, 0, 0),
+        last_token_usage: counts(5, 0, 0)
+      }),
+      text[1]
+    ]
+    const { records } = analyzeCodexUsage(reset.join('\n'), ctx)
+    expect(records).toHaveLength(3)
+    expect(new Set(records.map((r) => r.id)).size).toBe(3)
+  })
+
+  it('keeps a later identical reading, so a current gauge stays current', () => {
+    const rl = {
+      primary: { used_percent: 9, window_minutes: 10080, resets_at: sec('2026-10-25T00:00:00Z') },
+      plan_type: 'plus'
+    }
+    const a = counts(10, 0, 1)
+    const text = [
+      tc('2026-10-20T10:00:00Z', { total_token_usage: a, last_token_usage: a }, rl),
+      tc('2026-10-20T10:30:00Z', { total_token_usage: a, last_token_usage: a }, rl)
+    ].join('\n')
+    const { codexLimits } = analyzeCodexUsage(text, ctx)
+    expect(codexLimits!.map((r) => r.ts)).toEqual([
+      Date.parse('2026-10-20T10:00:00Z'),
+      Date.parse('2026-10-20T10:30:00Z')
+    ])
+    expect(new Set(codexLimits!.map((r) => r.id)).size).toBe(2)
+  })
+
+  const reading = (
+    id: string,
+    ts: number,
+    planType: string | undefined,
+    pct: number
+  ): CodexLimitReading => ({
+    id,
+    ts,
+    key: 'k',
+    source: 's',
+    limitId: 'codex',
+    ...(planType ? { planType } : {}),
+    windows: [{ pct, minutes: 10080, resetsAt: FIXTURES_NOW + 86_400_000 }]
+  })
+  const svc = (
+    readings: CodexLimitReading[],
+    over: Partial<CodexLimitsSettings> = {},
+    notify = () => undefined
+  ) =>
+    new CodexLimitsService(
+      Object.assign(new EventEmitter(), {
+        codexRecords: () => [] as UsageRecord[],
+        codexLimitReadings: () => readings
+      }),
+      () => limitsSettings(over),
+      notify
+    )
+
+  it('a newest reading without a plan keeps the account; One account merges plan changes', () => {
+    const rs = [
+      reading('a', FIXTURES_NOW - 3_000, 'plus', 30),
+      reading('b', FIXTURES_NOW - 2_000, 'prolite', 5),
+      reading('c', FIXTURES_NOW - 1_000, undefined, 6)
+    ]
+    expect(svc(rs).state().plan.detectedCode).toBe('prolite')
+    const one = svc(rs, { accounts: 'one' }).state()
+    expect(one.extraLimits).toEqual([])
+    expect(one.sevenDay?.pct).toBe(6)
+    expect(one.health7d?.plans.map((p) => p.label)).toEqual(['Plus (plus)', 'Pro $100 (prolite)'])
+  })
+
+  it('alerts each sign-in on its own, also for a session scanned late', () => {
+    const rs: CodexLimitReading[] = []
+    const notify = vi.fn()
+    const usage = Object.assign(new EventEmitter(), {
+      codexRecords: () => [] as UsageRecord[],
+      codexLimitReadings: () => rs
+    })
+    const s = new CodexLimitsService(usage, () => limitsSettings(), notify)
+    rs.push(reading('n1', FIXTURES_NOW - 60_000, 'plus', 80))
+    s.start()
+    rs.push(reading('n2', FIXTURES_NOW - 50_000, 'prolite', 80))
+    usage.emit('changed')
+    expect(notify).toHaveBeenCalledTimes(1)
+    // An older reading from a session found later is still checked.
+    rs.unshift(reading('late', FIXTURES_NOW - 120_000, 'pro', 92))
+    usage.emit('changed')
+    expect(notify).toHaveBeenCalledTimes(2)
   })
 })

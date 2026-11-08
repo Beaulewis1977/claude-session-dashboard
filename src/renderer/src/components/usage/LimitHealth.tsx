@@ -544,9 +544,11 @@ export function LimitHealthCard({
 }) {
   const isCodex = codex !== undefined
   // A Codex plan without a 5-hour window starts on the weekly one.
-  const [kind, setKind] = useState<Kind>(() =>
-    isCodex && codex && !codex.fiveHourRecent ? 'seven_day' : 'five_hour'
-  )
+  // Until one is picked, a Codex plan without a 5-hour window shows the weekly one
+  // (worked out from the data, which can arrive after the first render).
+  const [picked, setKind] = useState<Kind | null>(null)
+  const kind: Kind =
+    picked ?? (isCodex && codex && !codex.fiveHourRecent ? 'seven_day' : 'five_hour')
   const [compare, setCompare] = useState(false)
   const src = isCodex ? codex : limits
   const report = kind === 'five_hour' ? src?.health5h : src?.health7d

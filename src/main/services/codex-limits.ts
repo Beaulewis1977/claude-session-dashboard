@@ -58,6 +58,8 @@ import type { UsageService } from './usage'
 
 export interface CodexLimitsSettings {
   plan: CodexPlanSetting
+  /** Different plan_types: separate sign-ins (default), or one account that changed plan. */
+  accounts?: 'separate' | 'one'
   mults: Partial<Record<CodexPlan, number>>
   health: HealthSettings
   elsewhere: ElsewhereRange[]
@@ -143,7 +145,8 @@ function codexAdvice(a: PaceAdvice | undefined): PaceAdvice | undefined {
 }
 
 export class CodexLimitsService extends EventEmitter<{ changed: [] }> {
-  private lastSeen = 0
+  /** Readings already checked for alerts (a session scanned late still gets checked). */
+  private seen = new Set<string>()
   /** Worked-out results for the same data, settings and minute (state() is asked for often). */
   private memo = new Map<string, unknown>()
   private memoKey = ''
@@ -189,7 +192,7 @@ export class CodexLimitsService extends EventEmitter<{ changed: [] }> {
     if (this.started) return
     this.started = true
     const rs = this.usage.codexLimitReadings()
-    this.lastSeen = rs.length ? rs[rs.length - 1].ts : 0
+    this.seen = new Set(rs.map((r) => r.id))
     this.usage.on('changed', () => this.onUsageChanged())
   }
 
@@ -199,10 +202,9 @@ export class CodexLimitsService extends EventEmitter<{ changed: [] }> {
 
   private onUsageChanged(): void {
     const rs = this.readings()
-    const newest = rs.length ? rs[rs.length - 1].ts : 0
-    if (newest <= this.lastSeen) return
-    const fresh = rs.filter((r) => r.ts > this.lastSeen)
-    this.lastSeen = newest
+    const fresh = rs.filter((r) => !this.seen.has(r.id))
+    if (!fresh.length) return
+    for (const r of fresh) this.seen.add(r.id)
     this.checkAlerts(fresh, rs)
     this.emit('changed')
   }
@@ -220,7 +222,8 @@ export class CodexLimitsService extends EventEmitter<{ changed: [] }> {
         let prev: number | undefined
         for (let i = all.indexOf(r) - 1; i >= 0; i--) {
           const x = all[i]
-          if (x.limitId !== r.limitId) continue
+          // The same limit of the same account (sign-ins never compare with each other).
+          if (x.limitId !== r.limitId || (x.planType ?? '') !== (r.planType ?? '')) continue
           const pw = x.windows.find(
             (y) =>
               y.minutes === w.minutes && y.resetsAt && Math.abs(y.resetsAt - w.resetsAt!) < 120_000
@@ -230,7 +233,7 @@ export class CodexLimitsService extends EventEmitter<{ changed: [] }> {
             break
           }
         }
-        const base = `${r.limitId}:${w.minutes}:${Math.round(w.resetsAt / 60_000)}`
+        const base = `${r.limitId}:${r.planType ?? ''}:${w.minutes}:${Math.round(w.resetsAt / 60_000)}`
         const hit = crossedThresholds(prev, w.pct, s.alertThresholds).filter(
           (th) => !this.alerted.has(`${base}:${th}`)
         )
@@ -261,22 +264,28 @@ export class CodexLimitsService extends EventEmitter<{ changed: [] }> {
    * only account marker (two accounts on the same plan look like one).
    */
   private account(): string {
+    // One account: every plan_type is the same history.
+    if (this.settings().accounts === 'one') return '*'
+    // The newest reading that says its plan (one without it never resets the account).
     const rs = this.readings()
     for (let i = rs.length - 1; i >= 0; i--)
-      if (rs[i].limitId === MAIN_LIMIT_ID) return rs[i].planType ?? ''
+      if (rs[i].limitId === MAIN_LIMIT_ID && rs[i].planType) return rs[i].planType!
     return ''
   }
 
   /** The main limit's readings of the followed account. */
   private mainReadings(): CodexLimitReading[] {
     const acct = this.account()
-    return this.readings().filter((r) => r.limitId === MAIN_LIMIT_ID && (r.planType ?? '') === acct)
+    return this.readings().filter(
+      (r) => r.limitId === MAIN_LIMIT_ID && (acct === '*' || (r.planType ?? '') === acct)
+    )
   }
 
   /** Usage of the followed account (what moves its limits). */
   private accountRecords(): UsageRecord[] {
     const acct = this.account()
     const all = this.usage.codexRecords()
+    if (acct === '*') return all
     // Logs that never report a plan: all of it.
     if (!acct) return all.filter((r) => !r.plan)
     return all.filter((r) => r.plan === acct)
@@ -290,7 +299,16 @@ export class CodexLimitsService extends EventEmitter<{ changed: [] }> {
       (c, i, all) => all.findIndex((x) => x.code === c.code) === i
     )
     const mine = this.mainReadings()
-    const last = acct ? { code: acct, ts: mine.find((r) => r.planType)?.ts ?? 0 } : undefined
+    // One account: its newest plan, since that plan was first seen in the latest run of it.
+    const newest = [...mine].reverse().find((r) => r.planType)?.planType
+    const code = acct === '*' ? newest : acct || undefined
+    let since = 0
+    if (code)
+      for (let i = mine.length - 1; i >= 0; i--) {
+        if (mine[i].planType && mine[i].planType !== code) break
+        if (mine[i].planType === code) since = mine[i].ts
+      }
+    const last = code ? { code, ts: since } : undefined
     const detected = last ? planOfCode(last.code) : undefined
     const newestAt = mine.length ? mine[mine.length - 1].ts : undefined
     const base = {
@@ -325,6 +343,8 @@ export class CodexLimitsService extends EventEmitter<{ changed: [] }> {
   spans(): PlanSpan[] {
     const s = this.settings()
     const acct = this.account()
+    // One account: its plan changes over time, each window at the multiplier of its plan.
+    if (acct === '*') return codexPlanSpans(s.plan, detectPlanChanges(this.mainReadings()), s.mults)
     const first = this.mainReadings()[0]
     return codexPlanSpans(s.plan, acct && first ? [{ ts: first.ts, code: acct }] : [], s.mults)
   }
@@ -423,7 +443,7 @@ export class CodexLimitsService extends EventEmitter<{ changed: [] }> {
     const acct = this.account()
     const others = [
       ...new Set(readings.filter((r) => r.limitId === MAIN_LIMIT_ID).map((r) => r.planType ?? ''))
-    ].filter((p) => p !== acct)
+    ].filter((p) => acct !== '*' && p !== acct && p !== '')
     for (const p of others) {
       const rs = readings.filter((r) => r.limitId === MAIN_LIMIT_ID && (r.planType ?? '') === p)
       const windows: CodexWindowGauge[] = []

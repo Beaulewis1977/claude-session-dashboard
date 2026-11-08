@@ -396,6 +396,7 @@ async function main(): Promise<void> {
     const s = settings.value
     const key = [
       s.codexPlan,
+      s.codexAccounts,
       s.codexPlanMults,
       s.codexHealth,
       s.codexElsewhere,
@@ -475,6 +476,7 @@ async function main(): Promise<void> {
       const c = codexSettings()
       return {
         plan: c.codexPlan,
+        accounts: c.codexAccounts,
         mults: c.codexPlanMults,
         health: c.codexHealth,
         elsewhere: c.codexElsewhere,

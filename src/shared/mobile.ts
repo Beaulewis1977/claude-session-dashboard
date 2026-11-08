@@ -190,7 +190,13 @@ export const MOBILE_SAFE_SETTINGS = [
   'alertsEnabled',
   'alertThresholds',
   'weekStart',
-  'liveAlerts'
+  'liveAlerts',
+  // Limit health: normal dates and "used elsewhere" ranges (Claude Code's and Codex's).
+  'health',
+  'elsewhere',
+  'codexHealth',
+  'codexElsewhere',
+  'usageSplit'
 ] as const satisfies readonly (keyof AppSettings)[]
 
 export type MobileSafeSetting = (typeof MOBILE_SAFE_SETTINGS)[number]

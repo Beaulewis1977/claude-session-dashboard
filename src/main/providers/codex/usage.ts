@@ -81,12 +81,16 @@ function hash(s: string): string {
 }
 
 /**
- * An event's identity: lineage + exact counts (see the top of this file).
- * `extra` tells apart events that carry no new usage (re-sends, limits only)
- * by what they do carry, their limits.
+ * An event's identity: its fork lineage (the first thread of its fork chain),
+ * its exact counts (running total and last usage; for an event without new
+ * usage, also its limits) and which occurrence of those it is in its file. A
+ * fork's rollout copies its parent's events in order, so a copy gets exactly
+ * its original's identity, while a counter reset or a repeated reading in one
+ * file gets a new one. A response in one fork that happens to match one in a
+ * sibling fork is told apart by the store (by ancestry, see codex-usage.ts).
  */
-export function codexEventId(root: string, total: string, last: string, extra = ''): string {
-  return `codex:${hash(`${root}|${total}|${last}|${extra}`)}`
+export function codexEventId(root: string, counts: string, occurrence: number): string {
+  return `codex:${hash(`${root}|${counts}|${occurrence}`)}`
 }
 
 function limitWindow(v: unknown): CodexLimitWindow | undefined {
@@ -191,7 +195,8 @@ export function analyzeCodexUsage(text: string, ctx: CodexUsageContext): UsageAn
     .model as string | undefined
   let model = firstModel
   let prevTotal: Counts | undefined
-  const seen = new Set<string>()
+  // How often each identity has come up in this file (see codexEventId).
+  const occurrences = new Map<string, number>()
   // Codex repeats the same limits with every event: only changes are kept,
   // plus one reading every 10 minutes and the file's last one (so a gauge's
   // "updated" time is the last time Codex reported it, not the last change).
@@ -226,11 +231,11 @@ export function analyzeCodexUsage(text: string, ctx: CodexUsageContext): UsageAn
     const rl = l.payload.rate_limits
     const hasUsage = !!used && used.input_tokens + used.output_tokens > 0
     // Events without new usage are told apart by their limits.
-    const id = hasUsage
-      ? codexEventId(root, sig(total), sig(last))
-      : codexEventId(root, sig(total), sig(last), JSON.stringify(rl ?? null))
-    if (seen.has(id)) continue
-    seen.add(id)
+    // Events without new usage are told apart by their limits.
+    const base = [sig(total), sig(last), hasUsage ? '' : JSON.stringify(rl ?? null)].join('|')
+    const n = occurrences.get(base) ?? 0
+    occurrences.set(base, n + 1)
+    const id = codexEventId(root, base, n)
     if (used && hasUsage) {
       const cached = Math.min(used.cached_input_tokens, used.input_tokens)
       const cw = Math.min(used.cache_write_input_tokens, used.input_tokens - cached)
@@ -274,6 +279,14 @@ export function analyzeCodexUsage(text: string, ctx: CodexUsageContext): UsageAn
       rec.plan = p
     }
   for (const r of pending.values()) readings.push(r)
+  if (plans.length)
+    for (const r of readings) {
+      if (r.planType) continue
+      let p = plans[0].plan
+      for (const x of plans) if (x.ts <= r.ts) p = x.plan
+      r.planType = p
+      r.planInferred = true
+    }
   readings.sort((a, b) => a.ts - b.ts)
   return { records, turns: [], limitHits: [], usageReadings: [], codexLimits: readings }
 }

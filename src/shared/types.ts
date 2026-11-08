@@ -347,6 +347,11 @@ export interface AppSettings {
   // Codex usage & limits (Phase C). Kept apart from Claude Code's plan, baseline and prices.
   /** Codex plan for limit health: detected from the logs (absent: "auto") or chosen. */
   codexPlan?: CodexPlanSetting
+  /**
+   * Different plan_types in Codex's logs are separate sign-ins (absent) or one
+   * account that changed plan (the logs can't tell which).
+   */
+  codexAccounts?: CodexAccounts
   /** Codex plan multipliers (relative to Plus), where changed from the defaults. */
   codexPlanMults?: Partial<Record<CodexPlan, number>>
   /** Codex limit health: its own normal dates, threshold and streak. */
@@ -362,6 +367,7 @@ export interface AppSettings {
 }
 
 export type MeterProvider = 'claude' | 'codex' | 'both'
+export type CodexAccounts = 'separate' | 'one'
 export type UsageSplit = 'stacked' | 'split'
 
 /**

@@ -299,7 +299,8 @@ export function UsageView() {
   useEffect(() => {
     if (!wantSplit) return
     let cancelled = false
-    const base = { ...query, models: [], groupBy: 'model' as Dimension }
+    // The same model filter as the chips above (a Claude model leaves Codex's chart empty).
+    const base = { ...query, groupBy: 'model' as Dimension }
     void Promise.all([
       api.getUsageReport({ ...base, provider: undefined }),
       api.getUsageReport({ ...base, provider: 'codex' })

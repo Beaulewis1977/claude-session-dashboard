@@ -122,3 +122,87 @@ it('never opens, stats, copies or reads auth.json while scanning, archiving, rea
     Object.values(metadata.value.archive).some((r) => /auth\.json$/i.test(r.originalPath))
   ).toBe(false)
 })
+
+it('never names auth.json while Running now polls Codex and the approval hook is added and removed', async () => {
+  const { prepareFixtures, fixturesLayout } = await import('../src/main/fixtures')
+  const { createFixturesPlatform } = await import('../src/main/platform')
+  const { appPaths, createMetadataStore, createSettingsStore } =
+    await import('../src/main/services/store')
+  const { SessionService } = await import('../src/main/services/sessions')
+  const { ProviderRegistry } = await import('../src/main/providers/registry')
+  const { createCodexProvider } = await import('../src/main/providers/codex')
+  const { claudeProvider } = await import('../src/main/providers/claude')
+  const { CodexLiveReader, realCodexLiveFs } = await import('../src/main/providers/codex/live')
+  const { LiveService } = await import('../src/main/services/live')
+  const { createHooksStore, HooksInstaller } = await import('../src/main/services/hooks')
+  const { CodexHooksInstaller, createCodexHooksStore } =
+    await import('../src/main/services/codex-hooks')
+  const { DEFAULT_LIVE_ALERTS } = await import('@shared/live-alerts')
+  const { mkdir, writeFile, readFile } = await import('node:fs/promises')
+
+  await cp(join(__dirname, '..', 'fixtures'), join(root, 'fixtures'), { recursive: true })
+  await prepareFixtures(root, { codex: true })
+  const layout = fixturesLayout(root)
+  const codexHome = join(layout.sourcesDir, 'windows', 'Users', 'beau', '.codex')
+  // An open thread: its lock file exists (and the probe below says it's held).
+  const locks = join(codexHome, 'thread-writer-locks')
+  await mkdir(locks, { recursive: true })
+  const held = join(locks, '019a1111-0000-7000-8000-000000000001.lock')
+  await writeFile(held, '')
+
+  const paths = appPaths(layout.dataDir)
+  const metadata = createMetadataStore(paths)
+  const settings = createSettingsStore(paths)
+  await metadata.load()
+  await settings.load()
+  const sessions = new SessionService(
+    createFixturesPlatform(layout.fixturesDir, layout.sourcesDir),
+    paths,
+    metadata,
+    settings,
+    new ProviderRegistry([claudeProvider, createCodexProvider()])
+  )
+  await sessions.start()
+  await sessions.idle()
+  const src = sessions.sources.find((s) => s.id === 'codex-windows')!
+  const hs = createHooksStore(layout.dataDir)
+  const cs = createCodexHooksStore(layout.dataDir)
+  await hs.load()
+  await cs.load()
+  const scripts = join(__dirname, '..', 'resources', 'bridge')
+  const codexHooks = new CodexHooksInstaller(cs, {
+    dataDir: layout.dataDir,
+    scriptsDir: scripts,
+    readScript: (p) => readFile(p, 'utf8')
+  })
+  touched.length = 0
+  const live = new LiveService({
+    sessions,
+    hooks: new HooksInstaller(hs, {
+      dataDir: layout.dataDir,
+      scriptsDir: scripts,
+      readScript: (p) => readFile(p, 'utf8')
+    }),
+    codexHooks,
+    codexReader: new CodexLiveReader({ ...realCodexLiveFs, probeLock: async (p) => p === held }),
+    procs: { check: async (items) => items.map(() => undefined) },
+    settings: () => DEFAULT_LIVE_ALERTS,
+    notify: () => undefined,
+    push: async () => 0,
+    distroRoot: (id) => sessions.source(id)?.distroRoot
+  })
+  await live.poll(true)
+  expect(live.snapshot().sessions.some((s) => s.provider === 'codex')).toBe(true)
+  const plan = await codexHooks.plan(src, 'install')
+  expect((await codexHooks.apply(src, 'install', plan.token)).ok).toBe(true)
+  await live.refreshHooks()
+  await live.poll(true)
+  await codexHooks.apply(src, 'uninstall', (await codexHooks.plan(src, 'uninstall')).token)
+
+  // It really read the locks and the open thread's rollout…
+  expect(touched.some((p) => /thread-writer-locks/.test(p))).toBe(true)
+  expect(touched.some((p) => /019a1111-0000-7000-8000-000000000001\.jsonl$/.test(p))).toBe(true)
+  expect(touched.some((p) => /hooks\.json$/.test(p))).toBe(true)
+  // …and never named its login file.
+  expect(touched.filter((p) => /auth\.json$/i.test(p))).toEqual([])
+})

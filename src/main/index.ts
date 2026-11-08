@@ -32,6 +32,12 @@ import { registerMobileIpc } from './ipc-mobile'
 import { registerLiveIpc } from './ipc-live'
 import { realProcChecker } from './core/procs'
 import { createHooksStore, HooksInstaller } from './services/hooks'
+import {
+  CODEX_HOOKS,
+  codexHookPaths,
+  CodexHooksInstaller,
+  createCodexHooksStore
+} from './services/codex-hooks'
 import { LiveService } from './services/live'
 import { desktopText } from '@shared/live-alerts'
 import type { MobileFile } from './mobile/devices'
@@ -54,6 +60,8 @@ import {
   prepareFixtures,
   seedFixtureBridge,
   seedFixtureLive,
+  fixtureCodexReader,
+  seedFixtureCodexLive,
   fixtureProcChecker,
   seedFixtureAccounts,
   seedFixtureData,
@@ -706,9 +714,18 @@ async function main(): Promise<void> {
     scriptsDir: join(appRoot, 'resources', 'bridge'),
     readScript: (p) => readFile(p, 'utf8')
   })
+  const codexHooksStore = createCodexHooksStore(paths.dataDir)
+  await codexHooksStore.load()
+  const codexHooks = new CodexHooksInstaller(codexHooksStore, {
+    dataDir: paths.dataDir,
+    scriptsDir: join(appRoot, 'resources', 'bridge'),
+    readScript: (p) => readFile(p, 'utf8')
+  })
   const live = new LiveService({
     sessions,
     hooks,
+    codexHooks,
+    ...(FIXTURES ? { codexReader: fixtureCodexReader() } : {}),
     procs: FIXTURES ? fixtureProcChecker() : realProcChecker(),
     settings: () => sanitizeLiveAlerts(settings.value.liveAlerts),
     distroRoot: (id) => sessions.source(id)?.distroRoot,
@@ -725,7 +742,7 @@ async function main(): Promise<void> {
     },
     push: (kind, refFor) => mobile.webPush({ kind, ref: refFor })
   })
-  registerLiveIpc({ live, hooks, sessions, fixtures: FIXTURES })
+  registerLiveIpc({ live, hooks, codexHooks, sessions, fixtures: FIXTURES })
   live.on('changed', () => mobile.push('live'))
   accounts.on('changed', () => mobile.push('credits'))
 
@@ -764,12 +781,25 @@ async function main(): Promise<void> {
         ).catch(() => undefined)
         if (r?.removed || r?.restored) console.info('settings.json leftovers tidied', src.id, r)
       }
+      // The same for Codex's hooks.json (Codex session alerts).
+      for (const src of sessions.sources) {
+        const p = codexHookPaths(src)
+        if (!p || src.status !== 'ok') continue
+        const r = await cleanupSettingsLeftovers(
+          p.hooksPath,
+          codexHooks.backupDir,
+          paths.dataDir,
+          CODEX_HOOKS
+        ).catch(() => undefined)
+        if (r?.removed || r?.restored) console.info('hooks.json leftovers tidied', src.id, r)
+      }
     })
     // A fixed bridge script only reaches an existing install this way.
     .then(() =>
       installer
         .refreshScripts(sessions.sources)
         .then(() => hooks.refreshScripts(sessions.sources))
+        .then(() => codexHooks.refreshScripts(sessions.sources))
         .catch((err: unknown) => console.warn('could not refresh bridge scripts', err))
     )
     // Usage indexing runs alongside the rest: a full re-read of the history
@@ -789,6 +819,7 @@ async function main(): Promise<void> {
     .then(async () => {
       if (FIXTURES) await seedFixtureBridge(paths.dataDir, sessions, installer)
       if (FIXTURES) await seedFixtureLive(paths.dataDir, sessions, hooks)
+      if (FIXTURES) await seedFixtureCodexLive(sessions)
       live.start()
     })
     .then(() => mobile.autoStart())

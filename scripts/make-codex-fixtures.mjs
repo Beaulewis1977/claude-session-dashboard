@@ -364,13 +364,23 @@ write(
 write(
   join(WIN, 'sessions', '2026', '10', '21', `rollout-2026-10-21T08-00-00-${ID.fork}.jsonl`),
   rollout('2026-10-21T13:00:00Z', [
-    meta(ID.fork, { timestamp: '2026-10-21T13:00:00.000Z', cwd: shopCwd, forked_from_id: ID.cli }),
-    { ...meta(ID.cli, { timestamp: '2026-10-20T14:15:00.000Z', cwd: shopCwd }), dt: 1 },
-    turn(shopCwd, 'gpt-5.5-codex', 'xhigh'),
-    user('The checkout total is off by one cent when a coupon is applied. Find and fix it.'),
-    // The parent's token counts, copied with new timestamps: the same responses.
-    ...cliCounts,
-    say('Fixed: the coupon discount was rounded before tax.'),
+    {
+      ...meta(ID.fork, {
+        timestamp: '2026-10-21T13:00:00.000Z',
+        cwd: shopCwd,
+        forked_from_id: ID.cli
+      }),
+      dt: 0
+    },
+    // The parent's history, copied when the fork is made (Codex writes it within
+    // milliseconds of the fork's start), with new timestamps: the same responses.
+    ...[
+      meta(ID.cli, { timestamp: '2026-10-20T14:15:00.000Z', cwd: shopCwd }),
+      turn(shopCwd, 'gpt-5.5-codex', 'xhigh'),
+      user('The checkout total is off by one cent when a coupon is applied. Find and fix it.'),
+      ...cliCounts,
+      say('Fixed: the coupon discount was rounded before tax.')
+    ].map((l) => ({ ...l, dt: 1 })),
     user('Now add a regression test for coupons over 100%.'),
     ...patch('call_9', 'tests/checkout.test.ts', '+it("caps coupons at the subtotal", …)'),
     // The fork's own response: its running total goes on from the parent's.

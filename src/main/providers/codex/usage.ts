@@ -17,7 +17,7 @@
 //   thread lineage (the first thread of its fork chain, from the catalogue)
 //   plus its exact token counts (running total and last usage), never its
 //   time or file: the copy and the original are the same response, and the
-//   usage service keeps the earliest copy (the parent's, at its real time).
+//   usage store counts it once (the parent's, at its real time).
 // - Subagent threads don't copy their parent's usage: they're counted in full.
 // - Resumes append to the same rollout; a total that went down (a reset)
 //   counts the new event's own usage only.

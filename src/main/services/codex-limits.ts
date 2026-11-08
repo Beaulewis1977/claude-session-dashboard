@@ -121,6 +121,19 @@ function canon(minutes: number): number {
   return k === 'five_hour' ? 300 : k === 'seven_day' ? 10_080 : minutes
 }
 
+/**
+ * A reading as alerts know it: its session, time and numbers (not its id, which
+ * an update of the parser can change, so a re-read never alerts again).
+ */
+function seenKey(r: CodexLimitReading): string {
+  return [
+    r.key,
+    r.limitId,
+    r.ts,
+    r.windows.map((w) => `${w.pct}/${w.minutes}/${w.resetsAt ?? 0}`).join(';')
+  ].join('|')
+}
+
 function latestByMinutes(
   readings: CodexLimitReading[],
   limitId: string
@@ -187,12 +200,17 @@ export class CodexLimitsService extends EventEmitter<{ changed: [] }> {
     super()
   }
 
-  /** Watch the usage data for new readings (alerts) from now on. */
+  /**
+   * Watch the usage data for new readings (alerts). Called once the saved
+   * usage is loaded and before the logs are scanned: the readings saved then
+   * were checked in an earlier run, and every one the scan finds after that
+   * (also a crossing made while a long re-read runs) is checked.
+   */
   start(): void {
     if (this.started) return
     this.started = true
     const rs = this.usage.codexLimitReadings()
-    this.seen = new Set(rs.map((r) => r.id))
+    this.seen = new Set(rs.map(seenKey))
     this.usage.on('changed', () => this.onUsageChanged())
   }
 
@@ -202,9 +220,9 @@ export class CodexLimitsService extends EventEmitter<{ changed: [] }> {
 
   private onUsageChanged(): void {
     const rs = this.readings()
-    const fresh = rs.filter((r) => !this.seen.has(r.id))
+    const fresh = rs.filter((r) => !this.seen.has(seenKey(r)))
     if (!fresh.length) return
-    for (const r of fresh) this.seen.add(r.id)
+    for (const r of fresh) this.seen.add(seenKey(r))
     this.checkAlerts(fresh, rs)
     this.emit('changed')
   }
@@ -456,18 +474,27 @@ export class CodexLimitsService extends EventEmitter<{ changed: [] }> {
     const extraLimits: CodexLimitBucket[] = []
     const acct = this.account()
     // Model limits (e.g. Spark) per account too: a sign-in's percentages never
-    // show under another's. One-account mode: all of them are one account's.
-    const groups = new Map<string, { id: string; plan?: string; rs: CodexLimitReading[] }>()
+    // show under another's. One account: those from before the plan in force
+    // now are the earlier plan's (never shown as current, never mixed in).
+    const since = acct === '*' ? this.currentPlan().since : 0
+    const groups = new Map<
+      string,
+      { id: string; plan?: string; earlier: boolean; rs: CodexLimitReading[] }
+    >()
     for (const r of readings) {
       if (r.limitId === MAIN_LIMIT_ID) continue
       const plan = acct === '*' ? undefined : (r.planType ?? '')
-      const k = JSON.stringify([r.limitId, plan ?? null])
+      const earlier = r.ts < since
+      const k = JSON.stringify([r.limitId, plan ?? null, earlier])
       let g = groups.get(k)
       if (!g)
-        groups.set(k, (g = { id: r.limitId, ...(plan !== undefined ? { plan } : {}), rs: [] }))
+        groups.set(
+          k,
+          (g = { id: r.limitId, ...(plan !== undefined ? { plan } : {}), earlier, rs: [] })
+        )
       g.rs.push(r)
     }
-    for (const { id, plan, rs } of groups.values()) {
+    for (const { id, plan, earlier, rs } of groups.values()) {
       const latest = latestByMinutes(rs, id)
       const other = plan !== undefined && plan !== acct
       // The limit's own model, when its name says which (e.g. "GPT-5.3-Codex-Spark").
@@ -484,13 +511,16 @@ export class CodexLimitsService extends EventEmitter<{ changed: [] }> {
       }
       if (windows.length)
         extraLimits.push({
-          limitId: other ? `${id}@${plan || 'none'}` : id,
+          limitId: other ? `${id}@${plan || 'none'}` : earlier ? `${id}@earlier` : id,
           label: other
             ? `${label} · ${plan ? codeLabel(plan) : 'plan not reported'} · another sign-in or an earlier plan`
-            : label,
+            : earlier
+              ? `${label} · earlier plan`
+              : label,
           windows,
           lastAt,
-          recent: t - lastAt < RECENT_LIMIT_MS
+          // An earlier plan's is history: listed under "Other limits".
+          recent: !earlier && t - lastAt < RECENT_LIMIT_MS
         })
     }
     // Another account's main limit (another plan_type in the same logs): its own gauges.

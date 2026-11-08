@@ -4,9 +4,11 @@
 // repeats its parent's events, see providers/codex/usage.ts). Across
 // sessions, events with the same identity are told apart by ancestry and
 // time (see pick): a fork's copy of history its parent already holds counts
-// once, while independent responses that happen to match all count. A
-// session parsed again (or gone) never loses a response another session also
-// holds, and a session that's gone keeps its rows and its fork links.
+// once, while independent responses that happen to match all count. Copies
+// whose identity differs from their original's (an older parser's rows) are
+// matched by their numbers (see dropCopies). A session parsed again (or
+// gone) never loses a response another session also holds, and a session
+// that's gone keeps its rows and its fork links (or a guessed one, see links).
 
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -51,6 +53,17 @@ function month(ts: number): string {
 function better(a: { ts: number; key: string }, b: { ts: number; key: string }): boolean {
   return a.ts < b.ts || (a.ts === b.ts && a.key < b.key)
 }
+
+/** A row's session id (older rows without one: from the session key). */
+const recSid = (r: UsageRecord): string => r.sid ?? r.key.slice(r.key.lastIndexOf(':') + 1)
+const readSid = (r: CodexLimitReading): string =>
+  r.sessionId ?? r.key.slice(r.key.lastIndexOf(':') + 1)
+
+/** What a copy has in common with its original whatever the parser version: its numbers. */
+const recContent = (r: UsageRecord): string =>
+  [r.input, r.cacheRead, r.cacheWrite, r.output, r.reasoning ?? 0].join(',')
+const readContent = (r: CodexLimitReading): string =>
+  r.limitId + '|' + r.windows.map((w) => [w.pct, w.minutes, w.resetsAt ?? 0].join(',')).join(';')
 
 export class CodexUsageStore {
   private bySession = new Map<string, Copies>()
@@ -150,64 +163,133 @@ export class CodexUsageStore {
     )
   }
 
-  private ancestors(sid: string | undefined): Set<string> {
+  /**
+   * The fork links to count with: the saved and catalogue ones, plus a guess
+   * for a session the app has rows of but no link for (its rollout was gone
+   * before links were saved). Codex writes a fork's copies right when it makes
+   * the fork, so such a session is a fork of the session that already held
+   * what its first rows hold: the same events (same identity) or, between rows
+   * of two parser versions, the same counts when there are two or more (a
+   * session that isn't a fork has at most one response in its first second).
+   */
+  private links(): Map<string, Link> {
+    if (!this.parents.size) return this.parents
+    const first = new Map<string, number>()
+    const note = (sid: string, ts: number) => {
+      if (this.parents.has(sid)) return
+      const t = first.get(sid)
+      if (t === undefined || ts < t) first.set(sid, ts)
+    }
+    for (const c of this.bySession.values()) {
+      for (const r of c.records) note(recSid(r), r.ts)
+      for (const r of c.readings) note(readSid(r), r.ts)
+    }
+    if (!first.size) return this.parents
+    const links = new Map(this.parents)
+    // Each unknown session's first rows (its copies, if it's a fork).
+    const burst = new Map<string, UsageRecord[]>()
+    const wanted = new Set<string>()
+    for (const c of this.bySession.values())
+      for (const r of c.records) {
+        const start = first.get(recSid(r))
+        if (start === undefined || r.ts > start + COPY_MS) continue
+        const rows = burst.get(recSid(r)) ?? []
+        if (!rows.length) burst.set(recSid(r), rows)
+        rows.push(r)
+        wanted.add(r.id).add(recContent(r))
+      }
+    // Who else held those, and when.
+    const held = new Map<string, { sid: string; ts: number; old: boolean }[]>()
+    for (const [key, c] of this.bySession)
+      for (const r of c.records)
+        for (const k of [r.id, recContent(r)]) {
+          if (!wanted.has(k)) continue
+          const hs = held.get(k) ?? []
+          if (!hs.length) held.set(k, hs)
+          hs.push({ sid: recSid(r), ts: r.ts, old: this.legacy.has(key) })
+        }
+    const startOf = (sid: string) => links.get(sid)?.start ?? first.get(sid) ?? 0
+    for (const [sid, rows] of burst) {
+      const start = first.get(sid)!
+      const score = new Map<string, number>()
+      for (const r of rows) {
+        const mine = this.legacy.has(r.key)
+        const hits = new Set<string>()
+        for (const h of held.get(r.id) ?? []) if (h.sid !== sid && h.ts <= start) hits.add(h.sid)
+        if (rows.length >= 2)
+          for (const h of held.get(recContent(r)) ?? [])
+            if (h.sid !== sid && h.ts <= start && h.old !== mine) hits.add(h.sid)
+        for (const x of hits) score.set(x, (score.get(x) ?? 0) + 1)
+      }
+      let best: string | undefined
+      for (const [x, n] of score) {
+        const b = best === undefined ? -1 : score.get(best)!
+        // Ties: the nearest ancestor (the one made last).
+        if (n > b || (n === b && startOf(x) > startOf(best!))) best = x
+      }
+      if (best !== undefined && score.get(best)! >= Math.ceil(rows.length * 0.8))
+        links.set(sid, { parent: best, start })
+    }
+    return links
+  }
+
+  private static ancestors(links: Map<string, Link>, sid: string): Set<string> {
     const out = new Set<string>()
-    let p = sid ? this.parents.get(sid)?.parent : undefined
-    while (p && !out.has(p)) {
+    let p = links.get(sid)?.parent
+    while (p && !out.has(p) && p !== sid) {
       out.add(p)
-      p = this.parents.get(p)?.parent
+      p = links.get(p)?.parent
     }
     return out
   }
 
-  private startOf(sid: string | undefined): number | undefined {
-    return sid ? this.parents.get(sid)?.start : undefined
-  }
-
   /**
-   * The copies of one event that count. The same session (a rollout found in
-   * two homes, or its archive copy) counts once. A copy in a fork is copied
-   * history when an ancestor holds it from before the fork was made: only the
-   * ancestor's counts. An ancestor's matching response from after the fork
-   * was made is an independent one (both count). Copies left in forks of one
-   * parent that holds none of them: those made when their fork was (or, with
-   * no start time known, all of them when the parent is missing everywhere)
-   * are its copied history and count once; the rest are independent.
+   * The copies of one event (same identity) that count. The same session (a
+   * rollout found in two homes, or its archive copy) counts once. A copy in a
+   * fork is copied history when it was written when the fork was made and an
+   * ancestor held the event from before then: only the ancestor's counts. A
+   * matching response of an ancestor's from after the fork was made, or one
+   * the fork wrote later, is an independent response (both count). Copies
+   * left in forks of one parent that holds none of them: those made when
+   * their fork was (or, with no start time known, all of them when the
+   * parent is missing everywhere) are its copied history and count once.
    */
   private pick<T extends { id: string; ts: number; key: string }>(
     copies: T[],
-    sidOf: (x: T) => string | undefined
+    sidOf: (x: T) => string,
+    links: Map<string, Link>
   ): T[] {
     if (copies.length === 1) return copies
     const bySid = new Map<string, T>()
     for (const c of copies) {
-      const k = sidOf(c) ?? c.key
+      const k = sidOf(c)
       const e = bySid.get(k)
       if (!e || better(c, e)) bySid.set(k, c)
     }
     const one = [...bySid.values()]
     // Fork links not known yet (before the first scan): the earliest copy only.
-    if (!this.parents.size) {
+    if (!links.size) {
       let e = one[0]
       for (const k of one) if (better(k, e)) e = k
       return [e]
     }
+    const anc = (x: T) => CodexUsageStore.ancestors(links, sidOf(x))
+    const startOf = (x: T) => links.get(sidOf(x))?.start
     const kept = one.filter((c) => {
-      const anc = this.ancestors(sidOf(c))
-      const start = this.startOf(sidOf(c))
-      return !one.some(
-        (d) =>
-          d !== c && anc.has(sidOf(d) ?? '') && (start === undefined || d.ts <= start + COPY_MS)
-      )
+      const start = startOf(c)
+      // Written after its fork was made: the fork's own response.
+      if (start !== undefined && c.ts > start + COPY_MS) return true
+      const a = anc(c)
+      return !one.some((d) => d !== c && a.has(sidOf(d)) && (start === undefined || d.ts <= start))
     })
     if (kept.length <= 1) return kept
     let out = kept
-    const anc0 = this.ancestors(sidOf(kept[0]))
-    const common = [...anc0].filter((a) => kept.every((k) => this.ancestors(sidOf(k)).has(a)))
+    const anc0 = anc(kept[0])
+    const common = [...anc0].filter((a) => kept.every((k) => anc(k).has(a)))
     if (common.length) {
-      const parentGone = !common.some((a) => this.parents.has(a))
+      const parentGone = !common.some((a) => links.has(a))
       const copied = kept.filter((k) => {
-        const start = this.startOf(sidOf(k))
+        const start = startOf(k)
         return start === undefined ? parentGone : k.ts <= start + COPY_MS
       })
       if (copied.length > 1) {
@@ -220,24 +302,95 @@ export class CodexUsageStore {
     // Independent: each keeps its own id, so lists and tables can tell them apart.
     return out
       .sort((a, b) => (better(a, b) ? -1 : 1))
-      .map((k, i) => (i === 0 ? k : { ...k, id: `${k.id}:${sidOf(k) ?? k.key}` }))
+      .map((k, i) => (i === 0 ? k : { ...k, id: `${k.id}:${sidOf(k)}` }))
+  }
+
+  /**
+   * Copies that don't share an identity with their original: rows an older
+   * parser made (another identity scheme) for a fork or its parent, or a fork
+   * read against another lineage root. A fork's row written when the fork was
+   * made is a copy by construction: it gives way to an ancestor that held the
+   * same counts from before then, and between forks of one parent (which
+   * holds none of it) the earliest copy counts. Rows a fork wrote later
+   * always count.
+   */
+  private dropCopies<T extends { id: string; ts: number; key: string }>(
+    rows: T[],
+    all: T[],
+    sidOf: (x: T) => string,
+    contentOf: (x: T) => string,
+    links: Map<string, Link>
+  ): T[] {
+    const isCopy = (x: T) => {
+      const l = links.get(sidOf(x))
+      return !!l?.parent && l.start !== undefined && x.ts <= l.start + COPY_MS
+    }
+    const candidates = rows.filter(isCopy)
+    if (!candidates.length) return rows
+    const wanted = new Set(candidates.map(contentOf))
+    const held = new Map<string, T[]>()
+    for (const x of all) {
+      const k = contentOf(x)
+      if (!wanted.has(k)) continue
+      const hs = held.get(k) ?? []
+      if (!hs.length) held.set(k, hs)
+      hs.push(x)
+    }
+    // Rows that count so far (an independent copy of pick's has its own id).
+    const live = new Set(rows.map((x) => `${x.key}\u0000${x.ts}\u0000${contentOf(x)}`))
+    const counts = (x: T) => live.has(`${x.key}\u0000${x.ts}\u0000${contentOf(x)}`)
+    const drop = new Set<T>()
+    for (const c of candidates) {
+      const sid = sidOf(c)
+      const start = links.get(sid)!.start!
+      const a = CodexUsageStore.ancestors(links, sid)
+      const same = held.get(contentOf(c)) ?? []
+      if (same.some((d) => a.has(sidOf(d)) && d.ts <= start)) {
+        drop.add(c)
+        continue
+      }
+      const sibling = same.some((d) => {
+        const ds = sidOf(d)
+        if (ds === sid || a.has(ds) || !isCopy(d) || !better(d, c) || !counts(d)) return false
+        const da = CodexUsageStore.ancestors(links, ds)
+        return !da.has(sid) && [...da].some((x) => a.has(x))
+      })
+      if (sibling) drop.add(c)
+    }
+    return drop.size ? rows.filter((x) => !drop.has(x)) : rows
   }
 
   private resolve(): { records: UsageRecord[]; readings: CodexLimitReading[] } {
     if (this.winners) return this.winners
+    const links = this.links()
     const recs = new Map<string, UsageRecord[]>()
     const reads = new Map<string, CodexLimitReading[]>()
-    for (const c of this.bySession.values()) {
-      for (const r of c.records) recs.set(r.id, [...(recs.get(r.id) ?? []), r])
-      for (const r of c.readings) reads.set(r.id, [...(reads.get(r.id) ?? []), r])
+    const allRecs: UsageRecord[] = []
+    const allReads: CodexLimitReading[] = []
+    const add = <T extends { id: string }>(m: Map<string, T[]>, x: T) => {
+      const g = m.get(x.id)
+      if (g) g.push(x)
+      else m.set(x.id, [x])
     }
+    for (const c of this.bySession.values()) {
+      for (const r of c.records) {
+        add(recs, r)
+        allRecs.push(r)
+      }
+      for (const r of c.readings) {
+        add(reads, r)
+        allReads.push(r)
+      }
+    }
+    const records = [...recs.values()].flatMap((c) => this.pick(c, recSid, links))
+    const readings = [...reads.values()].flatMap((c) => this.pick(c, readSid, links))
     this.winners = {
-      records: [...recs.values()]
-        .flatMap((c) => this.pick(c, (r) => r.sid))
-        .sort((a, b) => a.ts - b.ts),
-      readings: [...reads.values()]
-        .flatMap((c) => this.pick(c, (r) => r.sessionId))
-        .sort((a, b) => a.ts - b.ts)
+      records: this.dropCopies(records, allRecs, recSid, recContent, links).sort(
+        (a, b) => a.ts - b.ts
+      ),
+      readings: this.dropCopies(readings, allReads, readSid, readContent, links).sort(
+        (a, b) => a.ts - b.ts
+      )
     }
     return this.winners
   }

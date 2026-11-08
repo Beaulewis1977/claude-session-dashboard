@@ -773,12 +773,17 @@ async function main(): Promise<void> {
         .catch((err: unknown) => console.warn('could not refresh bridge scripts', err))
     )
     // Usage indexing runs alongside the rest: a full re-read of the history
-    // (a parser update) can take minutes, and nothing below needs it.
-    // Codex alerts start once it's done (the readings already there never alert).
+    // (a parser update) can take minutes, and nothing below needs it. Codex
+    // alerts start once the saved data is loaded, before the scan, so a
+    // crossing the scan finds still alerts (what was saved never does).
     .then(() => {
-      void Promise.all([usage.start(), limits.start()])
+      void Promise.all([usage.start(), limits.start()]).catch((err: unknown) =>
+        console.warn('usage start failed', err)
+      )
+      void usage
+        .whenLoaded()
         .then(() => codexLimits.start())
-        .catch((err: unknown) => console.warn('usage start failed', err))
+        .catch((err: unknown) => console.warn('Codex alerts start failed', err))
     })
     .then(() => accounts.startAutoRefresh())
     .then(async () => {

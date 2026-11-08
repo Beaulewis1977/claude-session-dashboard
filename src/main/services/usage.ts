@@ -113,9 +113,16 @@ export class UsageService extends EventEmitter<{ changed: [] }> {
   // ------------------------------------------------------------- lifecycle
 
   async start(): Promise<void> {
-    await this.load()
+    await this.whenLoaded()
     this.sessions.on('changed', () => this.scheduleSync())
     await this.sync()
+  }
+
+  private loading?: Promise<void>
+
+  /** Resolves once the saved usage data is loaded (before the logs are scanned). */
+  whenLoaded(): Promise<void> {
+    return (this.loading ??= this.load())
   }
 
   scheduleSync(delay = 1500): void {
@@ -340,6 +347,9 @@ export class UsageService extends EventEmitter<{ changed: [] }> {
     await this.codex.load(dir)
     this.loaded = true
     this.invalidate()
+    // A view that asked while loading showed "loading": the saved data is here
+    // (the scan after it says nothing when no file changed).
+    this.emit('changed')
   }
 
   private purge(key: string): void {
@@ -359,7 +369,7 @@ export class UsageService extends EventEmitter<{ changed: [] }> {
   }
 
   private async syncNow(force: boolean): Promise<void> {
-    if (!this.loaded) await this.load()
+    if (!this.loaded) await this.whenLoaded()
     const list = this.sessions.list()
     if (!list.length) return
     this.parsing = true

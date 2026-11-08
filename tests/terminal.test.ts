@@ -472,16 +472,24 @@ describe('terminal access service', () => {
   })
 
   it('offers no new change while one is still running', async () => {
+    // The change's script is held at a gate. apply() only reaches run() after
+    // saving its record (an await), so wait until run() has really started:
+    // a fixed sleep could end before that under load, and finish() would then
+    // open nothing and the change would never end.
     let finish: () => void = () => undefined
+    let started: () => void = () => undefined
+    const inRun = new Promise<void>((r) => (started = r))
     svc = make({
       run: async (s) => {
-        await new Promise<void>((r) => (finish = r))
+        const gate = new Promise<void>((r) => (finish = r))
+        started()
+        await gate
         return pc.run(s)
       }
     })
     const p = await svc.prepare({ kind: 'install' })
     const running = 'token' in p ? svc.apply(p.token) : Promise.resolve({ ok: false })
-    await new Promise((r) => setTimeout(r, 10))
+    await inRun
     expect(await svc.prepare({ kind: 'firewall-add' })).toEqual({
       error: 'The previous change is still finishing. Try again in a moment.'
     })

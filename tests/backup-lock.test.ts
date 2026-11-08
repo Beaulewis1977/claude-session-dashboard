@@ -16,7 +16,7 @@ import {
 } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { collectFiles } from '../src/main/core/backup-files'
 import { deleteInSet } from '../src/main/core/backup-fs'
 import {
@@ -109,20 +109,40 @@ describe('claiming the lock', () => {
   })
 
   it('a running holder renews its lease, so a long backup keeps its lock', async () => {
-    const l = await acquireLock(setDir, 'me', { heartbeatMs: 40 })
-    const o = JSON.parse(await readFile(owner(), 'utf8'))
-    // Pretend the last renewal was long ago...
-    await writeFile(owner(), JSON.stringify({ ...o, at: ago(REMOTE_LEASE_MS + 60_000) }))
-    await new Promise((r) => setTimeout(r, 200))
-    // ...the heartbeat has renewed it: another PC still sees it as busy.
-    expect(Date.now() - Date.parse(JSON.parse(await readFile(owner(), 'utf8')).at)).toBeLessThan(
-      5000
-    )
-    await expect(acquireLock(setDir, 'other-pc')).rejects.toBeInstanceOf(BackupBusyError)
-    await l.release()
-    // Released: gone, and a late renewal never brings it back.
-    await new Promise((r) => setTimeout(r, 120))
-    await expect(stat(lockDir())).rejects.toThrow()
+    // The heartbeat's interval is faked, so a renewal happens exactly when the
+    // test says so (not "some time within a sleep", which load can stretch).
+    // Only the interval: the file system and Date stay real.
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
+    try {
+      const l = await acquireLock(setDir, 'me', { heartbeatMs: 40 })
+      const o = JSON.parse(await readFile(owner(), 'utf8'))
+      const stale = ago(REMOTE_LEASE_MS + 60_000)
+      // Pretend the last renewal was long ago...
+      await writeFile(owner(), JSON.stringify({ ...o, at: stale }))
+      expect(JSON.parse(await readFile(owner(), 'utf8')).at).toBe(stale)
+      // ...one heartbeat tick renews it. The renewal itself is real file I/O,
+      // so wait for its result rather than for a fixed time.
+      vi.advanceTimersByTime(40)
+      await vi.waitFor(
+        async () =>
+          expect(
+            Date.now() - Date.parse(JSON.parse(await readFile(owner(), 'utf8')).at)
+          ).toBeLessThan(5000),
+        { timeout: 10_000, interval: 5 }
+      )
+      // Another PC still sees it as busy.
+      await expect(acquireLock(setDir, 'other-pc')).rejects.toBeInstanceOf(BackupBusyError)
+      // A renewal still in flight when the lock is released never brings it
+      // back: release() waits for it, and no tick runs after it.
+      vi.advanceTimersByTime(40)
+      await l.release()
+      await expect(stat(lockDir())).rejects.toThrow()
+      expect(vi.getTimerCount()).toBe(0)
+      vi.advanceTimersByTime(1000)
+      await expect(stat(lockDir())).rejects.toThrow()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('of two takers of one stale lock, exactly one wins', async () => {

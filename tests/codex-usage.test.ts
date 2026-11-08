@@ -1668,3 +1668,84 @@ describe('review fixes: one-to-one copies, relative resets, alerts mid-scan, pla
     ])
   })
 })
+
+describe('review fixes: absolute reset dates, the last progress notice', () => {
+  const at = (pct: number, resets: string) => ({
+    primary: { used_percent: pct, window_minutes: 10080, resets_at: sec(resets) },
+    plan_type: 'plus'
+  })
+  const ev = (ts: string, total: number[], last: number[], rl: unknown = null) =>
+    tc(
+      ts,
+      {
+        total_token_usage: counts(total[0], 0, total[1]),
+        last_token_usage: counts(last[0], 0, last[1])
+      },
+      rl
+    )
+  const put = (store: CodexUsageStore, key: string, sid: string, text: string[]) => {
+    const a = analyzeCodexUsage(text.join('\n'), { ...ctx, key, sessionId: sid, lineageRoot: 'p' })
+    store.set(key, a.records, a.codexLimits ?? [])
+  }
+
+  it("keeps a current window's reading that only matches an old window's percentage", async () => {
+    const links = [
+      { sessionId: 'p', startedAt: '2026-10-20T09:59:00Z' },
+      { sessionId: 'f', forkedFromId: 'p', startedAt: '2026-10-21T09:00:00Z' }
+    ]
+    const dir = await mkdtemp(join(tmpdir(), 'csd-codex-abs-'))
+    try {
+      // Saved by an older parser: the parent's old window at 20%.
+      const old = new CodexUsageStore()
+      old.setLineage(links)
+      put(old, 'w:p', 'p', [
+        ev('2026-10-20T10:00:00Z', [100, 10], [100, 10], at(20, '2026-10-20T20:00:00Z'))
+      ])
+      put(old, 'w:f', 'f', [])
+      old.index = { 'w:p': 'x' }
+      await old.flush(dir, dir)
+      const idxPath = join(dir, 'codex-index.json')
+      const idx = JSON.parse(await readFile(idxPath, 'utf8'))
+      await writeFile(idxPath, JSON.stringify({ ...idx, version: 2 }))
+      const store = new CodexUsageStore()
+      await store.load(dir)
+      // The parent is offline; the fork is read now. Its copy is of a newer
+      // window the cached parent rows don't have, also at 20%.
+      store.setLineage(links.slice(1))
+      put(store, 'w:f', 'f', [
+        ev('2026-10-21T09:00:00.004Z', [300, 20], [200, 10], at(20, '2026-10-27T00:00:00Z'))
+      ])
+      const current = store
+        .readings()
+        .filter((r) => r.windows[0].resetsAt === Date.parse('2026-10-27T00:00:00Z'))
+      expect(current.map((r) => [r.key, r.windows[0].pct])).toEqual([['w:f', 20]])
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('tells the alerts once the Codex sessions are read, before the Claude Code scan', async () => {
+    const { sessions, paths } = await pipeline()
+    const fresh = await mkdtemp(join(tmpdir(), 'csd-codex-trail-'))
+    try {
+      const usage = new UsageService(sessions, usagePaths(fresh, paths.archiveDir), () => ({
+        weekStart: 'monday',
+        prices: [],
+        codexPrices: DEFAULT_CODEX_PRICES
+      }))
+      const told: { codex: number; claude: number }[] = []
+      usage.on('codex-progress', () =>
+        told.push({ codex: usage.codexRecords().length, claude: usage.allRecords().length })
+      )
+      await usage.start()
+      await usage.idle()
+      // The first at once, the rest within the 5 s throttle: told at the end of the Codex loop.
+      expect(told.length).toBeGreaterThanOrEqual(2)
+      const last = told[told.length - 1]
+      expect(last.codex).toBe(usage.codexRecords().length)
+      expect(last.claude).toBeLessThan(usage.allRecords().length)
+    } finally {
+      await rm(fresh, { recursive: true, force: true })
+    }
+  })
+})

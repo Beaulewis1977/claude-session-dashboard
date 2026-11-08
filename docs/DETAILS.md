@@ -1023,8 +1023,9 @@ folder plus Codex's name index, `config.toml`, `archived_sessions` or `sessions/
     any reading order; a matching response the parent or a sibling made after that, or one the
     fork wrote later, is a separate response and counts too. With the parent gone everywhere, the
     siblings' copies count once. Copies whose identity differs from their original's (rows an
-    older parser made, next to rows of this one) are matched by their numbers (a reading's reset
-    time left out: older Codex gave it relative to the event), the same rule, one to one: one row
+    older parser made, next to rows of this one) are matched by their numbers (a reading's with
+    its reset date, so a current window is never taken for an old one with the same percentage;
+    only a reset time older Codex gave relative to the event is left out), the same rule, one to one: one row
     an ancestor held stands for one copy. A session read again keeps the copies other sessions
     hold, and a session whose rollout is gone keeps its rows and its fork links (saved in
     `codex-index.json`); a gone fork whose link was never saved is linked to the session whose
@@ -1040,7 +1041,8 @@ folder plus Codex's name index, `config.toml`, `archived_sessions` or `sessions/
     can be read. Codex's 75 / 90% alerts watch from the moment the saved data is loaded, so a
     crossing the scan finds still alerts, and a re-read of saved readings never does. The scan
     reads the most recently active Codex sessions first and reports its progress every few
-    seconds, so a crossing in a running session alerts within seconds, also during a long re-read.
+    seconds and once the Codex sessions are read (before the Claude Code scan), so a crossing in a
+    running session alerts within seconds, also during a long re-read.
 - **Limits** from `rate_limits` in the same events: `primary` and `secondary` windows with
   `used_percent`, `window_minutes` and `resets_at`, plus `limit_id` / `limit_name`, `plan_type`
   and `credits`. Which window is which comes from `window_minutes` (300 = 5-hour, 10080 = weekly),

@@ -12,7 +12,7 @@
 
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import type { CodexLimitReading } from '@shared/usage/codex'
+import type { CodexLimitReading, CodexLimitWindow } from '@shared/usage/codex'
 import type { UsageRecord } from '@shared/usage/types'
 import { writeFileAtomic } from '../core/json-store'
 import { listFiles, readNdjson, writeNdjson } from '../core/ndjson'
@@ -62,10 +62,19 @@ const readSid = (r: CodexLimitReading): string =>
 /** What a copy has in common with its original whatever the parser version: its numbers. */
 const recContent = (r: UsageRecord): string =>
   [r.input, r.cacheRead, r.cacheWrite, r.output, r.reasoning ?? 0].join(',')
-// A reading's reset time is left out: older Codex gave it relative to the event
-// (resets_in_seconds), and a fork's copy has a new event time.
+// A reading's reset date is part of it (a current window at 20% is never an
+// old window's 20%), except when older Codex gave it relative to the event
+// (resets_in_seconds): a fork's copy has a new event time, so another reset
+// time. Rows saved before that was marked: such a time isn't a whole second
+// (Codex's own reset dates are whole seconds, event times have milliseconds).
+const relativeReset = (w: CodexLimitWindow): boolean =>
+  w.relative ?? (w.resetsAt !== undefined && w.resetsAt % 1000 !== 0)
 const readContent = (r: CodexLimitReading): string =>
-  r.limitId + '|' + r.windows.map((w) => [w.pct, w.minutes].join(',')).join(';')
+  r.limitId +
+  '|' +
+  r.windows
+    .map((w) => [w.pct, w.minutes, relativeReset(w) ? 'rel' : (w.resetsAt ?? 0)].join(','))
+    .join(';')
 
 export class CodexUsageStore {
   private bySession = new Map<string, Copies>()

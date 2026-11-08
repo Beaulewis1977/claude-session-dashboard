@@ -122,7 +122,7 @@ export function parseRateLimits(
     let w = limitWindow(o)
     // Older Codex: seconds until the reset instead of a time.
     if (w && !w.resetsAt && typeof o?.resets_in_seconds === 'number' && o.resets_in_seconds > 0)
-      w = { ...w, resetsAt: ts + Math.round(o.resets_in_seconds * 1000) }
+      w = { ...w, resetsAt: ts + Math.round(o.resets_in_seconds * 1000), relative: true }
     // A window that had already reset when it was read says nothing.
     if (w && w.resetsAt !== undefined && w.resetsAt < ts - 60_000) continue
     if (w) windows.push(w)

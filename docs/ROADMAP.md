@@ -364,6 +364,10 @@ Run typecheck, lint, tests and the build. Commit, push the branch and open a PR 
 
 - Flaky test: a terminal test occasionally fails from a timing race in full runs, but passes in isolation. Find the race and make it reliable.
 - Phone companion still uses the deprecated sync safeStorage encrypt/decrypt calls; switch to the async API in a small PR.
+- Golden parity race: `tests/golden/capture.ts` reads session lineage right after `idle()`, which doesn't wait for `LineageService`'s scheduled refresh (a real 1 ms timer), so under load the snapshot can differ. Fix in its own PR: make the capture wait for the refresh, run that deterministic capture on both the base and the branch, and only then update the golden snapshots.
+- Codex (Phase C) edge cases left open:
+  - Guessing a gone fork's parent (no saved link) matches its first rows in order, and rows with the same timestamp are ordered by their identity hash, which doesn't keep Codex's order. If several copied events share a millisecond, a real match can miss the 80% threshold, and that unavailable fork's copied history counts twice.
+  - One-account mode: the plan in force now is taken from main-limit readings. If a model limit (e.g. Pro Spark) reports a new plan while the newest main reading is still the old one, the cutoff is 0 and the old plan's and new plan's Spark windows can be grouped together.
 
 ---
 

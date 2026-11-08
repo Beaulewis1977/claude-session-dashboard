@@ -33,6 +33,11 @@ export interface CodexLimitWindow {
   minutes: number
   /** Epoch ms (`resets_at`, epoch seconds in the log). */
   resetsAt?: number
+  /**
+   * The reset time was worked out from the event's time (older Codex's
+   * `resets_in_seconds`), so a fork's copy of the reading has another one.
+   */
+  relative?: true
 }
 
 /** One `rate_limits` reading from a rollout. */

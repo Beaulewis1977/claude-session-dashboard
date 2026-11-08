@@ -395,16 +395,30 @@ export class UsageService extends EventEmitter<{ changed: []; 'codex-progress': 
         // rollout is gone still descends from its parent).
         this.codex.setLineage(list.filter((x) => x.provider === 'codex'))
         const roots = this.codex.roots()
+        // At once for the first session read, then at most every few seconds;
+        // what was read within that time is told when it's over or when the
+        // Codex sessions are done, whichever comes first (never only after
+        // the Claude Code scan).
         let told = 0
-        for (const s of codex) {
-          const provider = sessionProvider(this.sessions, s)
-          if (!(await this.syncCodex(s, provider, roots.get(s.sessionId) ?? s.sessionId, force)))
-            continue
-          changed = true
-          if (Date.now() - told >= CODEX_PROGRESS_MS) {
-            told = Date.now()
-            this.emit('codex-progress')
+        let later: NodeJS.Timeout | undefined
+        const tell = () => {
+          if (later) clearTimeout(later)
+          later = undefined
+          told = Date.now()
+          this.emit('codex-progress')
+        }
+        try {
+          for (const s of codex) {
+            const provider = sessionProvider(this.sessions, s)
+            if (!(await this.syncCodex(s, provider, roots.get(s.sessionId) ?? s.sessionId, force)))
+              continue
+            changed = true
+            const wait = told + CODEX_PROGRESS_MS - Date.now()
+            if (wait <= 0) tell()
+            else later ??= setTimeout(tell, wait)
           }
+        } finally {
+          if (later) tell()
         }
       }
       for (const s of list) {

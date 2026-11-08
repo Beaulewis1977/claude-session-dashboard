@@ -384,6 +384,8 @@ export interface BridgePlan {
   error?: string
   /** Nothing to do (already installed / not installed). */
   noop?: boolean
+  /** What else to know before confirming (Codex: the /hooks trust step). */
+  notes?: string[]
 }
 
 export interface BridgeApplyResult {

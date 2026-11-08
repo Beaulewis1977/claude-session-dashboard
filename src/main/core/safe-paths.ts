@@ -81,6 +81,25 @@ export function assertClaudeSettingsWrite(target: string): void {
   }
 }
 
+/**
+ * Codex session alerts (opt-in, the same safety model as Claude's hooks): the
+ * one file the app may write in a Codex home is `<home>/.codex/hooks.json`
+ * (and its own temp file next to it). Never config.toml, auth.json or
+ * anything else there.
+ */
+export function assertCodexHooksWrite(target: string): void {
+  const parts = resolve(target).split(/[\\/]+/)
+  const name = parts[parts.length - 1]?.toLowerCase()
+  const parent = parts[parts.length - 2]?.toLowerCase()
+  if (
+    isInsideClaudeDir(target) ||
+    parent !== '.codex' ||
+    !(name === 'hooks.json' || /^hooks\.json\.csd-[0-9a-f]+\.(tmp|prev)$/.test(name ?? ''))
+  ) {
+    throw new UnsafeWriteError(`Refusing to write anything in .codex except hooks.json: ${target}`)
+  }
+}
+
 /** The bridge's own folder in each Claude home: `<home>/.claude-session-dashboard`. */
 export function assertBridgeWrite(target: string): void {
   const segs = resolve(target)

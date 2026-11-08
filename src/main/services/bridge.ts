@@ -222,11 +222,14 @@ export async function writeSettings(
   path: string,
   text: string,
   expected: string | undefined,
-  probe: WriteSettingsProbe = {}
+  probe: WriteSettingsProbe = {},
+  target: SettingsTarget = CLAUDE_SETTINGS
 ): Promise<void> {
-  assertClaudeSettingsWrite(path)
+  const changed = (): SettingsChangedError =>
+    new SettingsChangedError(SETTINGS_CHANGED.replace('settings.json', target.name))
+  target.guard(path)
   const tmp = `${path}.csd-${randomBytes(4).toString('hex')}.tmp`
-  assertClaudeSettingsWrite(tmp)
+  target.guard(tmp)
   const mode = await stat(path).then(
     (st) => st.mode & 0o777,
     () => undefined
@@ -241,7 +244,7 @@ export async function writeSettings(
   }
   try {
     await probe.beforeSwap?.()
-    if (!sameText(await readText(path), expected)) throw new SettingsChangedError(SETTINGS_CHANGED)
+    if (!sameText(await readText(path), expected)) throw changed()
     const doRename = probe.rename ?? rename
     for (let i = 0; ; i++) {
       try {
@@ -252,12 +255,11 @@ export async function writeSettings(
         // Windows can hold the file open for a moment (antivirus, Claude reading it).
         if (i < 4 && (code === 'EPERM' || code === 'EBUSY' || code === 'EACCES')) {
           await new Promise((r) => setTimeout(r, 60 * (i + 1)))
-          if (!sameText(await readText(path), expected))
-            throw new SettingsChangedError(SETTINGS_CHANGED)
+          if (!sameText(await readText(path), expected)) throw changed()
           continue
         }
         throw new Error(
-          `settings.json can't be replaced in one step here (${code ?? (err as Error).message}). Nothing was changed.`,
+          `${target.name} can't be replaced in one step here (${code ?? (err as Error).message}). Nothing was changed.`,
           { cause: err }
         )
       }
@@ -267,7 +269,21 @@ export async function writeSettings(
   }
 }
 
-const LEFTOVER_RE = /^settings\.json\.csd-[0-9a-f]+\.(tmp|prev)$/
+/** Which file writeSettings and cleanupSettingsLeftovers may touch. */
+export interface SettingsTarget {
+  /** File name, for messages and leftovers ("settings.json", "hooks.json"). */
+  name: string
+  /** Throws unless the path is that file (or the app's temp file next to it). */
+  guard: (path: string) => void
+}
+
+export const CLAUDE_SETTINGS: SettingsTarget = {
+  name: 'settings.json',
+  guard: assertClaudeSettingsWrite
+}
+
+const leftoverRe = (name: string): RegExp =>
+  new RegExp(`^${name.replace(/\./g, '\\.')}\\.csd-[0-9a-f]+\\.(tmp|prev)$`)
 
 /**
  * At startup: tidy up after a save that was interrupted (the app closed or
@@ -280,13 +296,15 @@ const LEFTOVER_RE = /^settings\.json\.csd-[0-9a-f]+\.(tmp|prev)$/
 export async function cleanupSettingsLeftovers(
   settingsPath: string,
   backupDir: string,
-  dataDir: string
+  dataDir: string,
+  target: SettingsTarget = CLAUDE_SETTINGS
 ): Promise<{ removed: number; restored: boolean }> {
-  assertClaudeSettingsWrite(settingsPath)
+  target.guard(settingsPath)
   const dir = dirname(settingsPath)
+  const re = leftoverRe(target.name)
   let names: string[]
   try {
-    names = (await readdir(dir)).filter((n) => LEFTOVER_RE.test(n))
+    names = (await readdir(dir)).filter((n) => re.test(n))
   } catch {
     return { removed: 0, restored: false }
   }
@@ -295,7 +313,7 @@ export async function cleanupSettingsLeftovers(
   const prevs: { file: string; mtimeMs: number }[] = []
   for (const n of names) {
     const file = join(dir, n)
-    assertClaudeSettingsWrite(file)
+    target.guard(file)
     const st = await lstat(file).catch(() => undefined)
     if (!st?.isFile()) continue
     if (n.endsWith('.tmp')) {

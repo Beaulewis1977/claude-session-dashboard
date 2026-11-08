@@ -54,6 +54,11 @@ export interface UsageRecord extends TokenCounts {
   provider?: 'codex'
   /** Codex: reasoning tokens, a part of `output` (never added to the total again). */
   reasoning?: number
+  /**
+   * Codex: the `plan_type` its limits reported (which ChatGPT account ran it, as far as
+   * the logs tell: two sign-ins on different plans can share one Codex home).
+   */
+  plan?: string
 }
 
 /** One user turn: a prompt and everything Claude did until the next prompt. */

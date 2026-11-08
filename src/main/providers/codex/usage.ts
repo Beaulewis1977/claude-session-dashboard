@@ -196,6 +196,8 @@ export function analyzeCodexUsage(text: string, ctx: CodexUsageContext): UsageAn
   // plus one reading every 10 minutes and the file's last one (so a gauge's
   // "updated" time is the last time Codex reported it, not the last change).
   const lastLimits = new Map<string, { same: string; ts: number }>()
+  // Every plan_type seen (also in repeated readings), to tag each response with its account.
+  const plans: { ts: number; plan: string }[] = []
   const pending = new Map<string, CodexLimitReading>()
   for (const l of ls) {
     if (l.type === 'turn_context') {
@@ -252,6 +254,8 @@ export function analyzeCodexUsage(text: string, ctx: CodexUsageContext): UsageAn
       records.push(rec)
     }
     const r = parseRateLimits(rl, ts, { id, key: ctx.key, source, sessionId })
+    if (r?.planType && plans[plans.length - 1]?.plan !== r.planType)
+      plans.push({ ts, plan: r.planType })
     if (r) {
       const same = JSON.stringify([r.windows, r.planType, r.limitName, r.credits, r.reached])
       const prev = lastLimits.get(r.limitId)
@@ -262,6 +266,13 @@ export function analyzeCodexUsage(text: string, ctx: CodexUsageContext): UsageAn
       } else pending.set(r.limitId, r)
     }
   }
+  // Each response's account: the plan the limits reported at or before it (else the next one).
+  if (plans.length)
+    for (const rec of records) {
+      let p = plans[0].plan
+      for (const x of plans) if (x.ts <= rec.ts) p = x.plan
+      rec.plan = p
+    }
   for (const r of pending.values()) readings.push(r)
   readings.sort((a, b) => a.ts - b.ts)
   return { records, turns: [], limitHits: [], usageReadings: [], codexLimits: readings }

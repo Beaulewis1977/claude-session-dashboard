@@ -674,9 +674,16 @@ describe('Codex limits on the sample homes', () => {
     expect(l.sevenDay).toMatchObject({ pct: 23, expired: false })
     expect(FIXTURES_NOW - l.sevenDay!.updatedAt).toBeLessThan(60 * 60_000)
     expect(l.stale).toBe(false)
-    // 5-hour: last seen on Plus (Oct 20), reset since: no current %, the last one kept.
-    expect(l.fiveHour).toMatchObject({ expired: true, pct: 0, lastPct: 20 })
-    expect(l.fiveHourRecent).toBe(true)
+    // Pro has no 5-hour window. The Plus readings (Oct 18-20) are another plan_type: never
+    // mixed into these gauges, shown as their own (reset since: the last value kept).
+    expect(l.fiveHour).toBeUndefined()
+    expect(l.fiveHourRecent).toBe(false)
+    const plus = l.extraLimits.find((e) => e.limitId === 'account:plus')!
+    expect(plus.label).toBe('Plus (plus) · another sign-in or an earlier plan')
+    expect(plus.windows.map((w) => [w.minutes, w.gauge.expired, w.gauge.lastPct])).toEqual([
+      [300, true, 20],
+      [10080, false, 25]
+    ])
     // The fork's copies of the Plus readings never pose as newer ones.
     expect(l.plan).toMatchObject({
       setting: 'auto',
@@ -686,10 +693,9 @@ describe('Codex limits on the sample homes', () => {
       mult: 5
     })
     expect(l.plan.changes.map((c) => c.code)).toEqual(['plus', 'prolite'])
-    expect(l.extraLimits).toMatchObject([
-      { limitId: 'codex_bengalfox', label: 'GPT-5.3-Codex-Spark', recent: true }
-    ])
-    expect(l.extraLimits[0].windows[0]).toMatchObject({ minutes: 10080, label: 'Weekly' })
+    const spark = l.extraLimits.find((e) => e.limitId === 'codex_bengalfox')!
+    expect(spark).toMatchObject({ label: 'GPT-5.3-Codex-Spark', recent: true })
+    expect(spark.windows[0]).toMatchObject({ minutes: 10080, label: 'Weekly' })
     expect(l.pace7d?.kind).toBe('seven_day')
     expect(l.advice?.text).not.toMatch(/Claude/)
   })
@@ -728,7 +734,8 @@ describe('Codex limits on the sample homes', () => {
     )
     const h = svc.health('seven_day')
     expect(h.settings.baselineFrom).toBe('2026-10-01')
-    expect(h.plans.map((p) => p.label)).toEqual(['Plus (plus)', 'Pro $100 (prolite)'])
+    // The followed account's plan only.
+    expect(h.plans.map((p) => p.label)).toEqual(['Pro $100 (prolite)'])
     // Scored from Codex's own records only.
     const models = new Set(h.windows.flatMap((w) => Object.keys(w.models)))
     expect([...models].every((m) => !m.startsWith('claude'))).toBe(true)
@@ -769,6 +776,62 @@ describe('Codex limits on the sample homes', () => {
     readings.push({ ...at(99, 0), id: 'r99' })
     usage.emit('changed')
     expect(quiet).not.toHaveBeenCalled()
+  })
+
+  it('never mixes two accounts (plan types) in one gauge, and reads 299/10079-minute windows', () => {
+    const r = (
+      ts: number,
+      plan: string | undefined,
+      pct: number,
+      minutes = 10080
+    ): CodexLimitReading => ({
+      id: `${plan}${ts}`,
+      ts,
+      key: 'k',
+      source: 's',
+      limitId: 'codex',
+      ...(plan ? { planType: plan } : {}),
+      windows: [{ pct, minutes, resetsAt: FIXTURES_NOW + 86_400_000 }]
+    })
+    const readings = [
+      r(FIXTURES_NOW - 5_000, 'plus', 90),
+      r(FIXTURES_NOW - 4_000, 'prolite', 10),
+      r(FIXTURES_NOW - 3_000, 'plus', 91),
+      r(FIXTURES_NOW - 2_000, 'prolite', 11, 10079)
+    ]
+    const rec = (plan: string, ts: number): UsageRecord => ({
+      id: plan + ts,
+      ts,
+      key: 'k',
+      project: 'p',
+      env: 'windows',
+      model: 'gpt-6.1-sol',
+      provider: 'codex',
+      plan,
+      input: 1000,
+      output: 0,
+      cacheWrite: 0,
+      cacheRead: 0
+    })
+    const usage = Object.assign(new EventEmitter(), {
+      codexRecords: () => [
+        rec('plus', FIXTURES_NOW - 10_000),
+        rec('prolite', FIXTURES_NOW - 9_000)
+      ],
+      codexLimitReadings: () => readings
+    })
+    const l = new CodexLimitsService(
+      usage,
+      () => limitsSettings(),
+      () => undefined
+    ).state()
+    expect(l.sevenDay).toMatchObject({ pct: 11, tokens: 1000 })
+    expect(l.plan).toMatchObject({ detectedCode: 'prolite', label: 'Pro $100 (prolite)' })
+    expect(l.plan.changes.map((c) => c.code)).toEqual(['plus', 'prolite'])
+    expect(l.extraLimits[0]).toMatchObject({ limitId: 'account:plus', recent: true })
+    expect(l.extraLimits[0].windows[0].gauge.pct).toBe(91)
+    expect(windowKindOf(299)).toBe('five_hour')
+    expect(windowLabel(10079)).toBe('Weekly')
   })
 
   it('a window that has reset since its reading shows no current %', () => {

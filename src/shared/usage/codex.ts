@@ -65,15 +65,17 @@ export const WEEK_MINUTES = 10_080
 
 /** The app's window kind for a window length, only for the exact 5-hour and 7-day lengths. */
 export function windowKindOf(minutes: number): WindowKind | undefined {
-  if (minutes === FIVE_HOUR_MINUTES) return 'five_hour'
-  if (minutes === WEEK_MINUTES) return 'seven_day'
+  // Older Codex reported 299 and 10079 minutes for the same windows.
+  if (Math.abs(minutes - FIVE_HOUR_MINUTES) <= 2) return 'five_hour'
+  if (Math.abs(minutes - WEEK_MINUTES) <= 2) return 'seven_day'
   return undefined
 }
 
 /** "5-hour window", "Weekly", or the length it really has ("2-hour window", "30-day window"). */
 export function windowLabel(minutes: number): string {
-  if (minutes === FIVE_HOUR_MINUTES) return '5-hour window'
-  if (minutes === WEEK_MINUTES) return 'Weekly'
+  const kind = windowKindOf(minutes)
+  if (kind === 'five_hour') return '5-hour window'
+  if (kind === 'seven_day') return 'Weekly'
   if (minutes % 1440 === 0) return `${minutes / 1440}-day window`
   if (minutes % 60 === 0) return `${minutes / 60}-hour window`
   return `${minutes}-minute window`

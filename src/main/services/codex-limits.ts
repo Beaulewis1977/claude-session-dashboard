@@ -13,7 +13,6 @@ import {
   CODEX_PLAN_LABEL,
   codeLabel,
   detectPlanChanges,
-  FIVE_HOUR_MINUTES,
   limitLabel,
   MAIN_LIMIT_ID,
   planOfCode,
@@ -247,18 +246,46 @@ export class CodexLimitsService extends EventEmitter<{ changed: [] }> {
   }
 
   /** The plan: chosen in Settings, or detected from `plan_type` in the logs. */
-  plan(): CodexPlanInfo {
-    const s = this.settings()
-    const changes = detectPlanChanges(this.readings())
-    const last = changes[changes.length - 1]
-    const detected = last ? planOfCode(last.code) : undefined
-    let newestAt: number | undefined
+  /**
+   * Which account's limits the gauges and limit health follow: the plan_type
+   * of the newest main reading ("" when it reports none). Two ChatGPT
+   * sign-ins on different plans can write into one Codex home; their
+   * percentages are never mixed. auth.json is never read, so plan_type is the
+   * only account marker (two accounts on the same plan look like one).
+   */
+  private account(): string {
     const rs = this.readings()
     for (let i = rs.length - 1; i >= 0; i--)
-      if (rs[i].planType) {
-        newestAt = rs[i].ts
-        break
-      }
+      if (rs[i].limitId === MAIN_LIMIT_ID) return rs[i].planType ?? ''
+    return ''
+  }
+
+  /** The main limit's readings of the followed account. */
+  private mainReadings(): CodexLimitReading[] {
+    const acct = this.account()
+    return this.readings().filter((r) => r.limitId === MAIN_LIMIT_ID && (r.planType ?? '') === acct)
+  }
+
+  /** Usage of the followed account (what moves its limits). */
+  private accountRecords(): UsageRecord[] {
+    const acct = this.account()
+    const all = this.usage.codexRecords()
+    // Logs that never report a plan: all of it.
+    if (!acct) return all.filter((r) => !r.plan)
+    return all.filter((r) => r.plan === acct)
+  }
+
+  plan(): CodexPlanInfo {
+    const s = this.settings()
+    const acct = this.account()
+    // Each plan once, by when it was first seen (accounts can alternate).
+    const changes = detectPlanChanges(this.readings()).filter(
+      (c, i, all) => all.findIndex((x) => x.code === c.code) === i
+    )
+    const mine = this.mainReadings()
+    const last = acct ? { code: acct, ts: mine.find((r) => r.planType)?.ts ?? 0 } : undefined
+    const detected = last ? planOfCode(last.code) : undefined
+    const newestAt = mine.length ? mine[mine.length - 1].ts : undefined
     const base = {
       setting: s.plan,
       changes,
@@ -287,13 +314,16 @@ export class CodexLimitsService extends EventEmitter<{ changed: [] }> {
     }
   }
 
+  /** The followed account's plan (its readings all have one plan). */
   spans(): PlanSpan[] {
     const s = this.settings()
-    return codexPlanSpans(s.plan, detectPlanChanges(this.readings()), s.mults)
+    const acct = this.account()
+    const first = this.mainReadings()[0]
+    return codexPlanSpans(s.plan, acct && first ? [{ ts: first.ts, code: acct }] : [], s.mults)
   }
 
   private bridge() {
-    return asBridgeReadings(this.readings(), MAIN_LIMIT_ID)
+    return asBridgeReadings(this.mainReadings(), MAIN_LIMIT_ID)
   }
 
   health(kind: WindowKind): HealthReport {
@@ -302,7 +332,7 @@ export class CodexLimitsService extends EventEmitter<{ changed: [] }> {
 
   private healthNow(kind: WindowKind): HealthReport {
     const s = this.settings()
-    return healthReport(bridgeWindowReadings(this.bridge(), kind), this.usage.codexRecords(), {
+    return healthReport(bridgeWindowReadings(this.bridge(), kind), this.accountRecords(), {
       kind,
       prices: s.prices,
       now: now(),
@@ -339,18 +369,19 @@ export class CodexLimitsService extends EventEmitter<{ changed: [] }> {
     const s = this.settings()
     const t = now()
     const readings = this.readings()
-    const records = this.usage.codexRecords()
+    const records = this.accountRecords()
     const bridge = this.bridge()
     const five = gauge(bridge, records, 'five_hour', t, s.weights)
     const week = gauge(bridge, records, 'seven_day', t, s.weights)
-    const main = readings.filter((r) => r.limitId === MAIN_LIMIT_ID)
+    const main = this.mainReadings()
     const lastMain = main[main.length - 1]
     const fiveHourRecent = main.some(
-      (r) => t - r.ts < RECENT_LIMIT_MS && r.windows.some((w) => w.minutes === FIVE_HOUR_MINUTES)
+      (r) =>
+        t - r.ts < RECENT_LIMIT_MS && r.windows.some((w) => windowKindOf(w.minutes) === 'five_hour')
     )
 
     const otherWindows: CodexWindowGauge[] = []
-    for (const [minutes, r] of latestByMinutes(readings, MAIN_LIMIT_ID)) {
+    for (const [minutes, r] of latestByMinutes(main, MAIN_LIMIT_ID)) {
       if (windowKindOf(minutes)) continue
       const g = windowGauge(r, minutes, records, t, s.weights)
       if (g) otherWindows.push({ minutes, label: windowLabel(minutes), gauge: g })
@@ -376,6 +407,30 @@ export class CodexLimitsService extends EventEmitter<{ changed: [] }> {
         extraLimits.push({
           limitId: id,
           label,
+          windows,
+          lastAt,
+          recent: t - lastAt < RECENT_LIMIT_MS
+        })
+    }
+    // Another account's main limit (another plan_type in the same logs): its own gauges.
+    const acct = this.account()
+    const others = [
+      ...new Set(readings.filter((r) => r.limitId === MAIN_LIMIT_ID).map((r) => r.planType ?? ''))
+    ].filter((p) => p !== acct)
+    for (const p of others) {
+      const rs = readings.filter((r) => r.limitId === MAIN_LIMIT_ID && (r.planType ?? '') === p)
+      const windows: CodexWindowGauge[] = []
+      for (const [minutes, r] of [...latestByMinutes(rs, MAIN_LIMIT_ID).entries()].sort(
+        (a, b) => a[0] - b[0]
+      )) {
+        const g = windowGauge(r, minutes, [], t, s.weights)
+        if (g) windows.push({ minutes, label: windowLabel(minutes), gauge: g })
+      }
+      const lastAt = rs[rs.length - 1].ts
+      if (windows.length)
+        extraLimits.push({
+          limitId: `account:${p || 'none'}`,
+          label: `${p ? codeLabel(p) : 'Plan not reported'} · another sign-in or an earlier plan`,
           windows,
           lastAt,
           recent: t - lastAt < RECENT_LIMIT_MS

@@ -15,7 +15,8 @@ import { writeFileAtomic } from '../core/json-store'
 import { listFiles, readNdjson, writeNdjson } from '../core/ndjson'
 
 /** Bumped when the Codex usage parser changes: every Codex session is read again. */
-export const CODEX_USAGE_VERSION = 1
+// 2: records carry the plan_type of the account that ran them; 299/10079-minute windows.
+export const CODEX_USAGE_VERSION = 2
 
 const RECORDS_RE = /^codex-records-\d{4}-\d{2}\.ndjson$/
 const LIMITS_RE = /^codex-limits-\d{4}-\d{2}\.ndjson$/

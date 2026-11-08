@@ -1023,10 +1023,12 @@ folder plus Codex's name index, `config.toml`, `archived_sessions` or `sessions/
     any reading order; a matching response the parent or a sibling made after that, or one the
     fork wrote later, is a separate response and counts too. With the parent gone everywhere, the
     siblings' copies count once. Copies whose identity differs from their original's (rows an
-    older parser made, next to rows of this one) are matched by their numbers, the same rule. A
-    session read again keeps the copies other sessions hold, and a session whose rollout is gone
-    keeps its rows and its fork links (saved in `codex-index.json`); a gone fork whose link was
-    never saved is linked to the session that held its first rows. Unrelated sessions are never
+    older parser made, next to rows of this one) are matched by their numbers (a reading's reset
+    time left out: older Codex gave it relative to the event), the same rule, one to one: one row
+    an ancestor held stands for one copy. A session read again keeps the copies other sessions
+    hold, and a session whose rollout is gone keeps its rows and its fork links (saved in
+    `codex-index.json`); a gone fork whose link was never saved is linked to the session whose
+    earlier rows its first rows repeat, one to one and in order. Unrelated sessions are never
     merged. Subagent threads don't copy their parent's usage: they're real usage and are counted in
     full. A resume appends to the same rollout; a total that went down counts only the new event's
     own usage.
@@ -1036,7 +1038,9 @@ folder plus Codex's name index, `config.toml`, `archived_sessions` or `sessions/
     Codex usage is read, every rollout is read again in the background (the rest of the app starts
     without waiting); a session that's offline or unreadable then keeps its earlier rows until it
     can be read. Codex's 75 / 90% alerts watch from the moment the saved data is loaded, so a
-    crossing the scan finds still alerts, and a re-read of saved readings never does.
+    crossing the scan finds still alerts, and a re-read of saved readings never does. The scan
+    reads the most recently active Codex sessions first and reports its progress every few
+    seconds, so a crossing in a running session alerts within seconds, also during a long re-read.
 - **Limits** from `rate_limits` in the same events: `primary` and `secondary` windows with
   `used_percent`, `window_minutes` and `resets_at`, plus `limit_id` / `limit_name`, `plan_type`
   and `credits`. Which window is which comes from `window_minutes` (300 = 5-hour, 10080 = weekly),

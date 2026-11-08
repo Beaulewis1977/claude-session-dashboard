@@ -72,7 +72,10 @@ function storageMonth(ts: number): string {
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`
 }
 
-export class UsageService extends EventEmitter<{ changed: [] }> {
+/** How often a scan says what Codex sessions it has read so far (for the limit alerts). */
+const CODEX_PROGRESS_MS = 5_000
+
+export class UsageService extends EventEmitter<{ changed: []; 'codex-progress': [] }> {
   private records = new UsageDeduper()
   /** Sessions whose stored records predate the current parser (purged on reparse). */
   private stale = new Set<string>()
@@ -374,25 +377,41 @@ export class UsageService extends EventEmitter<{ changed: [] }> {
     if (!list.length) return
     this.parsing = true
     let changed = false
-    // Codex: each session's fork lineage, so a fork's copies of its parent's events match them.
-    let roots: Map<string, string> | undefined
     try {
+      // Codex first, the most recently active first: a session running now
+      // (whose limits may just have crossed an alert line) is read within
+      // seconds, also on a long re-read after an update. Each step of the way
+      // is announced (at most every few seconds) for those alerts.
+      const codex = list
+        .filter(
+          (s) =>
+            s.availability !== 'imported' &&
+            sessionProvider(this.sessions, s).id === 'codex' &&
+            sessionProvider(this.sessions, s).capabilities.usage
+        )
+        .sort((a, b) => (b.lastActivityAt ?? '').localeCompare(a.lastActivityAt ?? ''))
+      if (codex.length) {
+        // The catalogue's links added to the saved ones (a fork whose
+        // rollout is gone still descends from its parent).
+        this.codex.setLineage(list.filter((x) => x.provider === 'codex'))
+        const roots = this.codex.roots()
+        let told = 0
+        for (const s of codex) {
+          const provider = sessionProvider(this.sessions, s)
+          if (!(await this.syncCodex(s, provider, roots.get(s.sessionId) ?? s.sessionId, force)))
+            continue
+          changed = true
+          if (Date.now() - told >= CODEX_PROGRESS_MS) {
+            told = Date.now()
+            this.emit('codex-progress')
+          }
+        }
+      }
       for (const s of list) {
         // Imported claude.ai conversations have no token usage.
         if (s.availability === 'imported') continue
         const provider = sessionProvider(this.sessions, s)
-        if (!provider.capabilities.usage) continue
-        if (provider.id === 'codex') {
-          if (!roots) {
-            // The catalogue's links added to the saved ones (a fork whose
-            // rollout is gone still descends from its parent).
-            this.codex.setLineage(list.filter((x) => x.provider === 'codex'))
-            roots = this.codex.roots()
-          }
-          if (await this.syncCodex(s, provider, roots.get(s.sessionId) ?? s.sessionId, force))
-            changed = true
-          continue
-        }
+        if (!provider.capabilities.usage || provider.id === 'codex') continue
         const { sig, subagents } = await this.signature(s)
         if (!force && this.index.sessions[s.key] === sig) continue
         if (this.stale.delete(s.key)) this.purge(s.key)

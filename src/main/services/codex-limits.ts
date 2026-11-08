@@ -76,7 +76,7 @@ const STALE_MS = 60 * 60_000
 const ALERT_RECENT_MS = 30 * 60_000
 
 type Pick2 = Pick<UsageService, 'codexRecords' | 'codexLimitReadings'> & {
-  on(event: 'changed', cb: () => void): unknown
+  on(event: 'changed' | 'codex-progress', cb: () => void): unknown
 }
 
 /** A gauge for a window of any length (the 5-hour and 7-day ones use the shared gauge()). */
@@ -212,6 +212,8 @@ export class CodexLimitsService extends EventEmitter<{ changed: [] }> {
     const rs = this.usage.codexLimitReadings()
     this.seen = new Set(rs.map(seenKey))
     this.usage.on('changed', () => this.onUsageChanged())
+    // Also while a scan is still running (a long re-read takes minutes).
+    this.usage.on('codex-progress', () => this.onUsageChanged())
   }
 
   readings(): CodexLimitReading[] {
@@ -338,6 +340,24 @@ export class CodexLimitsService extends EventEmitter<{ changed: [] }> {
     const { since } = this.currentPlan()
     const main = this.mainReadings()
     return since ? main.filter((r) => r.ts >= since) : main
+  }
+
+  /**
+   * One account: when the plan in force now began, from every limit's
+   * readings (a model limit, e.g. Spark, can report the new plan before the
+   * main limit does): the first of the readings since the last one of
+   * another plan.
+   */
+  private currentRunStart(): number {
+    const { code } = this.currentPlan()
+    if (!code) return 0
+    const rs = this.readings()
+    let since = 0
+    for (let i = rs.length - 1; i >= 0; i--) {
+      if (rs[i].planType && rs[i].planType !== code) break
+      since = rs[i].ts
+    }
+    return since
   }
 
   /** Whether the plan in force now has a 5-hour window (it showed one lately). */
@@ -476,7 +496,7 @@ export class CodexLimitsService extends EventEmitter<{ changed: [] }> {
     // Model limits (e.g. Spark) per account too: a sign-in's percentages never
     // show under another's. One account: those from before the plan in force
     // now are the earlier plan's (never shown as current, never mixed in).
-    const since = acct === '*' ? this.currentPlan().since : 0
+    const since = acct === '*' ? this.currentRunStart() : 0
     const groups = new Map<
       string,
       { id: string; plan?: string; earlier: boolean; rs: CodexLimitReading[] }

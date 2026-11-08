@@ -1491,3 +1491,180 @@ describe('review fixes: parser versions, unsaved links, fork timing, alerts, loa
     expect(again.status().parsing).toBe(false)
   })
 })
+
+describe('review fixes: one-to-one copies, relative resets, alerts mid-scan, plan cutoff', () => {
+  const ev = (ts: string, total: number[], last: number[], rl: unknown = null) =>
+    tc(
+      ts,
+      {
+        total_token_usage: counts(total[0], 0, total[1]),
+        last_token_usage: counts(last[0], 0, last[1])
+      },
+      rl
+    )
+  const parsed = (key: string, sid: string, root: string, text: string[]) =>
+    analyzeCodexUsage(text.join('\n'), { ...ctx, key, sessionId: sid, lineageRoot: root })
+  const put = (store: CodexUsageStore, key: string, sid: string, root: string, text: string[]) => {
+    const a = parsed(key, sid, root, text)
+    store.set(key, a.records, a.codexLimits ?? [])
+  }
+  /** Saves the sessions, then loads them as an older parser's rows (other identities). */
+  async function asOlder(dir: string, fill: (s: CodexUsageStore) => void) {
+    const store = new CodexUsageStore()
+    fill(store)
+    for (const k of store.sessionKeys()) store.index[k] = 'x'
+    await store.flush(dir, dir)
+    for (const f of ['codex-records-2026-10.ndjson', 'codex-limits-2026-10.ndjson']) {
+      const text = await readFile(join(dir, f), 'utf8').catch(() => '')
+      const rows = text
+        .trim()
+        .split('\n')
+        .filter(Boolean)
+        .map((l) => ({ ...JSON.parse(l), id: `old:${JSON.parse(l).id}` }))
+      await writeFile(join(dir, f), rows.map((x) => JSON.stringify(x)).join('\n') + '\n')
+    }
+    const idxPath = join(dir, 'codex-index.json')
+    const idx = JSON.parse(await readFile(idxPath, 'utf8'))
+    await writeFile(idxPath, JSON.stringify({ ...idx, version: 2 }))
+    const next = new CodexUsageStore()
+    await next.load(dir)
+    return next
+  }
+
+  it('one row an ancestor held stands for one copy only, not every copy with its counts', () => {
+    const store = new CodexUsageStore()
+    store.setLineage([
+      { sessionId: 'p', startedAt: '2026-10-20T09:59:00Z' },
+      { sessionId: 'f', forkedFromId: 'p', startedAt: '2026-10-21T09:00:00Z' }
+    ])
+    // The parent's file holds one response; the fork copied two with the same
+    // per-response counts (different running totals), read against another root.
+    put(store, 'w:p', 'p', 'p', [ev('2026-10-20T10:00:00Z', [100, 10], [100, 10])])
+    put(store, 'w:f', 'f', 'elsewhere', [
+      ev('2026-10-21T09:00:00.004Z', [100, 10], [100, 10]),
+      ev('2026-10-21T09:00:00.005Z', [200, 20], [100, 10]),
+      ev('2026-10-21T09:20:00Z', [250, 25], [50, 5])
+    ])
+    const recs = store.records()
+    expect(recs.filter((x) => x.key === 'w:p')).toHaveLength(1)
+    // One copy gives way to the parent's row; the other copy and the own response count.
+    expect(recs.filter((x) => x.key === 'w:f')).toHaveLength(2)
+  })
+
+  it("a guessed parent needs distinct rows in order: one row can't match two", async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'csd-codex-guess-'))
+    try {
+      const store = await asOlder(dir, (s) => {
+        s.setLineage([{ sessionId: 'x', startedAt: '2026-10-20T09:00:00Z' }])
+        put(s, 'w:x', 'x', 'x', [ev('2026-10-20T10:00:00Z', [100, 10], [100, 10])])
+        // A session with no saved link: two rows with x's counts in its first second.
+        put(s, 'w:u', 'u', 'u', [
+          ev('2026-10-21T09:00:00.004Z', [100, 10], [100, 10]),
+          ev('2026-10-21T09:00:00.005Z', [200, 20], [100, 10])
+        ])
+      })
+      store.setLineage([{ sessionId: 'x', startedAt: '2026-10-20T09:00:00Z' }])
+      put(store, 'w:x', 'x', 'x', [ev('2026-10-20T10:00:00Z', [100, 10], [100, 10])])
+      const recs = store.records()
+      expect(recs.filter((r) => r.key === 'w:u')).toHaveLength(2)
+      expect(recs).toHaveLength(3)
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  it("matches an older parser's copied reading with a relative reset time", async () => {
+    // Older Codex: seconds until the reset, so a copy's computed reset time moves with it.
+    const rel = (pct: number) => ({
+      primary: { used_percent: pct, window_minutes: 10080, resets_in_seconds: 86_400 }
+    })
+    const links = [
+      { sessionId: 'p', startedAt: '2026-10-20T09:59:00Z' },
+      { sessionId: 'f', forkedFromId: 'p', startedAt: '2026-10-21T09:00:00Z' }
+    ]
+    const dir = await mkdtemp(join(tmpdir(), 'csd-codex-rel-'))
+    try {
+      const store = await asOlder(dir, (s) => {
+        s.setLineage(links)
+        put(s, 'w:p', 'p', 'p', [ev('2026-10-20T10:00:00Z', [100, 10], [100, 10], rel(4))])
+        put(s, 'w:f', 'f', 'p', [
+          ev('2026-10-21T09:00:00.004Z', [100, 10], [100, 10], rel(4)),
+          ev('2026-10-21T09:20:00Z', [150, 15], [50, 5], rel(6))
+        ])
+      })
+      put(store, 'w:p', 'p', 'p', [ev('2026-10-20T10:00:00Z', [100, 10], [100, 10], rel(4))])
+      const fork = store.readings().filter((r) => r.key === 'w:f')
+      expect(fork.map((r) => r.windows[0].pct)).toEqual([6])
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('reads the newest Codex sessions first and tells the alerts before the scan ends', async () => {
+    const { sessions, paths } = await pipeline()
+    // A fresh data folder: everything is read again.
+    const fresh = await mkdtemp(join(tmpdir(), 'csd-codex-scan-'))
+    try {
+      const usage = new UsageService(sessions, usagePaths(fresh, paths.archiveDir), () => ({
+        weekStart: 'monday',
+        prices: [],
+        codexPrices: DEFAULT_CODEX_PRICES
+      }))
+      const seen: string[] = []
+      let firstProgress: (string | undefined)[] | undefined
+      usage.on('codex-progress', () => {
+        seen.push('progress')
+        firstProgress ??= [...new Set(usage.codexRecords().map((r) => r.sid))]
+      })
+      usage.on('changed', () => seen.push('changed'))
+      await usage.start()
+      await usage.idle()
+      expect(seen.indexOf('progress')).toBeGreaterThan(-1)
+      expect(seen.indexOf('progress')).toBeLessThan(seen.lastIndexOf('changed'))
+      // The most recently active Codex session was read first.
+      const newest = [...sessions.list()]
+        .filter((s) => s.provider === 'codex')
+        .sort((a, b) => (b.lastActivityAt ?? '').localeCompare(a.lastActivityAt ?? ''))[0]
+      expect(firstProgress).toEqual([newest.sessionId])
+    } finally {
+      await rm(fresh, { recursive: true, force: true })
+    }
+  })
+
+  it("one account: a model limit read before the new plan's main limit is the new plan's", () => {
+    const r = (
+      id: string,
+      ago: number,
+      planType: string,
+      pct: number,
+      limitId = 'codex'
+    ): CodexLimitReading => ({
+      id,
+      ts: FIXTURES_NOW - ago,
+      key: 'k',
+      source: 's',
+      limitId,
+      planType,
+      windows: [{ pct, minutes: 10080, resetsAt: FIXTURES_NOW + 3_600_000 }]
+    })
+    const rs = [
+      r('m1', 300_000, 'plus', 50),
+      r('x1', 290_000, 'plus', 61, 'codex_spark'),
+      // The new plan's Spark limit reports before its main limit does.
+      r('x2', 120_000, 'prolite', 3, 'codex_spark'),
+      r('m2', 60_000, 'prolite', 4)
+    ]
+    const st = new CodexLimitsService(
+      Object.assign(new EventEmitter(), {
+        codexRecords: () => [] as UsageRecord[],
+        codexLimitReadings: () => rs
+      }),
+      () => limitsSettings({ accounts: 'one' }),
+      () => undefined
+    ).state()
+    expect(st.extraLimits.map((b) => [b.limitId, b.windows.map((w) => w.gauge.pct)])).toEqual([
+      ['codex_spark', [3]],
+      ['codex_spark@earlier', [61]]
+    ])
+  })
+})

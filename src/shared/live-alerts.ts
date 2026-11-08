@@ -178,7 +178,10 @@ export function desktopText(a: Alert, title: string): { title: string; body: str
   const d = a.session.detail
   switch (a.kind) {
     case 'approval':
-      return { title: 'Needs your approval', body: d ? `${title}: ${d}` : title }
+      return {
+        title: a.session.guess ? 'Probably needs your approval' : 'Needs your approval',
+        body: d ? `${title}: ${d}` : title
+      }
     case 'finished':
       return { title: 'Finished', body: `${title} is waiting for your next message` }
     case 'failed':

@@ -11,6 +11,7 @@
 // 3. Recent activity in the session's JSONL transcript (the fallback).
 
 import { remoteSessionUrl } from './jsonl'
+import type { ProviderId } from './provider'
 import type { EnvKind } from './types'
 
 export type LiveState = 'working' | 'approval' | 'idle' | 'exited'
@@ -207,10 +208,19 @@ export interface LiveSession {
   remoteUrl?: string
   version?: string
   entrypoint?: string
-  /** Which signal the state comes from. */
-  basis: 'status' | 'hook' | 'activity'
+  /**
+   * Which signal the state comes from: Claude Code's status file, a hook
+   * event, transcript activity; Codex's rollout events or its thread lock.
+   */
+  basis: 'status' | 'hook' | 'activity' | 'rollout' | 'lock'
   /** The process couldn't be checked: it may have ended. */
   unverified?: boolean
+  /** Whose session (absent: Claude Code). */
+  provider?: ProviderId
+  /** "Needs approval" is a guess (Codex without the PermissionRequest hook). */
+  guess?: boolean
+  /** Codex: a process held the thread's lock at the last check. */
+  lockHeld?: boolean
 }
 
 /** A running file with its process check. */
@@ -543,7 +553,13 @@ export function stateLine(s: LiveSession, now: number, time: (ms: number) => str
     mins < 1 ? '<1m' : mins < 60 ? `${mins}m` : `${Math.floor(mins / 60)}h ${mins % 60}m`
   if (s.state === 'working') return `Working for ${short}`
   if (s.state === 'exited') return `${s.failed ? 'Stopped' : 'Exited'} at ${time(s.since)}`
-  return `${s.state === 'approval' ? 'Needs approval' : 'Waiting for you'} since ${time(s.since)}`
+  const waits =
+    s.state === 'approval'
+      ? s.guess
+        ? 'Probably needs approval'
+        : 'Needs approval'
+      : 'Waiting for you'
+  return `${waits} since ${time(s.since)}`
 }
 
 /** The state shown in the list, from the running data (for the badge). */
@@ -569,6 +585,15 @@ export interface HookEnv {
   /** Our hooks were removed or changed by someone else since the app added them. */
   changedSinceInstall?: boolean
   unavailable?: string
+  /** Whose home (absent: Claude Code). Codex: `settingsPath` is its hooks.json. */
+  provider?: ProviderId
+  /**
+   * Codex: whether Codex trusts the app's hook yet (it runs only once
+   * trusted, in Codex's /hooks). Read from config.toml; never written.
+   */
+  trust?: 'trusted' | 'untrusted' | 'disabled'
+  /** Codex: hooks are turned off in config.toml (`[features] hooks = false`). */
+  hooksFeatureOff?: boolean
 }
 
 /** What "Focus terminal" did. */

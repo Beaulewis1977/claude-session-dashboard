@@ -1,7 +1,9 @@
 // Launches requested from a paired phone.
 //
 // A phone can only ask for Resume, Fork, Branch or Continue fresh of a
-// session the app knows (Codex sessions: Resume, Fork and Continue fresh; no Branch).
+// session the app knows (Codex sessions: Resume, Fork and Continue fresh; no Branch),
+// or for "Open in Codex app on PC": the existing Codex thread opened in the Codex
+// desktop app (a fixed `codex://threads/<id>` link, nothing else).
 // The options are fixed here, whatever the phone sends: Remote Control on
 // (Claude Code; Codex has none, and asks before acting, in its workspace sandbox),
 // the Claude subscription (never an API key), permission prompts kept
@@ -39,13 +41,14 @@ export interface RemoteLaunchDeps {
   now?: () => number
 }
 
-const KINDS = ['resume', 'fork', 'branch', 'continue'] as const
+const KINDS = ['resume', 'fork', 'branch', 'continue', 'codex-app'] as const
 
 const VERB: Record<RemoteLaunchRequest['kind'], string> = {
   resume: 'Resume',
   fork: 'Fork',
   branch: 'Branch',
-  continue: 'Continue fresh'
+  continue: 'Continue fresh',
+  'codex-app': 'Open in Codex app'
 }
 
 /** Validate what the phone sent; anything unexpected is refused, not fixed up. */
@@ -69,6 +72,16 @@ export function remoteLaunchOptions(
   terminal: TerminalPref,
   provider: ProviderId = 'claude'
 ): LaunchOptions {
+  // Only the thread itself, in the Codex app: no folder, terminal or flags.
+  if (req.kind === 'codex-app')
+    return {
+      key: req.key,
+      fork: false,
+      skipPermissions: false,
+      askPermissions: true,
+      terminal,
+      openIn: 'codex-app'
+    }
   return {
     key: req.key,
     fork: req.kind === 'fork',
@@ -105,6 +118,8 @@ export class RemoteLauncher {
     if (s.availability === 'imported')
       return { error: 'Conversations imported from claude.ai can be read, not resumed.' }
     const provider = providerOf(s)
+    if (req.kind === 'codex-app' && provider !== 'codex')
+      return { error: 'Only Codex sessions open in the Codex app.' }
     if (provider !== 'claude' && req.kind === 'branch')
       return {
         error: `${VERB[req.kind]} isn't available for ${PROVIDER_LABEL[provider]} sessions.`
@@ -145,23 +160,27 @@ export class RemoteLauncher {
       return fail((err as Error).message, s.title)
     }
     const problem =
-      p.launchError ??
-      p.branchError ??
-      p.continueError ??
-      (!p.cwd
-        ? 'No working folder is recorded for this session.'
-        : !p.cwdExists
-          ? `The folder no longer exists: ${p.cwd}. Choose another folder on the PC.`
-          : p.restoreImpossible
-            ? 'The session file is missing and there is no archive copy.'
-            : undefined)
+      req.kind === 'codex-app'
+        ? p.codexApp?.available
+          ? undefined
+          : (p.codexApp?.reason ?? "This session can't be opened in the Codex app.")
+        : (p.launchError ??
+          p.branchError ??
+          p.continueError ??
+          (!p.cwd
+            ? 'No working folder is recorded for this session.'
+            : !p.cwdExists
+              ? `The folder no longer exists: ${p.cwd}. Choose another folder on the PC.`
+              : p.restoreImpossible
+                ? 'The session file is missing and there is no archive copy.'
+                : undefined))
     return {
       ok: !problem && !st.readOnly,
       error: st.readOnly
         ? 'Read-only mode is on: launches from the phone are turned off.'
         : problem,
       title: s.title,
-      cwd: p.cwd,
+      ...(req.kind === 'codex-app' ? { codexApp: true } : { cwd: p.cwd }),
       terminal: p.terminal,
       remoteControlName: p.remoteControlName,
       confirmOnPc: st.confirmOnPc,
@@ -237,7 +256,7 @@ export class RemoteLauncher {
     this.deps.log({
       device,
       action: 'launch',
-      detail: `${what} “${s.title}”${providerOf(s) === 'claude' ? ' with Remote Control' : ` (${PROVIDER_LABEL[providerOf(s)]})`}${res.ok ? '' : `: ${res.error ?? 'failed'}`}`,
+      detail: `${what} “${s.title}”${req.kind === 'codex-app' ? '' : providerOf(s) === 'claude' ? ' with Remote Control' : ` (${PROVIDER_LABEL[providerOf(s)]})`}${res.ok ? '' : `: ${res.error ?? 'failed'}`}`,
       ok: res.ok
     })
     return {

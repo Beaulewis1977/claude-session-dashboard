@@ -134,8 +134,11 @@ export interface ClaudeCheck {
 /** What a phone asks the PC to launch. Only these three, only for known sessions. */
 export interface RemoteLaunchRequest {
   key: string
-  /** 'continue': Continue fresh, a new session started from the session's summary. */
-  kind: 'resume' | 'fork' | 'branch' | 'continue'
+  /**
+   * 'continue': Continue fresh, a new session started from the session's summary.
+   * 'codex-app': open the existing Codex thread in the Codex desktop app on the PC.
+   */
+  kind: 'resume' | 'fork' | 'branch' | 'continue' | 'codex-app'
   branch?: { at: string; mode: 'include' | 'before' }
 }
 
@@ -143,6 +146,8 @@ export interface RemoteLaunchPreview {
   ok: boolean
   error?: string
   title: string
+  /** Opens in the Codex desktop app on the PC (no terminal or folder). */
+  codexApp?: boolean
   cwd?: string
   terminal: string
   remoteControlName?: string

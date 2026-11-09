@@ -305,6 +305,37 @@ describe('codexAppPreview (availability)', () => {
       }).available
     ).toBe(false)
   })
+
+  it('a consent is checked against the final match, however it was matched', () => {
+    const parent = { id: 'p-parent', root: 'C:\\work' }
+    const sub = facts({ folder: 'C:\\work\\lib' })
+    // The app assigned the thread to another project after the user chose p-parent.
+    const assigned = facts({
+      folder: 'C:\\work\\lib',
+      state: { ...st, assignments: { [CLI]: 'p-exact' } }
+    })
+    const r = codexAppPreview('continue', s, assigned, parent)
+    expect(r).toMatchObject({
+      available: false,
+      consentChanged: true,
+      project: { id: 'p-exact' }
+    })
+    expect(r.reason).toMatch(/changed since you chose it/)
+    // Without the old consent, the new project is shown as is (no consent needed).
+    expect(codexAppPreview('continue', s, assigned)).toMatchObject({
+      available: true,
+      project: { id: 'p-exact' }
+    })
+    // An exact match to another project, or no match at all: the same.
+    expect(
+      codexAppPreview('continue', s, facts({ folder: 'C:\\work\\app' }), parent).consentChanged
+    ).toBe(true)
+    expect(codexAppPreview('continue', s, facts({ folder: 'D:\\x' }), parent).consentChanged).toBe(
+      true
+    )
+    // Still the same project: opens.
+    expect(codexAppPreview('continue', s, sub, parent).available).toBe(true)
+  })
 })
 
 describe('Open in: remembered choice', () => {
@@ -556,17 +587,20 @@ async function setup(
     paths.dataDir
   )
   const opened: string[] = []
-  const toText = (ps: CodexAppState['projects']) =>
+  const toText = (ps: CodexAppState['projects'], asg: Record<string, string> = {}) =>
     JSON.stringify({
       'local-projects': Object.fromEntries(
         ps.map((p) => [p.id, { id: p.id, name: p.name, rootPaths: [p.root] }])
+      ),
+      'thread-project-assignments': Object.fromEntries(
+        Object.entries(asg).map(([t, id]) => [t, { projectKind: 'local', projectId: id }])
       )
     })
   let stateText = toText(projects)
   let mtime = 1
-  /** The Codex app's project list changes (as if edited in the app). */
-  const setProjects = (ps: CodexAppState['projects']): void => {
-    stateText = toText(ps)
+  /** The Codex app's project list (and thread assignments) change, as if edited in the app. */
+  const setProjects = (ps: CodexAppState['projects'], asg: Record<string, string> = {}): void => {
+    stateText = toText(ps, asg)
     mtime++
   }
   launcher.codexApp = {
@@ -696,6 +730,36 @@ describe('Open in Codex app (fixtures)', { timeout: 30_000 }, () => {
     expect(new URL(opened[0]).searchParams.get('projectId')).toBe('p-code')
   })
 
+  it('a consent never opens a project the app assigned the thread to afterwards', async () => {
+    const code = project('p-code', 'C:\\Users\\beau\\code', 'code')
+    const other = project('p-other', 'D:\\other', 'other')
+    const { sessions, launcher, opened, find, setProjects } = await setup([code, other])
+    const s = find(CLI)
+    sessions.setAiSummary(s.key, SUMMARY)
+    const p = await launcher.preview(opts(s.key, { continueFresh: {} }))
+    const accepted = { id: p.codexApp!.inside!.id, root: p.codexApp!.inside!.root }
+    setProjects([code, other], { [CLI]: 'p-other' })
+    const r = await launcher.launch(opts(s.key, { continueFresh: {}, codexAppProject: accepted }))
+    expect(r.ok).toBe(false)
+    expect(r.error).toMatch(/changed since you chose it/)
+    expect(opened).toEqual([])
+    // The dialog then previews without the old consent and shows the new project.
+    const again = await launcher.preview(opts(s.key, { continueFresh: {} }))
+    expect(again.codexApp).toMatchObject({ available: true, project: { id: 'p-other' } })
+  })
+
+  it('an assignment to a removed project falls back to matching the folder', async () => {
+    const shop = project(PID, 'C:\\Users\\beau\\code\\shop api', 'shop api')
+    const { sessions, launcher, opened, find, setProjects } = await setup([shop])
+    setProjects([shop], { [CLI]: 'p-removed' })
+    const s = find(CLI)
+    sessions.setAiSummary(s.key, SUMMARY)
+    const p = await launcher.preview(opts(s.key, { continueFresh: {} }))
+    expect(p.codexApp).toMatchObject({ available: true, project: { id: PID } })
+    expect((await launcher.launch(opts(s.key, { continueFresh: {} }))).ok).toBe(true)
+    expect(new URL(opened[0]).searchParams.get('projectId')).toBe(PID)
+  })
+
   it('a consent given for one project never opens another (the list changed meanwhile)', async () => {
     const { sessions, launcher, opened, find, setProjects } = await setup([
       project('p-code', 'C:\\Users\\beau\\code', 'code')
@@ -710,7 +774,7 @@ describe('Open in Codex app (fixtures)', { timeout: 30_000 }, () => {
       opts(s.key, { continueFresh: {}, codexAppProject: accepted })
     )
     expect(moved.ok).toBe(false)
-    expect(moved.error).toMatch(/inside the Codex project code/)
+    expect(moved.error).toMatch(/changed since you chose it/)
     // Another project now holds the folder.
     setProjects([project('p-other', 'C:\\Users\\beau\\code', 'other')])
     const other = await launcher.launch(

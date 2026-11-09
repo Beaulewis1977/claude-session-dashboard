@@ -15,11 +15,11 @@
 // hook (`/hooks`), and the app only reads config.toml to show whether that
 // happened. Never auth.json or anything else in the home.
 
-import { mkdir, readFile } from 'node:fs/promises'
+import { mkdir, readFile, stat } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import type { BridgeApplyResult, BridgePlan } from '@shared/usage/limits'
 import type { HookEnv } from '@shared/live'
-import { hooksFeatureOff, parseHookTrust, trustOf } from '@shared/codex-live'
+import { hooksFeatureOff, parseHookTrust, trustEntry, trustOf } from '@shared/codex-live'
 import type { SourceInfo } from '@shared/types'
 import { JsonStore } from '../core/json-store'
 import { copyShared } from '../core/shared-copy'
@@ -116,9 +116,18 @@ export function codexHookPaths(src: SourceInfo): CodexHookPaths | undefined {
   }
 }
 
+export interface CodexHookInstallRecord extends HookInstallRecord {
+  /**
+   * The trust entry config.toml already had at the hook's position when the
+   * app added it (left by an older hook there), or null when there was none.
+   * It doesn't mean the app's hook is trusted.
+   */
+  priorTrustHash?: string | null
+}
+
 export interface CodexHooksFile {
   version: 1
-  installs: Record<string, HookInstallRecord>
+  installs: Record<string, CodexHookInstallRecord>
 }
 
 export function createCodexHooksStore(dataDir: string): JsonStore<CodexHooksFile> {
@@ -167,6 +176,8 @@ export interface CodexHooksHost {
   readScript: (path: string) => Promise<string>
   /** Reads a text file of the Codex home (hooks.json, config.toml): a seam for tests. */
   readHome?: (path: string) => Promise<string | undefined>
+  /** When a file of the Codex home was last saved, epoch ms (a seam for tests). */
+  savedAt?: (path: string) => Promise<number | undefined>
 }
 
 export class CodexHooksInstaller {
@@ -179,12 +190,41 @@ export class CodexHooksInstaller {
     return join(this.host.dataDir, 'backups', 'codex-hooks')
   }
 
-  record(sourceId: string): HookInstallRecord | undefined {
+  record(sourceId: string): CodexHookInstallRecord | undefined {
     return this.store.value.installs[sourceId]
   }
 
   private read(path: string): Promise<string | undefined> {
     return this.host.readHome ? this.host.readHome(path) : readText(path)
+  }
+
+  private savedAt(path: string): Promise<number | undefined> {
+    return this.host.savedAt
+      ? this.host.savedAt(path)
+      : stat(path).then(
+          (st) => st.mtimeMs,
+          () => undefined
+        )
+  }
+
+  /** The trust entry config.toml has now at the handler's position in `text` (hooks.json). */
+  private async entryAt(
+    p: CodexHookPaths,
+    text: string,
+    commands: ReadonlySet<string>
+  ): Promise<string | null> {
+    const pos = handlerPosition(text, CODEX_HOOK_EVENTS[0], commands)
+    if (!pos) return null
+    const toml = (await this.read(p.configPath).catch(() => undefined)) ?? ''
+    const e = trustEntry(
+      parseHookTrust(toml),
+      p.codexHooksPath,
+      CODEX_HOOK_EVENTS[0],
+      pos.group,
+      pos.handler,
+      p.env === 'windows'
+    )
+    return e?.hash ?? null
   }
 
   commands(src: SourceInfo): Set<string> {
@@ -241,14 +281,24 @@ export class CodexHooksInstaller {
       if (env.installed && pos) {
         // Read only, and only the hook trust and the hooks feature switch.
         const toml = (await this.read(p.configPath).catch(() => undefined)) ?? ''
+        const installedAt = rec?.installedAt ? Date.parse(rec.installedAt) : undefined
         env.trust = trustOf(
           parseHookTrust(toml),
-          p.codexHooksPath,
-          CODEX_HOOK_EVENTS[0],
-          pos.group,
-          pos.handler,
-          p.env === 'windows'
+          {
+            hooksPath: p.codexHooksPath,
+            event: CODEX_HOOK_EVENTS[0],
+            group: pos.group,
+            handler: pos.handler,
+            windows: p.env === 'windows'
+          },
+          {
+            priorHash: rec?.priorTrustHash,
+            installedAt: Number.isFinite(installedAt) ? installedAt : undefined,
+            configSavedAt: await this.savedAt(p.configPath)
+          }
         )
+        // An approval the hook saved since it was added: it runs, whatever config.toml says.
+        if (lastEventAt && installedAt && lastEventAt >= installedAt) env.trust = 'trusted'
         if (hooksFeatureOff(toml)) env.hooksFeatureOff = true
       }
     } catch {
@@ -403,6 +453,7 @@ export class CodexHooksInstaller {
         const prevEvents = new Set(Object.keys(hooksOf(before) ?? {}))
         const prior = this.record(src.id)
         const repair = have.length > 0
+        const priorTrustHash = await this.entryAt(p, after, commands).catch(() => null)
         this.store.update((d) => {
           d.installs[src.id] = {
             installedAt: prior?.installedAt ?? new Date().toISOString(),
@@ -422,7 +473,8 @@ export class CodexHooksInstaller {
               ])
             ],
             backupPath,
-            scriptSha256: sha256(script)
+            scriptSha256: sha256(script),
+            priorTrustHash: prior ? prior.priorTrustHash : priorTrustHash
           }
         })
       } else {

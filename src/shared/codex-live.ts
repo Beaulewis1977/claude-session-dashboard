@@ -555,6 +555,8 @@ export interface HookTrust {
   /** `<hooks.json path>:<event>:<group>:<handler>`. */
   key: string
   trusted: boolean
+  /** The recorded hash ("sha256:…"): which version of the hook was trusted. */
+  hash?: string
   /** Turned off in Codex's /hooks. */
   disabled: boolean
 }
@@ -590,8 +592,11 @@ export function parseHookTrust(configToml: string): HookTrust[] {
     if (!cur) continue
     const kv = /^([A-Za-z_]+)\s*=\s*(.+?)\s*(#.*)?$/.exec(line)
     if (!kv) continue
-    if (kv[1] === 'trusted_hash') cur.trusted = /^["'][^"']+["']$/.test(kv[2])
-    else if (kv[1] === 'enabled') cur.disabled = kv[2] === 'false'
+    if (kv[1] === 'trusted_hash') {
+      const m = /^["']([^"']+)["']$/.exec(kv[2])
+      cur.trusted = !!m
+      if (m) cur.hash = m[1]
+    } else if (kv[1] === 'enabled') cur.disabled = kv[2] === 'false'
   }
   return out
 }
@@ -619,21 +624,53 @@ export const snakeEvent = (e: string): string => e.replace(/(?<!^)([A-Z])/g, '_$
  * as Codex sees it, the event, the group's and the handler's position).
  * Paths compare case-insensitively with either slash on Windows.
  */
-export function trustOf(
+export function trustEntry(
   entries: readonly HookTrust[],
   hooksPath: string,
   event: string,
   group: number,
   handler: number,
   windows: boolean
-): 'trusted' | 'untrusted' | 'disabled' {
+): HookTrust | undefined {
   const norm = (p: string): string => (windows ? p.replace(/\//g, '\\').toLowerCase() : p)
   const want = `${norm(hooksPath)}:${snakeEvent(event)}:${group}:${handler}`
-  const e = entries.find((x) => {
+  return entries.find((x) => {
     const i = x.key.lastIndexOf(':', x.key.lastIndexOf(':', x.key.lastIndexOf(':') - 1) - 1)
     return i > 0 && `${norm(x.key.slice(0, i))}${x.key.slice(i)}` === want
   })
+}
+
+/**
+ * Whether Codex trusts the app's handler, from config.toml (never written by
+ * the app). Codex keys trust by position and records the hash of the hook it
+ * trusted, a hash of its own normalized form that the app doesn't recompute.
+ * So an entry only counts when it is new since the app added its hook: one
+ * that was already there (`priorHash`: left behind by an older hook at the
+ * same position) or a config.toml not saved since the install is stale, and
+ * Codex will still skip the hook until it's trusted in /hooks.
+ */
+export function trustOf(
+  entries: readonly HookTrust[],
+  where: { hooksPath: string; event: string; group: number; handler: number; windows: boolean },
+  since?: { priorHash?: string | null; installedAt?: number; configSavedAt?: number }
+): 'trusted' | 'untrusted' | 'disabled' {
+  const e = trustEntry(
+    entries,
+    where.hooksPath,
+    where.event,
+    where.group,
+    where.handler,
+    where.windows
+  )
   if (!e) return 'untrusted'
   if (e.disabled) return 'disabled'
-  return e.trusted ? 'trusted' : 'untrusted'
+  if (!e.trusted) return 'untrusted'
+  if (since?.priorHash && e.hash === since.priorHash) return 'untrusted'
+  if (
+    since?.installedAt !== undefined &&
+    since.configSavedAt !== undefined &&
+    since.configSavedAt < since.installedAt
+  )
+    return 'untrusted'
+  return 'trusted'
 }

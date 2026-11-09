@@ -4,7 +4,17 @@
 // and the hook scripts save only the session, the event and the tool name.
 
 import { execFileSync, spawnSync } from 'node:child_process'
-import { copyFile, mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
+import {
+  copyFile,
+  mkdir,
+  mkdtemp,
+  readdir,
+  readFile,
+  rm,
+  stat,
+  utimes,
+  writeFile
+} from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -315,6 +325,40 @@ describe('trust, read from config.toml', () => {
       `[features]\nhooks = false\n[hooks.state.'${key}']\ntrusted_hash = "sha256:abc"\nenabled = false\n`
     )
     expect(await inst.describe(src)).toMatchObject({ trust: 'disabled', hooksFeatureOff: true })
+  })
+
+  it('a trust entry an older hook left at the same position is not the app’s', async () => {
+    // config.toml already trusts *something* at permission_request:0:0 (a hook removed since).
+    const home = join(root, 'Users', 'beau', '.codex')
+    const key = `${join(home, 'hooks.json')}:permission_request:0:0`
+    const stale = `[hooks.state.'${key}']\ntrusted_hash = "sha256:old"\n`
+    const { codex, src, inst } = await setup(GSD, stale)
+    await inst.apply(src, 'install', (await inst.plan(src, 'install')).token)
+    expect(inst.record(src.id)?.priorTrustHash).toBe('sha256:old')
+    expect((await inst.describe(src))?.trust).toBe('untrusted')
+    // The user trusts it in /hooks: Codex records the new hook's hash.
+    await writeFile(
+      join(codex, 'config.toml'),
+      `[hooks.state.'${key}']\ntrusted_hash = "sha256:new"\n`
+    )
+    expect((await inst.describe(src))?.trust).toBe('trusted')
+  })
+
+  it('an install made before the app recorded old entries: config.toml not saved since is stale', async () => {
+    const home = join(root, 'Users', 'beau', '.codex')
+    const key = `${join(home, 'hooks.json')}:permission_request:0:0`
+    const { codex, src, inst } = await setup(
+      GSD,
+      `[hooks.state.'${key}']\ntrusted_hash = "sha256:old"\n`
+    )
+    await inst.apply(src, 'install', (await inst.plan(src, 'install')).token)
+    // As an older build left it: no record of the entry that was there.
+    delete (inst.record(src.id) as { priorTrustHash?: unknown }).priorTrustHash
+    const old = new Date(Date.now() - 864e5)
+    await utimes(join(codex, 'config.toml'), old, old)
+    expect((await inst.describe(src))?.trust).toBe('untrusted')
+    // An approval the hook saved proves it runs.
+    expect((await inst.describe(src, Date.now() + 1000))?.trust).toBe('trusted')
   })
 
   it('a home that isn’t installed reports no trust', async () => {

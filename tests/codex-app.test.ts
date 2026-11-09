@@ -21,13 +21,15 @@ import {
   type CodexAppState
 } from '@shared/codex-app'
 import type { AiSummary } from '@shared/summary'
-import type { LaunchOptions, LaunchPreview } from '@shared/types'
+import type { LaunchOptions, LaunchPreview, SessionSummary } from '@shared/types'
 import {
   APP_STATE_FILE,
   CodexAppService,
   parseCodexAppState,
-  wslModeOn
+  wslModeOf
 } from '../src/main/providers/codex/app'
+import { normalizeProjectKey, projectDefaultKey, projectKeyLabel } from '@shared/project-key'
+import type { Platform } from '../src/main/platform'
 import { cleanMetaPatch } from '../src/main/services/store'
 import { handoffPath } from '../src/main/core/handoff'
 import { fixturesLayout, prepareFixtures, seedFixtureData } from '../src/main/fixtures'
@@ -80,10 +82,9 @@ describe('canonicalFolder', () => {
     expect(canonicalFolder('\\\\wsl$\\Ubuntu')).toBe('wsl:ubuntu:/')
   })
 
-  it('maps Linux paths to their distro (or any), and /mnt/<drive> to the drive', () => {
-    expect(canonicalFolder('/home/beau/App/', 'Ubuntu')).toBe('wsl:ubuntu:/home/beau/App')
-    expect(canonicalFolder('/home/beau/App')).toBe('wsl:*:/home/beau/App')
-    expect(canonicalFolder('/mnt/c/Users/Beau/App', 'Ubuntu')).toBe('win:c:\\users\\beau\\app')
+  it('never takes a bare Linux path: the distro has to say which folder it is', () => {
+    expect(canonicalFolder('/home/beau/App')).toBeUndefined()
+    expect(canonicalFolder('/mnt/c/Users/Beau/App')).toBeUndefined()
     expect(canonicalFolder('\\\\NAS\\Share\\X')).toBe('unc:\\\\nas\\share\\x')
     expect(canonicalFolder('relative\\folder')).toBeUndefined()
     expect(canonicalFolder('')).toBeUndefined()
@@ -102,66 +103,64 @@ describe('matchProject', () => {
   )
 
   it('prefers the project the app assigned the thread to', () => {
-    const m = matchProject(st, { sessionId: CLI.toUpperCase(), cwd: 'D:\\elsewhere' })
+    const m = matchProject(st, { sessionId: CLI.toUpperCase(), folder: 'D:\\elsewhere' })
     expect(m).toMatchObject({ kind: 'assigned', project: { id: 'local-c' } })
+    expect(matchProject(st, { sessionId: CLI, folderReason: 'unknown' }).kind).toBe('assigned')
   })
 
   it('matches the root exactly, whatever the case, slashes or trailing slash', () => {
-    for (const cwd of [
+    for (const folder of [
       'C:\\Users\\Beau\\code\\shop api',
       'c:/users/beau/CODE/Shop API/',
       'C:\\Users\\Beau\\code\\shop api\\'
     ])
-      expect(matchProject(st, { sessionId: WSL, cwd })).toMatchObject({
+      expect(matchProject(st, { sessionId: WSL, folder })).toMatchObject({
         kind: 'exact',
         project: { id: 'local-a' }
       })
   })
 
-  it('matches a WSL session folder to a \\\\wsl$ / \\\\wsl.localhost project root', () => {
-    const s = { sessionId: WSL, cwd: '/home/beau/dotfiles/', distro: 'Ubuntu', env: 'wsl' as const }
-    expect(matchProject(st, s)).toMatchObject({ kind: 'exact', project: { id: 'local-b' } })
-    // Linux paths keep their case; another distro is another folder.
-    expect(matchProject(st, { ...s, cwd: '/home/Beau/dotfiles' }).kind).toBe('none')
-    expect(matchProject(st, { ...s, distro: 'Debian' }).kind).toBe('none')
-    // A Windows .codex session that ran in WSL (no distro recorded): any one distro.
-    expect(
-      matchProject(st, { sessionId: WSL, cwd: '/home/beau/dotfiles', env: 'windows' })
-    ).toMatchObject({ kind: 'exact', project: { id: 'local-b' } })
+  it('matches a distro folder by \\\\wsl.localhost or \\\\wsl$, keeping the Linux path case', () => {
+    const folder = '\\\\wsl.localhost\\Ubuntu\\home\\beau\\dotfiles\\'
+    expect(matchProject(st, { sessionId: WSL, folder })).toMatchObject({
+      kind: 'exact',
+      project: { id: 'local-b' }
+    })
+    const upper = '\\\\wsl.localhost\\Ubuntu\\home\\Beau\\dotfiles'
+    expect(matchProject(st, { sessionId: WSL, folder: upper }).kind).toBe('none')
+    const debian = '\\\\wsl.localhost\\Debian\\home\\beau\\dotfiles'
+    expect(matchProject(st, { sessionId: WSL, folder: debian }).kind).toBe('none')
   })
 
-  it('refuses a Linux folder without a distro that matches projects in two distros', () => {
-    const two = state([
-      project('p1', '\\\\wsl$\\Ubuntu\\home\\beau\\x'),
-      project('p2', '\\\\wsl.localhost\\Debian\\home\\beau\\x')
-    ])
-    const m = matchProject(two, { sessionId: WSL, cwd: '/home/beau/x', env: 'windows' })
-    expect(m.kind).toBe('none')
-    expect(m.kind === 'none' && m.reason).toMatch(/more than one distro/)
+  it('a distro folder at /mnt/c (custom mounts) never matches the Windows C: project', () => {
+    const folder = '\\\\wsl.localhost\\Ubuntu\\mnt\\c\\Users\\Beau\\code\\shop api'
+    expect(matchProject(st, { sessionId: WSL, folder }).kind).toBe('none')
+  })
+
+  it('without a confirmed folder only the assignment counts, with the reason', () => {
+    expect(matchProject(st, { sessionId: WSL, folderReason: 'no distro' })).toEqual({
+      kind: 'none',
+      reason: 'no distro'
+    })
   })
 
   it('offers the closest project whose root holds the folder, never a sibling prefix', () => {
-    expect(
-      matchProject(st, { sessionId: WSL, cwd: 'C:\\Users\\Beau\\code\\app\\packages\\web' })
-    ).toMatchObject({ kind: 'inside', project: { id: 'local-d' } })
-    expect(matchProject(st, { sessionId: WSL, cwd: 'C:\\Users\\Beau\\code\\app2' })).toMatchObject({
+    const at = (folder: string) => matchProject(st, { sessionId: WSL, folder })
+    expect(at('C:\\Users\\Beau\\code\\app\\packages\\web')).toMatchObject({
+      kind: 'inside',
+      project: { id: 'local-d' }
+    })
+    expect(at('C:\\Users\\Beau\\code\\app2')).toMatchObject({
       kind: 'inside',
       project: { id: 'local-c' }
     })
-    expect(matchProject(st, { sessionId: WSL, cwd: 'C:\\Users\\Beau\\codex' }).kind).toBe('none')
-    expect(matchProject(st, { sessionId: WSL, cwd: 'D:\\other' }).kind).toBe('none')
+    expect(at('C:\\Users\\Beau\\codex').kind).toBe('none')
+    expect(at('D:\\other').kind).toBe('none')
+    expect(at('\\\\wsl$\\Ubuntu\\home\\beau\\dotfiles\\src')).toMatchObject({
+      kind: 'inside',
+      project: { id: 'local-b' }
+    })
     expect(matchProject(st, { sessionId: WSL }).kind).toBe('none')
-  })
-
-  it('matches a /mnt/c folder from WSL to the Windows project', () => {
-    expect(
-      matchProject(st, {
-        sessionId: WSL,
-        cwd: '/mnt/c/Users/Beau/code/shop api',
-        distro: 'Ubuntu',
-        env: 'wsl'
-      })
-    ).toMatchObject({ kind: 'exact', project: { id: 'local-a' } })
   })
 })
 
@@ -210,13 +209,15 @@ describe('codexAppPreview (availability)', () => {
   ])
   const facts = (f: Partial<CodexAppFacts> = {}): CodexAppFacts => ({
     installed: true,
+    wslMode: false,
     state: st,
     appHome: true,
     sourceLabel: 'Windows',
     fileExists: true,
+    folder: 'C:\\work\\app',
     ...f
   })
-  const s = { sessionId: CLI, cwd: 'C:\\work\\app', env: 'windows' as const }
+  const s = { sessionId: CLI }
 
   it('is hidden off Windows or without the app', () => {
     expect(codexAppPreview('resume', s, facts({ unsupportedPlatform: true }))).toMatchObject({
@@ -231,6 +232,14 @@ describe('codexAppPreview (availability)', () => {
 
   it('explains WSL mode and an unreadable project list', () => {
     expect(codexAppPreview('resume', s, facts({ wslMode: true })).reason).toMatch(/WSL/)
+    // config.toml unreadable or invalid: unknown, so nothing is offered (never taken as off).
+    const unknown = codexAppPreview(
+      'resume',
+      s,
+      facts({ wslMode: undefined, configError: 'access denied' })
+    )
+    expect(unknown).toMatchObject({ available: false })
+    expect(unknown.reason).toMatch(/config\.toml \(access denied\)/)
     const r = codexAppPreview('continue', s, facts({ state: undefined, stateError: 'bad' }))
     expect(r).toMatchObject({ available: false })
     expect(r.reason).toMatch(/bad/)
@@ -253,23 +262,48 @@ describe('codexAppPreview (availability)', () => {
       available: true,
       project: { id: 'p-exact', name: 'app' }
     })
-    const sub = { ...s, cwd: 'C:\\work\\lib' }
-    expect(codexAppPreview('continue', sub, facts())).toMatchObject({
+    const sub = facts({ folder: 'C:\\work\\lib' })
+    expect(codexAppPreview('continue', s, sub)).toMatchObject({
       available: false,
       inside: { id: 'p-parent', name: 'work' },
       reason: 'This folder is inside the Codex project work.'
     })
-    expect(codexAppPreview('continue', sub, facts(), true)).toMatchObject({
-      available: true,
-      project: { id: 'p-parent' }
-    })
-    expect(codexAppPreview('continue', { ...s, cwd: 'D:\\x' }, facts()).reason).toMatch(
+    expect(codexAppPreview('continue', s, sub, { id: 'p-parent', root: 'C:\\work' })).toMatchObject(
+      { available: true, project: { id: 'p-parent' } }
+    )
+    expect(codexAppPreview('continue', s, facts({ folder: 'D:\\x' })).reason).toMatch(
       /isn't a project in the Codex app/
     )
+    // No confirmed folder: the reason is shown.
+    const why = codexAppPreview(
+      'continue',
+      s,
+      facts({ folder: undefined, folderReason: "doesn't record which distro" })
+    )
+    expect(why.reason).toMatch(/isn't a project in the Codex app\. doesn't record which distro/)
     // Not tied to the Windows home: a WSL session can continue in a WSL project.
     expect(
       codexAppPreview('continue', s, facts({ appHome: false, fileExists: false })).available
     ).toBe(true)
+  })
+
+  it('a consent counts only for the project it was given for (id and root)', () => {
+    const sub = facts({ folder: 'C:\\work\\lib' })
+    // The same id with another root (the project was moved) or another id: asked again.
+    expect(codexAppPreview('continue', s, sub, { id: 'p-parent', root: 'C:\\old' })).toMatchObject({
+      available: false,
+      inside: { id: 'p-parent' }
+    })
+    expect(codexAppPreview('continue', s, sub, { id: 'p-exact', root: 'C:\\work' }).available).toBe(
+      false
+    )
+    // A consent never turns a non-inside match into anything else.
+    expect(
+      codexAppPreview('continue', s, facts({ folder: 'D:\\x' }), {
+        id: 'p-parent',
+        root: 'C:\\work'
+      }).available
+    ).toBe(false)
   })
 })
 
@@ -306,6 +340,21 @@ describe('Open in: remembered choice', () => {
     expect(sanitizeProjectOpenIn(['x'])).toEqual({})
     expect(cleanMetaPatch({ openIn: 'codex-app' })).toEqual({ openIn: 'codex-app' })
     expect(cleanMetaPatch({ openIn: 'x' as never })).toEqual({ openIn: undefined })
+  })
+
+  it('a Linux folder in a Windows home keeps its own project key, case and all', () => {
+    const key = projectDefaultKey({ env: 'windows', cwd: '/home/Beau/App' })
+    expect(key).toBe('linux:/home/Beau/App')
+    expect(projectDefaultKey({ env: 'windows', cwd: '/home/beau/app' })).not.toBe(key)
+    expect(normalizeProjectKey(key!)).toBe(key)
+    expect(sanitizeProjectOpenIn({ [key!]: 'codex-app' })).toEqual({ [key!]: 'codex-app' })
+    expect(projectKeyLabel(key!)).toBe('WSL · /home/Beau/App')
+    expect(normalizeProjectKey('linux:relative')).toBeUndefined()
+    // Windows and WSL keys are unchanged.
+    expect(projectDefaultKey({ env: 'windows', cwd: 'C:\\Code\\App' })).toBe('c:\\code\\app')
+    expect(projectDefaultKey({ env: 'wsl', distro: 'Ubuntu', cwd: '/home/Me/App' })).toBe(
+      'wsl:Ubuntu:/home/Me/App'
+    )
   })
 })
 
@@ -347,16 +396,26 @@ describe('parseCodexAppState', () => {
   })
 })
 
-describe('wslModeOn', () => {
-  it('reads only [windows] runCodexInWindowsSubsystemForLinux', () => {
-    expect(wslModeOn('[windows]\nrunCodexInWindowsSubsystemForLinux = true\n')).toBe(true)
-    expect(wslModeOn('[windows]\r\nrunCodexInWindowsSubsystemForLinux = false # off\r\n')).toBe(
-      false
+describe('wslModeOf (config.toml, parsed as TOML)', () => {
+  it('reads windows.runCodexInWindowsSubsystemForLinux in any TOML form', () => {
+    const on = { on: true }
+    const off = { on: false }
+    expect(wslModeOf('[windows]\nrunCodexInWindowsSubsystemForLinux = true\n')).toEqual(on)
+    expect(wslModeOf('[windows]\r\nrunCodexInWindowsSubsystemForLinux = false # off\r\n')).toEqual(
+      off
     )
-    expect(wslModeOn('windows.runCodexInWindowsSubsystemForLinux = true')).toBe(true)
-    expect(wslModeOn('[other]\nrunCodexInWindowsSubsystemForLinux = true')).toBe(false)
-    expect(wslModeOn('# [windows]\n# runCodexInWindowsSubsystemForLinux = true')).toBe(false)
-    expect(wslModeOn('')).toBe(false)
+    expect(wslModeOf('windows.runCodexInWindowsSubsystemForLinux = true')).toEqual(on)
+    expect(wslModeOf('windows = { runCodexInWindowsSubsystemForLinux = true }')).toEqual(on)
+    expect(wslModeOf('[windows]\n"runCodexInWindowsSubsystemForLinux" = true')).toEqual(on)
+    expect(wslModeOf('[other]\nrunCodexInWindowsSubsystemForLinux = true')).toEqual(off)
+    expect(wslModeOf('# [windows]\n# runCodexInWindowsSubsystemForLinux = true')).toEqual(off)
+    expect(wslModeOf('[windows]\nrunCodexInWindowsSubsystemForLinux = "true"')).toEqual(off)
+    expect(wslModeOf('')).toEqual(off)
+  })
+
+  it('an invalid file is an error, never "off"', () => {
+    const r = wslModeOf('[windows\nrunCodexInWindowsSubsystemForLinux = true')
+    expect('error' in r && r.error).toMatch(/isn't valid TOML/)
   })
 })
 
@@ -409,6 +468,31 @@ describe('CodexAppService', () => {
     }).svc.snapshot()
     expect(big.stateError).toMatch(/large/)
   })
+
+  it('config.toml: missing is off; unreadable or invalid is unknown, with the reason', async () => {
+    const fail = (code: string) => async (p: string) => {
+      if (p.endsWith(APP_STATE_FILE)) return STATE_JSON
+      throw Object.assign(new Error(`${code}: no`), { code })
+    }
+    expect(await service({ readText: fail('ENOENT') }).svc.snapshot()).toMatchObject({
+      wslMode: false
+    })
+    const denied = await service({ readText: fail('EACCES') }).svc.snapshot()
+    expect(denied.wslMode).toBeUndefined()
+    expect(denied.configError).toMatch(/couldn't read config\.toml: EACCES/)
+    const invalid = await service({
+      readText: async (p) => (p.endsWith(APP_STATE_FILE) ? STATE_JSON : '[windows')
+    }).svc.snapshot()
+    expect(invalid.wslMode).toBeUndefined()
+    expect(invalid.configError).toMatch(/isn't valid TOML/)
+    const inline = await service({
+      readText: async (p) =>
+        p.endsWith(APP_STATE_FILE)
+          ? STATE_JSON
+          : 'windows = { runCodexInWindowsSubsystemForLinux = true }'
+    }).svc.snapshot()
+    expect(inline.wslMode).toBe(true)
+  })
 })
 
 // ------------------------------------------------------------- launches (fixtures)
@@ -437,17 +521,22 @@ const SUMMARY: AiSummary = {
   messageCount: 2
 }
 
-async function setup(projects: CodexAppState['projects'], open?: (l: string) => Promise<void>) {
+async function setup(
+  projects: CodexAppState['projects'],
+  open?: (l: string) => Promise<void>,
+  over: Partial<Platform> = {}
+) {
   await cp(FIXTURES, join(root, 'fixtures'), { recursive: true })
   await prepareFixtures(root, { codex: true })
   const layout = fixturesLayout(root)
   const base = createFixturesPlatform(layout.fixturesDir, layout.sourcesDir)
-  const platform = {
+  const platform: Platform = {
     ...base,
     canLaunch: true,
     spawnDetached: async () => {
       throw new Error('a terminal must not be started')
-    }
+    },
+    ...over
   }
   const paths = appPaths(layout.dataDir)
   const metadata = createMetadataStore(paths)
@@ -467,18 +556,26 @@ async function setup(projects: CodexAppState['projects'], open?: (l: string) => 
     paths.dataDir
   )
   const opened: string[] = []
-  const stateText = JSON.stringify({
-    'local-projects': Object.fromEntries(
-      projects.map((p) => [p.id, { id: p.id, name: p.name, rootPaths: [p.root] }])
-    )
-  })
+  const toText = (ps: CodexAppState['projects']) =>
+    JSON.stringify({
+      'local-projects': Object.fromEntries(
+        ps.map((p) => [p.id, { id: p.id, name: p.name, rootPaths: [p.root] }])
+      )
+    })
+  let stateText = toText(projects)
+  let mtime = 1
+  /** The Codex app's project list changes (as if edited in the app). */
+  const setProjects = (ps: CodexAppState['projects']): void => {
+    stateText = toText(ps)
+    mtime++
+  }
   launcher.codexApp = {
     service: new CodexAppService({
       supported: true,
       home: () => 'C:\\Users\\beau\\.codex',
       protocolRegistered: async () => true,
       readText: async (p) => (p.endsWith(APP_STATE_FILE) ? stateText : ''),
-      statFile: async () => ({ size: stateText.length, mtimeMs: 1 })
+      statFile: async () => ({ size: stateText.length, mtimeMs: mtime })
     }),
     open: async (l) => {
       opened.push(l)
@@ -489,7 +586,14 @@ async function setup(projects: CodexAppState['projects'], open?: (l: string) => 
   await sessions.idle()
   const find = (id: string) =>
     sessions.list().find((x) => x.provider === 'codex' && x.sessionId === id)!
-  return { sessions, launcher, metadata, paths, opened, find }
+  /** Look a session up with other fields (another folder or home), as the launcher sees it. */
+  const pretend = (id: string, patch: Partial<SessionSummary>): SessionSummary => {
+    const s = { ...find(id), ...patch }
+    const get = sessions.get.bind(sessions)
+    sessions.get = (k: string) => (k === s.key ? s : get(k))
+    return s
+  }
+  return { sessions, launcher, metadata, paths, opened, find, pretend, setProjects }
 }
 
 const opts = (key: string, more: Partial<LaunchOptions> = {}): LaunchOptions => ({
@@ -586,9 +690,107 @@ describe('Open in Codex app (fixtures)', { timeout: 30_000 }, () => {
     const p: LaunchPreview = await launcher.preview(opts(s.key, { continueFresh: {} }))
     expect(p.codexApp).toMatchObject({ available: false, inside: { name: 'code' } })
     expect((await launcher.launch(opts(s.key, { continueFresh: {} }))).ok).toBe(false)
-    const r = await launcher.launch(opts(s.key, { continueFresh: {}, codexAppInside: true }))
+    const accepted = { id: p.codexApp!.inside!.id, root: p.codexApp!.inside!.root }
+    const r = await launcher.launch(opts(s.key, { continueFresh: {}, codexAppProject: accepted }))
     expect(r.ok).toBe(true)
     expect(new URL(opened[0]).searchParams.get('projectId')).toBe('p-code')
+  })
+
+  it('a consent given for one project never opens another (the list changed meanwhile)', async () => {
+    const { sessions, launcher, opened, find, setProjects } = await setup([
+      project('p-code', 'C:\\Users\\beau\\code', 'code')
+    ])
+    const s = find(CLI)
+    sessions.setAiSummary(s.key, SUMMARY)
+    const p = await launcher.preview(opts(s.key, { continueFresh: {} }))
+    const accepted = { id: p.codexApp!.inside!.id, root: p.codexApp!.inside!.root }
+    // Same id, moved to another root that still holds the folder.
+    setProjects([project('p-code', 'C:\\Users\\beau', 'code')])
+    const moved = await launcher.launch(
+      opts(s.key, { continueFresh: {}, codexAppProject: accepted })
+    )
+    expect(moved.ok).toBe(false)
+    expect(moved.error).toMatch(/inside the Codex project code/)
+    // Another project now holds the folder.
+    setProjects([project('p-other', 'C:\\Users\\beau\\code', 'other')])
+    const other = await launcher.launch(
+      opts(s.key, { continueFresh: {}, codexAppProject: accepted })
+    )
+    expect(other.ok).toBe(false)
+    expect(opened).toEqual([])
+  })
+
+  it('a WSL /mnt/c folder matches a C: project only when the distro maps it there', async () => {
+    const shop = project(PID, 'C:\\Users\\beau\\code\\shop api', 'shop api')
+    // Default mounts (the fixture distro maps /mnt/c to C:).
+    const std = await setup([shop])
+    std.sessions.setAiSummary(std.find(WSL).key, SUMMARY)
+    const a = std.pretend(WSL, { cwd: '/mnt/c/Users/beau/code/shop api' })
+    expect((await std.launcher.preview(opts(a.key, { continueFresh: {} }))).codexApp).toMatchObject(
+      {
+        available: true,
+        project: { id: PID }
+      }
+    )
+  })
+
+  it('a custom mount at /mnt/c is a Linux folder: no match, nothing opened', async () => {
+    const shop = project(PID, 'C:\\Users\\beau\\code\\shop api', 'shop api')
+    const custom = await setup([shop], undefined, {
+      wslWindowsPath: async (d, p) => `\\\\wsl.localhost\\${d}${p.replace(/\//g, '\\')}`
+    })
+    custom.sessions.setAiSummary(custom.find(WSL).key, SUMMARY)
+    const b = custom.pretend(WSL, { cwd: '/mnt/c/Users/beau/code/shop api' })
+    const r = await custom.launcher.launch(opts(b.key, { continueFresh: {} }))
+    expect(r.ok).toBe(false)
+    expect(r.error).toMatch(/isn't a project in the Codex app/)
+    expect(custom.opened).toEqual([])
+  })
+
+  it("a /mnt folder the distro can't confirm is never guessed", async () => {
+    const shop = project(PID, 'C:\\Users\\beau\\code\\shop api', 'shop api')
+    const { sessions, launcher, opened, find, pretend } = await setup([shop], undefined, {
+      wslWindowsPath: async () => undefined
+    })
+    sessions.setAiSummary(find(WSL).key, SUMMARY)
+    const s = pretend(WSL, { cwd: '/mnt/c/Users/beau/code/shop api' })
+    const r = await launcher.launch(opts(s.key, { continueFresh: {} }))
+    expect(r.ok).toBe(false)
+    expect(r.error).toMatch(/couldn't confirm which Windows folder/)
+    expect(opened).toEqual([])
+  })
+
+  it('a Windows-home session with a Linux folder: the distro is never inferred from the projects', async () => {
+    const dots = project(
+      'local-dots',
+      '\\\\wsl$\\Ubuntu\\home\\beau\\projects\\dotfiles',
+      'dotfiles'
+    )
+    const { sessions, launcher, opened, find, pretend } = await setup([dots], undefined, {
+      listDistros: async () => ['Ubuntu', 'Debian'],
+      defaultDistro: async () => 'Ubuntu'
+    })
+    sessions.setAiSummary(find(CLI).key, SUMMARY)
+    // It may have run in Debian: only Ubuntu's folder is a project, which proves nothing.
+    const s = pretend(CLI, { cwd: '/home/beau/projects/dotfiles' })
+    const r = await launcher.launch(opts(s.key, { continueFresh: {} }))
+    expect(r.ok).toBe(false)
+    expect(r.error).toMatch(/doesn't record which distro/)
+    expect(opened).toEqual([])
+  })
+
+  it('a Windows-home session in /mnt/c: matched when every distro maps it to the same folder', async () => {
+    const shop = project(PID, 'C:\\Users\\beau\\code\\shop api', 'shop api')
+    const { sessions, launcher, find, pretend } = await setup([shop], undefined, {
+      listDistros: async () => ['Ubuntu', 'Debian'],
+      defaultDistro: async () => 'Ubuntu'
+    })
+    sessions.setAiSummary(find(CLI).key, SUMMARY)
+    const s = pretend(CLI, { cwd: '/mnt/c/Users/beau/code/shop api' })
+    expect((await launcher.preview(opts(s.key, { continueFresh: {} }))).codexApp).toMatchObject({
+      available: true,
+      project: { id: PID }
+    })
   })
 
   it("drops the pending link when the app can't be opened", async () => {

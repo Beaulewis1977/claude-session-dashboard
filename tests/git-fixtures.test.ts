@@ -111,6 +111,13 @@ describe('git links on the sample data', () => {
     expect(git.view(key('019a3333'), { refresh: false })!.commits).toEqual([])
   })
 
+  it('a Codex subagent or fork splits from its parent at its own start', async () => {
+    const { sessions, key } = await setup()
+    const sub = sessions.gitInputs().find((i) => i.key === key('019a3333'))!
+    expect(sub.parentId).toBe('019a1111-0000-7000-8000-000000000001')
+    expect(sub.forkAt).toBe(Date.parse(sessions.get(key('019a3333'))!.startedAt!))
+  })
+
   it('finds sessions by a file they touched or a commit', async () => {
     const { sessions, key } = await setup()
     expect(sessions.searchKeys('touched:cookies.ts').map((h) => h.key)).toContain(key('7f3c9a12'))

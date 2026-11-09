@@ -193,13 +193,17 @@ export interface DiffFile {
   hunks: DiffHunk[]
   add: number
   del: number
+  /** Lines past the parser's limit, not kept (the whole diff can be asked for). */
+  cut?: number
 }
 
 export interface CommitDiff {
   sha: string
   files: DiffFile[]
-  /** The diff was cut at the size limit. */
+  /** The diff was cut (at the size limit, or a file at the line limit). */
   truncated: boolean
+  /** It was read whole (as far as the app reads one). */
+  all?: boolean
   bytes: number
   error?: string
 }

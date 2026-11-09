@@ -139,6 +139,44 @@ describe('confidence', () => {
     ])
   })
 
+  it('a rewritten copy still needs the user, no merge, the right agent and not the starting HEAD', () => {
+    const seen = (c: CommitInfo) => ({
+      commits: [
+        {
+          sha: 'abcdef1',
+          kind: 'commit-line' as const,
+          subject: c.subject,
+          from: at(10),
+          to: at(10)
+        }
+      ]
+    })
+    const base = { subject: 'Tidy', at: at(10), ct: at(300) }
+    const other = commit(9, { ...base, authorEmail: 'x@y', committerEmail: 'x@y' })
+    expect(
+      matchRepo(repo([other], 'beau@example.com'), [session('a', { signals: seen(other) })]).get(
+        'a'
+      )
+    ).toEqual([])
+    const merge = commit(9, { ...base, parents: [sha(1), sha(2)] })
+    expect(matchRepo(repo([merge]), [session('a', { signals: seen(merge) })]).get('a')).toEqual([])
+    const codex = commit(9, { ...base, trailers: ['Co-authored-by: Codex <noreply@openai.com>'] })
+    expect(matchRepo(repo([codex]), [session('a', { signals: seen(codex) })]).get('a')).toEqual([])
+    const head = commit(9, base)
+    expect(
+      matchRepo(repo([head]), [
+        session('a', { signals: { ...seen(head), head: head.sha.slice(0, 10) } })
+      ]).get('a')
+    ).toEqual([])
+    // The same copy, by the repo's user: High.
+    expect(
+      links(
+        matchRepo(repo([head], 'beau@example.com'), [session('a', { signals: seen(head) })]),
+        'a'
+      )
+    ).toEqual([[head.sha, 'high']])
+  })
+
   it('high: during a stretch, on its branch and touching files it edited', () => {
     const r = matchRepo(repo([commit(1)]), [
       session('a', { signals: { branches: ['fix/login'], files: ['C:\\code\\acme\\src\\a.ts'] } })

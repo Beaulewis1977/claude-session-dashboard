@@ -5,6 +5,7 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { setClockOffset } from '@shared/clock'
 import type { RefTip } from '@shared/git/log'
 import { parseGitQuery } from '@shared/git/query'
 import type { CommitInfo, GitLinkSettings, SessionGitSignals } from '@shared/git/types'
@@ -438,6 +439,156 @@ describe('the git links service', () => {
       error: "Not running (its git isn't asked)."
     })
     expect(g.calls.filter((c) => c.env.startsWith('wsl'))).toEqual([])
+  })
+
+  it("a fork's replayed parent output doesn't give it the parent's PRs or commits, however late", async () => {
+    const pr = {
+      owner: 'beau',
+      repo: 'acme',
+      number: 3,
+      url: 'https://github.com/beau/acme/pull/3',
+      at: at(2)
+    }
+    const mine = {
+      owner: 'beau',
+      repo: 'acme',
+      number: 4,
+      url: 'https://github.com/beau/acme/pull/4',
+      at: at(9)
+    }
+    const seen = {
+      sha: 'abc1234',
+      kind: 'commit-line' as const,
+      subject: 'x',
+      from: at(1),
+      to: at(1)
+    }
+    const f = fakeBackend([])
+    const { svc } = service(
+      [
+        input('p', {
+          cwd: 'C:\\nowhere',
+          provider: 'codex',
+          signals: sig({ prs: [pr], commits: [seen] })
+        }),
+        // The replay was written seconds after the fork started, so it looks like its own.
+        input('f', {
+          cwd: 'C:\\nowhere',
+          provider: 'codex',
+          forkOf: 'p',
+          forkAt: at(5),
+          signals: sig({ prs: [pr, mine], commits: [seen] })
+        })
+      ],
+      f.backend
+    )
+    await svc.start()
+    await svc.schedule({ force: false })
+    expect(svc.view('f', { refresh: false })!.prs.map((x) => x.number)).toEqual([4])
+    expect(svc.view('f', { refresh: false })!.commits).toEqual([])
+    expect(svc.view('p', { refresh: false })!.prs.map((x) => x.number)).toEqual([3])
+    expect([...svc.filter(parseGitQuery('commit:abc1234'))]).toEqual(['p'])
+  })
+
+  it('a removed worktree: the repo is read through another of its worktrees', async () => {
+    let wtGone = false
+    const f = fakeBackend([ACME])
+    const wtRoot = 'C:/code/acme/.claude/worktrees/x'
+    const base = f.backend
+    const backend: GitBackend = {
+      ...base,
+      async resolve(e, dir) {
+        if (/worktrees/.test(dir)) {
+          if (wtGone) return { ok: false, status: 'missing', message: 'gone' }
+          return {
+            ok: true,
+            root: wtRoot,
+            commonDir: ACME.commonDir,
+            gitDir: `${ACME.commonDir}/worktrees/x`
+          }
+        }
+        return base.resolve(e, dir)
+      },
+      async refs(e, root) {
+        if (root === wtRoot) return wtGone ? undefined : ACME.refs.map((x) => ({ ...x }))
+        return base.refs(e, root)
+      },
+      async log(e, root, o) {
+        if (root === wtRoot && wtGone) return undefined
+        return base.log(e, root === wtRoot ? ACME.root : root, o)
+      }
+    }
+    const { svc } = service(
+      [
+        input('wt', {
+          cwd: 'C:\\code\\acme\\.claude\\worktrees\\x',
+          signals: sig({ branches: ['fix/login'] })
+        }),
+        input('main', { signals: sig({ branches: ['fix/login'] }) })
+      ],
+      backend
+    )
+    await svc.start()
+    await svc.schedule({ force: false })
+    wtGone = true
+    await svc.refresh()
+    const v = svc.view('main', { refresh: false })!
+    expect(v.repo?.root).toBe(ACME.root)
+    expect(v.commits.length + v.possible.length).toBeGreaterThan(0)
+    const refsAfter = f.calls.filter((c) => c.op === 'refs').pop()!
+    expect(refsAfter.arg).toBe(ACME.root)
+  })
+
+  it('a PR looked up by SHA before it existed is looked up again later', async () => {
+    const c = ACME.commits[1]
+    let prs: { number: number; title: string; url: string; state: string; headRefName: string }[] =
+      []
+    const f = fakeBackend([ACME])
+    const searches: string[] = []
+    const backend: GitBackend = {
+      ...f.backend,
+      async ghPrs(slug, by) {
+        if ('search' in by) {
+          searches.push(by.search)
+          return prs
+        }
+        return f.backend.ghPrs(slug, by)
+      }
+    }
+    const s = service(
+      [
+        input('a', {
+          signals: sig({
+            commits: [{ sha: c.sha.slice(0, 7), kind: 'commit-line', from: at(30), to: at(30) }]
+          })
+        })
+      ],
+      backend,
+      { git: { gh: 'on' } }
+    )
+    await s.svc.start()
+    await s.svc.schedule({ force: false })
+    s.svc.view('a')
+    await new Promise((r) => setTimeout(r, 50))
+    expect(searches).toEqual([c.sha])
+    prs = [
+      {
+        number: 30,
+        title: 'Later',
+        url: 'https://github.com/beau/acme/pull/30',
+        state: 'OPEN',
+        headRefName: 'x'
+      }
+    ]
+    setClockOffset(2 * 3600_000)
+    try {
+      s.svc.view('a')
+      await new Promise((r) => setTimeout(r, 50))
+      expect(searches).toEqual([c.sha, c.sha])
+      expect(s.svc.view('a', { refresh: false })!.prs.map((x) => x.number)).toContain(30)
+    } finally {
+      setClockOffset(0)
+    }
   })
 
   it('does nothing when git links are off', async () => {

@@ -36,6 +36,24 @@ export function squashPr(subject: string): number | undefined {
   return m ? Number(m[1]) : undefined
 }
 
+/** Above this many merges, a merge's range stops at the default branch's line only (cheaper). */
+export const MAX_EXACT_MERGES = 400
+
+/** Every commit reachable from these (within the commits read). */
+function reachable(commits: Map<string, CommitInfo>, from: string[]): Set<string> {
+  const out = new Set<string>()
+  const todo = [...from]
+  while (todo.length) {
+    const s = todo.pop()!
+    if (out.has(s)) continue
+    const c = commits.get(s)
+    if (!c) continue
+    out.add(s)
+    todo.push(...c.parents)
+  }
+  return out
+}
+
 /** Sets `branches` and `pr` on each commit (in place). */
 export function labelBranches(commits: Map<string, CommitInfo>, refs: RefTip[]): void {
   const add = (sha: string, name: string): void => {
@@ -75,17 +93,24 @@ export function labelBranches(commits: Map<string, CommitInfo>, refs: RefTip[]):
     }
   }
 
-  // Merges: the commits each brought in (reached from its second parent, not on the main line).
-  for (const c of commits.values()) {
-    if (c.parents.length < 2) continue
+  // Merges: the commits each brought in: reached from its other parents, and not
+  // already reachable from its first parent (a stacked branch's earlier PR keeps its
+  // own commits). Oldest merge first, so a commit goes to the merge that brought it.
+  const merges = [...commits.values()]
+    .filter((c) => c.parents.length >= 2)
+    .sort((a, b) => a.ct - b.ct)
+  for (const c of merges) {
     const named = mergeSubject(c.subject)
     if (named?.pr !== undefined) c.pr ??= named.pr
     if (!named?.branch) continue
+    // Bounded work: with very many merges, only the default branch's line is left out.
+    const before =
+      merges.length <= MAX_EXACT_MERGES ? reachable(commits, [c.parents[0]]) : firstParent
     const seen = new Set<string>()
     const todo = c.parents.slice(1)
     while (todo.length) {
       const s = todo.pop()!
-      if (seen.has(s) || firstParent.has(s)) continue
+      if (seen.has(s) || before.has(s)) continue
       const m = commits.get(s)
       if (!m) continue
       seen.add(s)

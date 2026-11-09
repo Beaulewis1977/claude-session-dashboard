@@ -166,8 +166,7 @@ export function candidate(
     if (seen.subject && seen.subject === c.subject && during(c.at) && !c.sha.startsWith(seen.sha))
       rewritten = true
   }
-  if (rewritten) return { s, level: 'high', reasons: [{ kind: 'rewritten' }] }
-
+  // Everything below Exact (a rewritten copy too) needs the same safeguards.
   if (c.parents.length > 1) return undefined
   if (
     repo.userEmail &&
@@ -178,6 +177,7 @@ export function candidate(
   const owner = commitOwner(c)
   if (owner && owner !== s.provider) return undefined
   if (sig.head && c.sha.startsWith(sig.head)) return undefined
+  if (rewritten) return { s, level: 'high', reasons: [{ kind: 'rewritten' }] }
   if (!inSpans(c.at, sig.spans)) return undefined
 
   const reasons: LinkReason[] = []

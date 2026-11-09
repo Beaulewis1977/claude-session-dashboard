@@ -243,7 +243,11 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
       // Continue fresh starts empty; every other kind of child carries a copy of its parent.
       const lin = this.lineageResolver?.(b.key)
       const fork = lin && lin.via !== 'continue' ? lin : undefined
-      const forkAt = fork?.atTime ? Date.parse(fork.atTime) : NaN
+      // Codex records its own fork parent (forked_from_id). A Codex fork or subagent
+      // starts from its parent's history, so its own start is the split.
+      const forkOf = fork?.parentSessionId ?? b.forkedFromId
+      const split = fork?.atTime ?? (b.forkedFromId || b.subagent ? b.startedAt : undefined)
+      const forkAt = split ? Date.parse(split) : NaN
       out.push({
         key: b.key,
         sessionId: b.sessionId,
@@ -254,11 +258,11 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
         cwd: b.cwd,
         title: this.metaOf(b).name ?? b.claudeName ?? b.summary ?? b.firstPrompt?.slice(0, 80),
         parentId: b.subagent?.parentId,
-        ...(fork ? { forkOf: fork.parentSessionId } : {}),
+        ...(forkOf ? { forkOf } : {}),
         ...(Number.isFinite(forkAt) ? { forkAt } : {}),
         signals: e.git,
         // Its fork point counts too: lineage is worked out after the scan.
-        rev: `${e.size}|${b.lastActivityAt ?? ''}|${b.availability}|${fork?.parentSessionId ?? ''}|${fork?.atTime ?? ''}`
+        rev: `${e.size}|${b.lastActivityAt ?? ''}|${b.availability}|${forkOf ?? ''}|${split ?? ''}`
       })
     }
     return out

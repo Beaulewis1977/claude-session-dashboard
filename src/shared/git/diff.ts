@@ -3,8 +3,10 @@
 import { unquotePath } from './log'
 import type { DiffFile, DiffHunk } from './types'
 
-/** Lines kept per file before "show all" (the viewer cuts again for display). */
+/** Lines kept per file (the viewer shows fewer until "Show all"); more are counted in `cut`. */
 export const MAX_DIFF_LINES = 20_000
+/** Lines kept per file when the whole diff was asked for. */
+export const MAX_DIFF_LINES_ALL = 1_000_000
 
 function stripPrefix(p: string, prefix: 'a/' | 'b/'): string {
   const u = unquotePath(p.trim())
@@ -27,7 +29,7 @@ function gitLinePaths(line: string): { a?: string; b?: string } {
   return {}
 }
 
-export function parsePatch(text: string): DiffFile[] {
+export function parsePatch(text: string, maxLines = MAX_DIFF_LINES): DiffFile[] {
   const files: DiffFile[] = []
   let file: DiffFile | undefined
   let hunk: DiffHunk | undefined
@@ -72,22 +74,27 @@ export function parsePatch(text: string): DiffFile[] {
     }
     if (!hunk) continue
     const t = line[0]
+    // Past the limit, lines are only counted (the file says how many weren't kept).
+    const keep = (): boolean => {
+      if (kept++ < maxLines) return true
+      file!.cut = (file!.cut ?? 0) + 1
+      return false
+    }
     if (t === '+') {
       file.add++
-      if (kept++ < MAX_DIFF_LINES) hunk.lines.push({ t: '+', text: line.slice(1), newNo: newNo })
+      if (keep()) hunk.lines.push({ t: '+', text: line.slice(1), newNo: newNo })
       newNo++
     } else if (t === '-') {
       file.del++
-      if (kept++ < MAX_DIFF_LINES) hunk.lines.push({ t: '-', text: line.slice(1), oldNo: oldNo })
+      if (keep()) hunk.lines.push({ t: '-', text: line.slice(1), oldNo: oldNo })
       oldNo++
     } else if (t === ' ' || line === '') {
       // A blank line inside a hunk is a context line whose space was trimmed.
-      if (kept++ < MAX_DIFF_LINES)
-        hunk.lines.push({ t: ' ', text: line.slice(1), oldNo: oldNo, newNo: newNo })
+      if (keep()) hunk.lines.push({ t: ' ', text: line.slice(1), oldNo: oldNo, newNo: newNo })
       oldNo++
       newNo++
     } else if (t === '\\') {
-      if (kept++ < MAX_DIFF_LINES) hunk.lines.push({ t: '\\', text: line.slice(1).trim() })
+      if (keep()) hunk.lines.push({ t: '\\', text: line.slice(1).trim() })
     }
   }
   return files

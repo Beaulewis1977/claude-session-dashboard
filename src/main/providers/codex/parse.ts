@@ -895,7 +895,9 @@ export function codexGitSignals(lines: Line[], fileSessionId?: string): SessionG
     }
     const call = toolCallOf(p)
     if (!call) return
-    if (call.name === 'apply_patch') {
+    // Namespaced names (`functions.exec_command`) are the same tools.
+    const short = call.name.slice(call.name.lastIndexOf('.') + 1)
+    if (call.name === 'apply_patch' || short === 'apply_patch') {
       const patch =
         typeof call.input === 'string'
           ? call.input
@@ -903,7 +905,7 @@ export function codexGitSignals(lines: Line[], fileSessionId?: string): SessionG
       for (const f of patchFiles(patch)) b.file(f)
       return
     }
-    if (SHELL_TOOLS.has(call.name)) {
+    if (SHELL_TOOLS.has(call.name) || SHELL_TOOLS.has(short)) {
       const cmd = commandText(call.input)
       if (!cmd) return
       // `apply_patch <<'EOF' … EOF` run through the shell.

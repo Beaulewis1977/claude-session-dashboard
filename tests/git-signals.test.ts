@@ -283,6 +283,32 @@ describe('Codex signals', () => {
     expect(s.prs.map((p) => p.number)).toEqual([7])
   })
 
+  it('reads namespaced tool names (functions.exec_command) like plain ones', () => {
+    const ns = (at: string, callId: string, name: string, args: unknown) =>
+      line({
+        timestamp: at,
+        type: 'response_item',
+        payload: {
+          type: 'function_call',
+          namespace: 'functions',
+          name,
+          call_id: callId,
+          arguments: JSON.stringify(args)
+        }
+      })
+    const text = [
+      meta(OWN, '2026-10-20T14:15:04.000Z'),
+      ns('2026-10-20T14:16:00.000Z', 'c1', 'exec_command', { cmd: 'git commit -m x' }),
+      out('2026-10-20T14:16:01.000Z', 'c1', '[main 3333333] x'),
+      ns('2026-10-20T14:17:00.000Z', 'p1', 'apply_patch', {
+        input: '*** Begin Patch\n*** Update File: src/a.ts\n*** End Patch'
+      })
+    ].join('\n')
+    const s = analyzeCodex(text, OWN).git
+    expect(s.commits.map((c) => c.sha)).toEqual(['3333333'])
+    expect(s.files).toEqual(['src/a.ts'])
+  })
+
   it("leaves out a fork's copy of its parent's history (stamped with the fork's time)", () => {
     const at = '2026-10-31T18:48:59.647Z'
     const copy = '2026-10-31T18:48:59.648Z'

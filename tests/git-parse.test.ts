@@ -142,6 +142,25 @@ describe('branches from the commit graph', () => {
     expect(b(2).branches).toEqual(['main'])
   })
 
+  it("stacked PRs: a later merge never takes an earlier PR's commits", () => {
+    // main: 1 ---- 4 (merge #10 from beau/a) ---- 6 (merge #20 from beau/b)
+    // a:      \ 2 /                              /
+    // b:          \ 3 (on top of a) ----- 5 -----
+    const all = [
+      c(1, []),
+      c(2, [1]),
+      c(3, [2]),
+      c(4, [1, 2], 'Merge pull request #10 from beau/a'),
+      c(5, [3]),
+      c(6, [4, 5], 'Merge pull request #20 from beau/b')
+    ]
+    const map = new Map(all.map((x) => [x.sha, x]))
+    labelBranches(map, [{ ref: 'refs/heads/main', sha: S(6) }])
+    expect(map.get(S(2))).toMatchObject({ branches: ['a'], pr: 10 })
+    expect(map.get(S(3))).toMatchObject({ branches: ['b'], pr: 20 })
+    expect(map.get(S(5))).toMatchObject({ branches: ['b'], pr: 20 })
+  })
+
   it('reads merge and squash subjects', () => {
     expect(mergeSubject("Merge branch 'fix/a' into main")).toEqual({ branch: 'fix/a' })
     expect(mergeSubject("Merge remote-tracking branch 'origin/fix/b'")).toEqual({ branch: 'fix/b' })
@@ -200,6 +219,20 @@ describe('patches', () => {
       { t: '\\', text: 'No newline at end of file' }
     ])
     expect(files[3].from).toBe('old name.md')
+  })
+})
+
+describe('very long diffs', () => {
+  it('counts the lines past the limit, and keeps them when asked for the whole diff', () => {
+    const body = Array.from({ length: 25 }, (_, i) => '+line ' + i).join('\n')
+    const patch =
+      'diff --git a/a.ts b/a.ts\n--- a/a.ts\n+++ b/a.ts\n@@ -0,0 +1,25 @@\n' + body + '\n'
+    const cut = parsePatch(patch, 20)[0]
+    expect(cut.hunks[0].lines).toHaveLength(20)
+    expect(cut).toMatchObject({ add: 25, cut: 5 })
+    const whole = parsePatch(patch, 100)[0]
+    expect(whole.hunks[0].lines).toHaveLength(25)
+    expect(whole.cut).toBeUndefined()
   })
 })
 
@@ -378,6 +411,44 @@ describe.runIf(hasGit())('the real backend on a temporary repo', () => {
     ])
     const cut = await b.show(env, r.root, sha, undefined, 40)
     expect(cut.truncated).toBe(true)
+  })
+
+  it("shows what a merge brought in (first parent), whatever the repo's diff prefixes", async () => {
+    git(['switch', '-q', '-c', 'side'])
+    await writeFile(join(repo, 'm.txt'), 'side\n')
+    git(['add', '.'])
+    git(['commit', '-q', '-m', 'Side'], '2026-10-23T10:00:00Z')
+    git(['switch', '-q', 'main'])
+    await writeFile(join(repo, 'm.txt'), 'main\n')
+    git(['add', '.'])
+    git(['commit', '-q', '-m', 'Main'], '2026-10-23T10:01:00Z')
+    try {
+      git(['merge', '-q', 'side', '-m', 'Merge branch side'], '2026-10-23T10:02:00Z')
+    } catch {
+      // The conflict, resolved by hand below.
+    }
+    await writeFile(join(repo, 'm.txt'), 'resolved\n')
+    git(['add', '.'])
+    git(['commit', '-q', '--no-edit'], '2026-10-23T10:03:00Z')
+    git(['config', 'diff.srcPrefix', 'old/'])
+    git(['config', 'diff.dstPrefix', 'new/'])
+    try {
+      const b = backend()
+      const r = await b.resolve(env, repo)
+      if (!r.ok) throw new Error(r.message)
+      const res = (await b.log(env, r.root, { revs: ['--branches'], maxCount: 5 }))!
+      const merge = res.commits.find(
+        (x) => x.parents.length === 2 && x.subject.startsWith('Merge branch')
+      )!
+      expect(merge.files.map((f) => f.path)).toEqual(['m.txt'])
+      const d = parsePatch((await b.show(env, r.root, merge.sha, undefined, 1024 * 1024)).text)
+      expect(d.map((f) => [f.path, f.add, f.del])).toEqual([['m.txt', 1, 1]])
+      const one = parsePatch((await b.show(env, r.root, merge.sha, ['m.txt'], 1024 * 1024)).text)
+      expect(one.map((f) => f.path)).toEqual(['m.txt'])
+    } finally {
+      git(['config', '--unset', 'diff.srcPrefix'])
+      git(['config', '--unset', 'diff.dstPrefix'])
+    }
   })
 
   it('never changed the repo (same refs, no new objects in the index lock)', async () => {

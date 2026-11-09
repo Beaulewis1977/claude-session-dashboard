@@ -16,7 +16,7 @@ import { EventEmitter } from 'node:events'
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { now } from '@shared/clock'
-import { parsePatch } from '@shared/git/diff'
+import { MAX_DIFF_LINES, MAX_DIFF_LINES_ALL, parsePatch } from '@shared/git/diff'
 import { labelBranches, defaultBranch } from '@shared/git/graph'
 import { githubSlug, normalizeRemote, type RefTip } from '@shared/git/log'
 import { matchRepo, normPath, relativeTo, repoFile, type MatchSession } from '@shared/git/match'
@@ -97,6 +97,8 @@ interface RepoState {
   truncated: boolean
   checkedAt: number
   error?: string
+  /** Every worktree root it was found through (git is asked in `root`, or another if that one is gone). */
+  roots?: string[]
 }
 
 interface Computed {
@@ -146,6 +148,8 @@ export class GitLinksService extends EventEmitter<{ changed: [] }> {
   private repos = new Map<string, RepoState>()
   private computed = new Map<string, Computed>()
   private inputs = new Map<string, GitInput>()
+  /** The same inputs by session id (to find a fork's or subagent's parent). */
+  private byId = new Map<string, GitInput>()
   private gh = new Map<string, GhEntry>()
   private ghAuth?: { state: GhAuth; at: number }
   private busy = new Set<string>()
@@ -289,6 +293,7 @@ export class GitLinksService extends EventEmitter<{ changed: [] }> {
     }
     const inputs = this.deps.sessions.gitInputs()
     this.inputs = new Map(inputs.map((i) => [i.key, i]))
+    this.byId = new Map(inputs.map((i) => [`${i.provider}:${i.sessionId}`, i]))
     const ctx = await this.context()
     const t = now()
 
@@ -350,6 +355,26 @@ export class GitLinksService extends EventEmitter<{ changed: [] }> {
     this.deps.sessions.touch()
   }
 
+  /**
+   * A session's signals without what it copied from its parent (a fork, a branch
+   * or a Codex subagent replays the parent's history, whose `git commit` and
+   * `gh pr create` output is the parent's): commits and PRs the parent's own file
+   * also has are the parent's, however late the copy was written.
+   */
+  private ownSignals(i: GitInput): SessionGitSignals | undefined {
+    const sig = i.signals
+    const pid = i.forkOf ?? i.parentId
+    const parent = pid ? this.byId.get(`${i.provider}:${pid}`)?.signals : undefined
+    if (!sig || !parent || (!parent.prs.length && !parent.commits.length)) return sig
+    const prs = new Set(parent.prs.map((x) => x.url))
+    const shas = new Set(parent.commits.map((x) => x.sha))
+    return {
+      ...sig,
+      prs: sig.prs.filter((x) => !prs.has(x.url)),
+      commits: sig.commits.filter((x) => !shas.has(x.sha))
+    }
+  }
+
   private async resolveFolder(i: GitInput, ctx: PlaceContext): Promise<FolderState> {
     const at = now()
     const pl = await placeSession(i, ctx)
@@ -391,16 +416,24 @@ export class GitLinksService extends EventEmitter<{ changed: [] }> {
     if (!r.ok) return { status: r.status, message: r.message, env: pl.env, at }
     const common = normPath(r.commonDir)
     const repoKey = `${envKey(pl.env)}|${ci ? common.toLowerCase() : common}`
-    if (!this.repos.has(repoKey))
+    const known = this.repos.get(repoKey)
+    if (!known)
       this.repos.set(repoKey, {
         key: repoKey,
         env: pl.env,
         root: r.root,
+        roots: [r.root],
         refs: [],
         commits: new Map(),
         truncated: false,
         checkedAt: 0
       })
+    else {
+      if (!(known.roots ?? [known.root]).includes(r.root))
+        known.roots = [...(known.roots ?? [known.root]), r.root]
+      // The worktree it was read through went away: ask through this one, which works.
+      if (known.error) known.root = r.root
+    }
     const root = ownRoot ?? normPath(r.root)
     const cwdRel = ownRoot ? '' : (relativeTo(normPath(pl.dir), root, ci) ?? '')
     return { status: 'ok', env: pl.env, repoKey, root, cwdRel, ...(note ? { note } : {}), at }
@@ -427,7 +460,14 @@ export class GitLinksService extends EventEmitter<{ changed: [] }> {
       .map((s) => s.signals?.spans[0]?.[0])
       .filter((x): x is number => x !== undefined)
     const need = (starts.length ? Math.min(...starts) : now()) - WINDOW_SLACK_MS
-    const refs = await backend.refs(repo.env, repo.root)
+    let refs = await backend.refs(repo.env, repo.root)
+    // That worktree may have been removed: another of the repo's worktrees still reads it.
+    for (const alt of repo.roots ?? []) {
+      if (refs) break
+      if (alt === repo.root) continue
+      refs = await backend.refs(repo.env, alt)
+      if (refs) repo.root = alt
+    }
     if (!refs) {
       repo.error = "Couldn't read this repo's branches."
       return
@@ -500,7 +540,7 @@ export class GitLinksService extends EventEmitter<{ changed: [] }> {
         ...(i.title ? { title: i.title } : {}),
         root: f?.root ?? normPath(repo.root),
         cwdRel: f?.cwdRel ?? '',
-        signals: i.signals ?? EMPTY_SIGNALS,
+        signals: this.ownSignals(i) ?? EMPTY_SIGNALS,
         unlinked: new Set(this.deps.sessions.gitUnlinked(i.key))
       }
     })
@@ -547,7 +587,7 @@ export class GitLinksService extends EventEmitter<{ changed: [] }> {
         for (const p of this.gh.get(`${repo.github}@${sha}`)?.prs ?? [])
           branches.push(p.headRefName)
       const prs = sessionPrs({
-        signals: i.signals,
+        signals: this.ownSignals(i),
         links: own,
         commits: repo.commits,
         github: repo.github,
@@ -582,7 +622,7 @@ export class GitLinksService extends EventEmitter<{ changed: [] }> {
   }
 
   private computeWithoutRepo(i: GitInput, f: FolderState | undefined): void {
-    const prs = sessionPrs({ signals: i.signals, links: [], commits: new Map() })
+    const prs = sessionPrs({ signals: this.ownSignals(i), links: [], commits: new Map() })
     this.computed.set(i.key, {
       status: f?.status ?? 'no-folder',
       ...(f?.message ? { message: f.message } : {}),
@@ -651,7 +691,8 @@ export class GitLinksService extends EventEmitter<{ changed: [] }> {
       const ci = repo.commits.get(l.sha)
       if (ci?.pr !== undefined && covered.has(ci.pr)) continue
       const k = `${repo.github}@${l.sha}`
-      if (this.ghFresh(k) || this.gh.has(k)) continue
+      // A stale answer (also an empty one: the PR may exist now) is asked again.
+      if (this.ghFresh(k)) continue
       const prs = await this.deps.backend.ghPrs(repo.github, { search: l.sha })
       calls++
       if (prs) this.gh.set(k, { at: now(), prs })
@@ -700,7 +741,7 @@ export class GitLinksService extends EventEmitter<{ changed: [] }> {
     const f = this.folders.get(placeKey(i))
     const repo = c?.repoKey ? this.repos.get(c.repoKey) : undefined
     if (enabled && opts.refresh !== false) this.refreshForTab(key, repo)
-    const sig = i.signals ?? EMPTY_SIGNALS
+    const sig = this.ownSignals(i) ?? EMPTY_SIGNALS
     const views: CommitView[] = []
     const possible: CommitView[] = []
     for (const l of c?.links ?? []) {
@@ -859,11 +900,13 @@ export class GitLinksService extends EventEmitter<{ changed: [] }> {
       all ? DIFF_BYTES_ALL : DIFF_BYTES
     )
     if (r.error) return { sha, files: [], truncated: false, bytes: 0, error: r.error }
+    const files = parsePatch(r.text, all ? MAX_DIFF_LINES_ALL : MAX_DIFF_LINES)
     return {
       sha,
-      files: parsePatch(r.text),
-      truncated: r.truncated,
-      bytes: Buffer.byteLength(r.text)
+      files,
+      truncated: r.truncated || files.some((f) => !!f.cut),
+      bytes: Buffer.byteLength(r.text),
+      ...(all ? { all: true } : {})
     }
   }
 
@@ -918,7 +961,8 @@ export class GitLinksService extends EventEmitter<{ changed: [] }> {
             c.links.some((l) => LEVEL_RANK[l.level] >= LEVEL_RANK.medium && l.sha.startsWith(sha))
           )
             return true
-          const sig = this.inputs.get(key)?.signals
+          const own = this.inputs.get(key)
+          const sig = own && this.ownSignals(own)
           return !!sig?.commits.some(
             (s) => s.kind === 'commit-line' && (s.sha.startsWith(sha) || sha.startsWith(s.sha))
           )

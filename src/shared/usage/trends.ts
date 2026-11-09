@@ -24,8 +24,9 @@ export type MetricId =
   | 'thinkingLength'
   | 'contextUsage'
 
-export interface MetricDef {
-  id: MetricId
+/** A metric's definition (Claude Code's by default; Codex trends have their own ids). */
+export interface MetricDef<M extends string = MetricId> {
+  id: M
   title: string
   subtitle: string
   unit: 'tokens' | 'seconds' | 'percent' | 'count' | 'chars'
@@ -245,8 +246,8 @@ export interface TrendPoint {
   value?: number
 }
 
-export interface TrendSeries {
-  metric: MetricId
+export interface TrendSeries<M extends string = MetricId> {
+  metric: M
   group: string
   label: string
   points: TrendPoint[]
@@ -259,11 +260,11 @@ export interface TrendMarker {
   label: string
 }
 
-export interface TrendsReport {
+export interface TrendsReport<M extends string = MetricId> {
   groupBy: TrendGroupBy
   weeks: { week: string; start: number }[]
   groups: { key: string; label: string; volume: number }[]
-  series: TrendSeries[]
+  series: TrendSeries<M>[]
   markers: TrendMarker[]
   versions: string[]
   models: string[]
@@ -459,16 +460,16 @@ export interface CompareSide {
   model?: string
 }
 
-export interface CompareRow {
-  metric: MetricId
+export interface CompareRow<M extends string = MetricId> {
+  metric: M
   a?: number
   b?: number
   /** (b − a) ÷ a, in %. */
   changePct?: number
 }
 
-export interface CompareResult {
-  rows: CompareRow[]
+export interface CompareResult<M extends string = MetricId> {
+  rows: CompareRow<M>[]
   samples: {
     a: { responses: number; requests: number }
     b: { responses: number; requests: number }

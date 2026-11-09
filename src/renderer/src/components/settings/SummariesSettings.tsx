@@ -137,8 +137,8 @@ function HandoffCleanup() {
           className="rounded-lg border border-warning/30 bg-warning-soft p-3 text-xs leading-relaxed"
         >
           Delete {formatInt(stats.old.files)} handoff file{stats.old.files === 1 ? '' : 's'} (
-          {formatBytes(stats.old.bytes)}) older than 30 days? Only the app&apos;s own handoff files in{' '}
-          <span className="font-mono">handoffs\</span> and{' '}
+          {formatBytes(stats.old.bytes)}) older than 30 days? Only the app&apos;s own handoff files
+          in <span className="font-mono">handoffs\</span> and{' '}
           <span className="font-mono">handoffs\codex\</span> are deleted. Sessions started from them
           aren&apos;t affected, and nothing in Claude&apos;s or Codex&apos;s folders is touched.
           <div className="mt-2.5 flex justify-end gap-2">

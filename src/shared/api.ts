@@ -30,6 +30,7 @@ import type { ResumeEstimate } from './context'
 import type { SummaryBatchEstimate, SummaryPreview, SummaryQueueState } from './summary-queue'
 import type { Account, CreditGrant, CreditsState } from './usage/credits'
 import type { CompareResult, CompareSide, TrendGroupBy, TrendsReport } from './usage/trends'
+import type { CodexMetricId, CodexTrendsReport } from './usage/codex-trends'
 import type {
   ActivityEntry,
   ClaudeCheck,
@@ -131,6 +132,9 @@ export interface CsdApi {
   verifyCcusage(): Promise<CcusageComparison>
   getTrends(groupBy: TrendGroupBy): Promise<TrendsReport>
   compareTrends(a: CompareSide, b: CompareSide): Promise<CompareResult>
+  /** Codex trends, kept apart from Claude Code's (per model and Codex CLI version). */
+  getCodexTrends(groupBy: TrendGroupBy): Promise<CodexTrendsReport>
+  compareCodexTrends(a: CompareSide, b: CompareSide): Promise<CompareResult<CodexMetricId>>
 
   // Live limits and the status line bridge
   getLimits(): Promise<LimitsState>

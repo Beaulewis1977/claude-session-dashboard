@@ -175,6 +175,12 @@ export const RPC: Record<string, RpcMethod> = {
   getUsageStatus: { channel: 'usage:status', kind: 'read', args: none },
   getTrends: { channel: 'usage:trends', kind: 'read', args: ([g]) => [g] },
   compareTrends: { channel: 'usage:compare', kind: 'read', args: ([a, b]) => [a, b] },
+  getCodexTrends: { channel: 'usage:codexTrends', kind: 'read', args: ([g]) => [g] },
+  compareCodexTrends: {
+    channel: 'usage:codexCompare',
+    kind: 'read',
+    args: ([a, b]) => [a, b]
+  },
   getLimits: {
     channel: 'limits:state',
     kind: 'read',

@@ -22,7 +22,11 @@ export function bucketLabel(p: Pick<SeriesPoint, 'start'>, period: Period, long 
   return long ? longDate.format(p.start) : shortDate.format(p.start)
 }
 
-export function formatMetric(m: MetricDef, v: number | undefined, precise = false): string {
+export function formatMetric(
+  m: Pick<MetricDef<string>, 'unit'>,
+  v: number | undefined,
+  precise = false
+): string {
   if (v === undefined || !Number.isFinite(v)) return '—'
   if (v === 0) return m.unit === 'percent' ? '0%' : m.unit === 'seconds' ? '0s' : '0'
   switch (m.unit) {

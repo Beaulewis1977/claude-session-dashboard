@@ -51,6 +51,8 @@ const api: CsdApi = {
   verifyCcusage: () => ipcRenderer.invoke('usage:verifyCcusage'),
   getTrends: (groupBy) => ipcRenderer.invoke('usage:trends', groupBy),
   compareTrends: (a, b) => ipcRenderer.invoke('usage:compare', a, b),
+  getCodexTrends: (groupBy) => ipcRenderer.invoke('usage:codexTrends', groupBy),
+  compareCodexTrends: (a, b) => ipcRenderer.invoke('usage:codexCompare', a, b),
 
   getLimits: () => ipcRenderer.invoke('limits:state'),
   rescanLimits: () => ipcRenderer.invoke('limits:rescan'),

@@ -376,13 +376,32 @@ export function readBytesOf(text: string): number {
 }
 
 /** Line types the usage reader keeps (everything else is skipped unparsed). */
-const USAGE_TYPES_RE = /"type":"(?:session_meta|turn_context|compacted|token_count)"/
+const USAGE_TYPES_RE =
+  /"type":"(?:session_meta|turn_context|compacted|token_count|task_started|task_complete|turn_aborted|user_message)"/
+
+/** Tool calls, counted for trends by their type only (never parsed: their input can be large). */
+const TOOL_CALL_RE =
+  /"payload":\{"type":"(function_call|custom_tool_call|local_shell_call|web_search_call|tool_search_call)"/
+/** Tool outputs: only whether they report a failing exit code (from their start). */
+const TOOL_OUTPUT_RE = /"payload":\{"type":"(function_call_output|custom_tool_call_output)"/
+const EXIT_RE = /Exit code: (\d+)|Process exited with code (\d+)|\\"exit_code\\":(\d+)/
+/** A finished tool item with its status (newer Codex): the most reliable error signal. */
+const TOOL_ITEM_RE =
+  /"type":"item_completed".*?"item":\{"type":"(CommandExecution|McpToolCall|FileChange|DynamicToolCall)"/
+const MESSAGE_RE = /"payload":\{"type":"message"/
+
+/** The version of the usage text: bumped when it keeps more (see CODEX_USAGE_VERSION). */
+export const USAGE_TEXT_FORMAT = 2
 
 /**
- * Only what token usage and plan limits need, from the whole file (never
- * cut, however large): each `token_count` event, the model of each turn
- * (`turn_context`), the session's own meta (without its instructions) and
- * compaction markers. Small even for huge rollouts. Read-only.
+ * Only what token usage, plan limits and trends need, from the whole file
+ * (never cut, however large): each `token_count` event, the model of each
+ * turn (`turn_context`), the session's own meta (without its instructions),
+ * compaction markers, turn starts and ends (`task_started`,
+ * `task_complete`, `turn_aborted`), and for trends: each tool call by its
+ * type only, each tool output as "failed or not", each finished tool item's
+ * status, and each user message as "a prompt I wrote or context Codex
+ * added". Never any text. Small even for huge rollouts. Read-only.
  */
 export async function readCodexUsageText(path: string): Promise<string> {
   refuseCredentials(path)
@@ -392,7 +411,31 @@ export async function readCodexUsageText(path: string): Promise<string> {
     path,
     compressed,
     (line) => {
-      if (!USAGE_TYPES_RE.test(line.slice(0, 300))) return
+      const head = line.slice(0, 400)
+      const ts = TIMESTAMP_RE.exec(head)?.[1]
+      const call = TOOL_CALL_RE.exec(head)
+      if (call) {
+        out.push(
+          JSON.stringify({ timestamp: ts, type: 'response_item', payload: { type: call[1] } })
+        )
+        return
+      }
+      const output = TOOL_OUTPUT_RE.exec(head)
+      if (output) {
+        const m = EXIT_RE.exec(line.slice(0, 8000))
+        const code = m ? Number(m[1] ?? m[2] ?? m[3]) : undefined
+        out.push(
+          JSON.stringify({
+            timestamp: ts,
+            type: 'response_item',
+            payload: { type: output[1], ...(code !== undefined ? { exit: code } : {}) }
+          })
+        )
+        return
+      }
+      const item = TOOL_ITEM_RE.exec(head)
+      const message = !item && MESSAGE_RE.test(head)
+      if (!item && !message && !USAGE_TYPES_RE.test(line.slice(0, 300))) return
       let o: Record<string, unknown>
       try {
         const v: unknown = JSON.parse(line)
@@ -403,12 +446,18 @@ export async function readCodexUsageText(path: string): Promise<string> {
       }
       const p = (o.payload ?? {}) as Record<string, unknown>
       const keep: Record<string, unknown> = { timestamp: o.timestamp, type: o.type }
+      const src = p.source as Record<string, unknown> | undefined
       if (o.type === 'session_meta') {
         keep.payload = {
           id: p.id,
           timestamp: p.timestamp,
           forked_from_id: p.forked_from_id,
-          cli_version: p.cli_version
+          cli_version: p.cli_version,
+          // A subagent's thread (its "prompts" are the main agent's instructions).
+          ...((src && typeof src === 'object' && 'subagent' in src) ||
+          p.thread_source === 'subagent'
+            ? { subagent: true }
+            : {})
         }
       } else if (o.type === 'turn_context') {
         keep.payload = { model: p.model }
@@ -416,6 +465,41 @@ export async function readCodexUsageText(path: string): Promise<string> {
         keep.payload = {}
       } else if (o.type === 'event_msg' && p.type === 'token_count') {
         keep.payload = { type: p.type, info: p.info, rate_limits: p.rate_limits }
+      } else if (
+        o.type === 'event_msg' &&
+        (p.type === 'task_started' || p.type === 'task_complete' || p.type === 'turn_aborted')
+      ) {
+        const n = (v: unknown): number | undefined =>
+          typeof v === 'number' && Number.isFinite(v) ? v : undefined
+        keep.payload = {
+          type: p.type,
+          turn_id: typeof p.turn_id === 'string' ? p.turn_id : undefined,
+          started_at: n(p.started_at),
+          completed_at: n(p.completed_at),
+          duration_ms: n(p.duration_ms),
+          time_to_first_token_ms: n(p.time_to_first_token_ms),
+          ...(p.error ? { error: true } : {}),
+          ...(typeof p.reason === 'string' ? { reason: p.reason.slice(0, 40) } : {})
+        }
+      } else if (o.type === 'event_msg' && p.type === 'item_completed' && item) {
+        const it = (p.item ?? {}) as Record<string, unknown>
+        keep.payload = {
+          type: p.type,
+          item: { type: it.type, status: typeof it.status === 'string' ? it.status : undefined }
+        }
+      } else if (o.type === 'response_item' && p.type === 'message' && p.role === 'user') {
+        // A prompt I wrote, or only context Codex added (environment, AGENTS.md, …)? Never its text.
+        const content = Array.isArray(p.content) ? p.content : []
+        const mine = content.some((c: unknown, i) => {
+          const t = (c as { text?: unknown } | null)?.text
+          return typeof t === 'string' && t.trim() !== '' && !isContextItem(p, i, t)
+        })
+        keep.payload = { type: 'message', role: 'user', prompt: mine }
+      } else if (o.type === 'event_msg' && p.type === 'user_message') {
+        // Older Codex: the prompt as an event.
+        const t = typeof p.message === 'string' ? p.message : ''
+        keep.type = 'response_item'
+        keep.payload = { type: 'message', role: 'user', prompt: !!t.trim() && !isInjected(t) }
       } else return
       out.push(JSON.stringify(keep))
     },

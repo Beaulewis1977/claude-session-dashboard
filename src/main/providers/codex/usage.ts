@@ -27,7 +27,7 @@ import type { CodexLimitReading, CodexLimitWindow } from '@shared/usage/codex'
 import { MAIN_LIMIT_ID } from '@shared/usage/codex'
 import { parseResetsAt } from '@shared/usage/bridge'
 import type { UsageContext } from '@shared/usage/parse'
-import type { UsageAnalysis, UsageRecord } from '@shared/usage/types'
+import type { CodexTurnSample, UsageAnalysis, UsageRecord } from '@shared/usage/types'
 
 export type CodexUsageContext = UsageContext
 
@@ -182,6 +182,155 @@ function lines(text: string): Line[] {
   return out
 }
 
+const TOOL_CALL_TYPES = new Set([
+  'function_call',
+  'custom_tool_call',
+  'local_shell_call',
+  'web_search_call',
+  'tool_search_call'
+])
+
+/**
+ * Codex turns for trends: `task_started` → `task_complete` / `turn_aborted`
+ * (Codex 0.1xx), each with the responses, tool calls and tool outcomes in it.
+ * Rollouts without turn events (older Codex) are split at each prompt I
+ * wrote instead. A turn that hasn't ended yet isn't counted.
+ */
+class TurnTracker {
+  readonly turns: CodexTurnSample[] = []
+  private cur?: CodexTurnSample & {
+    fallback: boolean
+    items: number
+    itemErrors: number
+    outputs: number
+    outputErrors: number
+  }
+  private fallbackN = 0
+  private sawTaskEvents = false
+
+  constructor(
+    private readonly ctx: CodexUsageContext,
+    private readonly root: string,
+    private readonly subagent: boolean
+  ) {}
+
+  private open(id: string, ts: number, model: string | undefined, fallback: boolean): void {
+    this.cur = {
+      id,
+      ts,
+      key: this.ctx.key,
+      ...(model ? { model } : {}),
+      ...(this.ctx.version ? { version: this.ctx.version } : {}),
+      responses: 0,
+      outputTokens: 0,
+      reasoningTokens: 0,
+      toolCalls: 0,
+      toolResults: 0,
+      toolErrors: 0,
+      aborted: false,
+      failed: false,
+      prompted: false,
+      ...(this.subagent ? { subagent: true as const } : {}),
+      fallback,
+      items: 0,
+      itemErrors: 0,
+      outputs: 0,
+      outputErrors: 0
+    }
+  }
+
+  private close(): void {
+    const c = this.cur
+    this.cur = undefined
+    if (!c || (!c.responses && !c.toolCalls && !c.aborted)) return
+    const { fallback: _f, items, itemErrors, outputs, outputErrors, ...t } = c
+    // Finished tool items say how each tool ended (newer Codex); else the exit codes in outputs.
+    if (items) {
+      t.toolResults = items
+      t.toolErrors = itemErrors
+    } else {
+      t.toolResults = outputs
+      t.toolErrors = outputErrors
+    }
+    this.turns.push(t)
+  }
+
+  started(p: Record<string, unknown>, ts: number, model: string | undefined): void {
+    this.sawTaskEvents = true
+    // An earlier turn that never ended (Codex was closed mid-turn) isn't counted.
+    this.cur = undefined
+    const id = str(p.turn_id)
+    if (id) this.open(`codex-turn:${id}`, ts, model, false)
+  }
+
+  ended(p: Record<string, unknown>, aborted: boolean): void {
+    const c = this.cur
+    if (!c || c.fallback) return
+    const id = str(p.turn_id)
+    if (id && c.id !== `codex-turn:${id}`) return
+    const n = (v: unknown): number | undefined =>
+      typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : undefined
+    const started = n(p.started_at)
+    const completed = n(p.completed_at)
+    // started_at / completed_at are in seconds.
+    const dur =
+      n(p.duration_ms) ??
+      (started !== undefined && completed !== undefined && completed >= started
+        ? (completed - started) * 1000
+        : undefined)
+    if (dur !== undefined) c.durationMs = dur
+    const ttft = n(p.time_to_first_token_ms)
+    if (ttft !== undefined) c.firstTokenMs = ttft
+    if (aborted) c.aborted = true
+    if (p.error) c.failed = true
+    this.close()
+  }
+
+  prompt(ts: number, model: string | undefined): void {
+    if (!this.sawTaskEvents) {
+      // Older Codex: a prompt starts the next turn (once the current one has a response).
+      if (!this.cur || this.cur.responses > 0 || this.cur.toolCalls > 0) {
+        this.close()
+        this.open(`codex-turn:${this.root}:p${this.fallbackN++}`, ts, model, true)
+      }
+    }
+    if (this.cur) this.cur.prompted = !this.subagent
+  }
+
+  response(rec: UsageRecord, contextPct: number | undefined): void {
+    const c = this.cur
+    if (!c) return
+    c.responses++
+    c.outputTokens += rec.output
+    c.reasoningTokens += rec.reasoning ?? 0
+    if (!c.model && rec.model !== 'unknown') c.model = rec.model
+    if (contextPct !== undefined) c.contextPct = contextPct
+  }
+
+  toolCall(): void {
+    if (this.cur) this.cur.toolCalls++
+  }
+
+  toolOutput(exit: number | undefined): void {
+    if (!this.cur || exit === undefined) return
+    this.cur.outputs++
+    if (exit !== 0) this.cur.outputErrors++
+  }
+
+  toolItem(status: string | undefined): void {
+    if (!this.cur || !status || status === 'inProgress' || status === 'in_progress') return
+    this.cur.items++
+    if (status === 'failed' || status === 'declined') this.cur.itemErrors++
+  }
+
+  /** The end of the file: an older rollout's last turn ends here. */
+  finish(): CodexTurnSample[] {
+    if (this.cur?.fallback) this.close()
+    this.cur = undefined
+    return this.turns
+  }
+}
+
 /** Token usage (one record per response) and limit readings of one rollout. */
 export function analyzeCodexUsage(text: string, ctx: CodexUsageContext): UsageAnalysis {
   const records: UsageRecord[] = []
@@ -204,9 +353,35 @@ export function analyzeCodexUsage(text: string, ctx: CodexUsageContext): UsageAn
   // Every plan_type seen (also in repeated readings), to tag each response with its account.
   const plans: { ts: number; plan: string }[] = []
   const pending = new Map<string, CodexLimitReading>()
+  // The rollout's own meta (a fork's file also holds its parent's): is it a subagent's thread?
+  const metas = ls.filter((l) => l.type === 'session_meta')
+  const ownMeta = metas.find((l) => l.payload.id === sessionId) ?? metas[0]
+  const turns = new TurnTracker(ctx, root, ownMeta?.payload.subagent === true)
   for (const l of ls) {
     if (l.type === 'turn_context') {
       model = str(l.payload.model) ?? model
+      continue
+    }
+    const p = l.payload
+    const at = l.timestamp ? Date.parse(l.timestamp) : Number.NaN
+    if (l.type === 'response_item') {
+      if (p.type === 'message') {
+        if (p.prompt === true && Number.isFinite(at)) turns.prompt(at, model)
+      } else if (p.type === 'function_call_output' || p.type === 'custom_tool_call_output')
+        turns.toolOutput(typeof p.exit === 'number' ? p.exit : undefined)
+      else if (TOOL_CALL_TYPES.has(String(p.type))) turns.toolCall()
+      continue
+    }
+    if (l.type === 'event_msg' && p.type === 'task_started') {
+      if (Number.isFinite(at)) turns.started(p, at, model)
+      continue
+    }
+    if (l.type === 'event_msg' && (p.type === 'task_complete' || p.type === 'turn_aborted')) {
+      turns.ended(p, p.type === 'turn_aborted')
+      continue
+    }
+    if (l.type === 'event_msg' && p.type === 'item_completed') {
+      turns.toolItem(str(obj(p.item)?.status))
       continue
     }
     if (l.type !== 'event_msg' || l.payload.type !== 'token_count') continue
@@ -257,6 +432,13 @@ export function analyzeCodexUsage(text: string, ctx: CodexUsageContext): UsageAn
         rec.reasoning = Math.min(used.reasoning_output_tokens, used.output_tokens)
       if (ctx.version) rec.version = ctx.version
       records.push(rec)
+      // Context use after this response: what its next request sends, of the window.
+      const window = num(info?.model_context_window)
+      const inContext = last?.total_tokens ?? 0
+      turns.response(
+        rec,
+        window && inContext ? Math.min(100, (inContext / window) * 100) : undefined
+      )
     }
     const r = parseRateLimits(rl, ts, { id, key: ctx.key, source, sessionId })
     if (r?.planType && plans[plans.length - 1]?.plan !== r.planType)
@@ -288,5 +470,12 @@ export function analyzeCodexUsage(text: string, ctx: CodexUsageContext): UsageAn
       r.planInferred = true
     }
   readings.sort((a, b) => a.ts - b.ts)
-  return { records, turns: [], limitHits: [], usageReadings: [], codexLimits: readings }
+  return {
+    records,
+    turns: [],
+    limitHits: [],
+    usageReadings: [],
+    codexLimits: readings,
+    codexTurns: turns.finish()
+  }
 }

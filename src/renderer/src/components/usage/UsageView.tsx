@@ -269,6 +269,8 @@ export function UsageView() {
   const setModels = (m: string[]): void => setModelsBy((p) => ({ ...p, [view]: m }))
   const [groupBy, setGroupBy] = useState<Dimension>('model')
   const [tab, setTab] = useState<Tab>('trends')
+  // In the All view: whose trends the Trends tab shows.
+  const [trendsOf, setTrendsOf] = useState<'claude' | 'codex'>('claude')
   const [bridge, setBridge] = useState<BridgeEnv | null>(null)
   const [version, setVersion] = useState(0)
   const [ask, setAsk] = useState(false)
@@ -352,7 +354,8 @@ export function UsageView() {
         : LIVE_SOURCES_NOTE
 
   const tabs: [Tab, string][] = [
-    ...(showClaude ? ([['trends', 'Trends']] as [Tab, string][]) : []),
+    // Codex has its own trends (Phase D2), kept apart from Claude Code's.
+    ['trends', 'Trends'],
     ['limits', 'Limit history'],
     ...(showClaude ? ([['credits', 'Credits']] as [Tab, string][]) : []),
     ['raw', 'Raw table']
@@ -727,9 +730,24 @@ export function UsageView() {
           {shownTab === 'trends' && (
             <>
               {view === 'all' && (
-                <p className="mb-3 text-xs text-muted-foreground">Trends cover Claude Code only.</p>
+                <div className="mb-3 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+                  <Segmented
+                    ariaLabel="Whose trends"
+                    value={trendsOf}
+                    onChange={setTrendsOf}
+                    options={[
+                      { value: 'claude', label: 'Claude Code' },
+                      { value: 'codex', label: 'Codex' }
+                    ]}
+                  />
+                  Each agent&apos;s trends are kept apart: their metrics and logs differ.
+                </div>
               )}
-              <TrendsTab />
+              {/* Keyed: switching agents starts from an empty report, not the other's. */}
+              <TrendsTab
+                key={view === 'all' ? trendsOf : view}
+                provider={view === 'all' ? trendsOf : view}
+              />
             </>
           )}
           {shownTab === 'limits' && view === 'claude' && (

@@ -1,5 +1,24 @@
 # Changelog
 
+## 1.13.1 (November 9, 2026)
+
+**Loose ends after 1.13.0.**
+
+### Fixes and small additions (PR #39)
+
+- **Phone companion secrets on the async safeStorage API**, with a transparent one-time migration
+  of the existing keys (paired phones stay paired).
+- **Faster first page load:** the first Resume dialog opens quickly at startup, and the browser
+  tests share one cache and run reliably.
+- **Restore safety copy cleanup** in Settings → Backup (see the size, clean up by hand or
+  automatically, opt-in).
+- **Catch-up backups:** a missed daily backup runs shortly after start, with a notification when
+  it finishes (and a report when the backup folder isn't ready).
+- **Start with Windows** (optional), minimized to the tray.
+- **Codex:** fork ordering in usage and the one-account plan detection fixed.
+- **Windows notifications show reliably:** a fixed app identity (AppUserModelID), plus a
+  notification log (`logs\notifications.jsonl`).
+
 ## 1.13.0 (November 9, 2026)
 
 **Open in Codex app.**

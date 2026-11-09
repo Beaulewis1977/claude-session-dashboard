@@ -195,9 +195,14 @@ up" line (or the first thing done) shows on the session's card when it has no de
 palette), **Summarize selected** for several, or opt-in auto-summarize. One runs at a time, in the
 background; a panel in the corner shows the queue, with Cancel for one or all.
 
-- **What is sent:** your messages and Claude's replies as plain text, and one line per tool call
-  (`[tool] Edit src/app.ts`, `[tool] Bash: npm test`). Never tool results, thinking, images, slash
-  commands or their output. API keys, tokens, passwords, private keys and credentials in URLs are
+- **What is sent:** your messages and the agent's replies as plain text, one line per tool call
+  (`[tool] Edit src/app.ts`, `[tool] Bash: npm test`), the summary of earlier context a compaction
+  left, and for Codex one line per message between agents (up to 2,000 characters each). Compaction
+  summaries and messages between agents are written by the agent and can quote tool output or
+  files; the notice says so. Never the raw tool results, thinking, images, slash commands or their
+  output. The notice is versioned: when what is sent grows, an earlier acceptance (auto-summarize
+  included) no longer counts, and the notice is shown again before the next summary (Settings →
+  Summaries says when auto-summarize is paused for this). API keys, tokens, passwords, private keys and credentials in URLs are
   masked first. One very long message keeps its start and end (6,000 characters), and a session
   longer than the limit (120,000 characters by default, Settings → Summaries) keeps its first quarter
   and its last three quarters, with a note of how many messages were left out in the middle.
@@ -1043,8 +1048,13 @@ folder plus Codex's name index, `config.toml`, `archived_sessions` or `sessions/
   older `event_msg` messages (matched to items one by one, so a history that mixes both keeps its
   older turns without doubling the newer ones). Search covers the first 1,000,000 characters
   (prompts and answers first, then reasoning and tool calls); the viewer says when a session goes
-  past it (Find in session searches all of it). Messages between agents (`agent_message` items
-  with an author and recipient) aren't shown yet. Context Codex adds as user text (environment, AGENTS.md,
+  past it (Find in session searches all of it). Messages between agents (`response_item` /
+  `agent_message` items with an `author` and a `recipient`, agent paths like `/root` and
+  `/root/<name>`) show as collapsed **Agent → Agent** steps with who sent them to whom and copy
+  buttons; they're searchable and found by Find in session. In real rollouts each is its own record
+  (a subagent's instructions or its report, never a copy of a prompt or answer of the same file),
+  so they're shown once by their item id, and one whose text a prompt or answer within 12 lines
+  already holds is skipped. Context Codex adds as user text (environment, AGENTS.md,
   instructions, plugin suggestions) is never a prompt. Who wrote each item comes from the
   rollout itself: newer Codex records it per item (`internal_chat_message_metadata_passthrough`:
   `content_item_metadata[i].provenance.type` "user" / "harness" / …, and `content_item_kinds[i]`
@@ -1089,8 +1099,8 @@ folder plus Codex's name index, `config.toml`, `archived_sessions` or `sessions/
   - Folder checks: Windows can't see a distro's drive mounts through `\\wsl.localhost`, nor
     folders only the session's own WSL user can read. Those are checked inside the distro
     (`test -r`), as the user Codex will run as.
-- **Not for Codex** (hidden): Branch from here (it would write into `~/.codex`), Continue fresh and
-  summaries (later phase), New session in this folder, Remote Control, API billing. A
+- **Not for Codex** (hidden): Branch from here (it would write into `~/.codex`), New session in
+  this folder, Remote Control, API billing. A
   Codex session whose file is gone can be read but not resumed: the app never copies files back
   into `~/.codex`.
 - **Usage** (Phase C): from each rollout's `event_msg` / `token_count` events, read in full (also
@@ -1164,6 +1174,58 @@ folder plus Codex's name index, `config.toml`, `archived_sessions` or `sessions/
   the context window") out of `info.model_context_window`; after a compaction with no response since,
   the session's first input plus the compaction summary. Resume estimates are priced cold at the
   input price: Codex logs report no cache writes and nothing about how long a cache stays warm.
+- **Summaries** (Phase D2): written by Claude through `claude -p`, exactly as for Claude Code
+  sessions (same notice, preview, masking, size limit, limits guard and usage record). The
+  transcript is my prompts, Codex's answers (labelled "Codex:"), one `[tool]` line per tool call
+  and one `[agent <from> → <to>]` line per message between agents (cut to 2,000 characters). The
+  raw tool output, reasoning (summaries or encrypted), images and the context Codex adds as user
+  text (environment, AGENTS.md, instructions, subagent notices) are never sent as such, but a
+  message between agents or a compaction summary is written by the agent and can quote any of
+  them (the notice says so). Summarizing with `codex exec` instead was tested and
+  **not built**: codex-cli 0.166 still offered 19 tools (`exec`, `apply_patch`, `spawn_agent`,
+  MCP resource tools, goals, …) with every `--disable` flag, `-s read-only`,
+  `--ignore-user-config`, `-c web_search="disabled"` and `-c mcp_servers={}`, so it couldn't be
+  run tool-free.
+- **Continue fresh** (Phase D2): a new `codex` session (`codex [-C <dir>] [-m …] [-c
+model_reasoning_effort=…] [--dangerously-bypass-approvals-and-sandbox] "<first message>"`) in the
+  session's folder and environment, with the same options as Resume (never the bypass from a phone,
+  which uses `-a on-request -s workspace-write`). Codex has no `--session-id`, so the app picks
+  only the handoff's id: the summary goes to `%APPDATA%\ClaudeSessionDashboard\handoffs\codex\<id>.md`
+  (a new file only), and the first message is `Read the handoff file <path> first, then continue
+from it. It summarizes an earlier session.` (Codex has no @-mention that attaches a typed path;
+  its model reads the file with its own tools). No `--add-dir`: Codex's sandbox limits writes, not
+  reads (checked with `codex sandbox` on Windows: the handoff was readable in the default,
+  read-only and workspace-write modes, and a write in read-only was refused), and `--add-dir` would
+  make the folder writable. In WSL the path comes from the distro (`wslpath`) and must be readable
+  there before anything starts. The new session is linked as "continued from" once a Codex session
+  whose first prompt names that handoff file appears (a pending link in `metadata.json`, kept for a
+  week); it's recorded before the terminal starts (and dropped if nothing starts), so a scan
+  that finds the new session first still links it. It gets the "<title> — continued" name and the
+  parent's model and effort. A session with a Linux-only folder in a Windows Codex home gets the
+  same opt-in and distro choice as Resume, and the same forced read-only sandbox. The context-size
+  warning offers it with an estimate (Codex's own first input plus the handoff).
+- **Handoff files** (Claude Code's and Codex's) are never deleted on their own. Settings → Summaries
+  shows their count and size, and **Clean up handoffs older than 30 days** (after asking) deletes only
+  `<uuid>.md` files directly in `handoffs\` and `handoffs\codex\`, never a link or another file.
+- **Trends** (Phase D2): the Usage view's Trends tab has Codex's own metrics, kept apart from
+  Claude Code's (in All, a switch picks whose). Per response, from `token_count`: output and
+  reasoning tokens and the cached share of input. Per turn (`task_started` → `task_complete` /
+  `turn_aborted`): median turn time (`duration_ms`), time to first token, the tool error rate
+  (every finished tool item's `status`: commands, MCP and dynamic tools, file changes,
+  collaboration tools, extensions; older rollouts without them use failing exit codes in tool
+  output) and the share of interrupted or failed turns (one that failed before any response
+  counts too). A turn's model is the one its own `turn_context` names (Codex writes
+  `task_started` first). Per
+  prompt I wrote, in main threads only (a subagent's "prompts" are the main agent's): responses and
+  tool calls. Context use: the last reading of each session in each week. Weekly per model or Codex
+  CLI version, with markers for a new model (one with at least 2% of the responses) and a new
+  version (every change "By version"; otherwise every ten minor versions, as Codex ships one
+  almost weekly), and compare mode (two date
+  ranges or two versions). The usage reader keeps only these fields, never text; a fork's copied
+  turns count once by Codex's turn id. Older rollouts without turn events are split at each prompt;
+  such a turn takes the identity and model of its first response (its fork lineage plus its exact token counts, as usage records do) and counts exactly when that response counts in usage: a fork's copy of its parent's turn once, sibling forks' own turns each (also with identical token counts). A turn that hasn't ended isn't counted. Turns an older build saved are kept until
+  their session is read again, so an update never drops an offline session's history; an older build's prompt-split turns of a session in a fork family wait for that re-read (their ids can't be matched to the new ones). A Codex
+  session's handoff is checked readable in WSL as the user Codex runs as.
 - **Never**: `auth.json` or any credential file, and no OpenAI or ChatGPT endpoint. Logs only.
 - **Archive**: Settings → Archive → "Archive Codex sessions": Off (default; Codex doesn't delete
   old sessions itself), Named, pinned or tagged, or All. The size it would copy, and about what a

@@ -13,17 +13,25 @@
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { CodexLimitReading, CodexLimitWindow } from '@shared/usage/codex'
-import type { UsageRecord } from '@shared/usage/types'
+import type { CodexTurnSample, UsageRecord } from '@shared/usage/types'
 import { writeFileAtomic } from '../core/json-store'
 import { listFiles, readNdjson, writeNdjson } from '../core/ndjson'
 
 /** Bumped when the Codex usage parser changes: every Codex session is read again. */
 // 2: records carry the plan_type of the account that ran them; 299/10079-minute windows.
 // 3: identities count repeats within a file; readings without a plan take their session's.
-export const CODEX_USAGE_VERSION = 3
+// 4: turns for Codex trends (task_started → task_complete, tool outcomes, prompts).
+// 5: a turn's model from its own turn_context, failed turns without a response, every tool item,
+//    prompt-split turn ids per session (a fork's copies left out).
+// 6: prompt-split turns take their first response's identity and model (5 numbered them).
+export const CODEX_USAGE_VERSION = 6
 
 const RECORDS_RE = /^codex-records-\d{4}-\d{2}\.ndjson$/
 const LIMITS_RE = /^codex-limits-\d{4}-\d{2}\.ndjson$/
+/** Codex's own turn id (a UUID), as opposed to a prompt-split turn's derived one. */
+const CODEX_TURN_ID_RE =
+  /^codex-turn:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+const TURNS_RE = /^codex-turns-\d{4}-\d{2}\.ndjson$/
 const INDEX = 'codex-index.json'
 
 interface Copies {
@@ -83,6 +91,12 @@ export class CodexUsageStore {
   /** Keyed by session key: the signature of what was parsed last. */
   index: Record<string, string> = {}
   private dirtyMonths = new Set<string>()
+  /** Each session's turns (Codex trends), kept apart from the usage rows. */
+  private turnsBy = new Map<string, CodexTurnSample[]>()
+  private turnMonths = new Set<string>()
+  private turnList?: CodexTurnSample[]
+  /** The counted usage rows turnList was worked out with. */
+  private turnListOf?: object
   private indexDirty = false
   private lineageDirty = false
 
@@ -106,12 +120,22 @@ export class CodexUsageStore {
   private legacy = new Set<string>()
 
   /** Replace one session's copies (it was parsed again). */
-  set(key: string, records: UsageRecord[], readings: CodexLimitReading[], sig?: string): void {
+  set(
+    key: string,
+    records: UsageRecord[],
+    readings: CodexLimitReading[],
+    sig?: string,
+    turns?: CodexTurnSample[]
+  ): void {
+    if (turns) this.setTurns(key, turns)
     const old = this.bySession.get(key)
     for (const x of [...(old?.records ?? []), ...(old?.readings ?? []), ...records, ...readings])
       this.dirtyMonths.add(month(x.ts))
     this.bySession.set(key, { records, readings })
-    if (this.legacy.delete(key)) this.indexDirty = true
+    if (this.legacy.delete(key)) {
+      this.indexDirty = true
+      this.turnList = undefined
+    }
     if (sig !== undefined) {
       this.index[key] = sig
       this.indexDirty = true
@@ -119,7 +143,90 @@ export class CodexUsageStore {
     this.winners = undefined
   }
 
+  private setTurns(key: string, turns: CodexTurnSample[]): void {
+    for (const t of [...(this.turnsBy.get(key) ?? []), ...turns]) this.turnMonths.add(month(t.ts))
+    if (turns.length) this.turnsBy.set(key, turns)
+    else this.turnsBy.delete(key)
+    this.turnList = undefined
+  }
+
+  /**
+   * One sample per Codex turn, sorted by time. A fork's rollout copies its
+   * parent's turns:
+   * - With Codex's own turn id (unique): every copy is the same turn, the
+   *   earliest (the original) counts.
+   * - A prompt-split turn of an older rollout carries its first response's
+   *   identity (fork lineage + exact token counts), which two independent
+   *   sibling responses could share. It's a copy only when a fork ancestor
+   *   of its session holds the same identity; siblings' turns all count.
+   * - Prompt-split turns an older build saved used other ids, which can't be
+   *   matched to a re-read fork's: for a session in a fork family they're
+   *   left out until that session is read again (never counted twice).
+   */
+  turns(): CodexTurnSample[] {
+    // Recomputed when the turns, the fork links or the counted usage rows change.
+    const winners = this.resolve()
+    if (!this.turnList || this.turnListOf !== winners) {
+      this.turnListOf = winners
+      const sidOf = (key: string): string => key.slice(key.lastIndexOf(':') + 1)
+      const inFamily = new Set<string>()
+      for (const [sid, l] of this.parents)
+        if (l.parent) {
+          inFamily.add(sid)
+          inFamily.add(l.parent)
+        }
+      const ancestors = (sid: string): Set<string> => {
+        const out = new Set<string>()
+        let p = this.parents.get(sid)?.parent
+        while (p && !out.has(p)) {
+          out.add(p)
+          p = this.parents.get(p)?.parent ?? null
+        }
+        return out
+      }
+      // Each response's counted copy (record id and the session it counts for).
+      // (pick() gives an independent sibling's row its own id: <id>:<session id>.)
+      const counted = new Set(
+        winners.records.map((r) => {
+          const tail = `:${recSid(r)}`
+          return `${r.id.endsWith(tail) ? r.id.slice(0, -tail.length) : r.id}|${r.key}`
+        })
+      )
+      const groups = new Map<string, CodexTurnSample[]>()
+      for (const [key, list] of this.turnsBy) {
+        const legacy = this.legacy.has(key)
+        for (const t of list) {
+          if (legacy && !CODEX_TURN_ID_RE.test(t.id) && inFamily.has(sidOf(t.key))) continue
+          groups.set(t.id, [...(groups.get(t.id) ?? []), t])
+        }
+      }
+      const out: CodexTurnSample[] = []
+      for (const [id, g] of groups) {
+        if (g.length === 1) out.push(g[0])
+        else if (CODEX_TURN_ID_RE.test(id)) out.push(g.reduce((a, b) => (better(b, a) ? b : a)))
+        else {
+          // The same decision as for its first response's usage: the session whose copy of
+          // that response counts (resolve() tells copies from matching sibling responses).
+          const recId = id.slice('codex-turn:'.length)
+          const owned = g.filter((t) => counted.has(`${recId}|${t.key}`))
+          if (owned.length) out.push(...owned)
+          else {
+            // No usage row to go by (an older build's turn): a fork ancestor's copy wins.
+            const holders = new Set(g.map((t) => sidOf(t.key)))
+            for (const t of g)
+              if (![...ancestors(sidOf(t.key))].some((a) => holders.has(a))) out.push(t)
+          }
+        }
+      }
+      this.turnList = out.sort((a, b) => a.ts - b.ts || a.key.localeCompare(b.key))
+    }
+    return this.turnList
+  }
+
   clear(): void {
+    for (const list of this.turnsBy.values()) for (const t of list) this.turnMonths.add(month(t.ts))
+    this.turnsBy.clear()
+    this.turnList = undefined
     for (const c of this.bySession.values())
       for (const x of [...c.records, ...c.readings]) this.dirtyMonths.add(month(x.ts))
     if (this.bySession.size || Object.keys(this.index).length) this.indexDirty = true
@@ -163,6 +270,8 @@ export class CodexUsageStore {
     if (!changed) return
     this.lineageDirty = true
     this.winners = undefined
+    // Which turns are copies depends on the fork links too.
+    this.turnList = undefined
   }
 
   /** Every known session's lineage root (see lineageRoots), gone sessions included. */
@@ -520,10 +629,28 @@ export class CodexUsageStore {
           )
             of(r.key).readings.push(r)
     }
+    // Turns are always loaded, also those an older parser wrote: like the usage rows, a
+    // session's turns stand until that session is read again (set() replaces them), so a
+    // session that's offline or gone during an update keeps its history, and a month file
+    // is never rewritten from only the sessions read so far.
+    {
+      for (const f of await listFiles(dir, TURNS_RE))
+        for (const t of await readNdjson<CodexTurnSample>(join(dir, f)))
+          if (
+            t &&
+            typeof t.id === 'string' &&
+            typeof t.ts === 'number' &&
+            typeof t.key === 'string'
+          )
+            this.turnsBy.set(t.key, [...(this.turnsBy.get(t.key) ?? []), t])
+    }
+    this.turnList = undefined
     if (!current) {
       // Every session is read again; until then its old rows stand.
       this.index = {}
       for (const k of copies.keys()) this.legacy.add(k)
+      // Turns an older build saved stand until their session is read again (see turns()).
+      for (const k of this.turnsBy.keys()) this.legacy.add(k)
       // Nothing is written while there's no Codex data at all.
       this.indexDirty = copies.size > 0
     }
@@ -549,6 +676,17 @@ export class CodexUsageStore {
         const l = reads.get(m)!.sort((a, b) => a.ts - b.ts || a.key.localeCompare(b.key))
         await writeNdjson(join(dir, `codex-records-${m}.ndjson`), r, dataDir)
         await writeNdjson(join(dir, `codex-limits-${m}.ndjson`), l, dataDir)
+      }
+    }
+    if (this.turnMonths.size) {
+      const months = [...this.turnMonths]
+      this.turnMonths.clear()
+      const byMonth = new Map<string, CodexTurnSample[]>(months.map((m) => [m, []]))
+      for (const list of this.turnsBy.values())
+        for (const t of list) byMonth.get(month(t.ts))?.push(t)
+      for (const m of months) {
+        const rows = byMonth.get(m)!.sort((a, b) => a.ts - b.ts || a.key.localeCompare(b.key))
+        await writeNdjson(join(dir, 'codex-turns-' + m + '.ndjson'), rows, dataDir)
       }
     }
     if (this.indexDirty) {

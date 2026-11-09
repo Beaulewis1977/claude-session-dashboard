@@ -1,5 +1,6 @@
 import { memo, useLayoutEffect, useMemo, useRef, useState, type ReactElement } from 'react'
 import {
+  Bot,
   Brain,
   Check,
   ChevronDown,
@@ -270,6 +271,84 @@ function Thinking({
   )
 }
 
+/** "/root" is the main agent; others are its subagents ("/root/worker_1"). */
+function agentName(path: string): string {
+  return path === '/root' ? 'main agent' : path
+}
+
+/** A message between agents (Codex): collapsed, with who sent it to whom. */
+function AgentMessage({
+  author,
+  recipient,
+  text,
+  forceOpen
+}: {
+  author: string
+  recipient: string
+  text: string
+  forceOpen?: boolean
+}) {
+  const [open, setOpen] = useState(false)
+  const [copied, setCopied] = useState(false)
+  const preview = text.replace(/\s+/g, ' ').slice(0, 140)
+  const shown = open || !!forceOpen
+  return (
+    <Collapsible
+      open={shown}
+      onToggle={() => setOpen((v) => !v)}
+      header={
+        <>
+          <Bot className="size-3.5 shrink-0 text-muted-foreground" />
+          <span className="shrink-0 font-medium whitespace-nowrap">Agent → Agent</span>
+          <span className="max-w-[45%] shrink-0 truncate font-mono text-2xs whitespace-nowrap text-muted-foreground">
+            <span aria-label="From">{agentName(author)}</span>
+            {' → '}
+            <span aria-label="To">{agentName(recipient)}</span>
+          </span>
+          {!shown && (
+            <span className="min-w-0 truncate text-muted-foreground italic">{preview}</span>
+          )}
+        </>
+      }
+    >
+      <div className="border-l-2 border-border pl-3">
+        <dl className="mb-1.5 grid grid-cols-[auto_1fr] gap-x-2 text-2xs text-muted-foreground">
+          <dt>From</dt>
+          <dd className="font-mono">{author}</dd>
+          <dt>To</dt>
+          <dd className="font-mono">{recipient}</dd>
+        </dl>
+        <Markdown text={text} className="text-[13px]" />
+        <div data-find-skip className="mt-1 flex gap-1">
+          <button
+            type="button"
+            aria-label="Copy agent message"
+            className="inline-flex h-6 items-center gap-1 rounded px-1.5 text-2xs text-muted-foreground hover:bg-hover hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring touch:h-10 touch:px-3"
+            onClick={() =>
+              void copyText(text).then((ok) => {
+                if (!ok) return
+                setCopied(true)
+                setTimeout(() => setCopied(false), 1200)
+              })
+            }
+          >
+            {copied ? <Check className="size-3" /> : <Copy className="size-3" />}
+            {copied ? 'Copied' : 'Copy message'}
+          </button>
+          <button
+            type="button"
+            aria-label="Copy sender and recipient"
+            className="inline-flex h-6 items-center gap-1 rounded px-1.5 text-2xs text-muted-foreground hover:bg-hover hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring touch:h-10 touch:px-3"
+            onClick={() => void copyText(`${author} → ${recipient}`)}
+          >
+            <Copy className="size-3" /> Copy from → to
+          </button>
+        </div>
+      </div>
+    </Collapsible>
+  )
+}
+
 function UserBubble({ msg, onBranch }: { msg: ChatMessage; onBranch?: OnBranch }) {
   const ref = useRef<HTMLDivElement>(null)
   const [expanded, setExpanded] = useState(false)
@@ -442,6 +521,16 @@ function AssistantTurn({
                           key={id}
                           text={b.text}
                           redacted={b.redacted}
+                          forceOpen={open.has(id)}
+                        />
+                      )
+                    if (b.type === 'agent_message')
+                      return (
+                        <AgentMessage
+                          key={id}
+                          author={b.author}
+                          recipient={b.recipient}
+                          text={b.text}
                           forceOpen={open.has(id)}
                         />
                       )

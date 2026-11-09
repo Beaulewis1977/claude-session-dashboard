@@ -35,6 +35,7 @@ import type { SessionSummary } from '@shared/types'
 import type { ModelPrice } from '@shared/usage/pricing'
 import type { UsageRecord } from '@shared/usage/types'
 import type { PrintRequest, PrintRunner } from './print-runner'
+import { PROVIDER_SHORT } from '@shared/provider'
 import { sessionProvider } from '../providers/registry'
 import type { SessionService } from './sessions'
 
@@ -188,7 +189,7 @@ export class SummaryService extends EventEmitter<{ changed: [] }> {
     const s = d.summary
     const messages = snap ? d.messages.slice(0, snap.messages) : d.messages
     const maxChars = snap?.maxChars ?? settings.maxChars
-    const t = transcriptForSummary(messages, maxChars)
+    const t = transcriptForSummary(messages, maxChars, PROVIDER_SHORT[provider.id])
     if (!t.total) throw new Error('This session has no conversation to summarize yet.')
     const subject: SummarySubject = snap?.subject ?? {
       product: sessionProvider(this.deps.sessions, s).productName,

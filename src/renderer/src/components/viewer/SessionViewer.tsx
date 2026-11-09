@@ -152,7 +152,7 @@ function Header({
     new Date(session.startedAt).toDateString() === new Date(session.lastActivityAt).toDateString()
   const useClaude = canUseClaudeName(session)
   const choice = choiceLabel(useModelChoice(session))
-  // What this session's agent can do (Codex: no Branch / Continue fresh / summaries yet).
+  // What this session's agent can do (Codex: no Branch from here).
   const caps = capsOf(session)
   const product = PROVIDER_LABEL[providerOf(session)]
   const bin = PROVIDER_BIN[providerOf(session)]

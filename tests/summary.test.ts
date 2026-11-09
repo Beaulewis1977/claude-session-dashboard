@@ -540,6 +540,8 @@ describe('summary fields and settings', () => {
   it('cleans settings, with auto-summarize off by default', () => {
     expect(sanitizeSummarySettings(undefined)).toEqual({
       noticeAccepted: false,
+      // The notice version an acceptance is for (see SUMMARY_NOTICE_VERSION).
+      noticeVersion: 2,
       model: 'sonnet',
       autoEnabled: false,
       autoMinMessages: 200,

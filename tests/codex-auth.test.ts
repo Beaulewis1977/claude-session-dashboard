@@ -206,3 +206,92 @@ it('never names auth.json while Running now polls Codex and the approval hook is
   // …and never named its login file.
   expect(touched.filter((p) => /auth\.json$/i.test(p))).toEqual([])
 })
+
+it('never names auth.json while summarizing, continuing fresh, cleaning up handoffs and building Codex trends', async () => {
+  const { prepareFixtures, fixturesLayout } = await import('../src/main/fixtures')
+  const { createFixturesPlatform } = await import('../src/main/platform')
+  const { appPaths, createMetadataStore, createSettingsStore } =
+    await import('../src/main/services/store')
+  const { SessionService } = await import('../src/main/services/sessions')
+  const { ProviderRegistry } = await import('../src/main/providers/registry')
+  const { createCodexProvider } = await import('../src/main/providers/codex')
+  const { claudeProvider } = await import('../src/main/providers/claude')
+  const { Launcher } = await import('../src/main/services/launcher')
+  const { SummaryService } = await import('../src/main/services/summaries')
+  const { PrintRunner } = await import('../src/main/services/print-runner')
+  const { UsageService, usagePaths } = await import('../src/main/services/usage')
+  const { handoffStats, cleanupHandoffs } = await import('../src/main/core/handoff')
+  const { buildCodexTrends } = await import('@shared/usage/codex-trends')
+  const { DEFAULT_SUMMARY_SETTINGS } = await import('@shared/summary')
+
+  await cp(join(__dirname, '..', 'fixtures'), join(root, 'fixtures'), { recursive: true })
+  await prepareFixtures(root, { codex: true })
+  const layout = fixturesLayout(root)
+  const paths = appPaths(layout.dataDir)
+  const metadata = createMetadataStore(paths)
+  const settings = createSettingsStore(paths)
+  await metadata.load()
+  await settings.load()
+  const base = createFixturesPlatform(layout.fixturesDir, layout.sourcesDir)
+  const platform = { ...base, canLaunch: true, spawnDetached: async () => undefined }
+  const sessions = new SessionService(
+    platform,
+    paths,
+    metadata,
+    settings,
+    new ProviderRegistry([claudeProvider, createCodexProvider()])
+  )
+  await sessions.start()
+  await sessions.idle()
+  touched.length = 0
+  const s = sessions.list().find((x) => x.provider === 'codex')!
+  const summaries = new SummaryService({
+    sessions,
+    dataDir: paths.dataDir,
+    runner: new PrintRunner({
+      findCli: async () => ({ kind: 'native', path: 'C:\\claude\\claude.exe', label: 'Windows' }),
+      checkAuth: async () => ({ ok: true, method: 'claude.ai' })
+    }),
+    settings: () => ({ ...DEFAULT_SUMMARY_SETTINGS, noticeAccepted: true }),
+    timeoutSec: () => 60,
+    prices: () => [],
+    fiveHourPct: async () => undefined,
+    dollarsPerPct: () => undefined,
+    recordUsage: () => undefined,
+    simulate: true
+  })
+  await summaries.preview(s.key)
+  await summaries.enqueue([s.key])
+  await vi.waitFor(() => expect(sessions.get(s.key)?.meta.aiSummary).toBeTruthy(), {
+    timeout: 10_000
+  })
+  const launcher = new Launcher(
+    platform,
+    sessions,
+    () => 'wt',
+    undefined,
+    () => settings.value,
+    paths.dataDir
+  )
+  const opts = { key: s.key, fork: false, skipPermissions: false, continueFresh: {} }
+  await launcher.preview(opts)
+  expect((await launcher.launch(opts)).ok).toBe(true)
+  await handoffStats(paths.dataDir)
+  await cleanupHandoffs(paths.dataDir)
+  const usage = new UsageService(sessions, usagePaths(paths.dataDir, paths.archiveDir), () => ({
+    weekStart: 'monday',
+    prices: []
+  }))
+  await usage.start()
+  await usage.idle()
+  expect(usage.codexTurns().length).toBeGreaterThan(0)
+  buildCodexTrends({
+    records: usage.codexRecords(),
+    turns: usage.codexTurns(),
+    timeZone: 'UTC',
+    weekStart: 'monday',
+    groupBy: 'model'
+  })
+  expect(touched.some((p) => /[\\/]\.codex[\\/]sessions/.test(p))).toBe(true)
+  expect(touched.filter((p) => /auth\.json$/i.test(p))).toEqual([])
+})

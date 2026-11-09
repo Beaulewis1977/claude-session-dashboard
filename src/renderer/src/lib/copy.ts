@@ -143,6 +143,8 @@ export function blocksToPlainText(list: ContentBlock[]): string {
           return toolOutputText(b.result)
         case 'image':
           return '[image]'
+        case 'agent_message':
+          return `${b.author} → ${b.recipient}\n\n${markdownToPlainText(b.text)}`
       }
     })
     .filter(Boolean)

@@ -246,6 +246,8 @@ export const webApi: CsdApi = {
   verifyCcusage: onPc('ccusage'),
   getTrends: (g) => rpc('getTrends', g),
   compareTrends: (a, b) => rpc('compareTrends', a, b),
+  getCodexTrends: (g) => rpc('getCodexTrends', g),
+  compareCodexTrends: (a, b) => rpc('compareCodexTrends', a, b),
 
   getLimits: () => rpc('getLimits'),
   compareHealth: (k, a, b) => rpc('compareHealth', k, a, b),
@@ -286,6 +288,8 @@ export const webApi: CsdApi = {
   saveSummary: (key, patch) => rpc('saveSummary', key, patch),
   removeSummary: onPc('Removing a summary'),
   summaryAutoPreview: onPc('Auto-summarize'),
+  handoffStats: onPc('Handoff files'),
+  cleanHandoffs: onPc('Cleaning up handoffs'),
 
   toggleMiniMeter: onPc('The mini meter'),
   rescanLimits: onPc('Rescanning'),

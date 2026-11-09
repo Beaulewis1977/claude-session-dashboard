@@ -87,6 +87,41 @@ export interface TurnSample {
   correction: boolean
 }
 
+/**
+ * One Codex turn (task_started → task_complete / turn_aborted), for Codex
+ * trends. Built from the rollout's events only, never its text.
+ */
+export interface CodexTurnSample {
+  /** Codex's own turn id (a fork's copy keeps it, so a turn counts once). */
+  id: string
+  ts: number
+  key: string
+  model?: string
+  version?: string
+  /** From task_complete (`duration_ms`, else completed − started). */
+  durationMs?: number
+  /** From task_complete (`time_to_first_token_ms`). */
+  firstTokenMs?: number
+  /** Responses with new token usage in this turn. */
+  responses: number
+  outputTokens: number
+  reasoningTokens: number
+  toolCalls: number
+  /** Tool results with a known outcome, and those that failed. */
+  toolResults: number
+  toolErrors: number
+  /** Interrupted (turn_aborted). */
+  aborted: boolean
+  /** Ended with an error (task_complete.error). */
+  failed: boolean
+  /** Started by a prompt I wrote (not only context, not a subagent's instructions). */
+  prompted: boolean
+  /** A subagent's thread. */
+  subagent?: true
+  /** Context window use at the turn's last response, in %. */
+  contextPct?: number
+}
+
 /** A "usage limit reached" message found in a session. */
 export interface LimitHit {
   id: string
@@ -105,6 +140,8 @@ export interface UsageAnalysis {
   usageReadings: UsageCommandReading[]
   /** Codex: plan limit readings from its token_count events. */
   codexLimits?: CodexLimitReading[]
+  /** Codex: its turns, for Codex trends. */
+  codexTurns?: CodexTurnSample[]
 }
 
 // --------------------------------------------------------------- reports

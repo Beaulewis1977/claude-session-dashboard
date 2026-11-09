@@ -30,6 +30,7 @@ import type { ResumeEstimate } from './context'
 import type { SummaryBatchEstimate, SummaryPreview, SummaryQueueState } from './summary-queue'
 import type { Account, CreditGrant, CreditsState } from './usage/credits'
 import type { CompareResult, CompareSide, TrendGroupBy, TrendsReport } from './usage/trends'
+import type { CodexMetricId, CodexTrendsReport } from './usage/codex-trends'
 import type {
   ActivityEntry,
   ClaudeCheck,
@@ -131,6 +132,9 @@ export interface CsdApi {
   verifyCcusage(): Promise<CcusageComparison>
   getTrends(groupBy: TrendGroupBy): Promise<TrendsReport>
   compareTrends(a: CompareSide, b: CompareSide): Promise<CompareResult>
+  /** Codex trends, kept apart from Claude Code's (per model and Codex CLI version). */
+  getCodexTrends(groupBy: TrendGroupBy): Promise<CodexTrendsReport>
+  compareCodexTrends(a: CompareSide, b: CompareSide): Promise<CompareResult<CodexMetricId>>
 
   // Live limits and the status line bridge
   getLimits(): Promise<LimitsState>
@@ -207,6 +211,10 @@ export interface CsdApi {
   removeSummary(key: string): Promise<SessionSummary | null>
   /** Sessions auto-summarize would pick now, and what that would use. */
   summaryAutoPreview(): Promise<{ count: number; estimate: SummaryEstimate }>
+  /** Continue fresh's handoff files (Claude Code's and Codex's): how many, how big, how many are old. */
+  handoffStats(): Promise<{ files: number; bytes: number; old: { files: number; bytes: number } }>
+  /** Delete handoff files older than 30 days (asked first in Settings; desktop only). */
+  cleanHandoffs(): Promise<{ deleted: number; bytes: number }>
 
   // Tray and mini meter
   toggleMiniMeter(): Promise<boolean>

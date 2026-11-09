@@ -254,6 +254,7 @@ export function analyzeCodex(text: string, fileSessionId?: string): CodexAnalysi
   let minT = Infinity
   let maxT = -Infinity
   const messages = conversation(lines)
+  const agents = agentMessages(lines, messages)
   const ctx = new CodexContextTrack()
   let model: string | undefined
   for (const l of lines) {
@@ -284,6 +285,12 @@ export function analyzeCodex(text: string, fileSessionId?: string): CodexAnalysi
       const m = str(ts.model)
       if (m) models.add(m)
       a.effort = str(ts.reasoning_effort) ?? a.effort
+      continue
+    }
+    const agentMsg = agents.get(l)
+    if (agentMsg) {
+      // Searchable like the answers (they're shown in the transcript too).
+      addText(agentMsg.text)
       continue
     }
     const msg = messages.get(l)
@@ -491,6 +498,63 @@ function conversation(lines: Line[]): Map<Line, Msg> {
   return out
 }
 
+export interface AgentMsg {
+  id?: string
+  author: string
+  recipient: string
+  text: string
+}
+
+/** Agent paths are short ("/root", "/root/worker_1"): anything else is shown cut. */
+const agentPath = (v: unknown): string | undefined =>
+  typeof v === 'string' && v.trim() ? oneLine(v, 120) : undefined
+
+/**
+ * A message between agents: a `response_item` of type `agent_message`, with
+ * its `author` and `recipient` (checked against real rollouts of Codex
+ * 0.162-0.167: 14,038 items, each with both). It's its own record, never a
+ * copy of a prompt or answer of the same rollout: the sender's side holds the
+ * `send_message` / `spawn_agent` call, the recipient's side this item.
+ */
+export function agentMessageOf(l: Line): AgentMsg | undefined {
+  const p = l.payload
+  if (l.type !== 'response_item' || p.type !== 'agent_message') return undefined
+  const author = agentPath(p.author)
+  const recipient = agentPath(p.recipient)
+  if (!author || !recipient) return undefined
+  const text = contentTexts(p, false).join('\n').trim()
+  if (!text) return undefined
+  return { id: str(p.id), author, recipient, text }
+}
+
+/**
+ * The agent messages to show, by line: each item once (by its id), and none
+ * whose text a shown prompt or answer near it already holds (none in real
+ * rollouts; a safety net should a version write both).
+ */
+function agentMessages(lines: Line[], messages: Map<Line, Msg>): Map<Line, AgentMsg> {
+  const out = new Map<Line, AgentMsg>()
+  const ids = new Set<string>()
+  const norm = (t: string): string => t.replace(/\s+/g, ' ').trim()
+  const shownAt: { i: number; text: string }[] = []
+  lines.forEach((l, i) => {
+    const m = messages.get(l)
+    if (m?.texts.length) shownAt.push({ i, text: norm(m.texts.join('\n')) })
+  })
+  lines.forEach((l, i) => {
+    const a = agentMessageOf(l)
+    if (!a) return
+    if (a.id) {
+      if (ids.has(a.id)) return
+      ids.add(a.id)
+    }
+    const t = norm(a.text)
+    if (shownAt.some((s) => Math.abs(s.i - i) <= PAIR_DISTANCE && s.text === t)) return
+    out.set(l, a)
+  })
+  return out
+}
+
 function reasoningTexts(p: Record<string, unknown>): string[] {
   const out: string[] = []
   if (Array.isArray(p.summary))
@@ -647,6 +711,7 @@ function toolOutputOf(
 export function buildCodexMessages(text: string): ChatMessage[] {
   const { lines } = parseLines(text)
   const messages = conversation(lines)
+  const agents = agentMessages(lines, messages)
   const out: ChatMessage[] = []
   const calls = new Map<string, Extract<ContentBlock, { type: 'tool_use' }>>()
   let current: ChatMessage | undefined
@@ -682,6 +747,17 @@ export function buildCodexMessages(text: string): ChatMessage[] {
         kind: 'compact',
         timestamp: l.timestamp,
         blocks: [{ type: 'text', text: str(p.message) ?? 'The conversation was compacted.' }]
+      })
+      continue
+    }
+    const agentMsg = agents.get(l)
+    if (agentMsg) {
+      // A step in the agent's flow, collapsed in the viewer ("Agent → Agent").
+      assistant(l).blocks.push({
+        type: 'agent_message',
+        author: agentMsg.author,
+        recipient: agentMsg.recipient,
+        text: agentMsg.text
       })
       continue
     }

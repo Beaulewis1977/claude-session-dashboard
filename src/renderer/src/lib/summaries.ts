@@ -15,10 +15,10 @@ const get = () => useApp.getState()
  */
 export function summarize(keys: string[], origin: 'manual' | 'bulk' = 'manual'): void {
   const st = get()
-  // Only sessions whose agent has summaries (not Codex, for now).
+  // Only sessions whose agent has summaries (Claude Code and Codex).
   const list = keys.filter((k) => st.sessions.some((s) => s.key === k && capsOf(s).summaries))
   if (!list.length) {
-    if (keys.length) toast("Summaries aren't available for Codex sessions yet")
+    if (keys.length) toast("Summaries aren't available for these sessions")
     return
   }
   if (origin === 'manual' && list.length === 1 && st.settings.summaries.noticeAccepted) {
@@ -90,7 +90,7 @@ export function openContinueFresh(key: string): void {
   const s = get().sessions.find((x) => x.key === key)
   if (!s) return
   if (!capsOf(s).continueFresh) {
-    toast("Continue fresh isn't available for Codex sessions yet")
+    toast("Continue fresh isn't available for this session")
     return
   }
   if (s.availability === 'imported') {

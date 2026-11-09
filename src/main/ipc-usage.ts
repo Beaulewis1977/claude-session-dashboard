@@ -13,6 +13,7 @@ import {
   type CompareSide,
   type TrendGroupBy
 } from '@shared/usage/trends'
+import { buildCodexTrends, compareCodexTrends } from '@shared/usage/codex-trends'
 import type { CcusageComparison, Dimension, Period, UsageQuery } from '@shared/usage/types'
 import { isProviderView } from '@shared/provider'
 import { assertUserWrite } from './core/safe-paths'
@@ -169,6 +170,23 @@ export function registerUsageIpc(deps: UsageIpcDeps): void {
       groupBy: by
     })
   })
+  // Codex trends: Codex's own records and turns, kept apart from Claude Code's.
+  handle('usage:codexTrends', (_e, groupBy) =>
+    buildCodexTrends({
+      records: usage.codexRecords(),
+      turns: usage.codexTurns(),
+      timeZone: localTimeZone(),
+      weekStart: deps.weekStart(),
+      groupBy: groupBy === 'model' || groupBy === 'version' ? groupBy : 'all'
+    })
+  )
+  handle('usage:codexCompare', (_e, a, b) =>
+    compareCodexTrends(
+      { records: usage.codexRecords(), turns: usage.codexTurns() },
+      side(a),
+      side(b)
+    )
+  )
   handle('usage:compare', (_e, a, b) =>
     compareTrends(
       { records: usage.allRecords(), turns: usage.allTurns(), readings: deps.limits.readings() },

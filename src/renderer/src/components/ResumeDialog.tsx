@@ -438,6 +438,7 @@ function ResumeDialogBody({ resume }: { resume: ResumeRequest }) {
               preview={preview?.continueFresh}
               error={preview?.continueError}
               messageCount={session.messageCount}
+              provider={session.provider}
             />
           )}
           {fork && (

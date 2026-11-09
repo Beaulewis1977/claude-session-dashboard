@@ -51,6 +51,8 @@ const api: CsdApi = {
   verifyCcusage: () => ipcRenderer.invoke('usage:verifyCcusage'),
   getTrends: (groupBy) => ipcRenderer.invoke('usage:trends', groupBy),
   compareTrends: (a, b) => ipcRenderer.invoke('usage:compare', a, b),
+  getCodexTrends: (groupBy) => ipcRenderer.invoke('usage:codexTrends', groupBy),
+  compareCodexTrends: (a, b) => ipcRenderer.invoke('usage:codexCompare', a, b),
 
   getLimits: () => ipcRenderer.invoke('limits:state'),
   rescanLimits: () => ipcRenderer.invoke('limits:rescan'),
@@ -95,6 +97,8 @@ const api: CsdApi = {
   saveSummary: (key, patch) => ipcRenderer.invoke('summaries:save', key, patch),
   removeSummary: (key) => ipcRenderer.invoke('summaries:remove', key),
   summaryAutoPreview: () => ipcRenderer.invoke('summaries:autoPreview'),
+  handoffStats: () => ipcRenderer.invoke('summaries:handoffStats'),
+  cleanHandoffs: () => ipcRenderer.invoke('summaries:cleanHandoffs'),
 
   toggleMiniMeter: () => ipcRenderer.invoke('mini:toggle'),
   closeMiniMeter: () => ipcRenderer.invoke('mini:close'),

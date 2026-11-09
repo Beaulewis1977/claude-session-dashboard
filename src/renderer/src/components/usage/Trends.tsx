@@ -20,6 +20,8 @@ import {
   type TrendMarker,
   type TrendsReport
 } from '@shared/usage/trends'
+import { CODEX_METRICS } from '@shared/usage/codex-trends'
+import type { ProviderId } from '@shared/provider'
 import { api } from '@/lib/api'
 import { formatMetric } from '@/lib/usage-format'
 import { cn } from '@/lib/utils'
@@ -42,7 +44,31 @@ const tick = { fill: 'var(--chart-axis)', fontSize: 10.5 }
 /** Versions are ordered, so they get one hue from light (older) to dark (newer). */
 const VERSION_RAMP = ['#9ec5f4', '#6da7ec', '#3987e5', '#256abf', '#184f95']
 
-function groupColor(report: TrendsReport, key: string, i: number): string {
+/** A report of either provider's metrics (Claude Code's or Codex's own ids). */
+type AnyReport = TrendsReport<string>
+type AnyMetric = MetricDef<string>
+
+/** Each provider's metrics, compare call and wording (Codex trends are kept apart). */
+const PROVIDER_TRENDS = {
+  claude: {
+    metrics: METRICS as AnyMetric[],
+    product: 'Claude Code',
+    requests: 'requests',
+    trends: (g: TrendGroupBy): Promise<AnyReport> => api.getTrends(g),
+    compare: (a: CompareSide, b: CompareSide): Promise<CompareResult<string>> =>
+      api.compareTrends(a, b)
+  },
+  codex: {
+    metrics: CODEX_METRICS as AnyMetric[],
+    product: 'Codex',
+    requests: 'prompts',
+    trends: (g: TrendGroupBy): Promise<AnyReport> => api.getCodexTrends(g),
+    compare: (a: CompareSide, b: CompareSide): Promise<CompareResult<string>> =>
+      api.compareCodexTrends(a, b)
+  }
+} as const
+
+function groupColor(report: AnyReport, key: string, i: number): string {
   if (report.groupBy === 'model') return modelColor(key, report.models)
   if (report.groupBy === 'version') {
     const order = [...report.groups]
@@ -66,7 +92,16 @@ function markerStyle(k: TrendMarker['kind']): { stroke: string; opacity: number 
   return { stroke: 'var(--chart-axis)', opacity: 0.5 }
 }
 
-function MetricChart({ report, metric }: { report: TrendsReport; metric: MetricDef }) {
+function MetricChart({
+  report,
+  metric,
+  product
+}: {
+  report: AnyReport
+  metric: AnyMetric
+  /** Whose version the version markers are ("Claude Code", "Codex"). */
+  product: string
+}) {
   const data = useMemo(() => {
     const rows = report.weeks.map(
       (w) => ({ start: w.start, week: w.week }) as Record<string, number | string | undefined>
@@ -160,7 +195,7 @@ function MetricChart({ report, metric }: { report: TrendsReport; metric: MetricD
                           {m.kind === 'model'
                             ? 'New model: '
                             : m.kind === 'version'
-                              ? 'Claude Code '
+                              ? `${product} `
                               : ''}
                           {m.label}
                         </div>
@@ -236,7 +271,8 @@ function VersionPicker({
   )
 }
 
-function Compare({ versions }: { versions: string[] }) {
+function Compare({ versions, provider }: { versions: string[]; provider: ProviderId }) {
+  const p = PROVIDER_TRENDS[provider]
   const t = now()
   const [mode, setMode] = useState<CompareMode>('dates')
   const [a, setA] = useState({
@@ -249,7 +285,7 @@ function Compare({ versions }: { versions: string[] }) {
   })
   const [va, setVa] = useState(versions[Math.max(0, versions.length - 8)] ?? '')
   const [vb, setVb] = useState(versions[versions.length - 1] ?? '')
-  const [res, setRes] = useState<CompareResult | null>(null)
+  const [res, setRes] = useState<CompareResult<string> | null>(null)
 
   useEffect(() => {
     const A: CompareSide =
@@ -257,11 +293,11 @@ function Compare({ versions }: { versions: string[] }) {
     const B: CompareSide =
       mode === 'dates' ? { from: fromInput(b.from), to: fromInput(b.to, true) } : { version: vb }
     let cancelled = false
-    void api.compareTrends(A, B).then((r) => !cancelled && setRes(r))
+    void p.compare(A, B).then((r) => !cancelled && setRes(r))
     return () => {
       cancelled = true
     }
-  }, [mode, a, b, va, vb])
+  }, [mode, a, b, va, vb, p])
 
   const rangeInputs = (
     v: { from: string; to: string },
@@ -290,7 +326,7 @@ function Compare({ versions }: { versions: string[] }) {
     <Card className="p-5">
       <CardHeader
         title="Compare"
-        subtitle="Two date ranges or two Claude Code versions, side by side"
+        subtitle={`Two date ranges or two ${p.product} versions, side by side`}
         info="The same caveat applies: different weeks usually mean different work. Look for large, consistent changes."
         right={
           <Segmented
@@ -331,20 +367,26 @@ function Compare({ versions }: { versions: string[] }) {
               <th className="px-2 py-1.5 text-right font-medium">
                 A
                 {res ? (
-                  <span className="font-normal"> · {res.samples.a.requests} requests</span>
+                  <span className="font-normal">
+                    {' '}
+                    · {res.samples.a.requests} {p.requests}
+                  </span>
                 ) : null}
               </th>
               <th className="px-2 py-1.5 text-right font-medium">
                 B
                 {res ? (
-                  <span className="font-normal"> · {res.samples.b.requests} requests</span>
+                  <span className="font-normal">
+                    {' '}
+                    · {res.samples.b.requests} {p.requests}
+                  </span>
                 ) : null}
               </th>
               <th className="py-1.5 pl-2 text-right font-medium">Change</th>
             </tr>
           </thead>
           <tbody>
-            {METRICS.map((m) => {
+            {p.metrics.map((m) => {
               const row = res?.rows.find((r) => r.metric === m.id)
               const c = row?.changePct
               const meaningful = c !== undefined && Math.abs(c) >= 5
@@ -398,18 +440,20 @@ function Compare({ versions }: { versions: string[] }) {
 
 // ------------------------------------------------------------------- tab
 
-export function TrendsTab() {
+export function TrendsTab({ provider = 'claude' }: { provider?: ProviderId }) {
+  const p = PROVIDER_TRENDS[provider]
+  const codex = provider === 'codex'
   const [groupBy, setGroupBy] = useState<TrendGroupBy>('model')
-  const [report, setReport] = useState<TrendsReport | null>(null)
+  const [report, setReport] = useState<AnyReport | null>(null)
   const [version, setVersion] = useState(0)
   useEffect(() => api.onUsageChanged(() => setVersion((v) => v + 1)), [])
   useEffect(() => {
     let cancelled = false
-    void api.getTrends(groupBy).then((r) => !cancelled && setReport(r))
+    void p.trends(groupBy).then((r) => !cancelled && setReport(r))
     return () => {
       cancelled = true
     }
-  }, [groupBy, version])
+  }, [groupBy, version, p])
 
   return (
     <div className="space-y-4">
@@ -423,9 +467,9 @@ export function TrendsTab() {
           </span>
         </div>
         <InfoTip side="left">
-          Weekly values per model or Claude Code version, from your session logs (and the status
-          line for context use). Vertical lines mark a new model, a Claude Code update, a plan
-          change, and a change in how much work each 1% of your limit buys (limit health).
+          {codex
+            ? 'Weekly values per model or Codex CLI version, from Codex’s own logs (token counts, turn events and tool outcomes, never their text). Vertical lines mark a new model and a Codex update. Subagents count per response, not per prompt.'
+            : 'Weekly values per model or Claude Code version, from your session logs (and the status line for context use). Vertical lines mark a new model, a Claude Code update, a plan change, and a change in how much work each 1% of your limit buys (limit health).'}
         </InfoTip>
         <Segmented
           ariaLabel="Group trends by"
@@ -455,22 +499,28 @@ export function TrendsTab() {
               <span className="h-3 w-px" style={{ background: 'var(--model-opus)' }} /> New model
             </span>
             <span className="inline-flex items-center gap-1.5">
-              <span className="h-3 w-px" style={{ background: 'var(--chart-axis)' }} /> Claude Code
+              <span className="h-3 w-px" style={{ background: 'var(--chart-axis)' }} /> {p.product}{' '}
               update
             </span>
-            <span className="inline-flex items-center gap-1.5">
-              <span className="h-3 w-px bg-foreground/60" /> $/1% change
-            </span>
-            <span className="inline-flex items-center gap-1.5">
-              <span className="h-3 w-px" style={{ background: 'var(--primary)' }} /> Plan change
-            </span>
+            {!codex && (
+              <>
+                <span className="inline-flex items-center gap-1.5">
+                  <span className="h-3 w-px bg-foreground/60" /> $/1% change
+                </span>
+                <span className="inline-flex items-center gap-1.5">
+                  <span className="h-3 w-px" style={{ background: 'var(--primary)' }} /> Plan change
+                </span>
+              </>
+            )}
           </span>
         </div>
       )}
 
       <div className="grid grid-cols-[repeat(auto-fit,minmax(330px,1fr))] gap-4">
         {report
-          ? METRICS.map((m) => <MetricChart key={m.id} report={report} metric={m} />)
+          ? p.metrics.map((m) => (
+              <MetricChart key={m.id} report={report} metric={m} product={p.product} />
+            ))
           : [0, 1, 2, 3].map((i) => (
               <Card key={i} className="p-4">
                 <Skeleton className="h-4 w-32" />
@@ -479,7 +529,7 @@ export function TrendsTab() {
             ))}
       </div>
 
-      {report && <Compare versions={report.versions} />}
+      {report && <Compare key={provider} versions={report.versions} provider={provider} />}
     </div>
   )
 }

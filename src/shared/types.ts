@@ -254,6 +254,12 @@ export type ContentBlock =
     }
   | { type: 'tool_result'; toolUseId: string; result: ToolResult }
   | { type: 'image'; mediaType?: string }
+  /**
+   * A message between agents (Codex `agent_message`: a subagent's report to
+   * the main agent, or the main agent's instructions to a subagent).
+   * `author` / `recipient` are agent paths such as "/root" or "/root/worker".
+   */
+  | { type: 'agent_message'; author: string; recipient: string; text: string }
 
 export type MessageKind =
   'prompt' | 'response' | 'command' | 'command-output' | 'compact' | 'system'

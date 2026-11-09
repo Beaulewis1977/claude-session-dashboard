@@ -174,8 +174,16 @@ describe('Codex token counts', () => {
 
   it('reads compressed rollouts in full, keeping only the lines usage needs', async () => {
     const text = await readCodexUsageText(DESKTOP_FILE)
-    const types = text.split('\n').map((l) => JSON.parse(l).type)
-    expect(new Set(types)).toEqual(new Set(['session_meta', 'turn_context', 'event_msg']))
+    const lines = text.split('\n').map((l) => JSON.parse(l))
+    const types = lines.map((l) => l.type)
+    expect(new Set(types)).toEqual(
+      new Set(['session_meta', 'turn_context', 'event_msg', 'response_item'])
+    )
+    // Items are kept for trends by their type (and a user message as prompt-or-not) only.
+    for (const l of lines.filter((x) => x.type === 'response_item'))
+      expect(
+        Object.keys(l.payload).every((k) => ['type', 'role', 'prompt', 'exit'].includes(k))
+      ).toBe(true)
     // The instructions Codex was started with are never kept.
     expect(text).not.toContain('base_instructions')
     const { records, codexLimits } = analyzeCodexUsage(text, { ...ctx, sessionId: ID.desktop })

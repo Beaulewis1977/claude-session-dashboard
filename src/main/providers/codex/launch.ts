@@ -18,6 +18,7 @@ import { codexModelArgs } from '@shared/model-choice'
 import {
   agentCommandLine,
   buildAgentLaunch,
+  isSafeContinueArg,
   isValidSessionId,
   type LaunchCommand,
   type LaunchInput
@@ -54,13 +55,51 @@ export interface CodexArgsInput {
   cd?: string
 }
 
+/**
+ * Continue fresh: a new interactive session (`codex [OPTIONS] [PROMPT]`)
+ * whose first message asks Codex to read the handoff file. The summary itself
+ * is in the file, never on the command line. Codex picks the new session's
+ * id; `newSessionId` is only the handoff's. No --add-dir: Codex's sandbox can
+ * read the app's data folder (it limits writes), and --add-dir would make the
+ * folder writable.
+ */
+export interface CodexContinueInput {
+  prompt: string
+  bypass: boolean
+  askPermissions?: boolean
+  readOnly?: boolean
+  modelChoice?: { model?: string; effort?: string }
+  cd?: string
+}
+
+export function codexContinueArgs(i: CodexContinueInput): string[] {
+  if (i.askPermissions && i.bypass)
+    throw new Error("Can't both bypass approvals and ask before running commands.")
+  // It reaches cmd, PowerShell, Windows Terminal and bash: the same characters as Claude Code's.
+  if (!isSafeContinueArg(i.prompt))
+    throw new Error("The handoff file's location can't be passed to Codex safely.")
+  checkCd(i.cd)
+  return [
+    ...(i.cd ? ['-C', i.cd] : []),
+    ...(i.askPermissions ? (i.readOnly ? CODEX_READONLY_ARGS : CODEX_ASK_ARGS) : []),
+    ...codexModelArgs(i.modelChoice?.model, i.modelChoice?.effort),
+    ...(i.bypass ? [CODEX_BYPASS_FLAG] : []),
+    // The prompt last, after every option ("--" isn't needed: it never starts with "-").
+    i.prompt
+  ]
+}
+
+function checkCd(cd: string | undefined): void {
+  // eslint-disable-next-line no-control-regex
+  if (cd !== undefined && (!cd || /[\u0000-\u001f]/.test(cd) || cd.startsWith('-')))
+    throw new Error(`This folder can't be passed to Codex: ${cd}`)
+}
+
 export function codexArgs(i: CodexArgsInput): string[] {
   if (!isValidSessionId(i.sessionId)) throw new Error(`Invalid session id: ${i.sessionId}`)
   if (i.askPermissions && i.bypass)
     throw new Error("Can't both bypass approvals and ask before running commands.")
-  // eslint-disable-next-line no-control-regex
-  if (i.cd !== undefined && (!i.cd || /[\u0000-\u001f]/.test(i.cd) || i.cd.startsWith('-')))
-    throw new Error(`This folder can't be passed to Codex: ${i.cd}`)
+  checkCd(i.cd)
   return [
     i.fork ? 'fork' : 'resume',
     ...(i.cd ? ['-C', i.cd] : []),
@@ -88,8 +127,16 @@ function argsOf(
 ): string[] {
   if (i.newSession)
     throw new Error('A new session in this folder is started from Claude Code only, for now.')
-  if (i.continueFresh) throw new Error("Continue fresh isn't available for Codex sessions yet.")
   if (i.remoteControl) throw new Error("Remote Control isn't available for Codex sessions.")
+  if (i.continueFresh)
+    return codexContinueArgs({
+      prompt: i.continueFresh.prompt,
+      bypass: i.skipPermissions && i.askPermissions !== true,
+      askPermissions: i.askPermissions === true,
+      ...(i.readOnly ? { readOnly: true } : {}),
+      modelChoice: i.modelChoice,
+      ...(cd ? { cd } : {})
+    })
   return codexArgs({
     sessionId: i.sessionId,
     fork: i.fork,

@@ -112,6 +112,11 @@ export const CLAUDE_NOT_FOUND = notFoundMessage('Claude Code')
 
 type CwdState = 'exists' | 'missing' | 'unreachable'
 
+/** The cache key of a distro's view of the data folder: per distro and the user checked as. */
+function wslRootKey(distro: string, user?: string): string {
+  return user ? `${distro}|${user}` : distro
+}
+
 export class Launcher {
   readonly branches: BranchService
   /** Resume / Fork previews: the context size and what reloading it would cost (set at startup). */
@@ -289,17 +294,24 @@ export class Launcher {
   /**
    * The app's data folder as a distro sees it, asked inside the distro
    * (`wslpath`, then `test -r`), so a custom automount root works and
-   * unmounted drives are caught. Kept for a few minutes (the dialog asks often).
+   * unmounted drives are caught. Checked as the user the agent runs as (a
+   * Codex session's own WSL user can have other permissions than the distro's
+   * default). Kept for a few minutes per distro and user (the dialog asks often).
    */
-  private async wslDataDir(distro: string, dataDir: string): Promise<string | undefined> {
-    const hit = this.wslRoots.get(distro)
+  private async wslDataDir(
+    distro: string,
+    dataDir: string,
+    user?: string
+  ): Promise<string | undefined> {
+    const key = wslRootKey(distro, user)
+    const hit = this.wslRoots.get(key)
     if (hit && Date.now() - hit.at < 5 * 60_000) return hit.path
     const path = await this.platform.wslPath(distro, dataDir)
-    if (!path || !(await this.platform.wslCanRead(distro, path))) {
-      this.wslRoots.delete(distro)
+    if (!path || !(await this.platform.wslCanRead(distro, path, user))) {
+      this.wslRoots.delete(key)
       return undefined
     }
-    this.wslRoots.set(distro, { path, at: Date.now() })
+    this.wslRoots.set(key, { path, at: Date.now() })
     return path
   }
 
@@ -307,6 +319,19 @@ export class Launcher {
   private askForced = new WeakSet<SessionSummary>()
   /** Sessions place() gave a translated folder: the agent is told it (`-C`), not just started there. */
   private translated = new WeakSet<SessionSummary>()
+
+  /**
+   * A copy of a placed session (Continue fresh's or a branch's target) that
+   * keeps how place() placed it: the forced read-only sandbox and the
+   * translated folder are tracked by object, so a plain spread would lose them
+   * (and could let a WSL-only folder run with the bypass flag).
+   */
+  private derived(s: SessionSummary, patch: Partial<SessionSummary>): SessionSummary {
+    const copy: SessionSummary = { ...s, ...patch }
+    if (this.askForced.has(s)) this.askForced.add(copy)
+    if (this.translated.has(s)) this.translated.add(copy)
+    return copy
+  }
 
   /** Remember a placed session's folder as translated, and return it. */
   private translatedTo(s: SessionSummary, cwd: string): SessionSummary {
@@ -525,7 +550,7 @@ export class Launcher {
     // The handoff is in the app's own folder: checked directly, not through the platform.
     const free = async (id: string): Promise<boolean> =>
       !(await this.platform.pathExists(p.launch.sessionFilePath(s, id))) &&
-      !(await fileExists(handoffPath(dataDir, id)))
+      !(await fileExists(handoffPath(dataDir, id, p.id)))
     if (wanted && isUuid(wanted) && (await free(wanted))) return wanted
     for (let i = 0; i < 20; i++) {
       const id = randomUUID()
@@ -547,26 +572,35 @@ export class Launcher {
       )
     const summary = s.meta.aiSummary
     if (!summary) throw new Error(NO_SUMMARY)
+    const p = this.provider(s)
+    // Claude Code: the new session's own id. Codex picks its id itself: then
+    // this is only the handoff's id, which links the new session once it
+    // shows up (see SessionService.linkContinued).
     const id = await this.freeContinueId(s, dataDir, req.newSessionId)
-    const path = handoffPath(dataDir, id)
+    const path = handoffPath(dataDir, id, p.id)
     let sessionPath: string | undefined = path
     if (s.env === 'wsl') {
       // Where this distro mounts the app's data folder (its own automount root).
-      const root = s.distro ? await this.wslDataDir(s.distro, dataDir) : undefined
+      const root = s.distro
+        ? await this.wslDataDir(s.distro, dataDir, this.targetOf(s)?.wslUser)
+        : undefined
       if (!root)
         throw new Error(
           `${s.sourceLabel} can't read the app's data folder, where the handoff goes. Check that Windows drives are mounted in this distro ([automount] in /etc/wsl.conf), and that it's running.`
         )
-      sessionPath = `${root}/handoffs/${id}.md`
+      sessionPath = `${root}/handoffs/${p.id === 'codex' ? 'codex/' : ''}${id}.md`
     }
-    const p = this.provider(s)
     const prompt = p.launch.handoffPrompt(sessionPath)
     if (!prompt)
       throw new Error(
         `The app's data folder has characters in its path that can't be passed to ${p.productName} safely.`
       )
+    // Claude Code reads only its project and added folders, so the "read the
+    // file" form adds the handoff's folder. Codex's sandbox reads anywhere
+    // (it limits writes, checked with `codex sandbox` on Windows), and its
+    // --add-dir would make the folder writable too: never added for Codex.
     const addDir =
-      prompt.mode === 'read'
+      prompt.mode === 'read' && p.id !== 'codex'
         ? s.env === 'wsl'
           ? sessionPath.slice(0, sessionPath.lastIndexOf('/'))
           : dirname(path)
@@ -578,6 +612,7 @@ export class Launcher {
     const name = continuedName(s.title, names)
     const handoff = buildHandoff(
       {
+        product: p.productName,
         title: s.title,
         sessionId: s.sessionId,
         cwd: s.cwd,
@@ -587,13 +622,12 @@ export class Launcher {
       },
       summary
     )
-    const target: SessionSummary = {
-      ...s,
+    const target = this.derived(s, {
       key: `${s.sourceId}:${id}`,
       sessionId: id,
       // Remote Control is named after the new session.
       meta: { ...s.meta, name }
-    }
+    })
     return {
       preview: {
         newSessionId: id,
@@ -669,7 +703,7 @@ export class Launcher {
       } catch (err) {
         branchError = (err as Error).message
       }
-      const target = branch ? { ...s, sessionId: branch.newSessionId } : s
+      const target = branch ? this.derived(s, { sessionId: branch.newSessionId }) : s
       const branchOpts = { ...opts, fork: false, newSession: false }
       const { cmd, error } = this.tryCommand(
         target,
@@ -737,9 +771,12 @@ export class Launcher {
         billingLabel: this.billingLabel(opts),
         continueFresh: plan?.preview,
         continueError,
-        launchError: this.unsupported(s, opts) ?? built.error ?? folderError,
+        launchError:
+          this.unsupported(s, opts) ?? placeError(placed, opts) ?? built.error ?? folderError,
         remoteControlName: this.remoteControl(target, opts)?.name,
-        modelChoice: this.modelChoice(s)
+        modelChoice: this.modelChoice(s),
+        // A WSL-only folder: the same opt-in and distro choice as Resume.
+        ...(placed.placement ? { placement: placed.placement } : {})
       }
     }
     const originalExists = await this.platform.pathExists(s.originalPath)
@@ -942,7 +979,9 @@ export class Launcher {
     } catch (err) {
       return fail((err as Error).message)
     }
-    const continued = cont ? { continuedKey: cont.target.key } : {}
+    // Codex picks the new session's id itself: its key is known only once it shows up.
+    const pickedId = cont !== undefined && this.provider(s).id !== 'codex'
+    const continued = cont && pickedId ? { continuedKey: cont.target.key } : {}
 
     // 1. Restore the original file from the archive if it's missing. Never overwrite.
     //    (Claude Code only: the app never writes into another agent's folder.)
@@ -975,7 +1014,12 @@ export class Launcher {
     if (cont) {
       // A new file only: never overwrites (a clash means another id next time).
       try {
-        await writeHandoff(this.dataDir!, cont.preview.newSessionId, cont.preview.handoff)
+        await writeHandoff(
+          this.dataDir!,
+          cont.preview.newSessionId,
+          cont.preview.handoff,
+          this.provider(s).id
+        )
       } catch (err) {
         return {
           ...fail(
@@ -988,9 +1032,11 @@ export class Launcher {
       }
       // WSL: the distro must really see the file before Claude is told to read it.
       if (s.env === 'wsl' && s.distro) {
-        const seen = await this.platform.wslCanRead(s.distro, cont.preview.sessionPath)
+        // As the user the agent runs as (a Codex session's own WSL user), not the distro's default.
+        const user = this.targetOf(s)?.wslUser
+        const seen = await this.platform.wslCanRead(s.distro, cont.preview.sessionPath, user)
         if (!seen) {
-          this.wslRoots.delete(s.distro)
+          this.wslRoots.delete(wslRootKey(s.distro, user))
           return {
             ...fail(
               `${s.sourceLabel} can't read the handoff file at ${cont.preview.sessionPath}, so nothing was started. Check that Windows drives are mounted in this distro ([automount] in /etc/wsl.conf).`
@@ -1006,6 +1052,24 @@ export class Launcher {
     const late = ctx.stillAllowed?.()
     if (late)
       return { ok: false, restored, commandLine: cmd.commandLine, error: `Not launched: ${late}.` }
+    // Codex: linked when a new session whose first prompt names this handoff shows up.
+    // Recorded before the terminal starts, so a scan that finds the new session first
+    // still links it; dropped again if nothing starts.
+    const pendingId = cont && !pickedId ? cont.preview.newSessionId : undefined
+    if (pendingId)
+      this.sessions.recordPendingContinue(pendingId, {
+        parentSessionId: s.sessionId,
+        parentKey: s.key,
+        sourceId: s.sourceId,
+        name: cont!.preview.name,
+        ...(s.meta.model ? { model: s.meta.model } : {}),
+        ...(s.meta.effort ? { effort: s.meta.effort } : {}),
+        createdAt: new Date().toISOString()
+      })
+    const notStarted = (r: LaunchResult): LaunchResult => {
+      if (pendingId) this.sessions.dropPendingContinue(pendingId)
+      return r
+    }
     try {
       await this.platform.spawnDetached(cmd)
     } catch (err) {
@@ -1015,31 +1079,32 @@ export class Launcher {
         // The first attempt took time: ask again before the second.
         const again = ctx.stillAllowed?.()
         if (again)
-          return {
+          return notStarted({
             ok: false,
             restored,
             commandLine: cmd.commandLine,
             error: `Not launched: ${again}.`
-          }
+          })
         try {
           await this.platform.spawnDetached(cmd)
         } catch (err2) {
-          return {
+          return notStarted({
             ok: false,
             restored,
             commandLine: cmd.commandLine,
             error: String((err2 as Error).message)
-          }
+          })
         }
       } else {
-        return {
+        return notStarted({
           ok: false,
           restored,
           commandLine: cmd.commandLine,
           error: String((err as Error).message)
-        }
+        })
       }
     }
+    if (pendingId) return { ok: true, restored, commandLine: cmd.commandLine, ...continued }
     if (cont) {
       // Where the new session came from (the app's metadata only), named and
       // with the parent's own model / effort, before Claude Code writes its file.

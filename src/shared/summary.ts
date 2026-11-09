@@ -65,9 +65,19 @@ export interface AiSummary {
   costUsd?: number
 }
 
+/**
+ * The version of the notice about what is sent. Bumped whenever what a summary
+ * sends grows, so an acceptance of an older notice (auto-summarize included)
+ * doesn't carry over: the notice is shown and accepted again first.
+ * 2: compaction summaries and Codex's messages between agents.
+ */
+export const SUMMARY_NOTICE_VERSION = 2
+
 export interface SummarySettings {
-  /** The user read the notice about what is sent, and agreed. */
+  /** The user read the current notice about what is sent (see SUMMARY_NOTICE_VERSION), and agreed. */
   noticeAccepted: boolean
+  /** The notice version the acceptance is for (always the current one once cleaned). */
+  noticeVersion?: number
   model: SummaryModel
   /** Summarize sessions with at least `autoMinMessages` messages by themselves. */
   autoEnabled: boolean
@@ -96,7 +106,9 @@ export function sanitizeSummarySettings(v: unknown): SummarySettings {
   const int = (x: unknown, lo: number, hi: number, def: number): number =>
     typeof x === 'number' && Number.isFinite(x) ? Math.min(hi, Math.max(lo, Math.round(x))) : def
   return {
-    noticeAccepted: o.noticeAccepted === true,
+    // Accepted only for the current notice: an older acceptance is asked again.
+    noticeAccepted: o.noticeAccepted === true && o.noticeVersion === SUMMARY_NOTICE_VERSION,
+    noticeVersion: SUMMARY_NOTICE_VERSION,
     model: isSummaryModel(o.model) ? o.model : d.model,
     autoEnabled: o.autoEnabled === true,
     autoMinMessages: int(o.autoMinMessages, 10, 100_000, d.autoMinMessages),
@@ -185,8 +197,15 @@ function oneLine(s: string, max: number): string {
   return t.length > max ? `${t.slice(0, max - 1)}…` : t
 }
 
-/** One message as plain text: user/assistant text and one line per tool call. Undefined to leave it out. */
-export function messageForSummary(m: ChatMessage): string | undefined {
+/** A message between agents is sent cut to this many characters (it carries a subagent's result). */
+export const MAX_AGENT_MESSAGE_CHARS = 2000
+
+/**
+ * One message as plain text: user/assistant text, one line per tool call and
+ * one short line per message between agents (Codex). Undefined to leave it
+ * out. `agent` labels the answers ("Claude", "Codex").
+ */
+export function messageForSummary(m: ChatMessage, agent = 'Claude'): string | undefined {
   if (m.kind === 'prompt' && m.role === 'user') {
     const text = m.blocks
       .map((b) => (b.type === 'text' ? b.text : b.type === 'image' ? '[image]' : ''))
@@ -207,11 +226,16 @@ export function messageForSummary(m: ChatMessage): string | undefined {
       else if (b.type === 'tool_use') {
         flush()
         parts.push(`[tool] ${oneLine(b.label || b.name, MAX_TOOL_LABEL)}`)
+      } else if (b.type === 'agent_message') {
+        flush()
+        parts.push(
+          `[agent ${oneLine(b.author, 80)} → ${oneLine(b.recipient, 80)}] ${clip(b.text.trim(), MAX_AGENT_MESSAGE_CHARS)}`
+        )
       }
       // Thinking, tool results and images are never sent.
     }
     flush()
-    return parts.length ? `Claude: ${parts.join('\n')}` : undefined
+    return parts.length ? `${agent}: ${parts.join('\n')}` : undefined
   }
   if (m.kind === 'compact') {
     const text = m.blocks
@@ -241,9 +265,14 @@ export const HEAD_SHARE = 0.25
  * The text sent for a summary: every message as plain text, secrets masked,
  * cut to `maxChars` keeping the start (a quarter) and the end (the rest).
  */
-export function transcriptForSummary(messages: ChatMessage[], maxChars: number): SummaryTranscript {
+export function transcriptForSummary(
+  messages: ChatMessage[],
+  maxChars: number,
+  /** Who answered ("Claude", "Codex"): the label of each answer. */
+  agent = 'Claude'
+): SummaryTranscript {
   const entries = messages
-    .map(messageForSummary)
+    .map((m) => messageForSummary(m, agent))
     .filter((t): t is string => !!t)
     .map(redactSecrets)
   const sep = '\n\n'
@@ -525,6 +554,8 @@ export function summarySearchText(s: AiSummary | undefined): string {
 // ---------------------------------------------------------------- handoff
 
 export interface HandoffSubject {
+  /** The coding agent the new session runs in (default: Claude Code). */
+  product?: string
   title: string
   sessionId: string
   cwd?: string
@@ -546,7 +577,7 @@ export function buildHandoff(s: HandoffSubject, summary: AiSummary): string {
   return [
     `# Handoff: ${oneLine(summary.title || s.title, 200)}`,
     '',
-    'This is a new Claude Code session that continues an earlier one. The earlier session’s full history is not loaded; this summary of it was written for the handoff by Claude Session Dashboard.',
+    `This is a new ${s.product ?? 'Claude Code'} session that continues an earlier one. The earlier session’s full history is not loaded; this summary of it was written for the handoff by Claude Session Dashboard.`,
     '',
     ...facts,
     '',
@@ -585,6 +616,20 @@ export function handoffPrompt(path: string): { prompt: string; mode: HandoffMode
       mode: 'read'
     }
   return undefined
+}
+
+/**
+ * Codex's first message: always the instruction to read the file (Codex has
+ * no @-mention that attaches a typed path; its model reads the file with its
+ * own tools). Undefined when the path can't be passed safely.
+ */
+export function readHandoffPrompt(path: string): { prompt: string; mode: HandoffMode } | undefined {
+  if (!/^(?:[A-Za-z]:\\|\/)/.test(path)) return undefined
+  if (!READ_SAFE.test(path) || /^[-\s]/.test(path)) return undefined
+  return {
+    prompt: `Read the handoff file ${path} first, then continue from it. It summarizes an earlier session.`,
+    mode: 'read'
+  }
 }
 
 /** A default name for a Continue fresh session: "<title> — continued" (2, 3… if taken). */

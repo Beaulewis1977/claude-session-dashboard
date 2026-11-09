@@ -17,6 +17,7 @@ import type {
   LimitHit,
   SessionUsage,
   TurnSample,
+  CodexTurnSample,
   UsageQuery,
   UsageRecord,
   UsageReport,
@@ -192,6 +193,11 @@ export class UsageService extends EventEmitter<{ changed: []; 'codex-progress': 
   }
 
   /** Codex plan limit readings from every rollout, sorted by time. */
+  /** Codex turns (one per turn, forks' copies counted once), for Codex trends. */
+  codexTurns(): CodexTurnSample[] {
+    return this.codex.turns()
+  }
+
   codexLimitReadings(): CodexLimitReading[] {
     return this.codex.readings()
   }
@@ -478,7 +484,7 @@ export class UsageService extends EventEmitter<{ changed: []; 'codex-progress': 
       source: s.sourceId,
       ...(s.version ? { version: s.version } : {})
     })
-    this.codex.set(s.key, a.records, a.codexLimits ?? [], sig)
+    this.codex.set(s.key, a.records, a.codexLimits ?? [], sig, a.codexTurns ?? [])
     // Let other work (IPC) run between files on big histories.
     await new Promise((r) => setImmediate(r))
     return true

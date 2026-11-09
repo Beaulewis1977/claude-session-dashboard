@@ -417,7 +417,11 @@ so.
   `[hooks.state]`, never written) and never marks it trusted itself. An entry an older hook left at
   the same position (Codex keys trust by position) doesn't count: only one Codex saved after the app
   added its hook, or an approval the hook delivered after the last save of both config.toml and
-  hooks.json (so an older event never overrides a later change, and "turned off" always wins). Codex keys trust by position,
+  hooks.json (so an older event never overrides a later change, and "turned off" always wins; a save
+  time that can't be read never counts). Codex trusts a hash of the whole hook group, so if the
+  app's group is edited (a matcher added, an option changed) it counts as untrusted again. An exact
+  approval lasts until a tool output, a new tool call or the turn's end; progress lines another tool
+  writes meanwhile don't end it. Codex keys trust by position,
   so if you later add a PermissionRequest hook of your own after the app's, Disable warns that
   Codex will ask you to trust yours again. The script saves only the session id, the event and the
   tool name in `~/.claude-session-dashboard/codex-events/` and prints nothing, so Codex still asks
@@ -431,7 +435,9 @@ thread) while it works, and then as "waiting for you" for 30 minutes. A CLI thre
 lock, so an open turn in the rollout of an unlocked CLI thread (a crash) is not work. Exited is a
 lock the app saw held and then released. A lock that can't be checked for a moment (an unreadable
 WSL share, a holder whose command line can't be read) is "can't tell", never "free": a thread seen
-open keeps its row, marked unconfirmed, for up to 30 minutes, and nothing is reported as ended. Every
+open keeps its row, marked unconfirmed, for up to 30 minutes, and nothing is reported as ended. The
+same goes for a single lock file or rollout that can't be read, and for a whole home that becomes
+unreadable (a WSL share outage). Every
 lock file is looked at (Codex keeps old ones): on Windows each is probed and only held ones are
 `stat`ed; in WSL their inodes are cached for a minute (recently active threads are looked at
 afresh).

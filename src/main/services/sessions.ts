@@ -36,6 +36,7 @@ import { isInside } from '../core/safe-paths'
 import type { Platform } from '../platform'
 import { defaultProviders, type ProviderRegistry } from '../providers/registry'
 import type { BaseSummary, SessionFile, SessionProvider } from '../providers/types'
+import { breathe } from '../core/breathe'
 import { SearchIndex } from './search'
 import type { ResolvedSource } from './sources'
 import {
@@ -72,6 +73,11 @@ interface Entry {
   rev?: string
   /** The provider's parse version when it was read (absent: a provider without one, e.g. Claude Code). */
   pv?: number
+  /**
+   * The agent's own name (e.g. a Codex thread name) its search entry was built
+   * with: a name read again at startup that matches needs no re-index.
+   */
+  indexedName?: string
 }
 
 /** What an imported entry was loaded from: reloaded when either changes. */
@@ -746,7 +752,14 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
       const pv = provider.parseVersion
       this.loadSeq.set(key, (this.loadSeq.get(key) ?? 0) + 1)
       this.owner.set(key, provider.id)
-      this.entries.set(key, { base, size: f.size, mtimeMs: f.mtimeMs, ...(pv ? { pv } : {}) })
+      this.entries.set(key, {
+        base,
+        size: f.size,
+        mtimeMs: f.mtimeMs,
+        ...(pv ? { pv } : {}),
+        // The agent name its (reused) search entry was built with.
+        ...(cached.indexedName !== undefined ? { indexedName: cached.indexedName } : {})
+      })
       this.linkContinued(base)
       this.queueArchive(src, base)
       return
@@ -761,6 +774,9 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
     } catch {
       return
     }
+    // Parsing and indexing a big session are long synchronous steps: let the
+    // app's other work (a dialog's IPC) in before each.
+    await breathe()
     if (this.loadSeq.get(key) !== seq) return
     // Turned off while the file was being read: nothing of it is kept.
     if (!this.providers.isOn(provider.id)) return
@@ -769,6 +785,9 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
     this.owner.set(key, provider.id)
     const pv = provider.parseVersion
     this.entries.set(key, { base, size: f.size, mtimeMs: f.mtimeMs, ...(pv ? { pv } : {}) })
+    await breathe()
+    // Replaced by a newer read meanwhile: that one indexes it.
+    if (this.loadSeq.get(key) !== seq) return
     this.index(base, searchText)
     this.linkContinued(base)
     this.queueArchive(src, base)
@@ -1048,12 +1067,17 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
   private reindexNames(sourceId: string, sessionIds: string[]): void {
     const ids = new Set(sessionIds.map((x) => x.toLowerCase()))
     const src = this.source(sourceId)
+    const keys: string[] = []
     for (const e of this.entries.values())
       if (e.base.sourceId === sourceId && ids.has(e.base.sessionId.toLowerCase())) {
-        void this.reindex(e.base.key)
+        // At startup every name counts as new (none were read yet in this run):
+        // only those that differ from the name the search entry has are read again.
+        if (e.indexedName !== (this.withMeta(e.base).claudeName ?? '')) keys.push(e.base.key)
         // A name given in the agent can make it "named" for the archive.
         if (src && e.base.availability === 'live') this.queueArchive(src, e.base)
       }
+    // Two at a time: each one reads its whole session again.
+    void mapLimit(keys, 2, (k) => this.reindex(k))
   }
 
   /** Pick up archive records added by an import. */
@@ -1088,6 +1112,8 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
       project: `${base.projectName} ${base.cwd ?? ''} ${base.gitBranch ?? ''}`,
       text: searchText
     })
+    const e = this.entries.get(base.key)
+    if (e) e.indexedName = s.claudeName ?? ''
   }
 
   private async reindex(key: string): Promise<void> {

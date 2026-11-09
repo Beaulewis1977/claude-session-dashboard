@@ -89,6 +89,7 @@ import { AccountsService, createAccountsStore, type Encryptor } from './services
 import { httpsFetcher } from './services/anthropic-api'
 import { BillingService } from './services/billing'
 import { createFixturesPlatform, createRealPlatform, type Platform } from './platform'
+import { mark, profileStartup, timed, watchEventLoop } from './timing'
 import { CodexAppService, codexProtocolRegistered } from './providers/codex/app'
 import { BridgeInstaller, cleanupSettingsLeftovers, createBridgeStore } from './services/bridge'
 import { Launcher } from './services/launcher'
@@ -239,6 +240,9 @@ async function main(): Promise<void> {
   })
 
   await app.whenReady()
+  mark('app ready')
+  watchEventLoop()
+  await profileStartup()
   blockNetwork()
   setAppPage(RENDERER_INDEX, process.env.ELECTRON_RENDERER_URL)
 
@@ -773,11 +777,16 @@ async function main(): Promise<void> {
     lockNavigation
   })
   refitMeter = meter.refit
+  mark('services ready, window created')
+  // Find Windows Terminal, Claude Code and Codex now, before the first scan
+  // fills Node's file threads: the first Resume dialog then doesn't wait for it.
+  void timed('startup: terminal and Claude lookup', platform.launchTools()).catch(() => undefined)
   createWindow(settings.value.window)
   meter.restore()
 
   void sessions
     .start()
+    .then(() => mark('first session scan done'))
     .then(() => migrateBillingKeys())
     .then(() => watcher.restart())
     // An interrupted save of settings.json: the app's own leftovers go
@@ -903,7 +912,11 @@ async function main(): Promise<void> {
     })
     mainWindow = win
     if (bounds?.maximized) win.maximize()
-    win.once('ready-to-show', () => win.show())
+    win.once('ready-to-show', () => {
+      mark('window ready to show')
+      win.show()
+    })
+    win.webContents.once('did-finish-load', () => mark('window page loaded'))
     lockNavigation(win)
 
     const saveBounds = (): void => {

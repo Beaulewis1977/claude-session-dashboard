@@ -4,15 +4,18 @@
 // dialog checks again, drops the stale consent and asks about the new project,
 // instead of failing the same way until it's closed and reopened.
 
-import { resolve } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { chromium, type Browser, type Page } from 'playwright'
-import { createServer, type ViteDevServer } from 'vite'
-import react from '@vitejs/plugin-react'
-import tailwindcss from '@tailwindcss/vite'
+import type { Browser, Page } from 'playwright'
+import type { ViteDevServer } from 'vite'
 import type { SessionSummary } from '../src/shared/types'
+import {
+  launchBrowser,
+  startHarness,
+  trackPage,
+  unavailableReason,
+  waitReady
+} from './browser-harness'
 
-const root = resolve(import.meta.dirname, '..')
 const virtualId = 'virtual:codex-app-dialog-browser'
 
 const session: SessionSummary = {
@@ -106,62 +109,11 @@ createRoot(document.getElementById('root')).render(
 let server: ViteDevServer | undefined
 let browser: Browser | undefined
 let origin: string
-let unavailableReason = ''
-
-async function launchBrowser(): Promise<Browser | undefined> {
-  const errors: string[] = []
-  for (const channel of [undefined, 'chrome', 'msedge']) {
-    try {
-      return await chromium.launch({ headless: true, ...(channel ? { channel } : {}) })
-    } catch (error) {
-      errors.push(`${channel ?? 'bundled Chromium'}: ${String(error).split('\n')[0]}`)
-    }
-  }
-  unavailableReason = `Browser integration tests need Playwright Chromium or Chrome/Edge. ${errors.join('; ')}`
-  return undefined
-}
 
 beforeAll(async () => {
   browser = await launchBrowser()
   if (!browser) return
-  server = await createServer({
-    configFile: false,
-    root,
-    // Its own dependency cache: the other browser tests run Vite servers at the same time.
-    cacheDir: resolve(root, 'node_modules/.vite-codex-app-dialog-browser'),
-    logLevel: 'error',
-    optimizeDeps: { entries: ['src/renderer/src/**/*.tsx'] },
-    resolve: {
-      alias: {
-        '@': resolve(root, 'src/renderer/src'),
-        '@shared': resolve(root, 'src/shared')
-      }
-    },
-    plugins: [
-      react(),
-      tailwindcss(),
-      {
-        name: 'codex-app-dialog-browser-fixture',
-        resolveId: (id) => (id === virtualId ? `\0${virtualId}` : undefined),
-        load: (id) => (id === `\0${virtualId}` ? harness : undefined),
-        configureServer(vite) {
-          vite.middlewares.use((req, res, next) => {
-            if (req.url?.split('?')[0] !== '/') return next()
-            const html = `<!doctype html><html><head></head><body><div id="root"></div><script type="module" src="/@id/__x00__${virtualId}"></script></body></html>`
-            void vite.transformIndexHtml(req.url, html).then((transformed) => {
-              res.setHeader('Content-Type', 'text/html')
-              res.end(transformed)
-            })
-          })
-        }
-      }
-    ],
-    server: { host: '127.0.0.1', port: 0, watch: null, hmr: false }
-  })
-  await server.listen()
-  const address = server.httpServer?.address()
-  if (!address || typeof address === 'string') throw new Error('Vite did not bind a local port')
-  origin = `http://127.0.0.1:${address.port}`
+  ;({ server, origin } = await startHarness({ virtualId, harness }))
   // Warm up: Vite builds the modules on the first load, which is slow under a full test run.
   await (await open(60_000)).close()
 }, 90_000)
@@ -172,11 +124,11 @@ afterAll(async () => {
 })
 
 async function open(loadTimeout = 15_000): Promise<Page> {
-  const page = await browser!.newPage({ viewport: { width: 1000, height: 900 } })
+  const page = trackPage(await browser!.newPage({ viewport: { width: 1000, height: 900 } }), origin)
   page.setDefaultTimeout(loadTimeout)
   page.on('pageerror', (err) => console.error('[codex-app-dialog.browser]', err.message))
   await page.goto(origin)
-  await page.getByRole('button', { name: 'Use Alpha' }).waitFor()
+  await waitReady(page, page.getByRole('button', { name: 'Use Alpha' }))
   page.setDefaultTimeout(5_000)
   return page
 }

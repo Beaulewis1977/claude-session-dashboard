@@ -1957,6 +1957,55 @@ describe('fourth review fixes', () => {
     expect(after.archived).toBe(before.archived - 1)
   })
 
+  it('a restart re-reads only Codex sessions whose thread name changed since they were indexed', async () => {
+    const t = await setup()
+    await t.sessions.saveCache()
+    const named = t.sessions.list().filter((s) => s.provider === 'codex' && s.claudeName)
+    expect(named.length).toBeGreaterThan(0)
+    // The app starts again on the same data, counting reads for the search index.
+    const views: string[] = []
+    const codex = createCodexProvider()
+    const read = codex.readText.bind(codex)
+    codex.readText = (p, purpose) => {
+      if (purpose === 'view') views.push(p)
+      return read(p, purpose)
+    }
+    const again = new SessionService(
+      createFixturesPlatform(t.layout.fixturesDir, t.layout.sourcesDir),
+      t.paths,
+      t.metadata,
+      t.settings,
+      new ProviderRegistry([claudeProvider, codex])
+    )
+    busy.push(again)
+    await again.start()
+    await again.idle()
+    await new Promise((r) => setTimeout(r, 200))
+    // Every name is "new" to the restarted app, but none changed: nothing is read again.
+    expect(views).toEqual([])
+    const first = named[0]
+    expect(again.searchKeys(first.claudeName!).map((h) => h.key)).toContain(first.key)
+
+    // Renamed in Codex: only that session is read again, and found by its new name.
+    const home = dirname(dirname(dirname(dirname(dirname(first.originalPath)))))
+    await writeFile(
+      join(home, 'session_index.jsonl'),
+      (await readFile(join(home, 'session_index.jsonl'), 'utf8')) +
+        JSON.stringify({
+          id: first.sessionId,
+          thread_name: 'Zebra renamed',
+          updated_at: '2026-10-30T10:00:00Z'
+        }) +
+        '\n'
+    )
+    await again.pollSource(first.sourceId)
+    await expect.poll(() => views.length).toBe(1)
+    expect(views[0]).toBe(first.filePath)
+    await expect
+      .poll(() => again.searchKeys('Zebra renamed').map((h) => h.key))
+      .toContain(first.key)
+  })
+
   it('the same Codex name given again later counts as a change (newest wins)', async () => {
     const home = join(root, 'names-home')
     await mkdir(home, { recursive: true })

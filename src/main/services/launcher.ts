@@ -76,6 +76,7 @@ import {
   type CodexAppPreview
 } from '@shared/codex-app'
 import { CODEX_APP_SOURCE_ID, type CodexAppService } from '../providers/codex/app'
+import { timed } from '../timing'
 
 /** "Open in Codex app" (Windows): what the app can open, and how a link is opened (Electron's shell). */
 export interface CodexAppLauncher {
@@ -867,19 +868,22 @@ export class Launcher {
     const found = this.sessions.get(opts.key)
     if (!found) throw new Error('Session not found')
     // "Open in Codex app": decided on the session as recorded (its own folder and home).
-    const codexApp = await this.appPreview(found, opts)
+    const codexApp = await timed('preview: Codex app check', this.appPreview(found, opts))
     const withApp = (p: LaunchPreview): LaunchPreview => (codexApp ? { ...p, codexApp } : p)
     const app = opts.openIn === 'codex-app'
     // Where it runs (WSL for a Codex desktop session with a Linux folder, …).
-    const placed = await this.place(found, opts)
+    const placed = await timed('preview: placement', this.place(found, opts))
     const s = placed.s
     const cwd = opts.cwdOverride ?? s.cwd
-    const tools = await this.platform.launchTools()
+    const tools = await timed('preview: terminal and Claude lookup', this.platform.launchTools())
     const { terminal, fellBack } = this.resolveTerminal(
       opts.terminal ?? this.defaultTerminal(),
       tools
     )
-    const state = cwd && !cwdProblem(s.env, cwd) ? await this.cwdState(s, cwd) : undefined
+    const state =
+      cwd && !cwdProblem(s.env, cwd)
+        ? await timed('preview: folder check', this.cwdState(s, cwd))
+        : undefined
     const folderError = state === 'unreachable' ? this.unreachable(s) : undefined
     if (opts.branch) {
       // Branch from a message: the command resumes the new session that will be created.
@@ -966,7 +970,10 @@ export class Launcher {
         ...(placed.placement ? { placement: placed.placement } : {})
       })
     }
-    const originalExists = await this.platform.pathExists(s.originalPath)
+    const originalExists = await timed(
+      'preview: session file check',
+      this.platform.pathExists(s.originalPath)
+    )
     const record = this.sessions.archiveRecord(s.key)
     const noRestore = this.noRestore(s, opts, originalExists)
     const { cmd, error } = this.tryCommand(s, opts, cwd ?? this.placeholderCwd(s), terminal, tools)
@@ -975,10 +982,15 @@ export class Launcher {
     const context =
       opts.newSession || !this.provider(s).capabilities.usage
         ? undefined
-        : await this.contextEstimate?.(s, {
-            billingAccountId: opts.billingAccountId,
-            modelChoice: modelChoice.model
-          }).catch(() => undefined)
+        : await timed(
+            'preview: context estimate',
+            Promise.resolve(
+              this.contextEstimate?.(s, {
+                billingAccountId: opts.billingAccountId,
+                modelChoice: modelChoice.model
+              })
+            ).catch(() => undefined)
+          )
     return withApp({
       commandLine: cmd?.commandLine ?? '',
       claudeCommand: this.claudeCommand(s, opts, cmd),

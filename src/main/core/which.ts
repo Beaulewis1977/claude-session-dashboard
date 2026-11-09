@@ -47,19 +47,23 @@ export function pathDirs(pathVar: string | undefined): string[] {
     .filter(isAbsoluteWindowsPath)
 }
 
-/** The first `<dir>\<name><ext>` that exists, searching PATH's absolute folders only. */
+/**
+ * The first `<dir>\<name><ext>` that exists, searching PATH's absolute folders
+ * only, in PATH order. Every candidate is checked at once: one at a time, each
+ * check waited its turn behind the app's other file work (the startup scan
+ * keeps Node's few file threads busy), and a PATH of 60 folders took seconds.
+ */
 export async function findOnPath(
   name: string,
   exts: string[],
   env: NodeJS.ProcessEnv = process.env,
   exists: Exists = fileExists
 ): Promise<string | undefined> {
-  for (const dir of pathDirs(env.PATH ?? env.Path))
-    for (const ext of exts) {
-      const p = win32.join(dir, name + ext)
-      if (await exists(p)) return p
-    }
-  return undefined
+  const candidates = pathDirs(env.PATH ?? env.Path).flatMap((dir) =>
+    exts.map((ext) => win32.join(dir, name + ext))
+  )
+  const found = await Promise.all(candidates.map((p) => exists(p).catch(() => false)))
+  return candidates[found.indexOf(true)]
 }
 
 /** Windows Terminal: its app execution alias, else wt.exe on PATH. */

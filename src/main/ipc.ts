@@ -50,6 +50,7 @@ import type { AppPaths, SettingsFile } from './services/store'
 import type { SourceWatcher } from './services/watcher'
 import { importIntoCatalogue } from './services/imports'
 import type { MetadataFile } from './services/store'
+import { timed } from './timing'
 
 export interface IpcDeps {
   platform: Platform
@@ -440,7 +441,9 @@ export function registerIpc(deps: IpcDeps): void {
     if (src?.claudeSettingsPath) await shell.openPath(dirname(src.claudeSettingsPath))
   })
 
-  handle('launch:preview', (_e, opts) => deps.launcher.preview(launchOpts(opts)))
+  handle('launch:preview', (_e, opts) =>
+    timed('launch:preview (total)', deps.launcher.preview(launchOpts(opts)))
+  )
   handle('launch:run', (_e, opts) => deps.launcher.launch(launchOpts(opts)))
   handle('launch:openInAgentApp', async (_e, key) => {
     const s = sessions.get(str(key, 'key'))

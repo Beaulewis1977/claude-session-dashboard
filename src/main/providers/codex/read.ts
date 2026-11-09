@@ -13,6 +13,7 @@ import { createReadStream } from 'node:fs'
 import { open } from 'node:fs/promises'
 import { Decompress } from 'fzstd'
 import { isContextItem, isInjected } from './provenance'
+import { breathe } from '../../core/breathe'
 
 /** First bytes of a zstd frame. Codex renames a rollout to .zst when it compresses it. */
 const ZSTD_MAGIC = [0x28, 0xb5, 0x2f, 0xfd]
@@ -272,17 +273,15 @@ async function eachLine(
     }
   }
   const zstd = compressed ? new Decompress((data) => take(data)) : undefined
-  let sinceYield = 0
-  for await (const chunk of createReadStream(path, { highWaterMark: 1024 * 1024 })) {
+  // A compressed chunk unpacks to several times its size (all handled in one
+  // push), so those are read in smaller chunks.
+  const highWaterMark = zstd ? 128 * 1024 : 1024 * 1024
+  for await (const chunk of createReadStream(path, { highWaterMark })) {
     const c = chunk as Buffer
     if (zstd) zstd.push(c)
     else take(c)
     if (stop()) return bytes
-    sinceYield += c.length
-    if (sinceYield > 8 * 1024 * 1024) {
-      sinceYield = 0
-      await new Promise((r) => setImmediate(r))
-    }
+    await breathe()
   }
   if (zstd) zstd.push(new Uint8Array(0), true)
   // The last line (no newline after it).

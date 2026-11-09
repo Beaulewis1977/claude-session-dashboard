@@ -74,7 +74,8 @@ beforeEach(async () => {
   await put('usage/records-2026-10.ndjson', '{"tokens":5}\n')
 })
 afterEach(async () => {
-  await rm(root, { recursive: true, force: true })
+  // A store's last delayed save can still be landing in the data folder (Windows, busy machine).
+  await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
 })
 
 async function service(opts: { dataDir?: string } = {}) {

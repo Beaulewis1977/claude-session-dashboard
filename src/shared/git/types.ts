@@ -167,7 +167,7 @@ export interface SessionGitView {
   possible: CommitView[]
   unlinked: CommitView[]
   prs: PrLink[]
-  /** Files the session edited that no linked commit has. */
+  /** Files the session edited that no commit since it started has changed. */
   uncommitted: string[]
   gh: GhState
   checkedAt?: string

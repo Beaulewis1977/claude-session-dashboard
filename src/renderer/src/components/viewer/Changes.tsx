@@ -201,7 +201,7 @@ function FileRow({
         <Tooltip content="Sessions that touched this file">
           <button
             type="button"
-            className="shrink-0 rounded p-0.5 text-subtle-foreground opacity-0 group-hover/file:opacity-100 hover:bg-hover hover:text-foreground focus:opacity-100"
+            className="shrink-0 rounded p-0.5 text-subtle-foreground opacity-0 group-hover/file:opacity-100 hover:bg-hover hover:text-foreground focus:opacity-100 touch:opacity-100"
             aria-label="Sessions that touched this file"
             onClick={() => touched(file.path)}
           >
@@ -669,10 +669,10 @@ function Changes({ session, className }: { session: SessionSummary; className?: 
       </Section>
 
       <Section
-        title="Edited, not in a linked commit"
+        title="Edited, not committed"
         count={view.uncommitted.length}
         defaultOpen={false}
-        hint="Files the session edited that none of its linked commits changed (not committed yet, committed later by someone else, or reverted)."
+        hint="Files the session edited that no commit since it started has changed (not committed yet, or the change was undone)."
       >
         <div className="rounded-lg border border-border bg-card">
           {view.uncommitted.map((p) => (

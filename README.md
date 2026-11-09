@@ -98,6 +98,25 @@ Everything stays on your PC and your own private network.
   it would use first, and pauses (with a Resume button) if the live 5-hour limit goes above 80%.
   Summary runs show in Usage as "Summaries (dashboard)".
 
+### What each session changed (git links)
+
+- **A Changes tab in the viewer:** the commits a session made (message, time, branch, +/−), each
+  with a confidence (**Exact**, **High**, **Medium**) and the reasons on hover, its files with
+  syntax-highlighted, collapsible diffs, and the pull requests.
+- **How commits are matched**, strongest first: the session's own `git commit` printed that commit
+  (or a `Claude-Session` trailer names its Remote Control link); then made while it was active, on
+  its branch, touching files it edited. Time-only matches are listed apart as **Possible**. Forks,
+  branches and Codex subagents don't claim their parent's commits. A wrong match can be unlinked.
+- **Badges on cards** ("3 commits · PR #14"), and search filters: `touched:bridge.ts` (sessions
+  that edited or committed a file) and `commit:abc1234`. Every file has "Sessions that touched
+  this file".
+- **Pull requests** from the session's own `gh pr create` output and merge commits, and, if you say
+  yes, from your **GitHub CLI** (`gh pr list`, read-only).
+- **Git is only read**, for Windows and WSL repos (each distro's own git) and worktrees. The app
+  never commits, fetches or checks out anything. Settings → Git turns it off. On the phone: a
+  read-only list of commits, files and PR links. Details:
+  [docs/DETAILS.md](docs/DETAILS.md#git-links).
+
 ### Context size before you resume
 
 - **A size badge on every card** (S / M / L / XL, exact tokens on hover) and a **Context size** sort.
@@ -387,6 +406,15 @@ optional setting, off by default, does the same once a day.
 - Settings → Summaries: the model (Sonnet by default), the size limit, the pause line and
   auto-summarize (off by default).
 
+### See what a session changed
+
+Open a session and click **Changes** (next to Conversation). Expand a commit to see its files, and
+a file to see its diff. The first time a session is in a GitHub repo, the tab asks whether to look
+up pull requests with your GitHub CLI (`gh`, signed in with `gh auth login`); say **Not now** to
+keep PR links to what the sessions and merge commits show. Use **⋯ → Unlink from this session** on a
+commit that doesn't belong; it moves to **Unlinked**, where you can link it again. Type
+`touched:<file>` or `commit:<sha>` in the search box to find sessions by a file or a commit.
+
 ### Keyboard shortcuts
 
 | Keys                                              | Action                  |
@@ -417,7 +445,7 @@ The full rules are in [`CLAUDE.md`](CLAUDE.md). In short:
   transcripts aren't loaded, and spellcheck is off. Ask Claude and summaries go to Claude only
   through your own Claude Code (`claude -p`), on your subscription, after showing you what is sent.
 
-Six opt-in exceptions, each only after you approve it in the app:
+Seven opt-in exceptions, each only after you approve it in the app:
 
 1. **Live limits** changes only the `statusLine` key in Claude Code's `settings.json`. You see the
    diff first, the file is backed up, and Disable restores the old value exactly.
@@ -441,6 +469,9 @@ Six opt-in exceptions, each only after you approve it in the app:
    end-to-end encrypted Web Push message to that phone's browser push service (Google, Apple,
    Mozilla or Microsoft), which can't read it. It holds only the kind of alert and a random
    reference: no session names, folders or text. Nothing else leaves the PC.
+7. **Pull requests from the GitHub CLI** (git links): off until you say yes. The app then runs
+   only `gh auth status` and `gh pr list` (read-only) for the branches of sessions in github.com
+   repos; gh talks to GitHub with your own sign-in. Git itself is only ever read, locally.
 
 API keys are encrypted with Windows (DPAPI) and never shown, logged or put on a command line. See
 [More details](docs/DETAILS.md#safety-in-full) for the full list.

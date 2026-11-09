@@ -17,6 +17,7 @@ and the decisions behind it.
 - [Phone companion](#phone-companion)
 - [Terminal access (SSH)](#terminal-access-ssh)
 - [Usage, limits and API credits](#usage-limits-and-api-credits)
+- [Git links](#git-links)
 - [Scripts](#scripts)
 - [How it works](#how-it-works)
 - [Decisions and notes](#decisions-and-notes)
@@ -927,6 +928,87 @@ records of sessions whose files are gone are kept as they were.
 
 **Recalculate usage** (Usage view or Settings → Usage) re-reads every session from scratch.
 
+## Git links
+
+Each session is linked to the commits, branches and pull requests it produced. Everything is read
+locally from git (read-only), in the background after the startup scan.
+
+### What a session's own file says
+
+While a session is parsed (no extra reads), the app keeps: the branches it was on (Claude Code's
+`gitBranch`; Codex's branch at the start), the files it edited (Edit / Write / MultiEdit /
+NotebookEdit, and Codex's `apply_patch`), the commits its own `git commit` calls printed
+(`[branch abc1234] Subject`, or a SHA printed right after, e.g. by a chained `git log --oneline -1`),
+the PR links its own `gh pr create` printed, its claude.ai/code links (Remote Control, and the
+`Claude-Session:` trailers it wrote), Codex's starting HEAD and remote, and its active stretches
+(its event times split at 30-minute gaps, so a session resumed days later doesn't cover the days
+in between). Lines a session copied from another (a branch's `forkedFrom` lines, an older-style
+copy, a Codex fork's replayed history) are left out.
+
+### Matching and confidence
+
+| Level        | When                                                                                                                                                                |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Exact**    | A `Claude-Session:` trailer names one of the session's links, or its own `git commit` call printed the SHA **and** the commit was made during that call (±1 min)    |
+| **High**     | A rebased or cherry-picked copy of such a commit (same subject and author time), or made during an active stretch (±5 min), on its branch, touching files it edited |
+| **Medium**   | During a stretch, and on its branch or touching files it edited                                                                                                     |
+| **Possible** | During a stretch only. Listed apart and never counted in badges                                                                                                     |
+
+- Below Exact, a commit must be by the repo's `user.email` (author or committer, when set), not a
+  merge commit, and not the session's starting HEAD; a `Co-Authored-By: Claude` or
+  `Co-authored-by: Codex` trailer limits it to that agent's sessions.
+- One commit, several sessions: Exact wins; otherwise the best level keeps it. A Codex subagent, a
+  fork or a branch gives way to its parent (a fork's copied history ends at its split time, from
+  the lineage; commits before it are the parent's). A remaining tie keeps the commit on all of them,
+  one level lower, marked "also matches N sessions".
+- A subagent's Exact and High commits also show on its parent thread ("made by a subagent").
+- **Unlink** takes a commit off a session (kept in `metadata.json`); matching runs again, so the
+  next best session may get it. **Link again** undoes it.
+- Branch names come from the commit graph: the default branch's own line, the commits a merge
+  brought in (its message names the branch and PR: "Merge pull request #40 from owner/branch"),
+  and branches not merged yet. A squash merge's "Subject (#14)" gives its PR.
+
+### What runs
+
+| Command                                                                                      | Why                                    |
+| -------------------------------------------------------------------------------------------- | -------------------------------------- |
+| `git -C <folder> rev-parse --show-toplevel --git-common-dir --git-dir`                       | The repo of a session's folder         |
+| `git config --get user.email` / `remote.origin.url`                                          | Whose commits, and the GitHub repo     |
+| `git for-each-ref refs/heads refs/remotes refs/tags`                                         | Branch tips (what changed since)       |
+| `git log --branches --remotes --tags --since=… --numstat` (or `<new tips> --not <old tips>`) | Commits and their files                |
+| `git show --format= --patch <sha> [-- <file>]`                                               | A diff, when you open one              |
+| `gh auth status --hostname github.com`, `gh pr list --repo … --head <branch>`                | Pull requests (only after you say yes) |
+
+Every git call starts with `--no-pager -c core.fsmonitor=false -c core.quotePath=false -c
+log.showSignature=false -c color.ui=false -c diff.external= -c core.pager=cat`, plus
+`--no-ext-diff --no-textconv` for log and show, with `GIT_OPTIONAL_LOCKS=0`,
+`GIT_TERMINAL_PROMPT=0` and `GIT_LITERAL_PATHSPECS=1`. Anything else is refused before a process
+starts (see `src/shared/git/guard.ts` and its tests).
+
+- **Where:** Windows folders with Windows git (found on PATH, never in the project folder); WSL
+  folders with the distro's own git, as the home's user; `/mnt/<drive>` folders mapped by the
+  distro (`wslpath -w`) and read by Windows git. Stopped distros are skipped.
+- **Worktrees** share one read (they share a git folder); each session's files are taken relative
+  to its own worktree.
+- **A folder that's gone:** the repo that held it (e.g. a removed worktree inside the repo), or
+  another local clone with the same remote (Codex records it); else only what the session printed.
+- **Speed:** each repo is read once per pass, only for the time its sessions cover (at most 5,000
+  commits), and later only from the last branch tips. At most two git processes at once, below
+  normal priority, with timeouts and output caps. Diffs over 1 MB are cut ("Load the whole diff"
+  reads up to 8 MB); a file shows 400 lines until **Show all**.
+- **Cache:** `%APPDATA%ClaudeSessionDashboardcachegit-links-v1.json` (not backed up). gh
+  answers are kept an hour (a week once every PR found is merged or closed).
+
+### Known limits
+
+- `Claude-Session` trailers are written only for cloud and Remote Control commits, so for local
+  sessions the strongest signal is the session's own `git commit` output.
+- Edits made by a Claude Code subagent (Task) are in its own transcript file, not the session's, so
+  they don't count as the session's edited files.
+- Commits on a detached HEAD that no branch or tag reaches aren't read.
+- PRs only for github.com remotes. A Codex rollout's very long patches are cut at 64 KB when read,
+  so files late in a huge patch may be missing.
+
 ## Scripts
 
 | Command                                | What it does                                                                                                   |
@@ -954,6 +1036,8 @@ src/
                full path (which.ts), archive, restore, atomic JSON store, write guards
     services/  Source detection, the session catalogue, search index, watcher, launcher
     providers/ One provider per coding agent (claude/ so far): see "Providers" below
+    git/       Git links: the only place git and gh start (runner.ts, behind shared/git/guard.ts),
+               the read-only commands (backend.ts) and the matching service (service.ts)
     platform.ts  Everything that touches the OS (wsl.exe, wt.exe, spawn), with a fixtures version
     ipc.ts     The API the window can call (every handler goes through ipc-guard.ts)
   preload/     Exposes that API as window.csd (context isolation, sandboxed)

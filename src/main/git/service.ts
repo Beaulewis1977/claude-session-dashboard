@@ -727,10 +727,15 @@ export class GitLinksService extends EventEmitter<{ changed: [] }> {
     const byTime = (a: CommitView, b: CommitView): number => Date.parse(b.at) - Date.parse(a.at)
     views.sort(byTime)
     possible.sort(byTime)
+    // Files it edited that no commit since it started has changed (by this session or
+    // any other, e.g. a fork's parent): not committed yet, or reverted.
     const committed = new Set<string>()
-    for (const v of views)
-      for (const cf of v.files)
-        committed.add(repo?.env.kind === 'windows' ? cf.path.toLowerCase() : cf.path)
+    const ci = repo?.env.kind === 'windows'
+    const since = sig.spans[0]?.[0] ?? 0
+    for (const v of views) for (const cf of v.files) committed.add(ci ? cf.path.toLowerCase() : cf.path)
+    for (const c of repo?.commits.values() ?? [])
+      if (c.at >= since - 5 * 60_000)
+        for (const cf of c.files) committed.add(ci ? cf.path.toLowerCase() : cf.path)
     const uncommitted: string[] = []
     if (repo && f?.root !== undefined) {
       for (const file of sig.files) {

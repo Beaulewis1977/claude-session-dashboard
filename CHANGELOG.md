@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.11.0 (November 8, 2026)
+
+**Codex support (part 3): Codex sessions in Running now, with alerts.**
+
+### Codex Running now & alerts (PR #33)
+
+- **Codex sessions in Running now** (CLI, VS Code, desktop app; Windows and WSL) with Working /
+  Needs approval / Waiting for you / Exited, using Codex's own thread locks.
+- **Codex alerts on desktop and phone.**
+- **Optional Codex approval hook** (opt-in, trusted via `/hooks` in Codex) for exact approval
+  alerts.
+- **Focus terminal** and **Open in Codex app.**
+
 ## 1.10.0 (November 8, 2026)
 
 **Codex support (part 2): Codex usage and limits, side by side with Claude.**

@@ -53,6 +53,9 @@ export interface RolloutState {
   approvalPolicy?: string
   /** Time of the newest line, epoch ms. */
   lastLineAt?: number
+  /** Time of the newest tool output, and of the newest tool call, epoch ms. */
+  lastOutputAt?: number
+  lastCallAt?: number
   /**
    * Only the end of the file was read and no turn event was in it (a very
    * long turn): whether a turn is running is told by recent activity instead.
@@ -117,12 +120,14 @@ export function reduceRollout(state: RolloutState, lines: Iterable<string>): Rol
     if (kind.endsWith('_output')) {
       const id = CALL_ID_RE.exec(line.slice(0, 2048))?.[1]
       if (id) delete state.pending[id]
+      if (ts !== undefined) state.lastOutputAt = Math.max(state.lastOutputAt ?? 0, ts)
       continue
     }
     if (line.length > PARSE_MAX) {
       // A huge tool call (a long script): what it is, by pattern.
       if (kind === 'function_call' || kind === 'custom_tool_call') {
         const id = CALL_ID_RE.exec(line)?.[1]
+        if (ts !== undefined) state.lastCallAt = Math.max(state.lastCallAt ?? 0, ts)
         if (id && ts !== undefined)
           state.pending[id] = {
             at: ts,
@@ -194,6 +199,7 @@ export function reduceRollout(state: RolloutState, lines: Iterable<string>): Rol
               ? p.input
               : JSON.stringify(p.action ?? '')
         const direct = name === 'request_user_input'
+        state.lastCallAt = Math.max(state.lastCallAt ?? 0, at)
         state.pending[id] = {
           at,
           escalated: ESCALATED_RE.test(body),
@@ -365,9 +371,12 @@ export function deriveCodex(
   const lastLine = r?.lastLineAt ?? t.rolloutMtime ?? 0
   const turnStart = working ? Math.min(...open) : undefined
 
-  // Needs approval: the hook says so (until the rollout moves on), else a guess.
+  // Needs approval: the hook says so, until it's answered, else a guess. Answered
+  // means a tool output or a new tool call after the request (or the turn ending);
+  // progress lines another tool writes meanwhile (item_completed, token_count) don't.
   if (working && hook && hook.event === 'PermissionRequest' && hook.ts >= (turnStart ?? 0) - 1000) {
-    if (lastLine <= hook.ts + 1000)
+    const after = hook.ts + 1000
+    if ((r?.lastOutputAt ?? 0) <= after && (r?.lastCallAt ?? 0) <= after)
       return {
         state: 'approval',
         since: hook.ts,
@@ -533,7 +542,8 @@ export function computeCodexLive(inp: CodexLiveInputs): LiveSession[] {
       guess: d.guess,
       basis: d.basis,
       lockHeld: heldLike || undefined,
-      unverified: t.held === true ? undefined : true
+      unverified: t.held === true ? undefined : true,
+      lockUnknown: t.held === undefined || undefined
     }
     if (prev && prev.state === s.state && prev.since <= s.since) s.since = prev.since
     for (const k of Object.keys(s) as (keyof LiveSession)[]) if (s[k] === undefined) delete s[k]

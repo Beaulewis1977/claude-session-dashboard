@@ -221,6 +221,8 @@ export interface LiveSession {
   guess?: boolean
   /** Codex: a process held the thread's lock at the last check. */
   lockHeld?: boolean
+  /** Codex: its lock can't be checked right now (an unreadable WSL share, say). */
+  lockUnknown?: boolean
 }
 
 /** A running file with its process check. */
@@ -613,4 +615,27 @@ export function alertsWork(
   if (!h.installed) return false
   if ((h.provider ?? 'claude') !== 'codex') return true
   return h.trust === 'trusted' && !h.hooksFeatureOff
+}
+
+/**
+ * Do exact alerts work for what Running now shows? For the homes of the sessions
+ * listed (every one of them; a home nothing runs in doesn't matter). With nothing
+ * listed: for each agent in the view, somewhere. (The "set up alerts" banner.)
+ */
+export function alertsCover(
+  listed: readonly Pick<LiveSession, 'sourceId' | 'state'>[],
+  hooks: readonly HookEnv[],
+  providers: readonly ProviderId[]
+): boolean {
+  const hookOf = new Map(hooks.map((h) => [h.sourceId, h]))
+  const running = listed.filter((s) => s.state !== 'exited')
+  if (running.length)
+    return running.every((s) => {
+      const h = hookOf.get(s.sourceId)
+      return !h || alertsWork(h)
+    })
+  return providers.every((p) => {
+    const mine = hooks.filter((h) => (h.provider ?? 'claude') === p)
+    return !mine.length || mine.some((h) => alertsWork(h))
+  })
 }

@@ -132,8 +132,6 @@ export interface LockSource {
 const TAIL_BYTES = 2 * 1024 * 1024
 /** Most read from one rollout in one poll; more than that starts again from the tail. */
 const MAX_READ = 8 * 1024 * 1024
-/** A sanity bound only (Codex keeps old lock files; thousands are fine). */
-const MAX_LOCKS = 20_000
 /** WSL lock files' inodes are looked at again this often (new files at once). */
 const INODE_TTL_MS = 60_000
 
@@ -153,6 +151,8 @@ export class CodexLiveReader {
   private tails = new Map<string, Tail>()
   private codexPid = new Map<string, { codex: boolean; at: number }>()
   private inodes = new Map<string, { ino: string; mtimeMs: number; at: number }>()
+  /** Windows: each held lock's last read time, kept for a moment its file can't be read. */
+  private mtimes = new Map<string, number>()
 
   constructor(private readonly fs: CodexLiveFs = realCodexLiveFs) {}
 
@@ -174,7 +174,7 @@ export class CodexLiveReader {
     const dir = join(src.home, LOCKS_DIR)
     let names: string[]
     try {
-      names = (await this.fs.readdir(dir)).filter((n) => lockThreadId(n)).slice(0, MAX_LOCKS)
+      names = (await this.fs.readdir(dir)).filter((n) => lockThreadId(n))
     } catch (err) {
       return (err as NodeJS.ErrnoException).code === 'ENOENT' ? [] : undefined
     }
@@ -188,17 +188,24 @@ export class CodexLiveReader {
     const out: ThreadLock[] = []
     for (const n of names) {
       const path = join(dir, n)
-      const held = await this.fs.probeLock(path).catch(() => undefined)
+      let held = await this.fs.probeLock(path).catch(() => undefined)
       let mtimeMs = 0
       if (held !== false) {
         try {
           mtimeMs = (await this.fs.stat(path)).mtimeMs
-        } catch {
-          continue
+          this.mtimes.set(path, mtimeMs)
+        } catch (err) {
+          // Gone: nothing holds it. Any other failure: the lock stays (held, or can't tell),
+          // with the time last read, never dropped (a dropped lock would read as "ended").
+          if ((err as NodeJS.ErrnoException).code === 'ENOENT') held = false
+          mtimeMs = this.mtimes.get(path) ?? 0
         }
       }
       out.push({ threadId: lockThreadId(n)!, path, mtimeMs, held })
     }
+    const listed = new Set(out.map((l) => l.path))
+    for (const k of this.mtimes.keys())
+      if (k.startsWith(dir) && !listed.has(k)) this.mtimes.delete(k)
     return out
   }
 
@@ -230,9 +237,17 @@ export class CodexLiveReader {
           if (!st.isFile) continue
           c = { ino: st.ino.toString(), mtimeMs: st.mtimeMs, at: now }
           this.inodes.set(path, c)
-        } catch {
-          this.inodes.delete(path)
-          continue
+        } catch (err) {
+          if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+            // Gone: nothing holds it.
+            this.inodes.delete(path)
+            continue
+          }
+          // Can't be read now: what was known (or "can't tell"), never dropped.
+          if (!c) {
+            out.push({ threadId, path, mtimeMs: 0, held: undefined })
+            continue
+          }
         }
       }
       const lock: ThreadLock = { threadId, path, mtimeMs: c.mtimeMs, held: undefined }
@@ -310,9 +325,14 @@ export class CodexLiveReader {
     let st
     try {
       st = await this.fs.stat(path)
-    } catch {
-      this.tails.delete(path)
-      return undefined
+    } catch (err) {
+      // Gone: forget it. Can't be read right now (a WSL share): what was read before.
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+        this.tails.delete(path)
+        return undefined
+      }
+      const t = this.tails.get(path)
+      return t ? { state: t.state, mtimeMs: t.mtimeMs } : undefined
     }
     const now = Date.now()
     let t = this.tails.get(path)

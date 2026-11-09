@@ -306,11 +306,11 @@ export class LiveService extends EventEmitter<{ changed: [] }> {
   }
 
   /** Readable Codex homes, while Codex is on (Settings → Providers). */
-  private codexSources(): SourceInfo[] {
+  private codexSources(unreadableToo = false): SourceInfo[] {
     const providers = catalogueProviders(this.deps.sessions)
     return this.deps.sessions.sources.filter((src) => {
       const p = providers.find(src)
-      return p?.id === 'codex' && p.capabilities.live && src.status === 'ok'
+      return p?.id === 'codex' && p.capabilities.live && (unreadableToo || src.status === 'ok')
     })
   }
 
@@ -320,10 +320,22 @@ export class LiveService extends EventEmitter<{ changed: [] }> {
    * active, and every 10 s (15 s) while nothing runs there.
    */
   private async pollCodex(t: number, m: number, force: boolean): Promise<LiveSession[]> {
-    const sources = this.codexSources()
-    const known = new Set(sources.map((s) => s.id))
+    const all = this.codexSources(true)
+    const known = new Set(all.map((s) => s.id))
     for (const id of this.codex.keys()) if (!known.has(id)) this.codex.delete(id)
-    if (!sources.length) return []
+    if (!all.length) return []
+    // A home that can't be read right now (a stopped distro, a WSL share outage): its
+    // threads stay as they were, as "can't tell" (never "ended"; see computeCodexLive).
+    for (const src of all) {
+      const have = this.codex.get(src.id)
+      if (src.status === 'ok' || !have) continue
+      this.codex.set(src.id, {
+        at: have.at,
+        locks: have.locks.map((l) => ({ ...l, held: l.held === false ? false : undefined })),
+        inputs: have.inputs.map((i) => ({ ...i, held: i.held === false ? false : undefined }))
+      })
+    }
+    const sources = all.filter((s) => s.status === 'ok')
     const off = clockOffset()
     // Threads whose rollout changed recently (a thread the desktop app runs may not be locked).
     const recent = new Map<string, string[]>()
@@ -386,7 +398,8 @@ export class LiveService extends EventEmitter<{ changed: [] }> {
           distro: src.distro,
           threadId: id,
           held: lock ? lock.held : unknown ? undefined : false,
-          heldSince: lock ? Math.round(lock.mtimeMs + off) : undefined,
+          // 0: its time couldn't be read (never a 1970 start).
+          heldSince: lock?.mtimeMs ? Math.round(lock.mtimeMs + off) : undefined,
           pid: lock?.pid,
           rollout: r?.state,
           rolloutMtime: r ? Math.round(r.mtimeMs + off) : undefined,

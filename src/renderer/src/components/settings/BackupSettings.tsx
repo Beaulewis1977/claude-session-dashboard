@@ -14,6 +14,7 @@ import {
   Lock,
   LockOpen,
   RefreshCw,
+  Trash2,
   TriangleAlert,
   X
 } from 'lucide-react'
@@ -27,6 +28,7 @@ import {
   type BackupStatus,
   type RestoreAction,
   type RestorePreview,
+  type SafetySummary,
   type SnapshotInfo
 } from '@shared/backup'
 import { formatBytes, formatDateTime } from '@shared/format'
@@ -879,6 +881,144 @@ function PausedBanner({
   )
 }
 
+/**
+ * The restore safety copies (the restore-backups folder): their size, a
+ * cleanup of the ones older than 30 days (listed, and asked first), and the
+ * opt-in automatic cleanup. The newest copy always stays.
+ */
+function SafetyCopies({ status }: { status: BackupStatus }) {
+  const [summary, setSummary] = useState<SafetySummary | null>(null)
+  const [confirming, setConfirming] = useState(false)
+  const load = useCallback(() => {
+    void api
+      .backupSafetyCopies()
+      .then(setSummary)
+      .catch(() => setSummary(null))
+  }, [])
+  // Again after a restore or a cleanup (both change the status).
+  useEffect(load, [load, status.lastRestore?.at, status.lastSafetyCleanup?.at])
+  if (summary?.refused) return <Warning>{summary.refused}</Warning>
+  if (!summary?.copies.length) return null
+  const n = summary.copies.length
+  const old = summary.old.length
+  const last = status.lastSafetyCleanup
+  return (
+    <div className="space-y-2 rounded-lg border border-border px-3 py-3">
+      <div className="flex items-start gap-3">
+        <div className="min-w-0 flex-1">
+          <div className="text-[13px] font-medium">Restore safety copies</div>
+          <div className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
+            {n} cop{n === 1 ? 'y' : 'ies'} · {formatBytes(summary.bytes)}, in{' '}
+            <span className="selectable font-mono">
+              %APPDATA%\ClaudeSessionDashboard\restore-backups\
+            </span>
+            . Each restore keeps the files it replaced here. The newest copy is always kept.
+          </div>
+          {last && (
+            <div className="mt-0.5 text-xs text-muted-foreground">
+              Last cleanup {formatDateTime(last.at)}
+              {last.by === 'auto' ? ' (automatic)' : ''}: {last.deleted} removed
+              {last.deleted ? `, ${formatBytes(last.bytes)} freed` : ''}
+              {last.errors?.length ? ` · ${last.errors.length} couldn’t be removed` : ''}
+            </div>
+          )}
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={!old || status.running}
+          onClick={() => setConfirming(true)}
+        >
+          <Trash2 /> Clean up restore safety copies older than 30 days
+          {old ? ` (${old})` : ''}
+        </Button>
+      </div>
+      <label className="flex cursor-pointer items-start gap-2.5">
+        <Checkbox
+          checked={status.autoCleanSafety}
+          onCheckedChange={(v) => void api.backupUpdate({ autoCleanSafety: v === true })}
+          className="mt-0.5"
+        />
+        <span className="text-xs leading-relaxed text-muted-foreground">
+          Clean up copies older than 30 days automatically (once a day while the app is open; the
+          newest copy is always kept)
+        </span>
+      </label>
+      {confirming && (
+        <CleanupDialog
+          summary={summary}
+          onClose={() => {
+            setConfirming(false)
+            load()
+          }}
+        />
+      )}
+    </div>
+  )
+}
+
+function CleanupDialog({ summary, onClose }: { summary: SafetySummary; onClose: () => void }) {
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string>()
+  const old = summary.old
+  const confirm = async (): Promise<void> => {
+    setBusy(true)
+    setError(undefined)
+    try {
+      const r = await api.backupCleanSafety(old.map((c) => c.name))
+      if (r.errors?.length) {
+        setError(`${r.errors.length} couldn’t be removed: ${r.errors[0]}`)
+        setBusy(false)
+        return
+      }
+      toast.success(`Removed ${r.deleted} restore safety cop${r.deleted === 1 ? 'y' : 'ies'}`, {
+        description: `${formatBytes(r.bytes)} freed`
+      })
+      onClose()
+    } catch (e) {
+      setError((e as Error).message)
+      setBusy(false)
+    }
+  }
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-w-[520px]">
+        <DialogHeader
+          icon={
+            <DialogIcon>
+              <Trash2 className="size-4" />
+            </DialogIcon>
+          }
+          title={`Delete ${old.length} restore safety cop${old.length === 1 ? 'y' : 'ies'}?`}
+          description={`These copies are older than 30 days (${formatBytes(summary.oldBytes)} in all). They hold the files earlier restores replaced, and can’t be brought back once deleted. The newest copy is kept.`}
+        />
+        <div className="space-y-3 px-5 pt-3 pb-5">
+          <ul className="max-h-[260px] space-y-1 overflow-y-auto rounded-lg border border-border px-3 py-2 text-xs">
+            {old.map((c) => (
+              <li key={c.name} className="flex gap-3">
+                <span className="flex-1">Restore of {formatDateTime(c.at)}</span>
+                <span className="text-muted-foreground">
+                  {c.files} file{c.files === 1 ? '' : 's'} · {formatBytes(c.bytes)}
+                </span>
+              </li>
+            ))}
+          </ul>
+          <ErrorLine error={error} />
+        </div>
+        <DialogFooter>
+          <Button variant="ghost" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button variant="destructive" disabled={busy} onClick={() => void confirm()}>
+            {busy && <Loader2 className="animate-spin" />}
+            Delete {old.length}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 export function BackupSettings() {
   const [status, setStatus] = useState<BackupStatus | null>(null)
   const [candidate, setCandidate] = useState<BackupFolderCandidate | null>(null)
@@ -1126,6 +1266,8 @@ export function BackupSettings() {
           </Button>
         </div>
       )}
+
+      {s && <SafetyCopies status={s} />}
 
       {candidate && s && (
         <ConnectDialog

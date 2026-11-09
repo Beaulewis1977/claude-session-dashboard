@@ -361,20 +361,31 @@ Run typecheck, lint, tests and the build. Commit, push the branch and open a PR 
 - ✅ #5 Phase D2: Codex summaries, Continue fresh, agent-to-agent messages and trends (PR #35, v1.12.0)
 - ✅ **#5 Codex support complete** (Phases A–D2)
 - ✅ Open in Codex app (resume / fork / continue fresh into the correct project) (PR #37, v1.13.0)
+- ✅ Loose ends after v1.13.0: phone keys on the async safeStorage API, a fast first Resume dialog
+  at startup and one shared cache for the browser tests, restore safety copy cleanup, catch-up
+  backups and Start with Windows, the two Codex Phase C edge cases, and the notification identity
+  with a notification log
 
 **Next up:**
 
-1. A small loose-ends PR (items below)
-2. #6 Git links
-3. #7 Ask across all sessions
+1. #6 Git links
+2. #7 Ask across all sessions
 
 **Loose ends:**
 
-- Phone companion still uses the deprecated sync safeStorage encrypt/decrypt calls; switch to the async API in a small PR.
-- Browser tests (context-warning, viewer-copy, resume-keys) occasionally time out loading their page under full-suite load. Investigate slow first page load in the test/Vite setup.
-- Codex (Phase C) edge cases left open:
-  - Guessing a gone fork's parent (no saved link) matches its first rows in order, and rows with the same timestamp are ordered by their identity hash, which doesn't keep Codex's order. If several copied events share a millisecond, a real match can miss the 80% threshold, and that unavailable fork's copied history counts twice.
-  - One-account mode: the plan in force now is taken from main-limit readings. If a model limit (e.g. Pro Spark) reports a new plan while the newest main reading is still the old one, the cutoff is 0 and the old plan's and new plan's Spark windows can be grouped together.
+- Startup (left after the loose-ends PR): the main process can still be busy for up to ~0.4 s at a
+  time during the first scan (indexing one very big session, pure-JS zstd decompression). Moving
+  parsing and indexing to a worker thread would remove that.
+- Notifications: the first-toast drop wasn't reproduced on demand. The fix (a fixed
+  AppUserModelID and Toast Activator CLSID) targets the cause found (a new registration at each
+  run's first toast). If one is still missed, `logs\notifications.jsonl` shows whether Windows
+  showed it, failed it (with its error) or dropped it. One-time effects of the new id: Windows'
+  per-app notification settings start fresh under it, and a taskbar pin made before may group
+  separately (unverified).
+- Start with Windows: the installed and portable app share one startup entry; turning it on in
+  one replaces the other's (Settings says so).
+- Restore safety copy cleanup (automatic, opt-in) and catch-up backups run only while the app is
+  open (the catch-up two minutes after start).
 - Open in Codex app known limits:
   - The Codex app has no fork link: Fork opens the thread and says to use Fork in the app's menu.
   - Continue fresh types the handoff line into the new thread but doesn't send it (the app's links

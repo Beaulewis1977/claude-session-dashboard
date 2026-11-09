@@ -19,7 +19,7 @@ import {
   TriangleAlert,
   X
 } from 'lucide-react'
-import type { AppSettings, ArchiveStats, SourceInfo } from '@shared/types'
+import type { AppSettings, ArchiveStats, SourceInfo, StartWithWindows } from '@shared/types'
 import { formatBytes } from '@shared/format'
 import { api } from '@/lib/api'
 import { useApp } from '@/lib/store'
@@ -73,6 +73,59 @@ export function Section({
       )}
       <div className="mt-4 space-y-4">{children}</div>
     </section>
+  )
+}
+
+/** "Start with Windows (minimized to tray)": off by default; the state comes from Windows. */
+function StartupSection() {
+  const [s, setS] = useState<StartWithWindows | null>(null)
+  useEffect(() => {
+    void api
+      .startWithWindows()
+      .then(setS)
+      .catch(() => setS(null))
+  }, [])
+  if (!s) return null
+  const set = async (on: boolean): Promise<void> => {
+    try {
+      setS(await api.setStartWithWindows(on))
+    } catch (e) {
+      toast.error('Couldn’t change it', { description: (e as Error).message })
+    }
+  }
+  return (
+    <Section title="Startup">
+      <div>
+        <Row
+          label="Start with Windows (minimized to tray)"
+          hint={
+            s.supported
+              ? 'Starts when you sign in to Windows, with just the tray icon, so scheduled backups and alerts keep running. Click the tray icon to open it.'
+              : s.reason
+          }
+        >
+          <Switch
+            checked={s.on}
+            disabled={!s.supported}
+            onCheckedChange={(v) => void set(v)}
+            aria-label="Start with Windows (minimized to tray)"
+          />
+        </Row>
+        {s.disabledInTaskManager && (
+          <p className="mt-2 text-xs text-warning">
+            It’s turned off in Task Manager → Startup apps, so Windows won’t start it. Turn it on
+            there.
+          </p>
+        )}
+        {s.otherCopy && (
+          <p className="mt-2 text-xs text-muted-foreground">
+            Another copy of the app starts with Windows now (
+            <span className="selectable font-mono">{s.otherCopy}</span>). Turning this on starts
+            this copy instead.
+          </p>
+        )}
+      </div>
+    </Section>
   )
 }
 
@@ -236,6 +289,8 @@ export function SettingsView() {
             />
           </Row>
         </Section>
+
+        <StartupSection />
 
         <Section title="Resume">
           <Row

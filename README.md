@@ -178,7 +178,10 @@ Everything stays on your PC and your own private network.
   limit history, and its settings) to a folder you choose, such as OneDrive, an external drive or a
   NAS. Your cloud app syncs it; the dashboard makes no network calls.
 - **Daily or weekly** while the app is open, plus **Back up now**. Only new or changed files are
-  copied (compressed), and it keeps the last 14 snapshots (you choose how many).
+  copied (compressed), and it keeps the last 14 snapshots (you choose how many). A backup that came
+  due while the app was closed runs two minutes after it starts, with a notification when it's
+  done. **Settings → Startup → Start with Windows (minimized to tray)** (off by default) keeps it
+  running from sign-in.
 - **Optional password** (AES-256). Remember it on this PC, or enter it once per start. API keys are
   never in a backup.
 - **Restore** any snapshot: you see what would change first, it only ever writes to the app's own
@@ -363,6 +366,9 @@ change.
 Backup → **Restore…**, pick a snapshot, check what would change, then **Restore and restart**. Files
 that aren't in the snapshot stay, archived sessions are never replaced by an older (smaller) copy,
 and the files it replaces are kept in `%APPDATA%\ClaudeSessionDashboard\restore-backups\`.
+Settings → Backup shows how much space those safety copies take; **Clean up restore safety copies
+older than 30 days** lists them and asks before deleting (the newest copy is always kept). An
+optional setting, off by default, does the same once a day.
 
 ### Summarize and continue fresh
 

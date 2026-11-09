@@ -39,12 +39,15 @@ import {
   type PushPost,
   type VapidKeys
 } from './webpush'
+import {
+  openSecret,
+  sealSecret,
+  SecretUnavailableError,
+  type KeyBox,
+  type StoredSecret
+} from './secrets'
 
-export interface KeyBox {
-  available(): boolean
-  encrypt(s: string): Buffer
-  decrypt(b: Buffer): string
-}
+export type { KeyBox } from './secrets'
 
 export interface MobileServiceDeps {
   store: JsonStore<MobileFile>
@@ -327,7 +330,7 @@ export class MobileService extends EventEmitter<{ changed: [] }> {
       await this.server.start({
         host,
         port: s.port,
-        tls: s.mode === 'lan' ? this.lanCert(host) : undefined
+        tls: s.mode === 'lan' ? await this.lanCert(host) : undefined
       })
     } catch (err) {
       const e = err as NodeJS.ErrnoException
@@ -423,7 +426,8 @@ export class MobileService extends EventEmitter<{ changed: [] }> {
     return this.status()
   }
 
-  private lanCert(address: string): { cert: string; key: string } {
+  /** Home Wi-Fi mode's certificate: reused while valid, else made (and saved) now. */
+  private async lanCert(address: string): Promise<{ cert: string; key: string }> {
     const saved = this.deps.store.value.lanCert
     if (
       saved &&
@@ -431,22 +435,34 @@ export class MobileService extends EventEmitter<{ changed: [] }> {
       Date.parse(saved.expiresAt) > Date.now() + 7 * 864e5
     ) {
       try {
-        const key = saved.encrypted
-          ? this.deps.keys.decrypt(Buffer.from(saved.key, 'base64'))
-          : saved.key
-        return { cert: saved.cert, key }
-      } catch {
-        // Make a new one below.
+        const { plain, resave } = await openSecret(this.deps.keys, {
+          value: saved.key,
+          encrypted: saved.encrypted,
+          v: saved.v
+        })
+        if (resave)
+          this.deps.store.update((f) => {
+            // Unless it was replaced meanwhile.
+            if (f.lanCert?.key === saved.key && f.lanCert.address === saved.address)
+              f.lanCert = { ...f.lanCert, ...stored(resave, 'key') }
+          })
+        return { cert: saved.cert, key: plain }
+      } catch (err) {
+        // Not now: keep it (a new certificate would have to be trusted again).
+        if (err instanceof SecretUnavailableError)
+          throw new Error(`Home Wi-Fi mode can't start: ${err.message} Try again in a moment.`, {
+            cause: err
+          })
+        // Can't be read on this PC any more: make a new one below.
       }
     }
     const c = createSelfSignedCert(address)
-    const encrypted = this.deps.keys.available()
+    const sealed = await sealSecret(this.deps.keys, c.key)
     this.deps.store.update((f) => {
       f.lanCert = {
         address,
         cert: c.cert,
-        key: encrypted ? this.deps.keys.encrypt(c.key).toString('base64') : c.key,
-        encrypted,
+        ...stored(sealed, 'key'),
         expiresAt: c.expiresAt
       }
     })
@@ -498,53 +514,72 @@ export class MobileService extends EventEmitter<{ changed: [] }> {
 
   // ------------------------------------------------------------ push
 
-  private vapidCache: VapidKeys | undefined
+  private vapidLoad: Promise<VapidKeys> | undefined
 
-  /** The app's VAPID keys: made once, kept in mobile.json (private key encrypted when possible). */
-  private vapid(): VapidKeys {
-    if (this.vapidCache) return this.vapidCache
+  /**
+   * The app's VAPID keys: made once, kept in mobile.json (private key
+   * encrypted when possible), read once per run. Rejects (and is tried again
+   * the next time) when the saved key is encrypted but encryption isn't
+   * available right now: the key and the phones' subscriptions are kept.
+   */
+  private vapid(): Promise<VapidKeys> {
+    this.vapidLoad ??= this.loadVapid().catch((err: unknown) => {
+      this.vapidLoad = undefined
+      throw err
+    })
+    return this.vapidLoad
+  }
+
+  private async loadVapid(): Promise<VapidKeys> {
     const saved = this.deps.store.value.vapid
     if (saved) {
       try {
-        const privateKeyPkcs8 = saved.encrypted
-          ? this.deps.keys.decrypt(Buffer.from(saved.privateKey, 'base64'))
-          : saved.privateKey
-        this.vapidCache = { publicKey: saved.publicKey, privateKeyPkcs8 }
-        return this.vapidCache
-      } catch {
+        const { plain, resave } = await openSecret(this.deps.keys, {
+          value: saved.privateKey,
+          encrypted: saved.encrypted,
+          v: saved.v
+        })
+        if (resave)
+          this.deps.store.update((f) => {
+            if (f.vapid?.privateKey === saved.privateKey && f.vapid.publicKey === saved.publicKey)
+              f.vapid = { publicKey: saved.publicKey, ...stored(resave, 'privateKey') }
+          })
+        return { publicKey: saved.publicKey, privateKeyPkcs8: plain }
+      } catch (err) {
+        if (err instanceof SecretUnavailableError) throw err
         // Can't be read on this PC any more (e.g. a copied profile): make new
         // keys. Phones then have to turn push on again, since their
-        // subscriptions belong to the old key.
+        // subscriptions belong to the old key. (They stay paired.)
         this.deps.store.update((f) => {
           for (const d of f.devices) delete d.push
         })
       }
     }
     const k = createVapidKeys()
-    const encrypted = this.deps.keys.available()
+    const sealed = await sealSecret(this.deps.keys, k.privateKeyPkcs8)
     this.deps.store.update((f) => {
-      f.vapid = {
-        publicKey: k.publicKey,
-        privateKey: encrypted
-          ? this.deps.keys.encrypt(k.privateKeyPkcs8).toString('base64')
-          : k.privateKeyPkcs8,
-        encrypted
-      }
+      f.vapid = { publicKey: k.publicKey, ...stored(sealed, 'privateKey') }
     })
-    this.vapidCache = k
     return k
   }
 
   /** What a phone passes as `applicationServerKey` when it subscribes. */
-  pushPublicKey(): string {
-    return this.vapid().publicKey
+  async pushPublicKey(): Promise<string> {
+    return (await this.vapid()).publicKey
   }
 
-  private subscribePush(deviceId: string, raw: unknown): { ok: boolean; error?: string } {
+  private async subscribePush(
+    deviceId: string,
+    raw: unknown
+  ): Promise<{ ok: boolean; error?: string }> {
     const sub = parseSubscription(raw)
     if ('error' in sub) return { ok: false, error: sub.error }
     // Only for a key the phone got from this PC (re-made keys invalidate old subscriptions).
-    this.vapid()
+    try {
+      await this.vapid()
+    } catch (err) {
+      return { ok: false, error: (err as Error).message }
+    }
     const d = this.registry.list().find((x) => x.id === deviceId)
     this.registry.setPush(deviceId, sub)
     this.registry.log({
@@ -597,7 +632,18 @@ export class MobileService extends EventEmitter<{ changed: [] }> {
       this.changed()
       return targets.length
     }
-    const vapid = this.vapid()
+    let vapid: VapidKeys
+    try {
+      vapid = await this.vapid()
+    } catch (err) {
+      this.registry.log({
+        action: 'push',
+        detail: `Push “${notice.kind}” not sent: ${(err as Error).message}`,
+        ok: false
+      })
+      this.changed()
+      return 0
+    }
     const results = await Promise.all(
       targets.map(async (d) => ({
         d,
@@ -738,3 +784,15 @@ export function webAppFile(rendererDir: string): string {
 }
 
 const phones = (n: number): string => `${n} phone${n === 1 ? '' : 's'}`
+
+/** A sealed secret as mobile.json keeps it, under its own field name. */
+function stored<K extends 'key' | 'privateKey'>(
+  s: StoredSecret,
+  field: K
+): { encrypted: boolean; v?: number } & Record<K, string> {
+  return {
+    [field]: s.value,
+    encrypted: s.encrypted,
+    ...(s.v !== undefined ? { v: s.v } : {})
+  } as { encrypted: boolean; v?: number } & Record<K, string>
+}

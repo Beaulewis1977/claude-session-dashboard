@@ -1443,6 +1443,52 @@ describe('review fixes: parser versions, unsaved links, fork timing, alerts, loa
     }
   })
 
+  it("guesses a gone fork's parent when its copies share one millisecond (file order kept)", async () => {
+    // Six responses in the parent, a second apart; the fork copied all six in
+    // the same millisecond, in Codex's order. Sorting those by identity (as
+    // before) scrambled them, so fewer than 80% matched in order.
+    const sixTotals = [100, 250, 330, 480, 600, 790]
+    const at = (i: number) => `2026-10-20T10:00:0${i}Z`
+    const six = sixTotals.map((t, i) =>
+      ev(at(i), [t, 10 * (i + 1)], [t - (sixTotals[i - 1] ?? 0), 10])
+    )
+    const copied = sixTotals.map((t, i) =>
+      ev('2026-10-21T09:00:00.005Z', [t, 10 * (i + 1)], [t - (sixTotals[i - 1] ?? 0), 10])
+    )
+    const own = ev('2026-10-21T09:20:00Z', [900, 70], [110, 10])
+    const check = (store: CodexUsageStore) => {
+      const recs = store.records()
+      expect(recs.filter((x) => x.key === 'w:p')).toHaveLength(6)
+      // The copied history counts once (the parent's); only the fork's own response is its.
+      expect(recs.filter((x) => x.key === 'w:f').map((x) => x.ts)).toEqual([
+        Date.parse('2026-10-21T09:20:00Z')
+      ])
+    }
+    const store = new CodexUsageStore()
+    // Only the parent is known: the fork's link was never saved.
+    store.setLineage([{ sessionId: 'p', startedAt: '2026-10-20T09:59:00Z' }])
+    add(store, 'w:p', 'p', six)
+    add(store, 'w:f', 'f', [...copied, own])
+    // The copies' identities don't sort in file order (else this tests nothing).
+    const ids = store
+      .records()
+      .filter((x) => x.key === 'w:p')
+      .map((x) => x.id)
+    expect([...ids].sort()).not.toEqual(ids)
+    check(store)
+    // The same after the rows were saved and loaded again (file order survives).
+    const dir = await mkdtemp(join(tmpdir(), 'csd-codex-samems-'))
+    try {
+      await store.flush(dir, dir)
+      const again = new CodexUsageStore()
+      await again.load(dir)
+      again.setLineage([{ sessionId: 'p', startedAt: '2026-10-20T09:59:00Z' }])
+      check(again)
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
   it('counts a fork response matching one its parent made just after the fork', () => {
     const store = new CodexUsageStore()
     store.setLineage(lineage)
@@ -1673,6 +1719,76 @@ describe('review fixes: one-to-one copies, relative resets, alerts mid-scan, pla
     expect(st.extraLimits.map((b) => [b.limitId, b.windows.map((w) => w.gauge.pct)])).toEqual([
       ['codex_spark', [3]],
       ['codex_spark@earlier', [61]]
+    ])
+  })
+
+  it("one account: a new plan seen only on a model limit is the plan now (old windows aren't mixed in)", () => {
+    const r = (
+      id: string,
+      ago: number,
+      planType: string,
+      windows: { pct: number; minutes: number }[],
+      limitId = 'codex'
+    ): CodexLimitReading => ({
+      id,
+      ts: FIXTURES_NOW - ago,
+      key: 'k',
+      source: 's',
+      limitId,
+      planType,
+      windows: windows.map((w) => ({ ...w, resetsAt: FIXTURES_NOW + 3_600_000 }))
+    })
+    const rs = [
+      r('m1', 300_000, 'plus', [
+        { pct: 40, minutes: 300 },
+        { pct: 50, minutes: 10080 }
+      ]),
+      r('x1', 290_000, 'plus', [{ pct: 61, minutes: 10080 }], 'codex_spark'),
+      // Pro: so far only its Spark limit has reported (no main reading under Pro yet).
+      r('x2', 120_000, 'pro', [{ pct: 3, minutes: 10080 }], 'codex_spark')
+    ]
+    const svc = (accounts?: 'one') =>
+      new CodexLimitsService(
+        Object.assign(new EventEmitter(), {
+          codexRecords: () => [] as UsageRecord[],
+          codexLimitReadings: () => rs
+        }),
+        () => limitsSettings(accounts ? { accounts } : {}),
+        () => undefined
+      )
+    const one = svc('one')
+    const st = one.state()
+    // Pro's Spark window and Plus's are two gauges, never one.
+    expect(st.extraLimits.map((b) => [b.limitId, b.windows.map((w) => w.gauge.pct)])).toEqual([
+      ['codex_spark', [3]],
+      ['codex_spark@earlier', [61]]
+    ])
+    // Plus's main windows aren't shown as the plan in force now.
+    expect(st.fiveHour).toBeUndefined()
+    expect(st.sevenDay).toBeUndefined()
+    expect(one.plan()).toMatchObject({
+      detectedCode: 'pro',
+      detectedSince: FIXTURES_NOW - 120_000,
+      plan: 'pro200'
+    })
+    // Once Pro's main limit reports, its gauges show (Plus's still don't).
+    rs.push(r('m2', 60_000, 'pro', [{ pct: 4, minutes: 10080 }]))
+    const later = svc('one').state()
+    expect(later.sevenDay?.pct).toBe(4)
+    expect(later.fiveHour).toBeUndefined()
+    rs.pop()
+
+    // Separate sign-ins (the default): unchanged, Plus's main limit is followed.
+    const apart = svc().state()
+    expect(apart.fiveHour?.pct).toBe(40)
+    expect(apart.sevenDay?.pct).toBe(50)
+    expect(
+      apart.extraLimits
+        .map((b) => [b.limitId, b.windows.map((w) => w.gauge.pct)])
+        .sort((a, b) => String(a[0]).localeCompare(String(b[0])))
+    ).toEqual([
+      ['codex_spark', [61]],
+      ['codex_spark@pro', [3]]
     ])
   })
 })

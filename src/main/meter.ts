@@ -28,6 +28,8 @@ export function createMeter(deps: MeterDeps): {
   restore: () => void
   /** Settings changed: fit the mini meter to the rows it now shows. */
   refit: () => void
+  /** Show the tray icon now (the app's icon until the usage ring is drawn). */
+  ensureTray: () => void
 } {
   let tray: Tray | undefined
   let mini: BrowserWindow | undefined
@@ -103,6 +105,13 @@ export function createMeter(deps: MeterDeps): {
     return isOpen()
   }
 
+  const makeTray = (img: Electron.NativeImage): Tray => {
+    tray = new Tray(img)
+    tray.on('click', () => deps.showUsage())
+    tray.setContextMenu(buildMenu())
+    return tray
+  }
+
   handle('mini:toggle', () => toggle())
   handle('mini:close', () => close())
   handle('tray:set', (_e, dataUrl: unknown, tooltip: unknown) => {
@@ -110,14 +119,9 @@ export function createMeter(deps: MeterDeps): {
     try {
       const img = nativeImage.createFromDataURL(dataUrl)
       if (img.isEmpty()) return
-      if (!tray) {
-        tray = new Tray(img)
-        tray.on('click', () => deps.showUsage())
-        tray.setContextMenu(buildMenu())
-      } else {
-        tray.setImage(img)
-      }
-      tray.setToolTip(typeof tooltip === 'string' ? tooltip.slice(0, 120) : 'Claude usage')
+      const t = tray ?? makeTray(img)
+      t.setImage(img)
+      t.setToolTip(typeof tooltip === 'string' ? tooltip.slice(0, 120) : 'Claude usage')
     } catch {
       // No tray on this desktop.
     }
@@ -131,6 +135,15 @@ export function createMeter(deps: MeterDeps): {
     },
     restore: () => {
       if (deps.settings.value.miniMeter?.open) open()
+    },
+    ensureTray: () => {
+      if (tray) return
+      try {
+        const img = nativeImage.createFromPath(deps.icon).resize({ width: 16, height: 16 })
+        makeTray(img).setToolTip('Claude Session Dashboard')
+      } catch {
+        // No tray on this desktop.
+      }
     },
     refit: () => {
       if (!isOpen()) return

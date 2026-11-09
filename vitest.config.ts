@@ -31,11 +31,14 @@ export default defineConfig({
         // Each browser test file starts its own Vite server and Chromium. Run
         // after the Node tests (whose fixture copies and scans load the disk and
         // CPU), one file at a time, so a busy machine can't make a menu or a
-        // page miss a timeout.
+        // page miss a timeout. They share one config and one pre-bundled
+        // dependency cache, made once before they start (see
+        // tests/browser-harness.ts).
         extends: true,
         test: {
           name: 'browser',
           include: [BROWSER_TESTS],
+          globalSetup: ['tests/browser-global-setup.ts'],
           fileParallelism: false,
           sequence: { groupOrder: 1 },
           testTimeout: 30_000,

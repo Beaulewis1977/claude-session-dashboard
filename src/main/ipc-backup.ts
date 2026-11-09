@@ -54,7 +54,7 @@ export function registerBackupIpc(deps: BackupIpcDeps): void {
   handle('backup:disconnect', () => backup.disconnect())
   handle('backup:update', (_e, patch) => {
     const p = (patch ?? {}) as Record<string, unknown>
-    return backup.update({ schedule: p.schedule, keep: p.keep })
+    return backup.update({ schedule: p.schedule, keep: p.keep, autoCleanSafety: p.autoCleanSafety })
   })
   handle('backup:run', () => backup.runNow('manual'))
   handle('backup:setPassword', (_e, password, remember) =>
@@ -78,6 +78,15 @@ export function registerBackupIpc(deps: BackupIpcDeps): void {
     if (st.setDir && (await stat(st.setDir).catch(() => undefined))?.isDirectory())
       await shell.openPath(st.setDir)
   })
+  handle('backup:safetyCopies', () => backup.safetyCopies())
+  // Only names of the app's own safety folders, as listed to me (checked again inside).
+  handle('backup:cleanSafety', (_e, names) =>
+    backup.cleanSafetyCopies(
+      Array.isArray(names)
+        ? names.filter((n): n is string => typeof n === 'string' && n.length <= 64).slice(0, 10_000)
+        : []
+    )
+  )
   handle('backup:openSafety', async () => {
     const dir = (await backup.status()).lastRestore?.safetyDir
     // Only ever the app's own folder.

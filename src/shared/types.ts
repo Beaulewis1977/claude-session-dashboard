@@ -650,3 +650,16 @@ export interface SessionsPayload {
   sources: SourceInfo[]
   scan: ScanState
 }
+
+/** Settings → "Start with Windows (minimized to tray)", as Windows reports it now. */
+export interface StartWithWindows {
+  /** Offered here (Windows, installed or portable app). */
+  supported: boolean
+  on: boolean
+  /** Why it isn't offered. */
+  reason?: string
+  /** On, but turned off in Task Manager → Startup (Windows skips it). */
+  disabledInTaskManager?: boolean
+  /** Registered for another copy of the app (this path), not this one. */
+  otherCopy?: string
+}

@@ -104,6 +104,11 @@ const api: CsdApi = {
   closeMiniMeter: () => ipcRenderer.invoke('mini:close'),
   setTrayImage: (dataUrl, tooltip) => ipcRenderer.invoke('tray:set', dataUrl, tooltip),
   onShowUsage: (cb) => on('app:showUsage', cb),
+  onShowSettings: (cb) => {
+    const listener = (_e: unknown, section: string): void => cb(String(section))
+    ipcRenderer.on('app:showSettings', listener)
+    return () => ipcRenderer.removeListener('app:showSettings', listener)
+  },
 
   mobileStatus: () => ipcRenderer.invoke('mobile:status'),
   mobileUpdate: (patch) => ipcRenderer.invoke('mobile:update', patch),
@@ -167,7 +172,11 @@ const api: CsdApi = {
   backupPreview: (id, password) => ipcRenderer.invoke('backup:preview', id, password),
   backupRestore: (token) => ipcRenderer.invoke('backup:restore', token),
   backupOpenFolder: () => ipcRenderer.invoke('backup:openFolder'),
-  backupOpenSafety: () => ipcRenderer.invoke('backup:openSafety')
+  backupOpenSafety: () => ipcRenderer.invoke('backup:openSafety'),
+  startWithWindows: () => ipcRenderer.invoke('app:startWithWindows'),
+  setStartWithWindows: (on) => ipcRenderer.invoke('app:setStartWithWindows', on),
+  backupSafetyCopies: () => ipcRenderer.invoke('backup:safetyCopies'),
+  backupCleanSafety: (names) => ipcRenderer.invoke('backup:cleanSafety', names)
 }
 
 contextBridge.exposeInMainWorld('csd', api)

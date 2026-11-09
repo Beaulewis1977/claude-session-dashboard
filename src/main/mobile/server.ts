@@ -50,9 +50,9 @@ export interface ServerDeps {
    * dropping this phone's subscription. Sending happens in MobileService.
    */
   push?: {
-    publicKey(): string
+    publicKey(): Promise<string>
     /** Validates the subscription (only the push services' own hosts). */
-    subscribe(deviceId: string, subscription: unknown): { ok: boolean; error?: string }
+    subscribe(deviceId: string, subscription: unknown): Promise<{ ok: boolean; error?: string }>
     unsubscribe(deviceId: string): void
     /** A test push to this phone only; how many were sent. */
     test(deviceId: string): Promise<number>
@@ -586,7 +586,14 @@ export class MobileServer {
         if (!this.deps.registry.isActive(d.id))
           throw new HttpError(401, 'This phone is not paired (or was revoked). Pair it again.')
         if (path === '/api/push/key') {
-          this.json(req, res, 200, { publicKey: push.publicKey() })
+          let publicKey: string
+          try {
+            publicKey = await push.publicKey()
+          } catch (err) {
+            // Encryption not available right now: the phone can try again later.
+            throw new HttpError(503, (err as Error).message)
+          }
+          this.json(req, res, 200, { publicKey })
           return
         }
         if (path === '/api/push/check') {
@@ -596,7 +603,7 @@ export class MobileServer {
         if (!this.writeLimiter.take(d.id))
           throw new HttpError(429, 'Too many changes. Wait a minute.')
         if (path === '/api/push/subscribe') {
-          const r = push.subscribe(d.id, body.subscription)
+          const r = await push.subscribe(d.id, body.subscription)
           if (!r.ok) throw new HttpError(400, r.error ?? 'Bad subscription')
           this.deps.changed()
           this.json(req, res, 200, { ok: true })

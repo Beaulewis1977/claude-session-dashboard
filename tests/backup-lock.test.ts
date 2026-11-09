@@ -46,7 +46,7 @@ beforeEach(async () => {
   await createSet(setDir, new Date().toISOString())
 })
 afterEach(async () => {
-  await rm(root, { recursive: true, force: true })
+  await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
 })
 
 async function fakeLock(o: object, ageMs = 0): Promise<void> {

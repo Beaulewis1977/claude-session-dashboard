@@ -903,8 +903,8 @@ describe('turning phone access on and off', () => {
       tailscale: fakeTailscale({ existing, calls }),
       keys: {
         available: () => false,
-        encrypt: (s) => Buffer.from(s),
-        decrypt: (b) => b.toString()
+        encrypt: async (s) => Buffer.from(s),
+        decrypt: async (b) => ({ result: b.toString() })
       },
       appVersion: '1.0.0',
       fixtures: true,

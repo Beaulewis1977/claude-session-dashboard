@@ -62,6 +62,10 @@ function useBootstrap(): void {
       api.onSummariesChanged((summaryQueue) => set({ summaryQueue })),
       // Tray icon or limit notification clicked.
       api.onShowUsage(() => set({ view: 'usage' })),
+      // A backup notification clicked.
+      api.onShowSettings((section) =>
+        set({ view: 'settings', settingsSection: typeof section === 'string' ? section : null })
+      ),
       // A session alert clicked: that session, if the list knows it; else Running now.
       api.onShowLive((key) => {
         const st = useApp.getState()

@@ -1,11 +1,16 @@
 import { resolve } from 'node:path'
 import { mkdir } from 'node:fs/promises'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { chromium, type Browser, type BrowserContext, type Locator, type Page } from 'playwright'
-import { createServer, type ViteDevServer } from 'vite'
-import react from '@vitejs/plugin-react'
-import tailwindcss from '@tailwindcss/vite'
+import type { Browser, BrowserContext, Locator, Page } from 'playwright'
+import type { ViteDevServer } from 'vite'
 import type { ChatMessage, ContentBlock, SessionSummary } from '../src/shared/types'
+import {
+  launchBrowser,
+  startHarness,
+  trackPage,
+  unavailableReason,
+  waitReady
+} from './browser-harness'
 
 // This is a browser integration test inside the normal Vitest run. It renders
 // production components and CSS; only the host app and session data are fixtures.
@@ -189,70 +194,15 @@ createRoot(document.getElementById('root')).render(
 let server: ViteDevServer | undefined
 let browser: Browser | undefined
 let origin: string
-let unavailableReason = ''
-
-async function launchBrowser(): Promise<Browser | undefined> {
-  const errors: string[] = []
-  for (const channel of [undefined, 'chrome', 'msedge']) {
-    try {
-      return await chromium.launch({ headless: true, ...(channel ? { channel } : {}) })
-    } catch (error) {
-      errors.push(`${channel ?? 'bundled Chromium'}: ${String(error).split('\n')[0]}`)
-    }
-  }
-  unavailableReason = `Browser integration tests need Playwright Chromium or Chrome/Edge. ${errors.join('; ')}`
-  return undefined
-}
 
 beforeAll(async () => {
   browser = await launchBrowser()
   if (!browser) return
-  server = await createServer({
-    configFile: false,
-    root,
-    // Its own dependency cache: each browser test file runs its own Vite server,
-    // and the default cache (node_modules/.vite) is also the dev server's.
-    cacheDir: resolve(root, 'node_modules/.vite-viewer-copy-browser'),
-    logLevel: 'error',
-    // Find and pre-bundle every dependency of the renderer when the server
-    // starts. The test page is a virtual module Vite can't scan, so without this
-    // a fresh cache (after npm install) discovers them while a page loads and
-    // answers its requests with "504 Outdated Optimize Dep".
-    optimizeDeps: { entries: ['src/renderer/src/**/*.tsx'] },
-    resolve: {
-      alias: {
-        '@': resolve(root, 'src/renderer/src'),
-        '@shared': resolve(root, 'src/shared')
-      }
-    },
-    plugins: [
-      react(),
-      tailwindcss(),
-      {
-        name: 'viewer-copy-browser-fixture',
-        resolveId: (id) => (id === virtualId ? `\0${virtualId}` : undefined),
-        load: (id) => (id === `\0${virtualId}` ? harness : undefined),
-        configureServer(vite) {
-          vite.middlewares.use((req, res, next) => {
-            if (req.url?.split('?')[0] !== '/') return next()
-            const html = `<!doctype html><html><head><meta name="viewport" content="width=device-width, initial-scale=1"></head><body><div id="root"></div><script type="module" src="/@id/__x00__${virtualId}"></script></body></html>`
-            void vite.transformIndexHtml(req.url, html).then((transformed) => {
-              res.setHeader('Content-Type', 'text/html')
-              res.end(transformed)
-            })
-          })
-        }
-      }
-    ],
-    // No file watching or hot reload: a file changed in the repo while the tests
-    // run (an edit, git, the formatter) would otherwise reload or restyle the
-    // page in the middle of a test.
-    server: { host: '127.0.0.1', port: 0, watch: null, hmr: false }
-  })
-  await server.listen()
-  const address = server.httpServer?.address()
-  if (!address || typeof address === 'string') throw new Error('Vite did not bind a local port')
-  origin = `http://127.0.0.1:${address.port}`
+  ;({ server, origin } = await startHarness({
+    virtualId,
+    harness,
+    head: '<meta name="viewport" content="width=device-width, initial-scale=1">'
+  }))
   // Warm up every screen: Vite builds (and on a fresh cache, discovers and
   // pre-bundles) the modules on the first load, which could otherwise reload
   // a page in the middle of a test.
@@ -281,7 +231,7 @@ async function openFixture(
     isMobile: touch,
     permissions: ['clipboard-read', 'clipboard-write']
   })
-  const page = await context.newPage()
+  const page = trackPage(await context.newPage(), origin)
   page.setDefaultTimeout(loadTimeout)
   page.setDefaultNavigationTimeout(loadTimeout)
   if (clipboard !== 'native') {
@@ -299,7 +249,7 @@ async function openFixture(
     `)
   }
   await page.goto(`${origin}/?fixture=${fixture}&screen=${screen}`)
-  await page.getByRole('button', { name: 'Copy message', exact: true }).first().waitFor()
+  await waitReady(page, page.getByRole('button', { name: 'Copy message', exact: true }))
   page.setDefaultTimeout(5_000)
   // Wait for the real Tailwind touch variant, rather than racing stylesheet load.
   expect(await page.evaluate("matchMedia('(hover: none)').matches")).toBe(touch)

@@ -31,9 +31,17 @@ export interface MobileFile {
   /** The Windows Firewall rule this app added for home Wi-Fi mode. */
   firewallRule?: { name: string; port: number; address: string }
   /** Self-signed certificate for home Wi-Fi mode (the key is encrypted when possible). */
-  lanCert?: { address: string; cert: string; key: string; encrypted: boolean; expiresAt: string }
+  lanCert?: {
+    address: string
+    cert: string
+    key: string
+    encrypted: boolean
+    /** 2: encrypted with safeStorage's asynchronous API (missing: the older synchronous one). */
+    v?: number
+    expiresAt: string
+  }
   /** The app's VAPID key pair for Web Push (the private key is encrypted when possible). */
-  vapid?: { publicKey: string; privateKey: string; encrypted: boolean }
+  vapid?: { publicKey: string; privateKey: string; encrypted: boolean; v?: number }
 }
 
 export const DEVICE_TTL_MS = 30 * 24 * 60 * 60 * 1000

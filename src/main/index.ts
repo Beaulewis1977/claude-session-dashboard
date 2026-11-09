@@ -26,7 +26,7 @@ import type { ThemePref } from '@shared/types'
 import { SOURCE_LABELS } from '@shared/source-label'
 import { isDevServerUrl } from './core/app-url'
 import { NO_CWD_SEARCH } from './core/launch'
-import { callHandler, setAppPage } from './ipc-guard'
+import { callHandler, handle, setAppPage } from './ipc-guard'
 import { JsonStore } from './core/json-store'
 import { registerMobileIpc } from './ipc-mobile'
 import { registerLiveIpc } from './ipc-live'
@@ -41,7 +41,7 @@ import {
 import { LiveService } from './services/live'
 import { desktopText } from '@shared/live-alerts'
 import type { MobileFile } from './mobile/devices'
-import { MobileService, webAppFile } from './mobile/service'
+import { MobileService, webAppFile, type KeyBox } from './mobile/service'
 import { fakeTailscale, TailscaleClient } from './mobile/tailscale'
 import { webAssets } from './mobile/web-assets'
 import { registerTerminalIpc } from './ipc-terminal'
@@ -89,6 +89,9 @@ import { AccountsService, createAccountsStore, type Encryptor } from './services
 import { httpsFetcher } from './services/anthropic-api'
 import { BillingService } from './services/billing'
 import { createFixturesPlatform, createRealPlatform, type Platform } from './platform'
+import { mark, profileStartup, timed, watchEventLoop } from './timing'
+import { HIDDEN_ARG, setStartWithWindows, startWithWindows } from './login-item'
+import { createNotifier } from './notify'
 import { CodexAppService, codexProtocolRegistered } from './providers/codex/app'
 import { BridgeInstaller, cleanupSettingsLeftovers, createBridgeStore } from './services/bridge'
 import { Launcher } from './services/launcher'
@@ -135,6 +138,45 @@ const CHROME = {
 }
 
 let mainWindow: BrowserWindow | undefined
+/**
+ * Windows identifies a desktop app's notifications by its AppUserModelID and
+ * the Toast Activator CLSID Electron registers for it (Electron also writes
+ * both into the app's Start Menu shortcut). The installed and portable app
+ * use the installer's appId; `npm run dev` its own id, so development
+ * notifications never mix with the installed app's. Without them Electron used
+ * its default id and a new random CLSID on every start, so Windows had to take
+ * in a changed registration at the first notification of each run.
+ */
+const APP_ID = 'com.beaulewis.claude-session-dashboard'
+const APP_USER_MODEL_ID = app.isPackaged ? APP_ID : `${APP_ID}.dev`
+const TOAST_ACTIVATOR_CLSID = app.isPackaged
+  ? '{6D3F2B8A-5C41-4E7B-9A0D-2F8E1C7B4A63}'
+  : '{B1E94C27-3A6F-4D85-8C12-7E5A9F0D3B48}'
+
+function setAppIdentity(): void {
+  if (process.platform !== 'win32') return
+  app.setAppUserModelId(APP_USER_MODEL_ID)
+  app.setToastActivatorCLSID(TOAST_ACTIVATOR_CLSID)
+}
+
+/** Started at login (Settings → Start with Windows): only the tray icon until it's opened. */
+const START_HIDDEN = process.argv.includes(HIDDEN_ARG)
+/** The window was maximized when last closed, and a hidden start hasn't shown it yet. */
+let maximizeOnReveal = false
+
+/** Show and focus the main window (also the first time after a hidden start). */
+function revealMain(): BrowserWindow | undefined {
+  const w = mainWindow
+  if (!w || w.isDestroyed()) return undefined
+  if (maximizeOnReveal) {
+    maximizeOnReveal = false
+    w.maximize()
+  }
+  if (w.isMinimized()) w.restore()
+  w.show()
+  w.focus()
+  return w
+}
 let mobile: MobileService
 
 /**
@@ -142,10 +184,8 @@ let mobile: MobileService
  * minute counts as no.
  */
 async function confirmOnPc(device: string, what: string): Promise<boolean> {
-  const w = mainWindow
-  if (!w || w.isDestroyed()) return false
-  if (w.isMinimized()) w.restore()
-  w.show()
+  const w = revealMain()
+  if (!w) return false
   w.flashFrame(true)
   const ac = new AbortController()
   const timer = setTimeout(() => ac.abort(), 60_000)
@@ -227,18 +267,20 @@ function lockNavigation(win: BrowserWindow): void {
 const RENDERER_INDEX = join(__dirname, '../renderer/index.html')
 
 async function main(): Promise<void> {
+  // Windows: the app's identity for its notifications, set before any is shown.
+  setAppIdentity()
   if (!app.requestSingleInstanceLock()) {
     app.quit()
     return
   }
   app.on('second-instance', () => {
-    if (mainWindow) {
-      if (mainWindow.isMinimized()) mainWindow.restore()
-      mainWindow.focus()
-    }
+    revealMain()
   })
 
   await app.whenReady()
+  mark('app ready')
+  watchEventLoop()
+  await profileStartup()
   blockNetwork()
   setAppPage(RENDERER_INDEX, process.env.ELECTRON_RENDERER_URL)
 
@@ -252,6 +294,20 @@ async function main(): Promise<void> {
   }
 
   const paths = appPaths(dataDir)
+  // Every desktop notification, and what Windows did with it, is logged
+  // (logs/notifications.jsonl; no titles or text).
+  const notify = createNotifier({
+    isSupported: () => Notification.isSupported(),
+    create: ({ title, body }) =>
+      new Notification({ title, body, icon: join(appRoot, 'resources', 'icon.png') }),
+    logFile: join(paths.dataDir, 'logs', 'notifications.jsonl'),
+    identity: () => ({
+      appUserModelId: APP_USER_MODEL_ID,
+      toastActivatorCLSID: process.platform === 'win32' ? app.toastActivatorCLSID : undefined,
+      packaged: app.isPackaged,
+      version: app.getVersion()
+    })
+  })
   // A restore staged before the restart (Settings → Backup) is finished first,
   // before any of the app's data is loaded.
   const restored = await applyPendingRestore(paths.dataDir, {
@@ -321,12 +377,13 @@ async function main(): Promise<void> {
     encrypt: (t) => safeStorage.encryptStringAsync(t),
     decrypt: async (b) => (await safeStorage.decryptStringAsync(b)).result
   }
-  // The phone companion's own TLS and push keys still use the synchronous
-  // calls (its code reads them synchronously); see the PR's known issues.
-  const phoneKeys = {
+  // The phone companion's own TLS and push keys: the same asynchronous API.
+  // Keys it saved with the synchronous one are re-encrypted on first read
+  // (see mobile/secrets.ts).
+  const phoneKeys: KeyBox = {
     available: () => canEncrypt,
-    encrypt: (t: string) => safeStorage.encryptString(t),
-    decrypt: (b: Buffer) => safeStorage.decryptString(b)
+    encrypt: (t) => safeStorage.encryptStringAsync(t),
+    decrypt: (b) => safeStorage.decryptStringAsync(b)
   }
   const accountsStore = createAccountsStore(paths.dataDir)
   await accountsStore.load()
@@ -471,10 +528,7 @@ async function main(): Promise<void> {
       if (!Notification.isSupported()) return
       // Paired phones get the same alert as a toast.
       mobile.toast(title, body)
-      if (!Notification.isSupported()) return
-      const n = new Notification({ title, body, icon: join(appRoot, 'resources', 'icon.png') })
-      n.on('click', () => showUsage())
-      n.show()
+      notify({ kind: 'limits', title, body, onClick: () => showUsage() })
     },
     undefined,
     sourceOf
@@ -498,10 +552,7 @@ async function main(): Promise<void> {
     },
     (title, body) => {
       mobile.toast(title, body)
-      if (!Notification.isSupported()) return
-      const n = new Notification({ title, body, icon: join(appRoot, 'resources', 'icon.png') })
-      n.on('click', () => showUsage())
-      n.show()
+      notify({ kind: 'codex-limits', title, body, onClick: () => showUsage() })
     },
     sourceOf
   )
@@ -592,6 +643,8 @@ async function main(): Promise<void> {
     dataDir: paths.dataDir,
     appVersion: app.getVersion(),
     encryptor,
+    // A backup missed while the app was closed has run (done or failed).
+    notify: (title, body) => notify({ kind: 'backup', title, body, onClick: () => showBackup() }),
     beforeBackup: async () => {
       await Promise.all([
         metadata.flush(),
@@ -603,6 +656,8 @@ async function main(): Promise<void> {
   })
   if (restored) backup.recordRestore(restored)
   await backup.init()
+  // Opt-in (off by default): restore safety copies older than 30 days.
+  void backup.autoCleanSafety()
   const devServer = !!process.env.ELECTRON_RENDERER_URL
   registerBackupIpc({
     backup,
@@ -615,6 +670,11 @@ async function main(): Promise<void> {
     }
   })
   backup.start()
+
+  // Settings → Start with Windows (minimized to tray): read from and written to Windows itself.
+  const loginEnv = { platform: process.platform, execPath: process.execPath, env: process.env }
+  handle('app:startWithWindows', () => startWithWindows(app, loginEnv))
+  handle('app:setStartWithWindows', (_e, on) => setStartWithWindows(app, loginEnv, on === true))
 
   // Phone companion: off by default, 127.0.0.1 only (see mobile/).
   const mobileStore = new JsonStore<MobileFile>(
@@ -740,15 +800,8 @@ async function main(): Promise<void> {
     settings: () => sanitizeLiveAlerts(settings.value.liveAlerts),
     distroRoot: (id) => sessions.source(id)?.distroRoot,
     notify: (alert, title) => {
-      if (!Notification.isSupported()) return
       const t = desktopText(alert, title)
-      const n = new Notification({
-        title: t.title,
-        body: t.body,
-        icon: join(appRoot, 'resources', 'icon.png')
-      })
-      n.on('click', () => showLive(alert.key))
-      n.show()
+      notify({ kind: 'session-alert', ...t, onClick: () => showLive(alert.key) })
     },
     push: (kind, refFor) => mobile.webPush({ kind, ref: refFor })
   })
@@ -772,11 +825,19 @@ async function main(): Promise<void> {
     lockNavigation
   })
   refitMeter = meter.refit
+  mark('services ready, window created')
+  // Find Windows Terminal, Claude Code and Codex now, before the first scan
+  // fills Node's file threads: the first Resume dialog then doesn't wait for it.
+  void timed('startup: terminal and Claude lookup', platform.launchTools()).catch(() => undefined)
   createWindow(settings.value.window)
+  // A hidden start has no window to open from: the tray icon is there at once
+  // (the renderer paints the usage ring onto it once the limits load).
+  if (START_HIDDEN) meter.ensureTray()
   meter.restore()
 
   void sessions
     .start()
+    .then(() => mark('first session scan done'))
     .then(() => migrateBillingKeys())
     .then(() => watcher.restart())
     // An interrupted save of settings.json: the app's own leftovers go
@@ -901,8 +962,17 @@ async function main(): Promise<void> {
       }
     })
     mainWindow = win
-    if (bounds?.maximized) win.maximize()
-    win.once('ready-to-show', () => win.show())
+    // Started with Windows (--hidden): no window, just the tray icon, until
+    // it's opened (maximize() would show it, so that waits too).
+    if (bounds?.maximized) {
+      if (START_HIDDEN) maximizeOnReveal = true
+      else win.maximize()
+    }
+    win.once('ready-to-show', () => {
+      mark('window ready to show')
+      if (!START_HIDDEN) win.show()
+    })
+    win.webContents.once('did-finish-load', () => mark('window page loaded'))
     lockNavigation(win)
 
     const saveBounds = (): void => {
@@ -926,21 +996,15 @@ async function main(): Promise<void> {
 
   /** A session alert was clicked: show the window on that session. */
   function showLive(key: string): void {
-    const w = mainWindow
-    if (!w || w.isDestroyed()) return
-    if (w.isMinimized()) w.restore()
-    w.show()
-    w.focus()
-    w.webContents.send('app:showLive', key)
+    revealMain()?.webContents.send('app:showLive', key)
+  }
+
+  function showBackup(): void {
+    revealMain()?.webContents.send('app:showSettings', 'backup')
   }
 
   function showUsage(): void {
-    const w = mainWindow
-    if (!w || w.isDestroyed()) return
-    if (w.isMinimized()) w.restore()
-    w.show()
-    w.focus()
-    w.webContents.send('app:showUsage')
+    revealMain()?.webContents.send('app:showUsage')
   }
 
   app.on('window-all-closed', () => app.quit())

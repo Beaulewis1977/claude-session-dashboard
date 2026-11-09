@@ -27,6 +27,8 @@ import {
   type BackupStatus,
   type RestorePreview,
   type RestoreRecord,
+  type SafetyCleanup,
+  type SafetySummary,
   type SnapshotInfo
 } from '@shared/backup'
 import {
@@ -66,6 +68,8 @@ import {
 import { assertSetRoot } from '../core/backup-fs'
 import { JsonStore } from '../core/json-store'
 import { isInside, isInsideClaudeDir } from '../core/safe-paths'
+import { deleteSafetyCopies, listSafetyCopies } from '../core/restore-safety'
+import { formatDateTime } from '@shared/format'
 import type { Encryptor } from './accounts'
 
 export interface BackupFile {
@@ -92,6 +96,11 @@ export interface BackupFile {
    * (edited, or an old copy back from syncing), pauses backups until I choose.
    */
   known?: Record<string, { setId: string; keyId: string | null }>
+  /** Clean up restore safety copies older than 30 days by itself (opt-in). */
+  autoCleanSafety?: boolean
+  lastSafetyCleanup?: SafetyCleanup
+  /** When the automatic cleanup last looked (it looks at most once a day). */
+  lastSafetyCheckAt?: string
 }
 
 export function createBackupStore(dataDir: string): JsonStore<BackupFile> {
@@ -110,6 +119,11 @@ export interface BackupDeps {
   encryptor: Encryptor
   /** Save the app's in-memory data first, so the snapshot is current. */
   beforeBackup?: () => Promise<void>
+  /**
+   * A desktop notification. Used once per start: when a scheduled backup
+   * missed while the app was closed has run (done or failed).
+   */
+  notify?: (title: string, body: string) => void
   now?: () => number
   /** Tests use cheaper key derivation. */
   kdf?: { N: number; r: number; p: number }
@@ -269,6 +283,10 @@ export class BackupService extends EventEmitter<{ changed: [] }> {
 
   start(): void {
     this.stop()
+    // Due already: it came due while the app was closed. It runs at the first
+    // check (two minutes after start, so the app's own start isn't slowed),
+    // and says so when it's done.
+    this.catchUp = this.overdue()
     this.firstTick = setTimeout(() => void this.tick(), 2 * 60_000)
     this.timer = setInterval(() => void this.tick(), TICK_MS)
     this.firstTick.unref?.()
@@ -288,23 +306,141 @@ export class BackupService extends EventEmitter<{ changed: [] }> {
 
   /** Is a scheduled backup due now? */
   async due(): Promise<boolean> {
+    if (this.running || this.restoring || !this.scheduleDue()) return false
+    return !(await this.notReady())
+  }
+
+  /** The schedule says a backup is due: time since the last one, and the retry wait after a failure. */
+  private scheduleDue(): boolean {
     const f = this.file
-    if (f.schedule === 'off' || !f.setDir || this.running || this.restoring) return false
+    if (f.schedule === 'off' || !f.setDir) return false
     const t = this.now()
     const lastOk = Date.parse(f.lastSuccessAt ?? '') || 0
     // A quarter of an hour early is fine (the check runs every 15 minutes).
     if (t - lastOk < INTERVAL[f.schedule] - TICK_MS) return false
     const lastTry = Date.parse(f.lastAttemptAt ?? '') || 0
     if (f.last && !f.last.ok && t - lastTry < RETRY_MS) return false
-    const set = await readSet(f.setDir).catch(() => undefined)
-    if (!set || this.pauseReason(f.setDir, set)) return false
-    await this.loadRemembered(set)
-    if (set.current && !this.keys.has(set.current)) return false
     return true
   }
 
+  /** Why the backup folder can't take a backup right now (undefined: it can). */
+  private async notReady(): Promise<string | undefined> {
+    const setDir = this.file.setDir
+    if (!setDir) return 'No backup folder is set.'
+    let set: SetFile | undefined
+    try {
+      set = await readSet(setDir)
+    } catch (e) {
+      return message(e)
+    }
+    if (!set) return this.missingSetReason(setDir)
+    const paused = this.pauseReason(setDir, set)
+    if (paused) return PAUSED[paused]
+    await this.loadRemembered(set)
+    if (set.current && !this.keys.has(set.current))
+      return 'The backup password is needed: enter it in Settings → Backup.'
+    return undefined
+  }
+
   async tick(): Promise<void> {
-    if (await this.due()) await this.runNow('scheduled')
+    if (!this.running && !this.restoring && this.scheduleDue()) {
+      const why = await this.notReady()
+      const catchUp = this.catchUp
+      if (!why) {
+        const r = await this.runNow('scheduled')
+        if (catchUp) {
+          this.catchUp = undefined
+          this.notifyCatchUp(catchUp, r)
+        }
+      } else if (catchUp) {
+        // A missed backup that can't run now (drive missing, password needed,
+        // paused): recorded as a failed scheduled backup, so it's tried again
+        // after the usual wait, and said once.
+        this.catchUp = undefined
+        const r = this.failed('scheduled', this.now(), why)
+        await this.deps.store.flush()
+        this.emit('changed')
+        this.notifyCatchUp(catchUp, r)
+      }
+    }
+    await this.autoCleanSafety()
+  }
+
+  /** A scheduled backup that is due now, with the last successful one's time. */
+  private catchUp: { lastOk: string } | undefined
+
+  private overdue(): { lastOk: string } | undefined {
+    const f = this.file
+    // Never backed up yet: that's the first backup, not a missed one.
+    if (f.schedule === 'off' || !f.setDir || !f.lastSuccessAt) return undefined
+    const lastOk = Date.parse(f.lastSuccessAt)
+    if (!Number.isFinite(lastOk) || this.now() - lastOk < INTERVAL[f.schedule]) return undefined
+    return { lastOk: f.lastSuccessAt }
+  }
+
+  private notifyCatchUp(c: { lastOk: string }, r: BackupRunSummary): void {
+    const since = `The last one was on ${formatDateTime(c.lastOk)}.`
+    if (r.ok)
+      this.deps.notify?.(
+        'Missed backup done',
+        `${since} ${r.added ? `${r.added} new or changed file${r.added === 1 ? '' : 's'} copied.` : 'Nothing had changed.'}`
+      )
+    else
+      this.deps.notify?.(
+        'Missed backup failed',
+        `${since} ${(r.error ?? 'Unknown error').replace(/\.$/, '')}. It's tried again in an hour (Settings → Backup).`
+      )
+  }
+
+  // ------------------------------------------------------------- restore safety copies
+
+  /** The restore safety copies (`restore-backups\<time>\`) and which are old enough to clean up. */
+  safetyCopies(): Promise<SafetySummary> {
+    return listSafetyCopies(this.deps.dataDir, this.now())
+  }
+
+  /**
+   * Delete the restore safety copies I confirmed (by name), but only those
+   * still older than 30 days now, and never the newest one.
+   */
+  async cleanSafetyCopies(
+    names: string[],
+    by: 'manual' | 'auto' = 'manual'
+  ): Promise<SafetyCleanup> {
+    if (this.restoring) throw new Error('A restore is being prepared. Try again when it’s done.')
+    const r = await deleteSafetyCopies(this.deps.dataDir, names, this.now())
+    const done: SafetyCleanup = {
+      at: new Date(this.now()).toISOString(),
+      deleted: r.deleted.length,
+      bytes: r.deleted.reduce((n, c) => n + c.bytes, 0),
+      by,
+      ...(r.errors.length ? { errors: r.errors.slice(0, 10) } : {})
+    }
+    if (done.deleted || done.errors) {
+      this.deps.store.update((f) => {
+        f.lastSafetyCleanup = done
+      })
+      await this.deps.store.flush()
+      this.emit('changed')
+    }
+    return done
+  }
+
+  /** The opt-in automatic cleanup: at most once a day (at startup, then from the timer). */
+  async autoCleanSafety(): Promise<SafetyCleanup | undefined> {
+    const f = this.file
+    if (!f.autoCleanSafety || this.restoring) return undefined
+    const last = Date.parse(f.lastSafetyCheckAt ?? '') || 0
+    if (this.now() - last < DAY - TICK_MS) return undefined
+    this.deps.store.update((x) => {
+      x.lastSafetyCheckAt = new Date(this.now()).toISOString()
+    })
+    const { old } = await this.safetyCopies().catch(() => ({ old: [] }))
+    if (!old.length) return undefined
+    return this.cleanSafetyCopies(
+      old.map((c) => c.name),
+      'auto'
+    ).catch(() => undefined)
   }
 
   // ------------------------------------------------------------- status
@@ -340,7 +476,9 @@ export class BackupService extends EventEmitter<{ changed: [] }> {
       lastSuccessAt: f.lastSuccessAt,
       snapshotCount: 0,
       damagedCount: 0,
-      lastRestore: f.lastRestore
+      lastRestore: f.lastRestore,
+      autoCleanSafety: !!f.autoCleanSafety,
+      ...(f.lastSafetyCleanup ? { lastSafetyCleanup: f.lastSafetyCleanup } : {})
     }
     if (f.schedule !== 'off' && f.setDir) {
       const lastOk = Date.parse(f.lastSuccessAt ?? '') || 0
@@ -553,12 +691,21 @@ export class BackupService extends EventEmitter<{ changed: [] }> {
     return this.status()
   }
 
-  async update(patch: { schedule?: unknown; keep?: unknown }): Promise<BackupStatus> {
+  async update(patch: {
+    schedule?: unknown
+    keep?: unknown
+    autoCleanSafety?: unknown
+  }): Promise<BackupStatus> {
     this.deps.store.update((f) => {
       if (BACKUP_SCHEDULES.includes(patch.schedule as BackupSchedule))
         f.schedule = patch.schedule as BackupSchedule
       const keep = cleanKeep(patch.keep)
       if (keep) f.keep = keep
+      if (typeof patch.autoCleanSafety === 'boolean') {
+        f.autoCleanSafety = patch.autoCleanSafety
+        // Turned on: check soon (the next tick), not a day later.
+        if (patch.autoCleanSafety) delete f.lastSafetyCheckAt
+      }
     })
     await this.deps.store.flush()
     this.emit('changed')

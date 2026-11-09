@@ -4,6 +4,7 @@ import {
   mkdtemp,
   readdir,
   readFile,
+  rename,
   rm,
   stat,
   symlink,
@@ -72,7 +73,7 @@ beforeEach(async () => {
   await seedData()
 })
 afterEach(async () => {
-  await rm(root, { recursive: true, force: true })
+  await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
 })
 
 const now = (): number => clock
@@ -680,7 +681,7 @@ describe('BackupService', () => {
     }
   })
 
-  async function service() {
+  async function service(notify?: (title: string, body: string) => void) {
     const store = createBackupStore(dataDir)
     await store.load()
     const svc = new BackupService({
@@ -690,12 +691,111 @@ describe('BackupService', () => {
       encryptor,
       now,
       kdf: FAST,
-      minObjectAgeMs: 0
+      minObjectAgeMs: 0,
+      ...(notify ? { notify } : {})
     })
     await svc.init()
     opened.push({ svc, store })
     return { svc, store }
   }
+
+  it('runs a backup missed while the app was closed at the first check, and says so when done', async () => {
+    const first = await service()
+    let svc = first.svc
+    const store = first.store
+    await svc.connect(dest, { encrypt: false })
+    expect((await svc.runNow('scheduled')).ok).toBe(true)
+    await store.flush()
+    svc.stop()
+    // Closed for three days (daily schedule): the next start catches up.
+    clock += 3 * 24 * 60 * 60_000
+    const told: string[][] = []
+    ;({ svc } = await service((t, b) => told.push([t, b])))
+    svc.start()
+    await svc.tick()
+    expect(told).toEqual([['Missed backup done', expect.stringMatching(/^The last one was on /)]])
+    expect((await svc.status()).last).toMatchObject({ ok: true, reason: 'scheduled' })
+    // Once per start: later scheduled backups are quiet.
+    clock += 24 * 60 * 60_000
+    await svc.tick()
+    expect(told).toHaveLength(1)
+    expect((await svc.status()).last?.at).toBe(new Date(clock).toISOString())
+  })
+
+  it('a missed backup that fails says so (once), and is tried again as usual', async () => {
+    const first = await service()
+    let svc = first.svc
+    const store = first.store
+    await svc.connect(dest, { encrypt: false })
+    expect((await svc.runNow('scheduled')).ok).toBe(true)
+    await store.flush()
+    svc.stop()
+    clock += 2 * 24 * 60 * 60_000
+    const told: string[][] = []
+    ;({ svc } = await service((t, b) => told.push([t, b])))
+    // Something it backs up can't be read now: the backup fails.
+    await rm(join(dataDir, 'settings.json'))
+    await mkdir(join(dataDir, 'settings.json'))
+    svc.start()
+    await svc.tick()
+    expect(told).toEqual([
+      ['Missed backup failed', expect.stringMatching(/tried again in an hour/)]
+    ])
+    clock += 2 * 60 * 60_000
+    await svc.tick()
+    expect(told).toHaveLength(1)
+  })
+
+  it('a missed backup whose folder is unavailable is recorded and said once, then tried again', async () => {
+    const first = await service()
+    await first.svc.connect(dest, { encrypt: false })
+    expect((await first.svc.runNow('scheduled')).ok).toBe(true)
+    await first.store.flush()
+    first.svc.stop()
+    clock += 2 * 24 * 60 * 60_000
+    // The external drive isn't plugged in at the next start.
+    const away = `${dest}-unplugged`
+    await rename(dest, away)
+    const told: string[][] = []
+    const { svc } = await service((t, b) => told.push([t, b]))
+    svc.start()
+    await svc.tick()
+    expect(told).toEqual([
+      ['Missed backup failed', expect.stringMatching(/tried again in an hour/)]
+    ])
+    expect(told[0][1]).not.toContain('..')
+    expect((await svc.status()).last).toMatchObject({ ok: false, reason: 'scheduled' })
+    // Still unplugged within the hour: no new attempt, no second notice.
+    clock += 30 * 60_000
+    await svc.tick()
+    expect(told).toHaveLength(1)
+    // Plugged in again after the wait: the scheduled backup runs, quietly.
+    await rename(away, dest)
+    clock += 40 * 60_000
+    await svc.tick()
+    expect((await svc.status()).last).toMatchObject({ ok: true, reason: 'scheduled' })
+    expect(told).toHaveLength(1)
+  })
+
+  it('no catch-up notice when nothing was missed, or before the first backup', async () => {
+    const told: string[][] = []
+    const first = await service((t, b) => told.push([t, b]))
+    let svc = first.svc
+    const store = first.store
+    await svc.connect(dest, { encrypt: false })
+    // The first backup ever: not a missed one.
+    svc.start()
+    await svc.tick()
+    expect((await svc.status()).last).toMatchObject({ ok: true })
+    await store.flush()
+    svc.stop()
+    // Started again an hour later: nothing due.
+    clock += 60 * 60_000
+    ;({ svc } = await service((t, b) => told.push([t, b])))
+    svc.start()
+    await svc.tick()
+    expect(told).toEqual([])
+  })
 
   it('refuses folders inside .claude or the app’s own data folder', async () => {
     const { svc } = await service()

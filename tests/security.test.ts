@@ -95,6 +95,56 @@ describe('finding programs (SEC-01)', () => {
     expect(await findOnPath('node', ['.exe'], env, exists)).toBeUndefined()
   })
 
+  it('checks PATH folders at once but still takes the first match in PATH order', async () => {
+    const env = { PATH: 'C:\\slow;C:\\a;C:\\b' }
+    const present = new Set(['C:\\slow\\tool.cmd', 'C:\\a\\tool.exe', 'C:\\b\\tool.exe'])
+    const asked: string[] = []
+    let inFlight = 0
+    let most = 0
+    const slowExists = async (p: string) => {
+      asked.push(p)
+      most = Math.max(most, ++inFlight)
+      // The first folder answers last.
+      await new Promise((r) => setTimeout(r, p.startsWith('C:\\slow') ? 30 : 1))
+      inFlight--
+      return present.has(p)
+    }
+    // .exe before .cmd within a folder, and the earlier folder wins even when it answers last.
+    expect(await findOnPath('tool', ['.exe', '.cmd'], env, slowExists)).toBe('C:\\slow\\tool.cmd')
+    expect(most).toBe(asked.length)
+    // A check that fails counts as "not there".
+    const throws = async (p: string) => {
+      if (p.startsWith('C:\\slow')) throw new Error('EBUSY')
+      return present.has(p)
+    }
+    expect(await findOnPath('tool', ['.exe', '.cmd'], env, throws)).toBe('C:\\a\\tool.exe')
+  })
+
+  it("doesn't wait for a later, offline network folder once an earlier one has it", async () => {
+    const env = { PATH: 'C:\\local\\bin;\\\\offline-nas\\tools' }
+    let hang: (() => void) | undefined
+    const exists = (p: string) =>
+      p.startsWith('\\\\offline-nas')
+        ? // Never answers (until the test lets it go).
+          new Promise<boolean>((r) => (hang = () => r(false)))
+        : Promise.resolve(p === 'C:\\local\\bin\\claude.exe')
+    const found = await Promise.race([
+      findOnPath('claude', ['.exe', '.cmd'], env, exists),
+      new Promise((r) => setTimeout(() => r('waited'), 500))
+    ])
+    expect(found).toBe('C:\\local\\bin\\claude.exe')
+    hang?.()
+    // Not found locally: then it does wait for the network folder, in PATH order.
+    const later = findOnPath('codex', ['.exe'], env, exists)
+    const first = await Promise.race([
+      later,
+      new Promise((r) => setTimeout(() => r('waiting'), 50))
+    ])
+    expect(first).toBe('waiting')
+    hang?.()
+    expect(await later).toBeUndefined()
+  })
+
   it('reports Claude Code as missing rather than guessing a bare name', async () => {
     expect(await findWindowsClaude({ PATH: '.;bin' }, exists)).toBeUndefined()
   })

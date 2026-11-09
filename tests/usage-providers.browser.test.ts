@@ -5,14 +5,17 @@
 // detected" notice, no Credits tab. All: each provider's gauges side by side
 // (never one combined %), and the chart stacked or split by provider.
 
-import { resolve } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { chromium, type Browser, type Page } from 'playwright'
-import { createServer, type ViteDevServer } from 'vite'
-import react from '@vitejs/plugin-react'
-import tailwindcss from '@tailwindcss/vite'
+import type { Browser, Page } from 'playwright'
+import type { ViteDevServer } from 'vite'
+import {
+  launchBrowser,
+  startHarness,
+  trackPage,
+  unavailableReason,
+  waitReady
+} from './browser-harness'
 
-const root = resolve(import.meta.dirname, '..')
 const virtualId = 'virtual:usage-providers-browser'
 
 const harness = `
@@ -90,61 +93,11 @@ createRoot(document.getElementById('root')).render(
 let server: ViteDevServer | undefined
 let browser: Browser | undefined
 let origin: string
-let unavailableReason = ''
-
-async function launchBrowser(): Promise<Browser | undefined> {
-  const errors: string[] = []
-  for (const channel of [undefined, 'chrome', 'msedge']) {
-    try {
-      return await chromium.launch({ headless: true, ...(channel ? { channel } : {}) })
-    } catch (error) {
-      errors.push(`${channel ?? 'bundled Chromium'}: ${String(error).split('\n')[0]}`)
-    }
-  }
-  unavailableReason = `Browser integration tests need Playwright Chromium or Chrome/Edge. ${errors.join('; ')}`
-  return undefined
-}
 
 beforeAll(async () => {
   browser = await launchBrowser()
   if (!browser) return
-  server = await createServer({
-    configFile: false,
-    root,
-    cacheDir: resolve(root, 'node_modules/.vite-usage-providers-browser'),
-    logLevel: 'error',
-    optimizeDeps: { entries: ['src/renderer/src/**/*.tsx'] },
-    resolve: {
-      alias: {
-        '@': resolve(root, 'src/renderer/src'),
-        '@shared': resolve(root, 'src/shared')
-      }
-    },
-    plugins: [
-      react(),
-      tailwindcss(),
-      {
-        name: 'usage-providers-browser-fixture',
-        resolveId: (id) => (id === virtualId ? `\0${virtualId}` : undefined),
-        load: (id) => (id === `\0${virtualId}` ? harness : undefined),
-        configureServer(vite) {
-          vite.middlewares.use((req, res, next) => {
-            if (req.url?.split('?')[0] !== '/') return next()
-            const html = `<!doctype html><html><head></head><body><div id="root"></div><script type="module" src="/@id/__x00__${virtualId}"></script></body></html>`
-            void vite.transformIndexHtml(req.url, html).then((transformed) => {
-              res.setHeader('Content-Type', 'text/html')
-              res.end(transformed)
-            })
-          })
-        }
-      }
-    ],
-    server: { host: '127.0.0.1', port: 0, watch: null, hmr: false }
-  })
-  await server.listen()
-  const address = server.httpServer?.address()
-  if (!address || typeof address === 'string') throw new Error('Vite did not bind a local port')
-  origin = `http://127.0.0.1:${address.port}`
+  ;({ server, origin } = await startHarness({ virtualId, harness }))
   await (await open('all', 60_000)).close()
 }, 90_000)
 
@@ -154,11 +107,14 @@ afterAll(async () => {
 })
 
 async function open(view: string, loadTimeout = 15_000): Promise<Page> {
-  const page = await browser!.newPage({ viewport: { width: 1400, height: 1000 } })
+  const page = trackPage(
+    await browser!.newPage({ viewport: { width: 1400, height: 1000 } }),
+    origin
+  )
   page.setDefaultTimeout(loadTimeout)
   page.on('pageerror', (err) => console.error('[usage-providers.browser]', err.message))
   await page.goto(`${origin}/?view=${view}`)
-  await page.getByRole('heading', { name: 'Usage & limits' }).waitFor()
+  await waitReady(page, page.getByRole('heading', { name: 'Usage & limits' }))
   page.setDefaultTimeout(5_000)
   return page
 }

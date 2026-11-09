@@ -12,6 +12,7 @@ import type {
   SessionMeta,
   SessionsPayload,
   SessionSummary,
+  StartWithWindows,
   ThemePref
 } from './types'
 import type {
@@ -55,6 +56,8 @@ import type {
   BackupSchedule,
   BackupStatus,
   RestorePreview,
+  SafetyCleanup,
+  SafetySummary,
   SnapshotInfo
 } from './backup'
 
@@ -222,6 +225,8 @@ export interface CsdApi {
   /** The renderer draws the tray icon (a ring with the 5-hour %) and hands it over as a PNG. */
   setTrayImage(dataUrl: string, tooltip: string): Promise<void>
   onShowUsage(cb: () => void): () => void
+  /** A notification asked for a Settings section (e.g. "backup"). */
+  onShowSettings(cb: (section: string) => void): () => void
 
   // Phone companion (desktop only: a phone can't reach any of these)
   mobileStatus(): Promise<MobileStatus>
@@ -296,7 +301,12 @@ export interface CsdApi {
   backupTakeOver(): Promise<BackupStatus | BackupError>
   /** Stop backing up to the folder (nothing in it is deleted). */
   backupDisconnect(): Promise<BackupStatus>
-  backupUpdate(patch: { schedule?: BackupSchedule; keep?: number }): Promise<BackupStatus>
+  backupUpdate(patch: {
+    schedule?: BackupSchedule
+    keep?: number
+    /** Clean up restore safety copies older than 30 days by itself. */
+    autoCleanSafety?: boolean
+  }): Promise<BackupStatus>
   backupRun(): Promise<BackupRunSummary>
   /** Encrypt new snapshots with this password (null: stop encrypting new ones). */
   backupSetPassword(password: string | null, remember: boolean): Promise<BackupStatus | BackupError>
@@ -310,4 +320,11 @@ export interface CsdApi {
   ): Promise<{ ok: true; written: number; relaunch: boolean } | BackupError>
   backupOpenFolder(): Promise<void>
   backupOpenSafety(): Promise<void>
+  /** "Start with Windows (minimized to tray)", as Windows reports it now. */
+  startWithWindows(): Promise<StartWithWindows>
+  setStartWithWindows(on: boolean): Promise<StartWithWindows>
+  /** The restore safety copies in the app's data folder, and which are older than 30 days. */
+  backupSafetyCopies(): Promise<SafetySummary>
+  /** Delete these safety copies (only those still older than 30 days, never the newest). */
+  backupCleanSafety(names: string[]): Promise<SafetyCleanup>
 }

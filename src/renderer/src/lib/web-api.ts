@@ -296,6 +296,7 @@ export const webApi: CsdApi = {
   closeMiniMeter: async () => undefined,
   setTrayImage: async () => undefined,
   onShowUsage: () => () => undefined,
+  onShowSettings: () => () => undefined,
 
   mobileStatus: onPc('Phone settings'),
   mobileUpdate: onPc('Phone settings'),
@@ -356,7 +357,11 @@ export const webApi: CsdApi = {
   backupPreview: onPc('Backups'),
   backupRestore: onPc('Backups'),
   backupOpenFolder: onPc('Backups'),
-  backupOpenSafety: onPc('Backups')
+  backupOpenSafety: onPc('Backups'),
+  startWithWindows: onPc('Start with Windows'),
+  setStartWithWindows: onPc('Start with Windows'),
+  backupSafetyCopies: onPc('Backups'),
+  backupCleanSafety: onPc('Backups')
 }
 
 function pushSupported(): boolean {

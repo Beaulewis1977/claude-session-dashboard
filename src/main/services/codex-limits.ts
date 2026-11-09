@@ -315,12 +315,29 @@ export class CodexLimitsService extends EventEmitter<{ changed: [] }> {
    * The plan the followed account is on now and since when: its newest plan,
    * since that plan was first seen in the latest run of it (one-account mode
    * can have several plans over time; a separate sign-in has one).
+   *
+   * One account: from every limit's readings, main or model (e.g. Spark): a
+   * model limit can report a new plan before the main limit does, and then
+   * that plan is in force already (the main limit's readings from before are
+   * the earlier plan's, never current, and never grouped with the new plan's).
    */
   private currentPlan(): { code?: string; since: number } {
     const acct = this.account()
+    if (acct === '*') {
+      const rs = this.readings()
+      let code: string | undefined
+      let since = 0
+      // The newest run of one plan: back from the newest reading until another plan's.
+      for (let i = rs.length - 1; i >= 0; i--) {
+        const p = rs[i].planType
+        if (p && code && p !== code) break
+        if (p) code ??= p
+        since = rs[i].ts
+      }
+      return code ? { code, since } : { since: 0 }
+    }
     const mine = this.mainReadings()
-    const newest = [...mine].reverse().find((r) => r.planType)?.planType
-    const code = acct === '*' ? newest : acct || undefined
+    const code = acct || undefined
     let since = 0
     if (code)
       for (let i = mine.length - 1; i >= 0; i--) {
@@ -344,20 +361,10 @@ export class CodexLimitsService extends EventEmitter<{ changed: [] }> {
 
   /**
    * One account: when the plan in force now began, from every limit's
-   * readings (a model limit, e.g. Spark, can report the new plan before the
-   * main limit does): the first of the readings since the last one of
-   * another plan.
+   * readings: the first of the readings since the last one of another plan.
    */
   private currentRunStart(): number {
-    const { code } = this.currentPlan()
-    if (!code) return 0
-    const rs = this.readings()
-    let since = 0
-    for (let i = rs.length - 1; i >= 0; i--) {
-      if (rs[i].planType && rs[i].planType !== code) break
-      since = rs[i].ts
-    }
-    return since
+    return this.currentPlan().since
   }
 
   /** Whether the plan in force now has a 5-hour window (it showed one lately). */

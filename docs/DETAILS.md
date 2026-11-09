@@ -345,13 +345,29 @@ settings backups can hold secrets from Claude's `env`), caches, and `backup.json
   as soon as the drive is back, without a restart.
 - **Schedule:** daily or weekly while the app is open (checked every 15 minutes), plus **Back up
   now**. A failed backup (drive missing, folder full) is tried again after an hour. A newly chosen
-  folder gets its first backup at the next check.
+  folder gets its first backup at the next check. A backup that came due while the app was closed
+  (catch-up) runs at the first check, two minutes after start, and shows one notification when it's
+  done or has failed (click it for Settings → Backup).
+- **Start with Windows (minimized to tray):** Settings → Startup, off by default, installed or
+  portable app only. Electron's login item API adds or removes only the app's own `Run` value
+  (named "Claude Session Dashboard", with `--hidden`; the portable build registers the exe that was
+  started, not its temporary copy). The switch shows what Windows reports, including "turned off in
+  Task Manager". Started that way the app shows only its tray icon until it's opened. Nothing else in
+  Windows startup is touched.
 - **Retention:** keep the last N snapshots (default 14, up to 365). Older manifests are deleted, then
   objects no remaining snapshot uses, once they're 12 hours old (so another PC still writing into a
   shared folder keeps its new files). If any manifest can't be read (still syncing), if the
   snapshots can't be listed, or if no snapshot is left, no object is deleted. Retention runs under
   the same lock as a backup, so it never removes an object a backup is reusing. Only the app's own files, by their exact names, inside its own subfolder, are ever
   deleted.
+- **Restore safety copies:** Settings → Backup shows the size of `restore-backups\`. **Clean up
+  restore safety copies older than 30 days** lists those copies (date, files, size) and asks first.
+  Only folders named with a restore's own time stamp count, aged by that name (not by file dates);
+  the newest is always kept; a link or junction is never followed or deleted (and a
+  `restore-backups` folder that is itself one, or leads outside the data folder, is never listed or
+  cleaned up); the list is checked
+  again right before deleting, and only copies that were shown and are still old enough go. **Clean
+  up automatically** (off by default) does the same at most once a day while the app is open.
 - **Restore:** pick a snapshot and see what would change, per kind of data. Files are restored only
   to the app's own data folder, and only paths on the backup's allow-list (a crafted manifest can't
   point anywhere else, `.claude` included). Every file is decrypted and checked into
@@ -907,6 +923,7 @@ records of sessions whose files are gone are kept as they were.
 | `archive\claude-ai\`                                    | Conversations imported from a claude.ai data export                                                              |
 | `accounts.json`                                         | API keys (encrypted), credit grants, cached Admin reports                                                        |
 | `bridge.json`, `backups\settings\`                      | What the installer changed, and the `settings.json` backups                                                      |
+| `logs\notifications.jsonl`                              | Each desktop notification: when it was sent and what Windows did (shown, failed and why, clicked). No text       |
 
 **Recalculate usage** (Usage view or Settings → Usage) re-reads every session from scratch.
 
@@ -1411,6 +1428,15 @@ These are choices I made where the spec left room, or had to deviate:
   only runs on status line updates), and check that the environment says "Receiving data" in
   Settings → Live limits. `rate_limits` only exists for Pro/Max subscriptions. In WSL, check
   `sh ~/.claude-session-dashboard/bin/statusline.sh < ~/.claude-session-dashboard/live/latest.json`.
+- **A notification didn't show up (Windows).** `logs\notifications.jsonl` in the data folder has one
+  line per notification event: `sent`, then `shown`, `failed` (with Windows' error; it's tried once
+  more) or nothing more (Windows dropped it). The first line of each run records the app's
+  AppUserModelID: the installed and portable app use `com.beaulewis.claude-session-dashboard`,
+  `npm run dev` the same with `.dev`. Also check Windows Settings → System → Notifications for the
+  app, and Do not disturb.
+- **Slow right after starting.** Start it with `CSD_TIMING=1` set to print the startup steps, each
+  Resume preview step, and any time the main process was busy for more than 100 ms;
+  `CSD_CPU_PROFILE=<file>` also writes a CPU profile of the first 30 seconds.
 - **Nothing shows up.** Open Settings and check the scan sources. Add your `.claude` folder with
   **Add folder…** if it lives somewhere unusual.
 

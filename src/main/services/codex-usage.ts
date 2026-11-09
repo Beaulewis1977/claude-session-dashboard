@@ -324,7 +324,11 @@ export class CodexUsageStore {
     const holders = new Set<string>()
     for (const [key, c] of this.bySession)
       if (c.records.some((r) => wanted.has(r.id) || wanted.has(recContent(r)))) holders.add(key)
-    const byTime = (a: UsageRecord, b: UsageRecord) => a.ts - b.ts || (a.id < b.id ? -1 : 1)
+    // By time, and in file order when times tie (the sort is stable and each
+    // session's rows are kept in their rollout's order): a fork's copies are
+    // often written in one millisecond, and their order must stay Codex's own
+    // to match its parent's rows one to one, in order.
+    const byTime = (a: UsageRecord, b: UsageRecord) => a.ts - b.ts
     const startOf = (sid: string) => links.get(sid)?.start ?? first.get(sid) ?? 0
     for (const [key, rows] of burst) {
       const sid = recSid(rows[0])

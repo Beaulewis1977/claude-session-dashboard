@@ -2,12 +2,16 @@
 
 Ideas to build next, with the details and a ready-to-paste prompt for each.
 
-**Current state (Oct 31, 2026):** v1.4.0 installed. It includes:
+**Current state (Nov 9, 2026):** v1.13.1 installed. It includes:
 
 - session browsing, names synced from `/rename`, and per-session model and effort;
 - live limits, usage tracking, and limit-health detection;
 - phone companion, Remote Control and terminal access over Tailscale;
-- branching from any message.
+- branching from any message;
+- live sessions and alerts, backups, summaries and Continue fresh, context size before resume;
+- Codex support (sessions, usage and limits, Running now, summaries) and Open in Codex app.
+
+Next up: #6 Git links, then #7 Ask across all sessions.
 
 ---
 
@@ -364,7 +368,7 @@ Run typecheck, lint, tests and the build. Commit, push the branch and open a PR 
 - ✅ Loose ends after v1.13.0: phone keys on the async safeStorage API, a fast first Resume dialog
   at startup and one shared cache for the browser tests, restore safety copy cleanup, catch-up
   backups and Start with Windows, the two Codex Phase C edge cases, and the notification identity
-  with a notification log
+  with a notification log (PR #39, v1.13.1)
 
 **Next up:**
 

@@ -420,8 +420,15 @@ so.
   hooks.json (so an older event never overrides a later change, and "turned off" always wins; a save
   time that can't be read never counts). Codex trusts a hash of the whole hook group, so if the
   app's group is edited (a matcher added, an option changed) it counts as untrusted again. An exact
-  approval lasts until a tool output, a new tool call or the turn's end; progress lines another tool
-  writes meanwhile don't end it. Codex keys trust by position,
+  approval belongs to the call that asked (one running when the request came, an escalated one if
+  any): it lasts until that call's output or the turn's end. Another tool finishing or starting
+  doesn't end it. Codex logs nothing when you approve; an approved command's call returns within
+  its yield time (about a second in code mode), so the row goes back to Working then. A tool that
+  returns nothing until it's done stays shown as needing approval until then. Once Codex has
+  trusted the app's hook, the app keeps that hook's own hash (Codex hashes a hook's content, not its
+  position): a trust entry another group left at the hook's position never counts, nor does any
+  hash that was in config.toml before the hook was added. An edited hook shows as "Changed", with
+  Disable and enable again as the fix. Codex keys trust by position,
   so if you later add a PermissionRequest hook of your own after the app's, Disable warns that
   Codex will ask you to trust yours again. The script saves only the session id, the event and the
   tool name in `~/.claude-session-dashboard/codex-events/` and prints nothing, so Codex still asks
@@ -436,8 +443,10 @@ lock, so an open turn in the rollout of an unlocked CLI thread (a crash) is not 
 lock the app saw held and then released. A lock that can't be checked for a moment (an unreadable
 WSL share, a holder whose command line can't be read) is "can't tell", never "free": a thread seen
 open keeps its row, marked unconfirmed, for up to 30 minutes, and nothing is reported as ended. The
-same goes for a single lock file or rollout that can't be read, and for a whole home that becomes
-unreadable (a WSL share outage). Every
+same goes for a single lock file or rollout that can't be read, for a whole home that becomes
+unreadable (a WSL share outage), and for a home that drops out of the source list (a stopped
+distro's home replaced by a placeholder). Only turning Codex off clears its rows at once. An
+answered approval whose turn ends before the next read still alerts "Finished". Every
 lock file is looked at (Codex keeps old ones): on Windows each is probed and only held ones are
 `stat`ed; in WSL their inodes are cached for a minute (recently active threads are looked at
 afresh).

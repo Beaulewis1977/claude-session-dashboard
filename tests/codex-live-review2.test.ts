@@ -274,7 +274,7 @@ describe('an exact approval stays until it’s answered', () => {
     expect(state(r)).toMatchObject({ state: 'approval', basis: 'hook' })
   })
 
-  it('a tool output or a new tool call after the request does', () => {
+  it('the asking call’s output answers it; another tool starting doesn’t', () => {
     const out = base()
     reduceRollout(out, [
       ln(T0 - 300, 'response_item', { type: 'custom_tool_call_output', call_id: 'c1' })
@@ -289,7 +289,8 @@ describe('an exact approval stays until it’s answered', () => {
         arguments: '{}'
       })
     ])
-    expect(state(call).state).toBe('working')
+    // Another call starting meanwhile (the asking call c1 still has no output).
+    expect(state(call).state).toBe('approval')
   })
 })
 

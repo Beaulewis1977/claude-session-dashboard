@@ -95,6 +95,8 @@ const api: CsdApi = {
   saveSummary: (key, patch) => ipcRenderer.invoke('summaries:save', key, patch),
   removeSummary: (key) => ipcRenderer.invoke('summaries:remove', key),
   summaryAutoPreview: () => ipcRenderer.invoke('summaries:autoPreview'),
+  handoffStats: () => ipcRenderer.invoke('summaries:handoffStats'),
+  cleanHandoffs: () => ipcRenderer.invoke('summaries:cleanHandoffs'),
 
   toggleMiniMeter: () => ipcRenderer.invoke('mini:toggle'),
   closeMiniMeter: () => ipcRenderer.invoke('mini:close'),

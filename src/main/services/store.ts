@@ -23,6 +23,23 @@ export interface MetadataFile {
    * SessionService.backfillNameTimes). Absent in older files.
    */
   claudeNamesSince?: string
+  /**
+   * Continue fresh for an agent whose new session id can't be chosen (Codex):
+   * keyed by the handoff file's id, until a new session whose first prompt
+   * names that handoff file shows up (see SessionService.linkContinued).
+   */
+  pendingContinues?: Record<string, PendingContinue>
+}
+
+export interface PendingContinue {
+  parentSessionId: string
+  parentKey: string
+  /** The source the new session will be in (the parent's). */
+  sourceId: string
+  name?: string
+  model?: SessionMeta['model']
+  effort?: SessionMeta['effort']
+  createdAt: string
 }
 
 export interface SettingsFile extends AppSettings {

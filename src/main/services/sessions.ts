@@ -38,7 +38,13 @@ import { defaultProviders, type ProviderRegistry } from '../providers/registry'
 import type { BaseSummary, SessionFile, SessionProvider } from '../providers/types'
 import { SearchIndex } from './search'
 import type { ResolvedSource } from './sources'
-import { cleanMetaPatch, type AppPaths, type MetadataFile, type SettingsFile } from './store'
+import {
+  cleanMetaPatch,
+  type AppPaths,
+  type MetadataFile,
+  type PendingContinue,
+  type SettingsFile
+} from './store'
 
 // v2: lineage fields (firstUuid, forkedFrom, copiedFrom) and, separately,
 // source hints (entrypoint, IDE context, cloud link) for the source label.
@@ -81,6 +87,16 @@ async function mapLimit<T>(
     while (i < items.length) await fn(items[i++])
   })
   await Promise.all(workers)
+}
+
+/** A pending Continue fresh link is kept this long (the new session should show up in seconds). */
+export const PENDING_CONTINUE_MS = 7 * 24 * 3600_000
+
+/** The handoff id named in a Continue fresh session's first prompt (Codex: `handoffs/codex/<id>.md`). */
+export function continuedHandoffId(firstPrompt: string): string | undefined {
+  return /[\\/]handoffs[\\/]codex[\\/]([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.md\b/i
+    .exec(firstPrompt)?.[1]
+    ?.toLowerCase()
 }
 
 export class SessionService extends EventEmitter<{ changed: [] }> {
@@ -568,6 +584,50 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
     this.emitChanged()
   }
 
+  /**
+   * Continue fresh for an agent that picks its own new session id (Codex):
+   * remembered by the handoff's id until the new session shows up (see
+   * linkContinued). Older pending links than PENDING_CONTINUE_MS are dropped.
+   */
+  recordPendingContinue(handoffId: string, p: PendingContinue): void {
+    const t = Date.now()
+    this.metadata.update((d) => {
+      const pending = { ...(d.pendingContinues ?? {}) }
+      for (const [k, v] of Object.entries(pending))
+        if (!(t - Date.parse(v.createdAt) < PENDING_CONTINUE_MS)) delete pending[k]
+      pending[handoffId] = p
+      d.pendingContinues = pending
+    })
+  }
+
+  /**
+   * A new session whose first prompt names a pending Continue fresh handoff
+   * (`…handoffs/codex/<id>.md`, a random id only the app made): record where
+   * it came from and its default name, as for Claude Code's Continue fresh.
+   */
+  private linkContinued(base: BaseSummary): void {
+    const pending = this.metadata.value.pendingContinues
+    if (!pending || !base.firstPrompt) return
+    const id = continuedHandoffId(base.firstPrompt)
+    const p = id ? pending[id] : undefined
+    if (!id || !p || p.sourceId !== base.sourceId || p.parentSessionId === base.sessionId) return
+    if (!(Date.now() - Date.parse(p.createdAt) < PENDING_CONTINUE_MS)) return
+    this.metadata.update((d) => {
+      if (d.pendingContinues) delete d.pendingContinues[id]
+    })
+    this.recordBranch(
+      this.metaKeyOf(base),
+      {
+        parentSessionId: p.parentSessionId,
+        parentKey: p.parentKey,
+        via: 'continue',
+        createdAt: p.createdAt
+      },
+      p.name,
+      { model: p.model, effort: p.effort }
+    )
+  }
+
   /** Load a file the app just created, and return its summary. */
   async loadNew(sourceId: string, path: string): Promise<SessionSummary | undefined> {
     await this.fileChanged(sourceId, path)
@@ -677,6 +737,7 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
       this.loadSeq.set(key, (this.loadSeq.get(key) ?? 0) + 1)
       this.owner.set(key, provider.id)
       this.entries.set(key, { base, size: f.size, mtimeMs: f.mtimeMs, ...(pv ? { pv } : {}) })
+      this.linkContinued(base)
       this.queueArchive(src, base)
       return
     }
@@ -699,6 +760,7 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
     const pv = provider.parseVersion
     this.entries.set(key, { base, size: f.size, mtimeMs: f.mtimeMs, ...(pv ? { pv } : {}) })
     this.index(base, searchText)
+    this.linkContinued(base)
     this.queueArchive(src, base)
   }
 

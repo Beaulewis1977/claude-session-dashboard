@@ -1,7 +1,7 @@
 // Launches requested from a paired phone.
 //
 // A phone can only ask for Resume, Fork, Branch or Continue fresh of a
-// session the app knows (Codex sessions: Resume and Fork only).
+// session the app knows (Codex sessions: Resume, Fork and Continue fresh; no Branch).
 // The options are fixed here, whatever the phone sends: Remote Control on
 // (Claude Code; Codex has none, and asks before acting, in its workspace sandbox),
 // the Claude subscription (never an API key), permission prompts kept
@@ -105,7 +105,7 @@ export class RemoteLauncher {
     if (s.availability === 'imported')
       return { error: 'Conversations imported from claude.ai can be read, not resumed.' }
     const provider = providerOf(s)
-    if (provider !== 'claude' && (req.kind === 'branch' || req.kind === 'continue'))
+    if (provider !== 'claude' && req.kind === 'branch')
       return {
         error: `${VERB[req.kind]} isn't available for ${PROVIDER_LABEL[provider]} sessions.`
       }

@@ -60,6 +60,8 @@ export function blockToMarkdown(b: ContentBlock): string {
       return `<details>\n<summary>Tool result</summary>\n\n${toolResult(b.result)}\n\n</details>`
     case 'image':
       return '_[image]_'
+    case 'agent_message':
+      return `<details>\n<summary>Agent → Agent: ${escapeHtml(b.author)} → ${escapeHtml(b.recipient)}</summary>\n\n${b.text}\n\n</details>`
   }
 }
 

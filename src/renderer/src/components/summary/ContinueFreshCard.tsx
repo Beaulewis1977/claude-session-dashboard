@@ -4,18 +4,23 @@
 import { useState } from 'react'
 import { ChevronDown, ChevronRight, FileText, Info, TriangleAlert, Zap } from 'lucide-react'
 import type { ContinueFreshPreview } from '@shared/types'
+import type { ProviderId } from '@shared/provider'
 
 export const ContinueIcon = Zap
 
 export function ContinueFreshCard({
   preview,
   error,
-  messageCount
+  messageCount,
+  provider = 'claude'
 }: {
   preview?: ContinueFreshPreview
   error?: string
   messageCount: number
+  /** Whose session starts (Codex picks the new session's id itself). */
+  provider?: ProviderId
 }) {
+  const codex = provider === 'codex'
   const [show, setShow] = useState(false)
   return (
     <div className="space-y-3">
@@ -44,9 +49,15 @@ export function ContinueFreshCard({
           <div className="flex items-center gap-2 px-3 py-2 text-xs">
             <Zap className="size-3.5 shrink-0 text-muted-foreground" />
             <span className="shrink-0 font-medium">{preview.name}</span>
-            <span className="min-w-0 truncate font-mono text-[11px] text-muted-foreground">
-              {preview.newSessionId}
-            </span>
+            {codex ? (
+              <span className="min-w-0 truncate text-[11px] text-muted-foreground">
+                Codex picks the new session&apos;s id; it&apos;s linked when it appears.
+              </span>
+            ) : (
+              <span className="min-w-0 truncate font-mono text-[11px] text-muted-foreground">
+                {preview.newSessionId}
+              </span>
+            )}
           </div>
           <div className="border-t border-border px-3 py-2 text-xs">
             <div className="flex items-start gap-2 text-muted-foreground">
@@ -54,11 +65,13 @@ export function ContinueFreshCard({
               <span>
                 The summary is written to a new file in the app&apos;s data folder, and the first
                 message{' '}
-                {preview.mode === 'mention'
-                  ? 'attaches it with an @-mention'
-                  : 'asks Claude to read it (its folder is added with --add-dir)'}
-                , so the summary never goes on a command line. Nothing is written to Claude&apos;s
-                files.
+                {codex
+                  ? 'asks Codex to read it (its sandbox can read the file, so no folder is added)'
+                  : preview.mode === 'mention'
+                    ? 'attaches it with an @-mention'
+                    : 'asks Claude to read it (its folder is added with --add-dir)'}
+                , so the summary never goes on a command line. Nothing is written to{' '}
+                {codex ? 'Codex' : 'Claude'}&apos;s files.
               </span>
             </div>
             <div

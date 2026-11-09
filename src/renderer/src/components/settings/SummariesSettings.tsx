@@ -2,7 +2,7 @@
 // opt-in auto-summarize (with what it would use).
 
 import { useEffect, useState } from 'react'
-import { Gauge, Sparkles } from 'lucide-react'
+import { Gauge, Sparkles, Trash2 } from 'lucide-react'
 import {
   MAX_SUMMARY_CHARS,
   MIN_SUMMARY_CHARS,
@@ -11,7 +11,7 @@ import {
   type SummaryModel,
   type SummarySettings
 } from '@shared/summary'
-import { formatInt } from '@shared/format'
+import { formatBytes, formatInt } from '@shared/format'
 import type { AppSettings } from '@shared/types'
 import { api } from '@/lib/api'
 import { useApp } from '@/lib/store'
@@ -66,6 +66,92 @@ export function NumberField({
       />
       {suffix}
     </span>
+  )
+}
+
+type HandoffStats = Awaited<ReturnType<typeof api.handoffStats>>
+
+/**
+ * Continue fresh's handoff files: never deleted on their own. Their total
+ * size, and a clean-up of those older than 30 days that asks first.
+ */
+function HandoffCleanup() {
+  const [stats, setStats] = useState<HandoffStats | null>(null)
+  const [confirm, setConfirm] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [done, setDone] = useState<string | null>(null)
+  const load = (): void =>
+    void api
+      .handoffStats()
+      .then(setStats)
+      .catch(() => setStats(null))
+  useEffect(load, [])
+  const clean = async (): Promise<void> => {
+    setBusy(true)
+    try {
+      const r = await api.cleanHandoffs()
+      setDone(
+        r.deleted
+          ? `Deleted ${formatInt(r.deleted)} handoff file${r.deleted === 1 ? '' : 's'} (${formatBytes(r.bytes)}).`
+          : 'Nothing was deleted.'
+      )
+    } catch (err) {
+      setDone(`Couldn't clean up: ${(err as Error).message}`)
+    } finally {
+      setBusy(false)
+      setConfirm(false)
+      load()
+    }
+  }
+  return (
+    <>
+      <Row
+        label="Continue fresh handoffs"
+        hint={
+          <>
+            Each Continue fresh writes a small handoff file in the app&apos;s data folder. They are
+            never deleted on their own.{' '}
+            {stats
+              ? `${formatInt(stats.files)} file${stats.files === 1 ? '' : 's'}, ${formatBytes(stats.bytes)}; ${formatInt(stats.old.files)} older than 30 days.`
+              : ''}
+            {done && <span className="mt-1 block text-foreground/80">{done}</span>}
+          </>
+        }
+      >
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={!stats?.old.files || busy}
+          onClick={() => {
+            setDone(null)
+            setConfirm(true)
+          }}
+        >
+          <Trash2 /> Clean up handoffs older than 30 days
+        </Button>
+      </Row>
+      {confirm && stats && (
+        <div
+          role="alertdialog"
+          aria-label="Clean up old handoffs"
+          className="rounded-lg border border-warning/30 bg-warning-soft p-3 text-xs leading-relaxed"
+        >
+          Delete {formatInt(stats.old.files)} handoff file{stats.old.files === 1 ? '' : 's'} (
+          {formatBytes(stats.old.bytes)}) older than 30 days? Only the app&apos;s own handoff files in{' '}
+          <span className="font-mono">handoffs\</span> and{' '}
+          <span className="font-mono">handoffs\codex\</span> are deleted. Sessions started from them
+          aren&apos;t affected, and nothing in Claude&apos;s or Codex&apos;s folders is touched.
+          <div className="mt-2.5 flex justify-end gap-2">
+            <Button variant="ghost" size="sm" onClick={() => setConfirm(false)} disabled={busy}>
+              Cancel
+            </Button>
+            <Button variant="destructive" size="sm" onClick={() => void clean()} disabled={busy}>
+              <Trash2 /> Delete
+            </Button>
+          </div>
+        </div>
+      )}
+    </>
   )
 }
 
@@ -215,6 +301,7 @@ export function SummariesSettings({
           </div>
         </div>
       )}
+      <HandoffCleanup />
       <Row
         label="What is sent"
         hint={

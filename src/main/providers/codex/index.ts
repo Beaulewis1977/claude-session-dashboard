@@ -14,6 +14,7 @@ import { CODEX_EFFORT_LEVELS } from '@shared/model-choice'
 import { isUuid } from '@shared/jsonl'
 import { parseWslUnc } from '../../core/wsl'
 import { PROVIDER_CAPABILITIES } from '@shared/provider'
+import { readHandoffPrompt } from '@shared/summary'
 import { baseName } from '@shared/format'
 import type { BaseSummary, SessionProvider } from '../types'
 import { buildCodexLaunch, codexCommandLine } from './launch'
@@ -48,7 +49,8 @@ export function createCodexProvider(opts: { textCache?: CompactTextCache } = {})
     // and newer messages matched one by one, search covers prompts and answers first.
     // 8: images kept only as their type; older and newer messages paired only when near.
     // 9: context size from the last token_count.
-    parseVersion: 9,
+    // 10: messages between agents (agent_message items) are shown and searched.
+    parseVersion: 10,
 
     detectSources: (platform, opts) => detectCodexSources(platform, opts),
     listSessionFiles: (src) => listCodexFiles(codexHomeOf(src)),
@@ -149,7 +151,7 @@ export function createCodexProvider(opts: { textCache?: CompactTextCache } = {})
       appLink: (sessionId) => (isUuid(sessionId) ? `codex://threads/${sessionId}` : undefined),
       buildCommand: buildCodexLaunch,
       commandLine: codexCommandLine,
-      handoffPrompt: () => undefined,
+      handoffPrompt: readHandoffPrompt,
       sessionFilePath: (s, sessionId) => join(dirname(s.originalPath), `${sessionId}.jsonl`)
     },
 

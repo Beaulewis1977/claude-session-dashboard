@@ -286,6 +286,8 @@ export const webApi: CsdApi = {
   saveSummary: (key, patch) => rpc('saveSummary', key, patch),
   removeSummary: onPc('Removing a summary'),
   summaryAutoPreview: onPc('Auto-summarize'),
+  handoffStats: onPc('Handoff files'),
+  cleanHandoffs: onPc('Cleaning up handoffs'),
 
   toggleMiniMeter: onPc('The mini meter'),
   rescanLimits: onPc('Rescanning'),

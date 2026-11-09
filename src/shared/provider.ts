@@ -119,15 +119,16 @@ export const PROVIDER_CAPABILITIES: Record<ProviderId, ProviderCapabilities> = {
     live: true
   },
   // Codex (Phase B): `codex resume` and `codex fork`; no Branch from here (it would
-  // write into ~/.codex), no Continue fresh or summaries yet. Phase C: usage and limits.
+  // write into ~/.codex). Phase C: usage and limits. Phase D2: summaries (written by
+  // Claude, as for Claude Code sessions) and Continue fresh (a new `codex` session).
   codex: {
     fork: true,
     branch: false,
-    continueFresh: false,
+    continueFresh: true,
     remoteControl: false,
     apiBilling: false,
     newSession: false,
-    summaries: false,
+    summaries: true,
     usage: true,
     restore: false,
     // Phase D1: Running now and alerts, from thread locks and rollouts (+ the opt-in hook).

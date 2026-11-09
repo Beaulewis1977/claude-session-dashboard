@@ -525,7 +525,7 @@ export class Launcher {
     // The handoff is in the app's own folder: checked directly, not through the platform.
     const free = async (id: string): Promise<boolean> =>
       !(await this.platform.pathExists(p.launch.sessionFilePath(s, id))) &&
-      !(await fileExists(handoffPath(dataDir, id)))
+      !(await fileExists(handoffPath(dataDir, id, p.id)))
     if (wanted && isUuid(wanted) && (await free(wanted))) return wanted
     for (let i = 0; i < 20; i++) {
       const id = randomUUID()
@@ -547,8 +547,12 @@ export class Launcher {
       )
     const summary = s.meta.aiSummary
     if (!summary) throw new Error(NO_SUMMARY)
+    const p = this.provider(s)
+    // Claude Code: the new session's own id. Codex picks its id itself: then
+    // this is only the handoff's id, which links the new session once it
+    // shows up (see SessionService.linkContinued).
     const id = await this.freeContinueId(s, dataDir, req.newSessionId)
-    const path = handoffPath(dataDir, id)
+    const path = handoffPath(dataDir, id, p.id)
     let sessionPath: string | undefined = path
     if (s.env === 'wsl') {
       // Where this distro mounts the app's data folder (its own automount root).
@@ -557,16 +561,19 @@ export class Launcher {
         throw new Error(
           `${s.sourceLabel} can't read the app's data folder, where the handoff goes. Check that Windows drives are mounted in this distro ([automount] in /etc/wsl.conf), and that it's running.`
         )
-      sessionPath = `${root}/handoffs/${id}.md`
+      sessionPath = `${root}/handoffs/${p.id === 'codex' ? 'codex/' : ''}${id}.md`
     }
-    const p = this.provider(s)
     const prompt = p.launch.handoffPrompt(sessionPath)
     if (!prompt)
       throw new Error(
         `The app's data folder has characters in its path that can't be passed to ${p.productName} safely.`
       )
+    // Claude Code reads only its project and added folders, so the "read the
+    // file" form adds the handoff's folder. Codex's sandbox reads anywhere
+    // (it limits writes, checked with `codex sandbox` on Windows), and its
+    // --add-dir would make the folder writable too: never added for Codex.
     const addDir =
-      prompt.mode === 'read'
+      prompt.mode === 'read' && p.id !== 'codex'
         ? s.env === 'wsl'
           ? sessionPath.slice(0, sessionPath.lastIndexOf('/'))
           : dirname(path)
@@ -578,6 +585,7 @@ export class Launcher {
     const name = continuedName(s.title, names)
     const handoff = buildHandoff(
       {
+        product: p.productName,
         title: s.title,
         sessionId: s.sessionId,
         cwd: s.cwd,
@@ -942,7 +950,9 @@ export class Launcher {
     } catch (err) {
       return fail((err as Error).message)
     }
-    const continued = cont ? { continuedKey: cont.target.key } : {}
+    // Codex picks the new session's id itself: its key is known only once it shows up.
+    const pickedId = cont !== undefined && this.provider(s).id !== 'codex'
+    const continued = cont && pickedId ? { continuedKey: cont.target.key } : {}
 
     // 1. Restore the original file from the archive if it's missing. Never overwrite.
     //    (Claude Code only: the app never writes into another agent's folder.)
@@ -975,7 +985,12 @@ export class Launcher {
     if (cont) {
       // A new file only: never overwrites (a clash means another id next time).
       try {
-        await writeHandoff(this.dataDir!, cont.preview.newSessionId, cont.preview.handoff)
+        await writeHandoff(
+          this.dataDir!,
+          cont.preview.newSessionId,
+          cont.preview.handoff,
+          this.provider(s).id
+        )
       } catch (err) {
         return {
           ...fail(
@@ -1039,6 +1054,19 @@ export class Launcher {
           error: String((err as Error).message)
         }
       }
+    }
+    if (cont && !pickedId) {
+      // Codex: linked when a new session whose first prompt names this handoff shows up.
+      this.sessions.recordPendingContinue(cont.preview.newSessionId, {
+        parentSessionId: s.sessionId,
+        parentKey: s.key,
+        sourceId: s.sourceId,
+        name: cont.preview.name,
+        ...(s.meta.model ? { model: s.meta.model } : {}),
+        ...(s.meta.effort ? { effort: s.meta.effort } : {}),
+        createdAt: new Date().toISOString()
+      })
+      return { ok: true, restored, commandLine: cmd.commandLine, ...continued }
     }
     if (cont) {
       // Where the new session came from (the app's metadata only), named and

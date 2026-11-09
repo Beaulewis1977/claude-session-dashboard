@@ -207,6 +207,10 @@ export interface CsdApi {
   removeSummary(key: string): Promise<SessionSummary | null>
   /** Sessions auto-summarize would pick now, and what that would use. */
   summaryAutoPreview(): Promise<{ count: number; estimate: SummaryEstimate }>
+  /** Continue fresh's handoff files (Claude Code's and Codex's): how many, how big, how many are old. */
+  handoffStats(): Promise<{ files: number; bytes: number; old: { files: number; bytes: number } }>
+  /** Delete handoff files older than 30 days (asked first in Settings; desktop only). */
+  cleanHandoffs(): Promise<{ deleted: number; bytes: number }>
 
   // Tray and mini meter
   toggleMiniMeter(): Promise<boolean>

@@ -90,7 +90,7 @@ export function openContinueFresh(key: string): void {
   const s = get().sessions.find((x) => x.key === key)
   if (!s) return
   if (!capsOf(s).continueFresh) {
-    toast("Continue fresh isn't available for Codex sessions yet")
+    toast("Continue fresh isn't available for this session")
     return
   }
   if (s.availability === 'imported') {

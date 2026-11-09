@@ -735,7 +735,7 @@ describe('launch commands', () => {
     })
     for (const [what, opts] of [
       ['Branch from here', { branch: { at: 'x', mode: 'include' as const } }],
-      ['Continue fresh', { continueFresh: {} }],
+      // Continue fresh is available for Codex since Phase D2 (tests/codex-d2.test.ts).
       ['Remote Control', { remoteControl: true }],
       ['Launching on API credits', { billingAccountId: 'acct-1' }],
       ['A new session in this folder', { newSession: true }]

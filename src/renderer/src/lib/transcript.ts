@@ -53,6 +53,8 @@ function blockText(b: ContentBlock): string {
       return `${b.label}\n${JSON.stringify(b.input)}\n${b.result?.text ?? ''}`
     case 'tool_result':
       return b.result.text
+    case 'agent_message':
+      return `${b.author} → ${b.recipient}\n${b.text}`
     default:
       return ''
   }
@@ -66,7 +68,10 @@ export function blocksMatching(messages: ChatMessage[], query: string): Set<stri
   for (const m of messages) {
     m.blocks.forEach((b, i) => {
       if (
-        (b.type === 'tool_use' || b.type === 'thinking' || b.type === 'tool_result') &&
+        (b.type === 'tool_use' ||
+          b.type === 'thinking' ||
+          b.type === 'tool_result' ||
+          b.type === 'agent_message') &&
         blockText(b).toLowerCase().includes(q)
       ) {
         out.add(blockId(m, b, i))

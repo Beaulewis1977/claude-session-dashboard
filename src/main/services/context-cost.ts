@@ -112,6 +112,8 @@ export class ContextCost {
       prices: coldPrices(this.deps.codex.prices()),
       weights: st.capacityWeights,
       dollarsPerPct: basis?.value,
+      // Continue fresh: Codex's own setup (its first request) plus the handoff.
+      handoffChars: s.meta.aiSummary ? summaryMarkdown(s.meta.aiSummary).length : undefined,
       now: now()
     })
     return {

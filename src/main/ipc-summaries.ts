@@ -2,6 +2,7 @@
 
 import { BrowserWindow } from 'electron'
 import { guardPct, sanitizeSummarySettings } from '@shared/summary'
+import { cleanupHandoffs, handoffStats } from './core/handoff'
 import type { JsonStore } from './core/json-store'
 import { handle } from './ipc-guard'
 import type { LimitsService } from './services/limits'
@@ -83,6 +84,9 @@ export function registerSummaryIpc(deps: {
   handle('summaries:save', (_e, k, patch) => summaries.save(key(k), patch))
   handle('summaries:remove', (_e, k) => summaries.remove(key(k)))
   handle('summaries:autoPreview', () => summaries.autoPreview())
+  // Continue fresh's handoff files: their size, and a clean-up I ask for (desktop only).
+  handle('summaries:handoffStats', () => handoffStats(deps.dataDir))
+  handle('summaries:cleanHandoffs', () => cleanupHandoffs(deps.dataDir))
 
   // Auto-summarize: opt-in; checks every 10 minutes and soon after a session changes.
   let soon: NodeJS.Timeout | undefined

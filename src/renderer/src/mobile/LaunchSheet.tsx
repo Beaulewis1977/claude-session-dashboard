@@ -170,8 +170,10 @@ export function LaunchSheet({
                   <>Fixtures mode: the command was built but nothing was started.</>
                 ) : codex ? (
                   <>
-                    A terminal opened on your PC running Codex with this session. Continue it there
-                    (or over SSH).
+                    {target.kind === 'continue'
+                      ? 'A terminal opened on your PC running a new Codex session that starts from the summary.'
+                      : 'A terminal opened on your PC running Codex with this session.'}{' '}
+                    Continue it there (or over SSH).
                   </>
                 ) : (
                   <>

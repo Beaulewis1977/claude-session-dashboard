@@ -2,7 +2,7 @@
 // @shared/git/guard and ./runner). Fixtures mode swaps in ./fixtures.
 
 import { posix, win32 } from 'node:path'
-import { GH_AUTH_ARGS, gitArgs, ghPrListArgs } from '@shared/git/guard'
+import { DIFF_MERGES, GH_AUTH_ARGS, gitArgs, ghPrListArgs } from '@shared/git/guard'
 import {
   LOG_FORMAT,
   REF_FORMAT,
@@ -182,6 +182,7 @@ export function createRealBackend(
         '--numstat',
         '-M',
         '--date-order',
+        DIFF_MERGES,
         `--format=${LOG_FORMAT}`,
         `--max-count=${o.maxCount}`,
         ...(o.since !== undefined
@@ -191,29 +192,45 @@ export function createRealBackend(
         ...o.revs,
         ...(o.not?.length ? ['--not', ...o.not] : [])
       ]
-      const r = await git(env, root, args, { timeoutMs: 120_000, maxBytes: LOG_MAX_BYTES })
+      let r = await git(env, root, args, { timeoutMs: 120_000, maxBytes: LOG_MAX_BYTES })
+      // git before 2.31 has no --diff-merges (its merges then list no files).
+      if (!ok(r) && !r.stdout && /diff-merges/.test(r.stderr))
+        r = await git(
+          env,
+          root,
+          args.filter((a) => a !== DIFF_MERGES),
+          { timeoutMs: 120_000, maxBytes: LOG_MAX_BYTES }
+        )
       if (!(ok(r) || (r.truncated && r.stdout))) return undefined
       const commits = parseLog(r.stdout)
       // A cut record at the end is dropped by the parser; the rest is kept.
       return { commits, truncated: r.truncated || commits.length >= o.maxCount }
     },
     async show(env, root, sha, paths, maxBytes) {
-      const r = await git(
-        env,
-        root,
-        [
-          'show',
-          '--format=',
-          '--patch',
-          '--no-color',
-          '--no-ext-diff',
-          '--no-textconv',
-          '-M',
-          sha,
-          ...(paths?.length ? ['--', ...paths] : [])
-        ],
-        { timeoutMs: 60_000, maxBytes }
-      )
+      // The prefixes the parser expects, whatever diff.srcPrefix / noprefix say; a
+      // merge compared with its first parent (a combined diff isn't readable here).
+      const args = [
+        'show',
+        '--format=',
+        '--patch',
+        '--no-color',
+        '--no-ext-diff',
+        '--no-textconv',
+        '-M',
+        DIFF_MERGES,
+        '--src-prefix=a/',
+        '--dst-prefix=b/',
+        sha,
+        ...(paths?.length ? ['--', ...paths] : [])
+      ]
+      let r = await git(env, root, args, { timeoutMs: 60_000, maxBytes })
+      if (!ok(r) && !r.stdout && /diff-merges/.test(r.stderr))
+        r = await git(
+          env,
+          root,
+          args.filter((a) => a !== DIFF_MERGES),
+          { timeoutMs: 60_000, maxBytes }
+        )
       if (ok(r) || (r.truncated && r.stdout)) return { text: r.stdout, truncated: r.truncated }
       return { text: '', truncated: false, error: classifyGitError(r).message }
     },

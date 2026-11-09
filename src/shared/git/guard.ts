@@ -19,7 +19,10 @@ export const SAFE_GIT_CONFIG = [
   'log.showSignature=false',
   'color.ui=false',
   'diff.external=',
-  'core.pager=cat'
+  'core.pager=cat',
+  // No automatic maintenance or gc (they write), whatever the repo's config says.
+  'maintenance.auto=false',
+  'gc.auto=0'
 ] as const
 
 export const GIT_PREFIX: readonly string[] = [
@@ -47,6 +50,9 @@ const REV_PARSE_FLAGS = new Set([
   '--show-prefix'
 ])
 
+/** A merge commit is compared with its first parent (what the merge brought in), in history and diffs alike. */
+export const DIFF_MERGES = '--diff-merges=first-parent'
+
 const LOG_FLAGS = new Set([
   '--no-color',
   '--numstat',
@@ -60,7 +66,8 @@ const LOG_FLAGS = new Set([
   '--ignore-missing',
   '--no-walk',
   '--no-ext-diff',
-  '--no-textconv'
+  '--no-textconv',
+  DIFF_MERGES
 ])
 
 const SHOW_FLAGS = new Set([
@@ -69,7 +76,10 @@ const SHOW_FLAGS = new Set([
   '-M',
   '--no-ext-diff',
   '--no-textconv',
-  '--format='
+  '--format=',
+  DIFF_MERGES,
+  '--src-prefix=a/',
+  '--dst-prefix=b/'
 ])
 
 const CONFIG_KEYS = new Set(['user.email', 'remote.origin.url'])

@@ -256,7 +256,15 @@ describe('the processes', () => {
     expect(env.GH_HOST).toBeUndefined()
     expect(env.GH_REPO).toBeUndefined()
     expect(env.GH_TOKEN).toBe('t')
-    expect(env).toMatchObject({ PATH: 'x', GIT_OPTIONAL_LOCKS: '0', GIT_TERMINAL_PROMPT: '0' })
+    expect(env).toMatchObject({
+      PATH: 'x',
+      GIT_OPTIONAL_LOCKS: '0',
+      GIT_TERMINAL_PROMPT: '0',
+      // A partial clone never fetches (and writes) a missing object for a read.
+      GIT_NO_LAZY_FETCH: '1'
+    })
+    // No automatic maintenance or gc on any call.
+    expect(GIT_PREFIX).toEqual(expect.arrayContaining(['maintenance.auto=false', 'gc.auto=0']))
     expect(GH_ENV.GH_NO_UPDATE_NOTIFIER).toBe('1')
   })
 
@@ -273,6 +281,7 @@ describe('the processes', () => {
       'GIT_OPTIONAL_LOCKS=0',
       'GIT_TERMINAL_PROMPT=0',
       'GIT_LITERAL_PATHSPECS=1',
+      'GIT_NO_LAZY_FETCH=1',
       'LC_ALL=C',
       'git',
       '--no-pager',

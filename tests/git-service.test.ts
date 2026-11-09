@@ -490,6 +490,105 @@ describe('the git links service', () => {
     expect([...svc.filter(parseGitQuery('commit:abc1234'))]).toEqual(['p'])
   })
 
+  it("a copy is its ancestor's even when the parent in between has nothing of its own", async () => {
+    const gpPr = {
+      owner: 'beau',
+      repo: 'acme',
+      number: 3,
+      url: 'https://github.com/beau/acme/pull/3',
+      at: at(2)
+    }
+    const gpSeen = { sha: 'abc1234', kind: 'commit-line' as const, from: at(1), to: at(1) }
+    const mine = { ...gpPr, number: 4, url: 'https://github.com/beau/acme/pull/4', at: at(30) }
+    const f = fakeBackend([])
+    const codex = { cwd: 'C:\\nowhere', provider: 'codex' as const }
+    const { svc } = service(
+      [
+        input('gp', { ...codex, signals: sig({ prs: [gpPr], commits: [gpSeen] }) }),
+        // Its own copy of the grandparent was recognised: nothing left.
+        input('p', { ...codex, forkOf: 'gp', forkAt: at(5), signals: sig() }),
+        // Its copy (of the parent's copy) wasn't, and was stamped after its own start.
+        input('c', {
+          ...codex,
+          forkOf: 'p',
+          forkAt: at(10),
+          signals: sig({
+            prs: [{ ...gpPr, at: at(11) }, mine],
+            commits: [{ ...gpSeen, from: at(11), to: at(11) }]
+          })
+        })
+      ],
+      f.backend
+    )
+    await svc.start()
+    await svc.schedule({ force: false })
+    expect(svc.view('c', { refresh: false })!.prs.map((x) => x.number)).toEqual([4])
+    expect([...svc.filter(parseGitQuery('commit:abc1234'))]).toEqual(['gp'])
+  })
+
+  it("a fork's copied PR doesn't bring the parent's PR back through its branch (gh)", async () => {
+    const pr14 = {
+      owner: 'beau',
+      repo: 'acme',
+      number: 14,
+      url: 'https://github.com/beau/acme/pull/14',
+      at: at(40)
+    }
+    const f = fakeBackend([ACME])
+    const { svc } = service(
+      [
+        input('p', { signals: sig({ branches: ['fix/login'], prs: [pr14] }) }),
+        // No commits of its own (nothing in its stretch); only the parent's PR in its copy.
+        input('f', {
+          forkOf: 'p',
+          forkAt: at(90),
+          signals: sig({
+            branches: ['fix/login'],
+            prs: [{ ...pr14, at: at(95) }],
+            spans: [[at(90), at(120)]]
+          })
+        })
+      ],
+      f.backend,
+      { git: { gh: 'on' } }
+    )
+    await svc.start()
+    await svc.schedule({ force: false })
+    expect(svc.view('p', { refresh: false })!.prs.map((x) => x.number)).toEqual([14])
+    expect(svc.view('f', { refresh: false })!.commits).toEqual([])
+    expect(svc.view('f', { refresh: false })!.prs).toEqual([])
+    expect(svc.badge('f')).toBeUndefined()
+  })
+
+  it("a Claude fork's copied edits (the parent's times) aren't its own, with or without the parent", async () => {
+    const dir = 'C:\\code\\acme\\src\\'
+    const parent = input('p', {
+      signals: sig({ files: [`${dir}parent-only.ts`, `${dir}both.ts`], filesAt: [at(10), at(12)] })
+    })
+    const fork = input('f', {
+      forkOf: 'p',
+      forkAt: at(20),
+      signals: sig({
+        // Edited in the copy only; in the copy and again after the split; only after it.
+        files: [`${dir}parent-only.ts`, `${dir}both.ts`, `${dir}mine.ts`],
+        filesAt: [at(10), at(26), at(25)]
+      })
+    })
+    for (const list of [[parent, fork], [fork]]) {
+      const { svc } = service(list, fakeBackend([ACME]).backend)
+      await svc.start()
+      await svc.schedule({ force: false })
+      const touched = (p: string) => [...svc.filter(parseGitQuery(`touched:${p}`))].sort()
+      expect(touched('parent-only.ts')).toEqual(list.length === 2 ? ['p'] : [])
+      expect(touched('mine.ts')).toEqual(['f'])
+      expect(touched('both.ts')).toEqual(list.length === 2 ? ['f', 'p'] : ['f'])
+      expect(svc.view('f', { refresh: false })!.uncommitted.sort()).toEqual([
+        'src/both.ts',
+        'src/mine.ts'
+      ])
+    }
+  })
+
   it('a removed worktree: the repo is read through another of its worktrees', async () => {
     let wtGone = false
     const f = fakeBackend([ACME])

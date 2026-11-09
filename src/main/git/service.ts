@@ -356,22 +356,49 @@ export class GitLinksService extends EventEmitter<{ changed: [] }> {
   }
 
   /**
-   * A session's signals without what it copied from its parent (a fork, a branch
-   * or a Codex subagent replays the parent's history, whose `git commit` and
-   * `gh pr create` output is the parent's): commits and PRs the parent's own file
-   * also has are the parent's, however late the copy was written.
+   * A session's own signals, without what it copied from its parent (a fork, a
+   * branch or a subagent starts from its parent's history, whose `git commit` /
+   * `gh pr create` output and edits are the parent's):
+   * - a Codex copy is left out when its file is read (see copiedLines);
+   * - a copy that keeps the parent's times (Claude Code): what it saw or edited
+   *   up to the split is the parent's;
+   * - commits and PRs that any ancestor's file also has are that ancestor's,
+   *   however late the copy was written and whether or not the parent in
+   *   between has any of its own.
    */
   private ownSignals(i: GitInput): SessionGitSignals | undefined {
     const sig = i.signals
-    const pid = i.forkOf ?? i.parentId
-    const parent = pid ? this.byId.get(`${i.provider}:${pid}`)?.signals : undefined
-    if (!sig || !parent || (!parent.prs.length && !parent.commits.length)) return sig
-    const prs = new Set(parent.prs.map((x) => x.url))
-    const shas = new Set(parent.commits.map((x) => x.sha))
+    if (!sig) return sig
+    let out = sig
+    const cut = i.forkAt
+    if (cut !== undefined) {
+      const at = sig.filesAt
+      const keep = sig.files.map((_, k) => !(at?.[k] && at[k] <= cut))
+      out = {
+        ...sig,
+        files: sig.files.filter((_, k) => keep[k]),
+        ...(at ? { filesAt: at.filter((_, k) => keep[k]) } : {}),
+        commits: sig.commits.filter((c) => c.to > cut),
+        prs: sig.prs.filter((p) => p.at > cut)
+      }
+    }
+    const prs = new Set<string>()
+    const shas = new Set<string>()
+    const seen = new Set<string>()
+    let cur: GitInput | undefined = i
+    while (cur && seen.size < 50) {
+      const pid: string | undefined = cur.forkOf ?? cur.parentId
+      if (!pid || seen.has(pid)) break
+      seen.add(pid)
+      cur = this.byId.get(`${i.provider}:${pid}`)
+      for (const p of cur?.signals?.prs ?? []) prs.add(p.url)
+      for (const c of cur?.signals?.commits ?? []) shas.add(c.sha)
+    }
+    if (!prs.size && !shas.size) return out
     return {
-      ...sig,
-      prs: sig.prs.filter((x) => !prs.has(x.url)),
-      commits: sig.commits.filter((x) => !shas.has(x.sha))
+      ...out,
+      prs: out.prs.filter((x) => !prs.has(x.url)),
+      commits: out.commits.filter((x) => !shas.has(x.sha))
     }
   }
 
@@ -546,13 +573,19 @@ export class GitLinksService extends EventEmitter<{ changed: [] }> {
     })
   }
 
-  /** Branches whose PRs are looked up for a session: its own and its commits' (not the default branch). */
-  private prBranches(repo: RepoState, i: GitInput, links: CommitLink[]): string[] {
+  /**
+   * Branches whose PRs are looked up for a session: its own (when it has commits
+   * or PRs of its own) and its commits' (not the default branch).
+   */
+  private prBranches(
+    repo: RepoState,
+    sig: SessionGitSignals | undefined,
+    links: CommitLink[]
+  ): string[] {
     const def = defaultBranch(repo.refs)
     const out = new Set<string>()
     const linked = links.filter((l) => LEVEL_RANK[l.level] >= LEVEL_RANK.medium)
-    if (linked.length || i.signals?.prs.length)
-      for (const b of i.signals?.branches ?? []) out.add(b)
+    if (linked.length || sig?.prs.length) for (const b of sig?.branches ?? []) out.add(b)
     for (const l of linked) for (const b of repo.commits.get(l.sha)?.branches ?? []) out.add(b)
     out.delete(def ?? '')
     return [...out].slice(0, 20)
@@ -579,7 +612,8 @@ export class GitLinksService extends EventEmitter<{ changed: [] }> {
     )
     for (const i of list) {
       const own = links.get(i.key) ?? []
-      const branches = this.prBranches(repo, i, own)
+      const sig = this.ownSignals(i)
+      const branches = this.prBranches(repo, sig, own)
       const exact = own.filter((l) => l.level === 'exact').map((l) => l.sha)
       const gh = this.ghOn() ? this.ghPrsFor(repo.github, branches, exact) : []
       // A PR found by one of its exact commits is the session's whatever its branch.
@@ -587,7 +621,7 @@ export class GitLinksService extends EventEmitter<{ changed: [] }> {
         for (const p of this.gh.get(`${repo.github}@${sha}`)?.prs ?? [])
           branches.push(p.headRefName)
       const prs = sessionPrs({
-        signals: this.ownSignals(i),
+        signals: sig,
         links: own,
         commits: repo.commits,
         github: repo.github,
@@ -596,7 +630,7 @@ export class GitLinksService extends EventEmitter<{ changed: [] }> {
       })
       const f = this.folders.get(placeKey(i))
       const touched = new Set<string>()
-      for (const file of i.signals?.files ?? []) {
+      for (const file of sig?.files ?? []) {
         const rel =
           f?.root !== undefined
             ? repoFile(
@@ -622,14 +656,15 @@ export class GitLinksService extends EventEmitter<{ changed: [] }> {
   }
 
   private computeWithoutRepo(i: GitInput, f: FolderState | undefined): void {
-    const prs = sessionPrs({ signals: this.ownSignals(i), links: [], commits: new Map() })
+    const sig = this.ownSignals(i)
+    const prs = sessionPrs({ signals: sig, links: [], commits: new Map() })
     this.computed.set(i.key, {
       status: f?.status ?? 'no-folder',
       ...(f?.message ? { message: f.message } : {}),
       links: [],
       prs,
       badge: prs.length ? { commits: 0, prs: prs.map((p) => p.number) } : undefined,
-      touched: (i.signals?.files ?? []).map((x) => normPath(x))
+      touched: (sig?.files ?? []).map((x) => normPath(x))
     })
   }
 
@@ -665,7 +700,8 @@ export class GitLinksService extends EventEmitter<{ changed: [] }> {
     const wanted = new Set<string>()
     for (const i of list) {
       if (onlyKey && i.key !== onlyKey) continue
-      for (const b of this.prBranches(repo, i, this.computed.get(i.key)?.links ?? [])) wanted.add(b)
+      const links = this.computed.get(i.key)?.links ?? []
+      for (const b of this.prBranches(repo, this.ownSignals(i), links)) wanted.add(b)
     }
     for (const b of wanted) {
       if (calls >= budget) break

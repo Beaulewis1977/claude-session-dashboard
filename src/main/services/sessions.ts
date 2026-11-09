@@ -61,7 +61,8 @@ import {
 // v10: the 1-hour share of what is cached now (not of all writes).
 // v11: git signals (branches, edited files, commits and PRs a session's own
 // tool calls printed, active stretches) for the git links.
-const CACHE_VERSION = 11
+// v12: when each file was edited, and a Codex copy found by where its own history starts.
+const CACHE_VERSION = 12
 
 interface CacheFile {
   version: number

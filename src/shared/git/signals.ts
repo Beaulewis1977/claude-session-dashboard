@@ -108,7 +108,8 @@ interface PendingCall {
 export class GitSignalBuilder {
   private times: number[] = []
   private branches = new Set<string>()
-  private files = new Set<string>()
+  /** Each file edited, and when it was last (epoch ms; 0 = no time). */
+  private files = new Map<string, number>()
   private commits = new Map<string, SeenCommit>()
   private prs = new Map<string, SeenPr>()
   private urls = new Set<string>()
@@ -126,9 +127,12 @@ export class GitSignalBuilder {
     if (b && b !== 'HEAD' && b.length <= 250 && !/\s/.test(b)) this.branches.add(b)
   }
 
-  file(path: unknown): void {
-    if (typeof path !== 'string' || !path.trim() || this.files.size >= MAX_SIGNAL_FILES) return
-    this.files.add(path.trim())
+  file(path: unknown, at?: number): void {
+    if (typeof path !== 'string' || !path.trim()) return
+    const p = path.trim()
+    if (!this.files.has(p) && this.files.size >= MAX_SIGNAL_FILES) return
+    const t = at !== undefined && Number.isFinite(at) ? at : 0
+    this.files.set(p, Math.max(this.files.get(p) ?? 0, t))
   }
 
   sessionUrl(url: string | undefined): void {
@@ -165,7 +169,8 @@ export class GitSignalBuilder {
   build(): SessionGitSignals {
     return {
       branches: [...this.branches],
-      files: [...this.files],
+      files: [...this.files.keys()],
+      filesAt: [...this.files.values()],
       commits: [...this.commits.values()],
       prs: [...this.prs.values()],
       spans: spansOf(this.times),

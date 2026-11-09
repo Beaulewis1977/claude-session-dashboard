@@ -37,7 +37,9 @@ function resultText(block: Record<string, unknown>, e: RawEvent): string {
 /**
  * Lines copied from another session are left out: a branch's copy of its
  * parent (`forkedFrom`), and an older-style copy whose entries carry the
- * other session's id. Their commits are the other session's.
+ * other session's id. Their commits are the other session's. A
+ * `--fork-session` copy has neither mark but keeps the parent's times; the
+ * git links service leaves out what it holds from before the split.
  */
 export function claudeGitSignals(events: RawEvent[], fileSessionId?: string): SessionGitSignals {
   const b = new GitSignalBuilder()
@@ -59,7 +61,7 @@ export function claudeGitSignals(events: RawEvent[], fileSessionId?: string): Se
         const name = typeof blk.name === 'string' ? blk.name : ''
         const input = obj(blk.input) ?? {}
         const id = typeof blk.id === 'string' ? blk.id : undefined
-        if (EDIT_TOOLS.has(name)) b.file(input.file_path ?? input.notebook_path)
+        if (EDIT_TOOLS.has(name)) b.file(input.file_path ?? input.notebook_path, at)
         else if (SHELL_TOOLS.has(name) && typeof input.command === 'string')
           b.command(id, input.command, at)
       } else if (blk.type === 'tool_result') {

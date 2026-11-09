@@ -327,4 +327,51 @@ describe('Codex signals', () => {
     // Its own first line (the meta) still counts as activity.
     expect(s.spans[0][0]).toBe(Date.parse(at))
   })
+
+  it('leaves out a copy written seconds after the start, from its own file alone', () => {
+    // Older Codex (no ordinals): the copy is one burst, however late; its own calls follow a reply.
+    const at = '2026-10-31T18:48:59.000Z'
+    const late = (ms: number) => new Date(Date.parse(at) + ms).toISOString()
+    const text = [
+      meta(OWN, at, { forked_from_id: PARENT }),
+      meta(PARENT, late(6000)),
+      call(late(6001), 'c0', 'exec_command', { cmd: 'git commit -m parent' }),
+      out(late(6002), 'c0', '[main 1111111] parent'),
+      call(late(6400), 'g0', 'exec_command', { cmd: 'gh pr create --fill' }),
+      out(late(6800), 'g0', 'https://github.com/beau/shop/pull/3'),
+      patch(late(7500), 'p0', '*** Begin Patch\n*** Update File: parent-only.ts\n*** End Patch'),
+      patch(late(20_000), 'p1', '*** Begin Patch\n*** Update File: mine.ts\n*** End Patch'),
+      call(late(30_000), 'c1', 'exec_command', { cmd: 'git commit -m mine' }),
+      out(late(31_000), 'c1', '[main 2222222] mine')
+    ].join('\n')
+    const s = codexGitSignals(parseLines(text).lines, OWN)
+    expect(s.commits.map((c) => c.sha)).toEqual(['2222222'])
+    expect(s.prs).toEqual([])
+    expect(s.files).toEqual(['mine.ts'])
+    expect(s.filesAt).toEqual([Date.parse(late(20_000))])
+  })
+
+  it('newer Codex: everything before where its own history starts is the copy, whenever written', () => {
+    // `subagent_history_start_ordinal` against each line's ordinal (real files: the
+    // parent's lines, then Codex's own setup lines, then the subagent's history).
+    const at = '2026-11-09T13:13:28.000Z'
+    const t = (ms: number) => new Date(Date.parse(at) + ms).toISOString()
+    let n = 0
+    const o = (s: string) => s.replace(/^\{/, `{"ordinal":${n++},`)
+    const text = [
+      o(meta(OWN, at, { forked_from_id: PARENT, subagent_history_start_ordinal: 6 })),
+      o(meta(PARENT, t(3000))),
+      o(call(t(3001), 'c0', 'exec_command', { cmd: 'git commit -m parent' })),
+      o(out(t(3001), 'c0', '[main 1111111] parent')),
+      // Slow writing: past a second's gap, still the copy.
+      o(patch(t(9000), 'p0', '*** Begin Patch\n*** Update File: parent-only.ts\n*** End Patch')),
+      o(line({ timestamp: t(9001), type: 'event_msg', payload: { type: 'turn_aborted' } })),
+      o(patch(t(9002), 'p1', '*** Begin Patch\n*** Update File: mine.ts\n*** End Patch')),
+      o(call(t(12_000), 'c1', 'exec_command', { cmd: 'git commit -m mine' })),
+      o(out(t(12_500), 'c1', '[main 2222222] mine'))
+    ].join('\n')
+    const s = analyzeCodex(text, OWN).git
+    expect(s.commits.map((c) => c.sha)).toEqual(['2222222'])
+    expect(s.files).toEqual(['mine.ts'])
+  })
 })

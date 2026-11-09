@@ -34,6 +34,8 @@ export interface SessionGitSignals {
   branches: string[]
   /** Files it edited (as the tool named them: absolute, or relative to the session's folder). */
   files: string[]
+  /** When it last edited each of them (epoch ms, 0 when unknown), in the same order. */
+  filesAt?: number[]
   commits: SeenCommit[]
   prs: SeenPr[]
   /** Active stretches, [start, end] in epoch ms: its own event times split at 30-minute gaps. */

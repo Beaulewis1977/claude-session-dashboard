@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.13.0 (November 9, 2026)
+
+**Open in Codex app.**
+
+### Open in Codex app (PR #37)
+
+- **Resume Codex sessions in the Codex desktop app**, in their own project.
+- **Fork** opens the thread with a pointer to the app's Fork menu.
+- **Continue fresh** starts a new thread in the matching project with the handoff ready to send
+  (with a clipboard fallback for long handoffs).
+- **"Open in: Terminal / Codex app"** remembered per session, project and globally.
+- **From the phone:** open the existing thread in the Codex app on your PC.
+
 ## 1.12.0 (November 8, 2026)
 
 **Codex support (part 4, complete).**

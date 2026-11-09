@@ -7,7 +7,8 @@
 //   on the output kept (the process is stopped when it's reached);
 // - given an environment without the app's own GIT_* variables (a GIT_DIR
 //   would point git somewhere else), with optional locks off (git then never
-//   rewrites the index for a read) and no prompts.
+//   rewrites the index for a read), no transport allowed (a partial clone can't
+//   fetch a missing object, whatever git version) and no prompts.
 // WSL repos run the distro's own git through wsl.exe (`-e`, no shell).
 
 import { spawn } from 'node:child_process'
@@ -55,6 +56,11 @@ export const GIT_ENV: Record<string, string> = {
   // A partial clone would otherwise fetch a missing object (and write it, and run
   // maintenance) when a read needs it. The read fails instead.
   GIT_NO_LAZY_FETCH: '1',
+  // Not every git honours GIT_NO_LAZY_FETCH (upstream 2.43 and older, unless patched),
+  // so no transport is allowed at all ("none" names none): any fetch git tries, a lazy
+  // one too, fails before it connects. Every git that can lazy-fetch knows this variable
+  // (it's older than partial clones).
+  GIT_ALLOW_PROTOCOL: 'none',
   LC_ALL: 'C'
 }
 

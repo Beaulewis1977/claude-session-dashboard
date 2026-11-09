@@ -260,8 +260,10 @@ describe('the processes', () => {
       PATH: 'x',
       GIT_OPTIONAL_LOCKS: '0',
       GIT_TERMINAL_PROMPT: '0',
-      // A partial clone never fetches (and writes) a missing object for a read.
-      GIT_NO_LAZY_FETCH: '1'
+      // A partial clone never fetches (and writes) a missing object for a read, also
+      // with a git that ignores GIT_NO_LAZY_FETCH: no transport is allowed.
+      GIT_NO_LAZY_FETCH: '1',
+      GIT_ALLOW_PROTOCOL: 'none'
     })
     // No automatic maintenance or gc on any call.
     expect(GIT_PREFIX).toEqual(expect.arrayContaining(['maintenance.auto=false', 'gc.auto=0']))
@@ -282,6 +284,7 @@ describe('the processes', () => {
       'GIT_TERMINAL_PROMPT=0',
       'GIT_LITERAL_PATHSPECS=1',
       'GIT_NO_LAZY_FETCH=1',
+      'GIT_ALLOW_PROTOCOL=none',
       'LC_ALL=C',
       'git',
       '--no-pager',

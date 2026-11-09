@@ -983,7 +983,7 @@ Every git call starts with `--no-pager -c core.fsmonitor=false -c core.quotePath
 log.showSignature=false -c color.ui=false -c diff.external= -c core.pager=cat
 -c maintenance.auto=false -c gc.auto=0`, plus
 `--no-ext-diff --no-textconv` for log and show, with `GIT_OPTIONAL_LOCKS=0`,
-`GIT_TERMINAL_PROMPT=0`, `GIT_LITERAL_PATHSPECS=1` and `GIT_NO_LAZY_FETCH=1` (a partial clone never fetches a missing object for a read). Merge commits are compared with their first parent (`--diff-merges=first-parent`), and diffs always use the `a/` / `b/` prefixes. Anything else is refused before a process
+`GIT_TERMINAL_PROMPT=0`, `GIT_LITERAL_PATHSPECS=1`, `GIT_NO_LAZY_FETCH=1` and `GIT_ALLOW_PROTOCOL=none` (a partial clone never fetches a missing object for a read: no transport is allowed at all, so this holds also for a git that predates `GIT_NO_LAZY_FETCH`, such as upstream 2.43). Merge commits are compared with their first parent (`--diff-merges=first-parent`), and diffs always use the `a/` / `b/` prefixes. Anything else is refused before a process
 starts (see `src/shared/git/guard.ts` and its tests).
 
 - **Where:** Windows folders with Windows git (found on PATH, never in the project folder); WSL

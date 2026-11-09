@@ -6,6 +6,7 @@ import { execFileSync } from 'node:child_process'
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { pathToFileURL } from 'node:url'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { parsePatch } from '@shared/git/diff'
 import { defaultBranch, labelBranches, mergeSubject, squashPr } from '@shared/git/graph'
@@ -22,7 +23,7 @@ import {
 import { hasGitFilters, parseGitQuery, pathMatches, touchedQuery } from '@shared/git/query'
 import type { CommitInfo } from '@shared/git/types'
 import { createRealBackend } from '../src/main/git/backend'
-import { createProcessRunner } from '../src/main/git/runner'
+import { GIT_ENV, createProcessRunner } from '../src/main/git/runner'
 import { fileExists } from '../src/main/core/which'
 import { wslRoots } from '../src/main/core/wsl'
 
@@ -458,5 +459,78 @@ describe.runIf(hasGit())('the real backend on a temporary repo', () => {
     if (r.ok) await b.log(env, r.root, { revs: ['--branches'], maxCount: 10 })
     expect(git(['for-each-ref'])).toBe(before)
     expect(git(['status', '--porcelain'])).toBe('')
+  })
+})
+
+describe.runIf(hasGit())('a partial clone is never fetched into', () => {
+  let root: string
+  const run = (cwd: string, args: string[]): string =>
+    execFileSync('git', args, {
+      cwd,
+      env: { ...process.env, GIT_CONFIG_GLOBAL: join(root, 'gitconfig'), GIT_CONFIG_NOSYSTEM: '1' },
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe']
+    })
+  /** Objects in the clone (loose and packed). */
+  const objects = (dir: string): number =>
+    run(dir, ['count-objects', '-v'])
+      .split('\n')
+      .filter((l) => /^(count|in-pack):/.test(l))
+      .reduce((n, l) => n + Number(l.split(':')[1]), 0)
+
+  afterAll(async () => {
+    if (root) await rm(root, { recursive: true, force: true, maxRetries: 5 })
+  })
+
+  it("a read fails instead of fetching what's missing, also with a git that ignores GIT_NO_LAZY_FETCH", async () => {
+    root = await mkdtemp(join(tmpdir(), 'csd-partial-'))
+    await writeFile(
+      join(root, 'gitconfig'),
+      '[user]\n\tname = Sample\n\temail = sample@example.com\n[init]\n\tdefaultBranch = main\n'
+    )
+    const server = join(root, 'server')
+    await mkdir(server)
+    run(server, ['init', '-q'])
+    await writeFile(join(server, 'a.txt'), 'a\n')
+    await writeFile(join(server, 'b.txt'), 'b\n')
+    run(server, ['add', '.'])
+    run(server, ['commit', '-q', '-m', 'One'])
+    await writeFile(join(server, 'a.txt'), 'a\nmore\n')
+    run(server, ['commit', '-q', '-am', 'Two'])
+    run(server, ['config', 'uploadpack.allowFilter', 'true'])
+    run(server, ['config', 'uploadpack.allowAnySHA1InWant', 'true'])
+    // A blobless clone: commits and trees only; every file's content stays on the "server".
+    run(root, [
+      'clone',
+      '-q',
+      '--no-checkout',
+      '--filter=blob:none',
+      pathToFileURL(server).href,
+      'partial'
+    ])
+    const partial = join(root, 'partial')
+    const before = objects(partial)
+    const head = run(partial, ['rev-parse', 'HEAD']).trim()
+    const b = createRealBackend(createProcessRunner({ cwd: tmpdir() }), {
+      exists: fileExists,
+      wslRoots
+    })
+    const env = { kind: 'windows' as const }
+    const saved = GIT_ENV.GIT_NO_LAZY_FETCH
+    try {
+      for (const ignored of [false, true]) {
+        // As a git that doesn't know GIT_NO_LAZY_FETCH (upstream 2.43 and older).
+        if (ignored) delete GIT_ENV.GIT_NO_LAZY_FETCH
+        await b.log(env, partial, { revs: ['--branches'], maxCount: 10 })
+        const shown = await b.show(env, partial, head, undefined, 1024 * 1024)
+        expect(shown.text).not.toContain('+more')
+        expect(objects(partial)).toBe(before)
+      }
+    } finally {
+      GIT_ENV.GIT_NO_LAZY_FETCH = saved
+    }
+    // The same content read without the app's settings is fetched: the check above means something.
+    run(partial, ['cat-file', '-p', run(server, ['rev-parse', 'HEAD:a.txt']).trim()])
+    expect(objects(partial)).toBeGreaterThan(before)
   })
 })

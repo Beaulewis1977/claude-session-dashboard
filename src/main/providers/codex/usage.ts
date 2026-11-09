@@ -198,12 +198,6 @@ function isPrompt(p: Record<string, unknown>): boolean {
   })
 }
 
-/**
- * A fork's copy of its parent's history is written right after its meta (in
- * 137 of 141 real forks within 10 ms; see codex-usage.ts).
- */
-const FORK_COPY_MS = 1000
-
 const TOOL_CALL_TYPES = new Set([
   'function_call',
   'custom_tool_call',
@@ -221,13 +215,18 @@ const TOOL_CALL_TYPES = new Set([
  * A turn's model is the one its own turn_context names (task_started comes
  * first, so the model in force then may be the previous turn's). A turn that
  * failed before any response still counts (its failure and its prompt).
+ *
+ * A prompt-split turn (older Codex, no turn ids) takes the identity and the
+ * model of its first response. That identity is the response's own (its fork
+ * lineage plus its exact token counts, see codexEventId), so a fork's copy of
+ * its parent's turn is the same turn (counted once by the store, and still
+ * counted when the parent's file is gone), while sibling forks' own turns
+ * differ. No time window is involved.
  */
 class TurnTracker {
   readonly turns: CodexTurnSample[] = []
   private cur?: CodexTurnSample & {
     fallback: boolean
-    /** A fork's copy of its parent's history: not counted again (the parent's original is). */
-    copied: boolean
     /** Its model came from its own turn_context. */
     ownModel: boolean
     items: number
@@ -240,16 +239,13 @@ class TurnTracker {
 
   constructor(
     private readonly ctx: CodexUsageContext,
-    /** This rollout's own session id (prompt-split turns are numbered per session). */
+    /** This rollout's own session id (a prompt-split turn without a response is numbered per session). */
     private readonly sessionId: string,
-    private readonly subagent: boolean,
-    /** A fork: lines up to this time are its copy of the parent's history. */
-    private readonly copiedUntil?: number
+    private readonly subagent: boolean
   ) {}
 
   private open(id: string, ts: number, model: string | undefined, fallback: boolean): void {
     this.cur = {
-      copied: this.copiedUntil !== undefined && ts <= this.copiedUntil,
       ownModel: false,
       id,
       ts,
@@ -278,18 +274,7 @@ class TurnTracker {
     const c = this.cur
     this.cur = undefined
     if (!c || (!c.responses && !c.toolCalls && !c.aborted && !c.failed)) return
-    // A prompt-split turn copied into a fork: its parent's file holds the original.
-    if (c.fallback && c.copied) return
-    const {
-      fallback: _f,
-      copied: _c,
-      ownModel: _m,
-      items,
-      itemErrors,
-      outputs,
-      outputErrors,
-      ...t
-    } = c
+    const { fallback: _f, ownModel: _m, items, itemErrors, outputs, outputErrors, ...t } = c
     // Finished tool items say how each tool ended (newer Codex); else the exit codes in outputs.
     if (items) {
       t.toolResults = items
@@ -343,10 +328,15 @@ class TurnTracker {
     if (this.cur) this.cur.prompted = !this.subagent
   }
 
-  /** A turn_context: the model of the turn it belongs to (the first one in the turn). */
+  /**
+   * A turn_context: the model of the turn it belongs to (the first one in the
+   * turn). Only for turns with turn events: in older rollouts the next
+   * prompt's turn_context comes while the previous prompt-split turn is still
+   * open, so those take their first response's model instead.
+   */
   context(model: string | undefined): void {
     const c = this.cur
-    if (!c || !model || c.ownModel) return
+    if (!c || !model || c.ownModel || c.fallback) return
     c.model = model
     c.ownModel = true
   }
@@ -354,6 +344,11 @@ class TurnTracker {
   response(rec: UsageRecord, contextPct: number | undefined): void {
     const c = this.cur
     if (!c) return
+    if (c.fallback && c.responses === 0) {
+      // A prompt-split turn: its first response's identity and model (see the class comment).
+      c.id = `codex-turn:${rec.id}`
+      if (rec.model !== 'unknown') c.model = rec.model
+    }
     c.responses++
     c.outputTokens += rec.output
     c.reasoningTokens += rec.reasoning ?? 0
@@ -410,16 +405,7 @@ export function analyzeCodexUsage(text: string, ctx: CodexUsageContext): UsageAn
   // The rollout's own meta (a fork's file also holds its parent's): is it a subagent's thread?
   const metas = ls.filter((l) => l.type === 'session_meta')
   const ownMeta = metas.find((l) => l.payload.id === sessionId) ?? metas[0]
-  // A fork's file starts with a copy of its parent's history, written with the fork's meta.
-  const metaAt = ownMeta?.timestamp ? Date.parse(ownMeta.timestamp) : Number.NaN
-  const turns = new TurnTracker(
-    ctx,
-    sessionId,
-    ownMeta?.payload.subagent === true,
-    str(ownMeta?.payload.forked_from_id) && Number.isFinite(metaAt)
-      ? metaAt + FORK_COPY_MS
-      : undefined
-  )
+  const turns = new TurnTracker(ctx, sessionId, ownMeta?.payload.subagent === true)
   for (const l of ls) {
     if (l.type === 'turn_context') {
       model = str(l.payload.model) ?? model

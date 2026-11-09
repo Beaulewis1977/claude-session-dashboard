@@ -562,8 +562,11 @@ export class CodexUsageStore {
           )
             of(r.key).readings.push(r)
     }
-    // Turns came with version 4: an older index has none, and every session is read again.
-    if (current)
+    // Turns are always loaded, also those an older parser wrote: like the usage rows, a
+    // session's turns stand until that session is read again (set() replaces them), so a
+    // session that's offline or gone during an update keeps its history, and a month file
+    // is never rewritten from only the sessions read so far.
+    {
       for (const f of await listFiles(dir, TURNS_RE))
         for (const t of await readNdjson<CodexTurnSample>(join(dir, f)))
           if (
@@ -573,6 +576,7 @@ export class CodexUsageStore {
             typeof t.key === 'string'
           )
             this.turnsBy.set(t.key, [...(this.turnsBy.get(t.key) ?? []), t])
+    }
     this.turnList = undefined
     if (!current) {
       // Every session is read again; until then its old rows stand.

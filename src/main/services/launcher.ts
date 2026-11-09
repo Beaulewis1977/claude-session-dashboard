@@ -112,6 +112,11 @@ export const CLAUDE_NOT_FOUND = notFoundMessage('Claude Code')
 
 type CwdState = 'exists' | 'missing' | 'unreachable'
 
+/** The cache key of a distro's view of the data folder: per distro and the user checked as. */
+function wslRootKey(distro: string, user?: string): string {
+  return user ? `${distro}|${user}` : distro
+}
+
 export class Launcher {
   readonly branches: BranchService
   /** Resume / Fork previews: the context size and what reloading it would cost (set at startup). */
@@ -289,17 +294,24 @@ export class Launcher {
   /**
    * The app's data folder as a distro sees it, asked inside the distro
    * (`wslpath`, then `test -r`), so a custom automount root works and
-   * unmounted drives are caught. Kept for a few minutes (the dialog asks often).
+   * unmounted drives are caught. Checked as the user the agent runs as (a
+   * Codex session's own WSL user can have other permissions than the distro's
+   * default). Kept for a few minutes per distro and user (the dialog asks often).
    */
-  private async wslDataDir(distro: string, dataDir: string): Promise<string | undefined> {
-    const hit = this.wslRoots.get(distro)
+  private async wslDataDir(
+    distro: string,
+    dataDir: string,
+    user?: string
+  ): Promise<string | undefined> {
+    const key = wslRootKey(distro, user)
+    const hit = this.wslRoots.get(key)
     if (hit && Date.now() - hit.at < 5 * 60_000) return hit.path
     const path = await this.platform.wslPath(distro, dataDir)
-    if (!path || !(await this.platform.wslCanRead(distro, path))) {
-      this.wslRoots.delete(distro)
+    if (!path || !(await this.platform.wslCanRead(distro, path, user))) {
+      this.wslRoots.delete(key)
       return undefined
     }
-    this.wslRoots.set(distro, { path, at: Date.now() })
+    this.wslRoots.set(key, { path, at: Date.now() })
     return path
   }
 
@@ -569,7 +581,9 @@ export class Launcher {
     let sessionPath: string | undefined = path
     if (s.env === 'wsl') {
       // Where this distro mounts the app's data folder (its own automount root).
-      const root = s.distro ? await this.wslDataDir(s.distro, dataDir) : undefined
+      const root = s.distro
+        ? await this.wslDataDir(s.distro, dataDir, this.targetOf(s)?.wslUser)
+        : undefined
       if (!root)
         throw new Error(
           `${s.sourceLabel} can't read the app's data folder, where the handoff goes. Check that Windows drives are mounted in this distro ([automount] in /etc/wsl.conf), and that it's running.`
@@ -1018,9 +1032,11 @@ export class Launcher {
       }
       // WSL: the distro must really see the file before Claude is told to read it.
       if (s.env === 'wsl' && s.distro) {
-        const seen = await this.platform.wslCanRead(s.distro, cont.preview.sessionPath)
+        // As the user the agent runs as (a Codex session's own WSL user), not the distro's default.
+        const user = this.targetOf(s)?.wslUser
+        const seen = await this.platform.wslCanRead(s.distro, cont.preview.sessionPath, user)
         if (!seen) {
-          this.wslRoots.delete(s.distro)
+          this.wslRoots.delete(wslRootKey(s.distro, user))
           return {
             ...fail(
               `${s.sourceLabel} can't read the handoff file at ${cont.preview.sessionPath}, so nothing was started. Check that Windows drives are mounted in this distro ([automount] in /etc/wsl.conf).`

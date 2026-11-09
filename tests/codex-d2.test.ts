@@ -1189,46 +1189,75 @@ describe('Codex turn trends after review', () => {
     expect(r.weeks).toHaveLength(1)
   })
 
-  it("sibling forks keep their own prompt-split turns; a fork's copy of its parent's isn't counted twice", () => {
+  it("sibling forks keep their own prompt-split turns; a fork's copy of its parent's counts once, also when slow or alone", () => {
     const PARENT = '019a0000-0000-7000-8000-00000000000a'
-    const old = (id: string, forked: boolean, metaAt: string, prompts: [string, string][]) =>
+    // Each prompt's response: its running total and its own output (a response's identity).
+    const old = (
+      id: string,
+      forked: boolean,
+      metaAt: string,
+      prompts: { at: string; text: string; total: number; out: number }[]
+    ) =>
       [
         line('session_meta', { id, ...(forked ? { forked_from_id: PARENT } : {}) }, metaAt),
         line('turn_context', { model: 'gpt-5-codex' }, metaAt),
-        ...prompts.flatMap(([at, t], i) => [
-          line('response_item', prompt(t), at),
-          line('event_msg', tc(1000 * (i + 1), 10 + i), at)
+        ...prompts.flatMap((x) => [
+          line('response_item', prompt(x.text), x.at),
+          line('event_msg', tc(x.total, x.out), x.at)
         ])
       ].join('\n')
     const ctxOf = (id: string) => ({ ...ctx, key: `w:${id}`, sessionId: id, lineageRoot: PARENT })
-    // The parent's one turn; each fork copies it (within a second of its meta), then adds its own.
+    const first = { text: 'p', total: 1000, out: 10 }
     const parent = analyzeCodexUsage(
-      old(PARENT, false, '2026-10-20T09:00:00Z', [['2026-10-20T09:00:01Z', 'p']]),
+      old(PARENT, false, '2026-10-20T09:00:00Z', [{ ...first, at: '2026-10-20T09:00:01Z' }]),
       ctxOf(PARENT)
     )
     const f1id = '019a0000-0000-7000-8000-0000000000f1'
     const f2id = '019a0000-0000-7000-8000-0000000000f2'
-    const fork = (id: string, own: string) =>
+    // Each fork copies the parent's turn (one of them six seconds after its meta, as a real
+    // slow copy did), then adds a different turn of its own.
+    const fork = (id: string, copyAt: string, own: { total: number; out: number }) =>
       analyzeCodexUsage(
         old(id, true, '2026-10-20T10:00:00.000Z', [
-          ['2026-10-20T10:00:00.005Z', 'p'],
-          ['2026-10-20T10:05:00Z', own]
+          { ...first, at: copyAt },
+          { text: 'own', at: '2026-10-20T10:05:00Z', ...own }
         ]),
         ctxOf(id)
       )
-    const f1 = fork(f1id, 'left')
-    const f2 = fork(f2id, 'right')
+    const f1 = fork(f1id, '2026-10-20T10:00:00.005Z', { total: 2100, out: 20 })
+    const f2 = fork(f2id, '2026-10-20T10:00:06.000Z', { total: 2300, out: 30 })
     const store = new CodexUsageStore()
     store.set(`w:${PARENT}`, [], [], 's', parent.codexTurns)
     store.set(`w:${f1id}`, [], [], 's', f1.codexTurns)
     store.set(`w:${f2id}`, [], [], 's', f2.codexTurns)
-    // The parent's turn once, and each fork's own turn: three, not one or five.
+    // The parent's turn once (its earliest copy, the original), and each fork's own turn.
     expect(
       store
         .turns()
         .map((t) => t.key)
         .sort()
     ).toEqual([`w:${PARENT}`, `w:${f1id}`, `w:${f2id}`])
+    // The parent's file gone: the fork's copy of that turn still counts, once.
+    const alone = new CodexUsageStore()
+    alone.set(`w:${f1id}`, [], [], 's', f1.codexTurns)
+    alone.set(`w:${f2id}`, [], [], 's', f2.codexTurns)
+    expect(alone.turns()).toHaveLength(3)
+  })
+
+  it('in older rollouts a model switch before the next prompt stays with the next turn', () => {
+    const text = [
+      line('session_meta', { id: CLI }, '2026-10-20T10:00:00Z'),
+      line('turn_context', { model: 'model-a' }, '2026-10-20T10:00:00Z'),
+      line('response_item', prompt('one'), '2026-10-20T10:00:01Z'),
+      line('event_msg', tc(1000, 10), '2026-10-20T10:00:02Z'),
+      line('turn_context', { model: 'model-b' }, '2026-10-20T10:01:00Z'),
+      line('response_item', prompt('two'), '2026-10-20T10:01:01Z'),
+      line('event_msg', tc(2100, 20), '2026-10-20T10:01:02Z')
+    ].join('\n')
+    expect(analyzeCodexUsage(text, ctx).codexTurns!.map((t) => t.model)).toEqual([
+      'model-a',
+      'model-b'
+    ])
   })
 
   it('every kind of finished tool counts toward the tool error rate (collaboration tools too)', async () => {
@@ -1355,16 +1384,112 @@ describe('Continue fresh for Codex: the link is never missed', { timeout: 30_000
   })
 })
 
+describe('second review fixes', { timeout: 30_000 }, () => {
+  it('a WSL handoff is checked as the user Codex runs as, not the distro default', async () => {
+    // Only the session's own WSL user can read the app's data folder here.
+    const { sessions, launcher, canReadCalls } = await setup({
+      launch: true,
+      canRead: (_p, user) => user === 'beau'
+    })
+    const s = sessions.list().find((x) => x.provider === 'codex' && x.sessionId === WSL)!
+    sessions.setAiSummary(s.key, SUMMARY)
+    const opts = { key: s.key, fork: false, skipPermissions: false, continueFresh: {} }
+    const p = await launcher.preview(opts)
+    expect(p.continueError).toBeUndefined()
+    const r = await launcher.launch(opts)
+    expect(r.ok).toBe(true)
+    const handoffChecks = canReadCalls.filter((c) =>
+      /handoffs|ClaudeSessionDashboard|appdata/i.test(c.path)
+    )
+    expect(handoffChecks.length).toBeGreaterThan(0)
+    expect(handoffChecks.every((c) => c.user === 'beau')).toBe(true)
+  })
+
+  it("a WSL user that can't read the handoff stops the launch", async () => {
+    const { sessions, launcher, spawned } = await setup({
+      launch: true,
+      // The data folder is readable, the written handoff file isn't (for that user).
+      canRead: (p) => !/handoffs\/codex\/.+\.md$/.test(p)
+    })
+    const s = sessions.list().find((x) => x.provider === 'codex' && x.sessionId === WSL)!
+    sessions.setAiSummary(s.key, SUMMARY)
+    const r = await launcher.launch({
+      key: s.key,
+      fork: false,
+      skipPermissions: false,
+      continueFresh: {}
+    })
+    expect(r.ok).toBe(false)
+    expect(r.error).toMatch(/can't read the handoff file/)
+    expect(spawned).toHaveLength(0)
+  })
+
+  it('turns an older build wrote are kept until their session is read again (never erased by a rebuild)', async () => {
+    const dir = join(root, 'usage')
+    await mkdir(dir, { recursive: true })
+    const turn = (key: string, id: string): CodexTurnSample => ({
+      id,
+      ts: Date.parse('2026-10-20T10:00:00Z'),
+      key,
+      responses: 1,
+      outputTokens: 10,
+      reasoningTokens: 0,
+      toolCalls: 0,
+      toolResults: 0,
+      toolErrors: 0,
+      aborted: false,
+      failed: false,
+      prompted: true
+    })
+    // What the earlier PR build saved: index version 4, one month of turns for two sessions.
+    await writeFile(
+      join(dir, 'codex-index.json'),
+      JSON.stringify({ version: 4, sessions: { 'w:a': 'x', 'w:b': 'y' } })
+    )
+    await writeFile(
+      join(dir, 'codex-turns-2026-10.ndjson'),
+      [turn('w:a', 'codex-turn:a1'), turn('w:b', 'codex-turn:b1')]
+        .map((t) => JSON.stringify(t))
+        .join('\n') + '\n'
+    )
+    const store = new CodexUsageStore()
+    await store.load(dir)
+    expect(
+      store
+        .turns()
+        .map((t) => t.id)
+        .sort()
+    ).toEqual(['codex-turn:a1', 'codex-turn:b1'])
+    // Session a is read again (b is offline): a's turns are replaced, b's stay, also on disk.
+    store.set('w:a', [], [], 'sig', [turn('w:a', 'codex-turn:a2')])
+    await store.flush(dir, root)
+    const again = new CodexUsageStore()
+    await again.load(dir)
+    expect(
+      again
+        .turns()
+        .map((t) => t.id)
+        .sort()
+    ).toEqual(['codex-turn:a2', 'codex-turn:b1'])
+  })
+})
+
 // ------------------------------------------------------------- helpers
 
 async function setup(
-  opts: { launch?: boolean; spawn?: (cmd: LaunchCommand) => Promise<void> } = {}
+  opts: {
+    launch?: boolean
+    spawn?: (cmd: LaunchCommand) => Promise<void>
+    /** Can this WSL user read this path? (Default: yes.) */
+    canRead?: (path: string, user?: string) => boolean
+  } = {}
 ) {
   await cp(FIXTURES, join(root, 'fixtures'), { recursive: true })
   await prepareFixtures(root, { codex: true })
   const layout = fixturesLayout(root)
   const base = createFixturesPlatform(layout.fixturesDir, layout.sourcesDir)
   const spawned: LaunchCommand[] = []
+  const canReadCalls: { path: string; user?: string }[] = []
   const platform = opts.launch
     ? {
         ...base,
@@ -1373,7 +1498,10 @@ async function setup(
           spawned.push(cmd)
           await opts.spawn?.(cmd)
         },
-        wslCanRead: async () => true
+        wslCanRead: async (_d: string, path: string, user?: string) => {
+          canReadCalls.push({ path, user })
+          return opts.canRead ? opts.canRead(path, user) : true
+        }
       }
     : base
   const paths = appPaths(layout.dataDir)
@@ -1395,5 +1523,5 @@ async function setup(
   )
   await sessions.start()
   await sessions.idle()
-  return { sessions, launcher, metadata, paths, settings, spawned, layout }
+  return { sessions, launcher, metadata, paths, settings, spawned, layout, canReadCalls }
 }

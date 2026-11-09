@@ -1177,9 +1177,11 @@ folder plus Codex's name index, `config.toml`, `archived_sessions` or `sessions/
 - **Summaries** (Phase D2): written by Claude through `claude -p`, exactly as for Claude Code
   sessions (same notice, preview, masking, size limit, limits guard and usage record). The
   transcript is my prompts, Codex's answers (labelled "Codex:"), one `[tool]` line per tool call
-  and one `[agent <from> → <to>]` line per message between agents (cut to 2,000 characters), never
-  tool output, reasoning (summaries or encrypted), images or the context Codex adds (environment,
-  AGENTS.md, instructions, subagent notices). Summarizing with `codex exec` instead was tested and
+  and one `[agent <from> → <to>]` line per message between agents (cut to 2,000 characters). The
+  raw tool output, reasoning (summaries or encrypted), images and the context Codex adds as user
+  text (environment, AGENTS.md, instructions, subagent notices) are never sent as such, but a
+  message between agents or a compaction summary is written by the agent and can quote any of
+  them (the notice says so). Summarizing with `codex exec` instead was tested and
   **not built**: codex-cli 0.166 still offered 19 tools (`exec`, `apply_patch`, `spawn_agent`,
   MCP resource tools, goals, …) with every `--disable` flag, `-s read-only`,
   `--ignore-user-config`, `-c web_search="disabled"` and `-c mcp_servers={}`, so it couldn't be
@@ -1220,9 +1222,13 @@ from it. It summarizes an earlier session.` (Codex has no @-mention that attache
   version (every change "By version"; otherwise every ten minor versions, as Codex ships one
   almost weekly), and compare mode (two date
   ranges or two versions). The usage reader keeps only these fields, never text; a fork's copied
-  turns count once by Codex's turn id. Older rollouts without turn events are split at each prompt,
-  numbered per session; in a fork, the copy of its parent's history (written within a second of
-  the fork's meta) isn't counted again. A turn that hasn't ended isn't counted.
+  turns count once by Codex's turn id. Older rollouts without turn events are split at each prompt;
+  such a turn takes the identity and model of its first response (its fork lineage plus its exact
+  token counts, as usage records do), so a fork's copy of its parent's turn counts once however
+  long the copy took to write, still counts when the parent's file is gone, and sibling forks keep
+  their own turns. A turn that hasn't ended isn't counted. Turns an older build saved are kept until
+  their session is read again, so an update never drops an offline session's history. A Codex
+  session's handoff is checked readable in WSL as the user Codex runs as.
 - **Never**: `auth.json` or any credential file, and no OpenAI or ChatGPT endpoint. Logs only.
 - **Archive**: Settings → Archive → "Archive Codex sessions": Off (default; Codex doesn't delete
   old sessions itself), Named, pinned or tagged, or All. The size it would copy, and about what a

@@ -6,7 +6,7 @@
 // - `.codex-global-state.json`: only `local-projects` (id, name, root folders),
 //   `project-order` and `thread-project-assignments` are used. The file is the
 //   app's own and is never written, copied or archived.
-// - `config.toml`: only whether `[windows] runCodexInWindowsSubsystemForLinux`
+// - `config.toml` (parsed as TOML): only whether `windows.runCodexInWindowsSubsystemForLinux`
 //   is on (then the app runs Codex in WSL, which isn't supported here).
 // Never auth.json. Whether the app is installed: the `codex:` link handler in
 // the registry (`reg query`, read-only).
@@ -14,6 +14,7 @@
 import { execFile } from 'node:child_process'
 import { readFile, stat } from 'node:fs/promises'
 import { join } from 'node:path'
+import { parse as parseToml } from 'smol-toml'
 import { systemExe } from '../../core/which'
 import { PROJECT_ID_RE, type CodexAppProject, type CodexAppState } from '@shared/codex-app'
 
@@ -68,23 +69,25 @@ export function parseCodexAppState(text: string): CodexAppState | undefined {
   return { projects, assignments }
 }
 
-/** Is the app set to run Codex in WSL? (`[windows] runCodexInWindowsSubsystemForLinux = true`.) */
-export function wslModeOn(toml: string): boolean {
-  let table = ''
-  for (const raw of toml.split(/\r?\n/)) {
-    const line = raw.replace(/#.*$/, '').trim()
-    if (!line) continue
-    const header = /^\[\s*([^\]]+?)\s*\]$/.exec(line)
-    if (header) {
-      table = header[1].replace(/["']/g, '')
-      continue
-    }
-    const kv = /^([A-Za-z0-9_."'-]+)\s*=\s*(\S+)/.exec(line)
-    if (!kv) continue
-    const key = (table ? `${table}.` : '') + kv[1].replace(/["']/g, '')
-    if (key === 'windows.runCodexInWindowsSubsystemForLinux') return kv[2] === 'true'
+/**
+ * Is the app set to run Codex in WSL? `windows.runCodexInWindowsSubsystemForLinux`
+ * in config.toml, in any TOML form (a table, dotted keys, an inline table).
+ * A file that isn't valid TOML gives `{ error }`: the setting is then unknown,
+ * never taken as off.
+ */
+export function wslModeOf(toml: string): { on: boolean } | { error: string } {
+  let doc: Record<string, unknown>
+  try {
+    doc = parseToml(toml) as Record<string, unknown>
+  } catch (err) {
+    return { error: `config.toml isn't valid TOML: ${(err as Error).message.split('\n')[0]}` }
   }
-  return false
+  const windows = doc.windows
+  const v =
+    windows && typeof windows === 'object' && !Array.isArray(windows)
+      ? (windows as Record<string, unknown>).runCodexInWindowsSubsystemForLinux
+      : undefined
+  return { on: v === true }
 }
 
 export interface CodexAppDeps {
@@ -113,7 +116,9 @@ export function codexProtocolRegistered(): Promise<boolean> {
 
 export interface CodexAppSnapshot {
   installed: boolean
-  wslMode: boolean
+  /** Undefined: config.toml couldn't be read or parsed (see configError). */
+  wslMode?: boolean
+  configError?: string
   state?: CodexAppState
   stateError?: string
 }
@@ -151,22 +156,37 @@ export class CodexAppService {
     return { size: s.size, mtimeMs: s.mtimeMs }
   }
 
+  /**
+   * The WSL setting: off when there's no config.toml (Codex's default); unknown,
+   * with the reason, when it can't be read or parsed.
+   */
+  private async wslMode(path: string): Promise<{ wslMode?: boolean; configError?: string }> {
+    let text: string
+    try {
+      text = await this.read(path)
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') return { wslMode: false }
+      return { configError: `couldn't read config.toml: ${(err as Error).message}` }
+    }
+    const r = wslModeOf(text)
+    return 'on' in r ? { wslMode: r.on } : { configError: r.error }
+  }
+
   /** Everything the availability rules need, read now (the state file only when it changed). */
   async snapshot(): Promise<CodexAppSnapshot> {
     const home = this.deps.home()
     if (!this.deps.supported || !home) return { installed: false, wslMode: false }
     if (!(await this.installed())) return { installed: false, wslMode: false }
-    const toml = await this.read(join(home, 'config.toml')).catch(() => '')
-    const wslMode = wslModeOn(toml)
+    const config = await this.wslMode(join(home, 'config.toml'))
     const path = join(home, APP_STATE_FILE)
     let st: { size: number; mtimeMs: number }
     try {
       st = await this.stat(path)
     } catch {
-      return { installed: true, wslMode, stateError: 'the Codex app has no project list yet' }
+      return { installed: true, ...config, stateError: 'the Codex app has no project list yet' }
     }
     if (st.size > MAX_STATE_BYTES)
-      return { installed: true, wslMode, stateError: 'its state file is unexpectedly large' }
+      return { installed: true, ...config, stateError: 'its state file is unexpectedly large' }
     const key = `${st.size}:${st.mtimeMs}`
     if (this.cached?.key !== key) {
       let state: CodexAppState | undefined
@@ -181,7 +201,7 @@ export class CodexAppService {
     }
     return {
       installed: true,
-      wslMode,
+      ...config,
       ...(this.cached.state ? { state: this.cached.state } : {}),
       ...(this.cached.error ? { stateError: this.cached.error } : {})
     }

@@ -12,6 +12,7 @@ import {
 } from '@shared/provider'
 import { formatBytes } from '@shared/format'
 import { DEFAULT_CHOICE } from '@shared/model-choice'
+import type { OpenIn } from '@shared/codex-app'
 import type {
   AppSettings,
   ArchiveTally,
@@ -76,6 +77,50 @@ export function ProvidersSettings({ update }: { update: Update }) {
 export function CodexLaunchSettings({ update }: { update: Update }) {
   const settings = useApp((s) => s.settings)
   if (!sanitizeProviderToggles(settings.providers).codex) return null
+  const projectOpenIn = Object.keys(settings.codexProjectOpenIn ?? {}).length
+  return (
+    <>
+      <Row
+        label="Open Codex sessions in"
+        hint={
+          <>
+            Where Resume, Fork and Continue fresh open a Codex session, unless the session or its
+            project has its own choice (set in the launch dialog). The Codex app is offered only
+            when it can open that session (Windows, with the Codex desktop app installed); otherwise
+            a terminal is used.
+            {projectOpenIn > 0 && (
+              <>
+                {' '}
+                {projectOpenIn} project{projectOpenIn === 1 ? ' has' : 's have'} their own choice.{' '}
+                <button
+                  type="button"
+                  className="font-medium text-primary hover:underline"
+                  onClick={() => void update({ codexProjectOpenIn: {} })}
+                >
+                  Clear project choices
+                </button>
+              </>
+            )}
+          </>
+        }
+      >
+        <Segmented<OpenIn>
+          ariaLabel="Open Codex sessions in"
+          value={settings.codexOpenInDefault ?? 'terminal'}
+          onChange={(codexOpenInDefault) => void update({ codexOpenInDefault })}
+          options={[
+            { value: 'terminal', label: 'Terminal' },
+            { value: 'codex-app', label: 'Codex app' }
+          ]}
+        />
+      </Row>
+      <CodexModelRow update={update} />
+    </>
+  )
+}
+
+function CodexModelRow({ update }: { update: Update }) {
+  const settings = useApp((s) => s.settings)
   return (
     <Row
       label="Codex model and effort"

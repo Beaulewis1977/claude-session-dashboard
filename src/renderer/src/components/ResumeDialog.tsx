@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import {
+  AppWindow,
   ArchiveRestore,
   Check,
   Copy,
@@ -39,6 +40,9 @@ import { BranchPointCard } from './viewer/Branches'
 import { SessionModelControls } from './ModelPicker'
 import { choiceLabel } from '@shared/model-choice'
 import { projectDefault, projectDefaultKey, withProjectDefault } from '@shared/project-key'
+import type { CodexAppKind, OpenIn } from '@shared/codex-app'
+import { CodexAppPanel, OpenInChoice } from './CodexAppOpen'
+import { appChoosable, useOpenIn } from '@/lib/open-in'
 
 export const SKIP_WARNING = 'Claude will not ask before running commands or deleting files.'
 export const BYPASS_WARNING =
@@ -141,6 +145,27 @@ function ResumeDialogBody({ resume }: { resume: ResumeRequest }) {
   }
   const where = { ...(wslFolder ? { wslFolder } : {}), ...(distro ? { distro } : {}) }
   const [preview, setPreview] = useState<LaunchPreview | null>(null)
+  // Codex: open in a terminal or the Codex app (session → project → Settings → terminal).
+  const resolvedOpenIn = useOpenIn(session)
+  const [openInChoice, setOpenIn] = useState<OpenIn>(carry?.openIn ?? resolvedOpenIn.value)
+  // Continue fresh in the app: the project whose folder holds this one, only when asked.
+  const [insideOptIn, setInsideOptIn] = useState(false)
+  const appKind: CodexAppKind | undefined =
+    codex && !resume.newSession && !resume.branch
+      ? resume.continueFresh
+        ? 'continue'
+        : resume.fork
+          ? 'fork'
+          : 'resume'
+      : undefined
+  // The app only where it can open this launch (the preview says); else the terminal.
+  const appMode =
+    !!appKind &&
+    openInChoice === 'codex-app' &&
+    (preview === null || appChoosable(preview.codexApp))
+  const appOpts = appMode
+    ? { openIn: 'codex-app' as const, ...(insideOptIn ? { codexAppInside: true } : {}) }
+    : {}
   // Approvals are always on for a WSL-only folder run with Windows Codex (main enforces it too).
   const askForced = preview?.placement?.askForced === true
   const [launching, setLaunching] = useState(false)
@@ -207,7 +232,8 @@ function ResumeDialogBody({ resume }: { resume: ResumeRequest }) {
         branch: branchReq(),
         continueFresh: continueReq(),
         remoteControl,
-        ...where
+        ...where,
+        ...appOpts
       })
       .then((p) => {
         if (cancelled) return
@@ -235,6 +261,8 @@ function ResumeDialogBody({ resume }: { resume: ResumeRequest }) {
     expired,
     wslFolder,
     distro,
+    appMode,
+    insideOptIn,
     // The session's context changed (it grew, shrank or was compacted): a new estimate.
     session?.sizeBytes,
     session?.context?.tokens,
@@ -259,7 +287,15 @@ function ResumeDialogBody({ resume }: { resume: ResumeRequest }) {
         key: resume.key,
         fork: false,
         ...next,
-        carry: { skip, terminal, cwdOverride, billing, rememberProject, remoteControl }
+        carry: {
+          skip,
+          terminal,
+          cwdOverride,
+          billing,
+          rememberProject,
+          remoteControl,
+          openIn: openInChoice
+        }
       }
     })
   // Plain Resume warns above the threshold; Fork and the rest only show the size.
@@ -281,14 +317,16 @@ function ResumeDialogBody({ resume }: { resume: ResumeRequest }) {
   const fork = resume.fork
   const branchBlocked = !!branchAt && (!preview?.branch || !!preview.branchError)
   const continueBlocked = continueFresh && (!preview?.continueFresh || !!preview.continueError)
-  const blocked =
-    continueBlocked ||
-    !preview ||
-    !preview.cwd ||
-    !preview.cwdExists ||
-    !!preview.launchError ||
-    (!newSession && preview.restoreImpossible) ||
-    branchBlocked
+  const appBlocked = !preview || !preview.codexApp?.available || continueBlocked
+  const blocked = appMode
+    ? appBlocked
+    : continueBlocked ||
+      !preview ||
+      !preview.cwd ||
+      !preview.cwdExists ||
+      !!preview.launchError ||
+      (!newSession && preview.restoreImpossible) ||
+      branchBlocked
 
   const launch = async (createOnly = false): Promise<void> => {
     if (launching || (createOnly ? branchBlocked || !preview : blocked)) return
@@ -304,7 +342,8 @@ function ResumeDialogBody({ resume }: { resume: ResumeRequest }) {
       branch: branchReq(createOnly),
       continueFresh: continueReq(),
       remoteControl,
-      ...where
+      ...where,
+      ...appOpts
     })
     // Per-project default ("always use API credits for this project").
     const current = projectDefault(settings.projectBilling, session)
@@ -321,17 +360,19 @@ function ResumeDialogBody({ resume }: { resume: ResumeRequest }) {
     }
     if (!res.ok) {
       toast.error(
-        res.branch
-          ? 'Branch created, but the terminal could not be opened'
-          : branchAt
-            ? 'Could not create the branch'
-            : continueFresh
-              ? 'Could not continue in a new session'
-              : newSession
-                ? 'Could not start the session'
-                : fork
-                  ? 'Could not fork the session'
-                  : 'Could not resume the session',
+        appMode
+          ? "Couldn't open the Codex app"
+          : res.branch
+            ? 'Branch created, but the terminal could not be opened'
+            : branchAt
+              ? 'Could not create the branch'
+              : continueFresh
+                ? 'Could not continue in a new session'
+                : newSession
+                  ? 'Could not start the session'
+                  : fork
+                    ? 'Could not fork the session'
+                    : 'Could not resume the session',
         {
           description: res.error
         }
@@ -345,6 +386,17 @@ function ResumeDialogBody({ resume }: { resume: ResumeRequest }) {
       return
     }
     close()
+    if (res.openedIn === 'codex-app') {
+      toast.success(
+        continueFresh ? 'New thread opened in the Codex app' : 'Opened in the Codex app',
+        {
+          description:
+            res.note ??
+            (continueFresh ? 'Press Enter in the Codex app to send the first message.' : undefined)
+        }
+      )
+      return
+    }
     if (res.restored) toast.success('Restored the session file from the archive')
     if (res.simulated) {
       toast(info?.fixtures ? 'Fixtures mode: command not run' : 'Launching only works on Windows', {
@@ -479,248 +531,282 @@ function ResumeDialogBody({ resume }: { resume: ResumeRequest }) {
             </>
           )}
 
-          {preview?.willRestore && (
-            <div className="flex items-start gap-2.5 rounded-lg border border-info/25 bg-info/5 px-3 py-2.5 text-xs">
-              <ArchiveRestore className="mt-px size-4 shrink-0 text-info" />
-              <div className="min-w-0">
-                <div className="font-medium text-foreground">
-                  The session file will be restored from the archive first
-                </div>
-                <div
-                  className="mt-0.5 truncate font-mono text-[11px] text-muted-foreground"
-                  title={preview.originalPath}
-                >
-                  {preview.originalPath}
-                </div>
-              </div>
-            </div>
-          )}
-          {preview?.restoreImpossible && (
-            <div className="flex items-start gap-2.5 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2.5 text-xs">
-              <TriangleAlert className="mt-px size-4 shrink-0 text-destructive" />
-              The session file is missing and there is no archive copy, so it can't be resumed.
-            </div>
-          )}
-          {preview?.launchError && (
-            <div className="flex items-start gap-2.5 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2.5 text-xs">
-              <TriangleAlert className="mt-px size-4 shrink-0 text-destructive" />
-              {preview.launchError}
-            </div>
-          )}
-
-          {preview?.placement && (
-            <PlacementNote
-              placement={preview.placement}
-              onOpenInApp={() =>
-                void api
-                  .openInAgentApp(resume.key)
-                  .then(() => close())
-                  .catch((err: Error) =>
-                    toast.error("Couldn't open the Codex app", { description: err.message })
-                  )
-              }
-              optedIn={wslFolder}
-              onOptIn={setWslFolder}
-              onDistro={pickDistro}
-            />
-          )}
-
-          <div>
-            <div className="mb-1.5 text-xs font-medium">Working folder</div>
-            <div
-              className={cn(
-                'flex items-center gap-2 rounded-lg border px-3 py-2',
-                preview && !preview.cwdExists
-                  ? 'border-warning/40 bg-warning-soft'
-                  : 'border-border bg-secondary/60'
-              )}
-            >
-              <FolderOpen className="size-4 shrink-0 text-muted-foreground" />
-              <span
-                className="selectable min-w-0 flex-1 truncate font-mono text-[12px]"
-                title={preview?.cwd}
-              >
-                {preview?.cwd ?? session.cwd ?? 'Unknown'}
-              </span>
-              {preview && preview.cwdExists && (
-                <Check className="size-4 shrink-0 text-success" aria-label="Folder exists" />
-              )}
-              <Button variant="outline" size="xs" onClick={() => void pickFolder()}>
-                {cwdOverride ? 'Change…' : 'Choose…'}
-              </Button>
-            </div>
-            {preview && !preview.cwdExists && !preview.launchError && (
-              <div className="mt-1.5 flex items-center gap-1.5 text-xs text-warning">
-                <TriangleAlert className="size-3.5" />
-                {preview.cwd
-                  ? 'This folder no longer exists. Choose another folder to continue.'
-                  : 'No working folder is recorded. Choose one to continue.'}
-              </div>
-            )}
-            {cwdOverride && (
-              <div className="mt-1.5 flex items-start gap-1.5 text-xs text-muted-foreground">
-                <Info className="mt-px size-3.5 shrink-0" />
-                {codex
-                  ? 'Codex resumes by session id; it will run in the folder you picked.'
-                  : 'Claude Code looks sessions up by project folder, so resuming from a different folder may not find it.'}
-                <button
-                  type="button"
-                  className="shrink-0 font-medium text-primary hover:underline"
-                  onClick={() => setCwdOverride(undefined)}
-                >
-                  Reset
-                </button>
-              </div>
-            )}
-          </div>
-
-          <div>
-            <div className="mb-1.5 text-xs font-medium">Open in</div>
-            <Segmented
-              ariaLabel="Terminal"
-              value={terminal}
-              onChange={setTerminal}
-              options={[
-                { value: 'wt', label: 'Windows Terminal' },
-                { value: 'powershell', label: 'PowerShell' },
-                { value: 'cmd', label: 'cmd' }
-              ]}
-            />
-            {preview?.fellBack && (
-              <div className="mt-1.5 text-xs text-muted-foreground">
-                Windows Terminal wasn't found, so PowerShell will be used.
-              </div>
-            )}
-            {preview?.terminalReason && (
-              <div className="mt-1.5 flex items-start gap-1.5 text-xs text-muted-foreground">
-                <Info className="mt-px size-3.5 shrink-0" />
-                {preview.terminalReason}
-              </div>
-            )}
-          </div>
-
-          {caps.apiBilling && (
+          {appKind && appChoosable(preview?.codexApp) && (
             <div>
-              <div className="mb-1.5 flex items-center gap-1.5 text-xs font-medium">
-                Billing
-                <Tooltip
-                  content="With an API key, Claude Code may ask once to confirm that it should use the key. The key is only given to this one terminal."
-                  side="right"
-                >
-                  <Info className="size-3.5 text-subtle-foreground" aria-label="About billing" />
-                </Tooltip>
+              <div className="mb-1.5 text-xs font-medium">Open in</div>
+              <OpenInChoice session={session} value={openInChoice} onChange={setOpenIn} />
+            </div>
+          )}
+          {appMode && appKind && (
+            <CodexAppPanel
+              kind={appKind}
+              app={preview?.codexApp}
+              insideOptIn={insideOptIn}
+              onInside={setInsideOptIn}
+            />
+          )}
+          {!appMode &&
+            openInChoice === 'codex-app' &&
+            preview?.codexApp &&
+            !preview.codexApp.hidden &&
+            !appChoosable(preview.codexApp) && (
+              <div className="flex items-start gap-1.5 text-xs text-muted-foreground">
+                <Info className="mt-px size-3.5 shrink-0" />
+                Opens in a terminal: {preview.codexApp.reason}
               </div>
-              <div className="flex flex-wrap items-center gap-3">
-                <BillingPicker value={billing} onChange={pickBilling} />
-                {projectKey && (
-                  <label className="flex cursor-pointer items-center gap-2 text-xs text-muted-foreground">
-                    <Checkbox
-                      checked={rememberProject}
-                      onCheckedChange={(v) => setRememberProject(v === true)}
-                    />
-                    Always use this for {session.projectName}
-                  </label>
+            )}
+
+          {!appMode && (
+            <>
+              {preview?.willRestore && (
+                <div className="flex items-start gap-2.5 rounded-lg border border-info/25 bg-info/5 px-3 py-2.5 text-xs">
+                  <ArchiveRestore className="mt-px size-4 shrink-0 text-info" />
+                  <div className="min-w-0">
+                    <div className="font-medium text-foreground">
+                      The session file will be restored from the archive first
+                    </div>
+                    <div
+                      className="mt-0.5 truncate font-mono text-[11px] text-muted-foreground"
+                      title={preview.originalPath}
+                    >
+                      {preview.originalPath}
+                    </div>
+                  </div>
+                </div>
+              )}
+              {preview?.restoreImpossible && (
+                <div className="flex items-start gap-2.5 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2.5 text-xs">
+                  <TriangleAlert className="mt-px size-4 shrink-0 text-destructive" />
+                  The session file is missing and there is no archive copy, so it can't be resumed.
+                </div>
+              )}
+              {preview?.launchError && (
+                <div className="flex items-start gap-2.5 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2.5 text-xs">
+                  <TriangleAlert className="mt-px size-4 shrink-0 text-destructive" />
+                  {preview.launchError}
+                </div>
+              )}
+
+              {preview?.placement && (
+                <PlacementNote
+                  placement={preview.placement}
+                  onOpenInApp={() =>
+                    void api
+                      .openInAgentApp(resume.key)
+                      .then(() => close())
+                      .catch((err: Error) =>
+                        toast.error("Couldn't open the Codex app", { description: err.message })
+                      )
+                  }
+                  optedIn={wslFolder}
+                  onOptIn={setWslFolder}
+                  onDistro={pickDistro}
+                />
+              )}
+
+              <div>
+                <div className="mb-1.5 text-xs font-medium">Working folder</div>
+                <div
+                  className={cn(
+                    'flex items-center gap-2 rounded-lg border px-3 py-2',
+                    preview && !preview.cwdExists
+                      ? 'border-warning/40 bg-warning-soft'
+                      : 'border-border bg-secondary/60'
+                  )}
+                >
+                  <FolderOpen className="size-4 shrink-0 text-muted-foreground" />
+                  <span
+                    className="selectable min-w-0 flex-1 truncate font-mono text-[12px]"
+                    title={preview?.cwd}
+                  >
+                    {preview?.cwd ?? session.cwd ?? 'Unknown'}
+                  </span>
+                  {preview && preview.cwdExists && (
+                    <Check className="size-4 shrink-0 text-success" aria-label="Folder exists" />
+                  )}
+                  <Button variant="outline" size="xs" onClick={() => void pickFolder()}>
+                    {cwdOverride ? 'Change…' : 'Choose…'}
+                  </Button>
+                </div>
+                {preview && !preview.cwdExists && !preview.launchError && (
+                  <div className="mt-1.5 flex items-center gap-1.5 text-xs text-warning">
+                    <TriangleAlert className="size-3.5" />
+                    {preview.cwd
+                      ? 'This folder no longer exists. Choose another folder to continue.'
+                      : 'No working folder is recorded. Choose one to continue.'}
+                  </div>
+                )}
+                {cwdOverride && (
+                  <div className="mt-1.5 flex items-start gap-1.5 text-xs text-muted-foreground">
+                    <Info className="mt-px size-3.5 shrink-0" />
+                    {codex
+                      ? 'Codex resumes by session id; it will run in the folder you picked.'
+                      : 'Claude Code looks sessions up by project folder, so resuming from a different folder may not find it.'}
+                    <button
+                      type="button"
+                      className="shrink-0 font-medium text-primary hover:underline"
+                      onClick={() => setCwdOverride(undefined)}
+                    >
+                      Reset
+                    </button>
+                  </div>
                 )}
               </div>
-            </div>
-          )}
 
-          <div>
-            <div className="mb-1.5 flex items-center gap-1.5 text-xs font-medium">
-              Model and effort
-              <Tooltip
-                content={
-                  codex
-                    ? "Saved for this session. Default uses the project's default, then Settings → Codex, then Codex's own (no -m / -c model_reasoning_effort)."
-                    : "Saved for this session. Default uses the project's default, then Settings, then Claude Code's own (no flag). An effort level set with CLAUDE_CODE_EFFORT_LEVEL wins over --effort."
-                }
-                side="right"
-              >
-                <Info
-                  className="size-3.5 text-subtle-foreground"
-                  aria-label="About model and effort"
+              <div>
+                <div className="mb-1.5 text-xs font-medium">
+                  {appKind && appChoosable(preview?.codexApp) ? 'Terminal' : 'Open in'}
+                </div>
+                <Segmented
+                  ariaLabel="Terminal"
+                  value={terminal}
+                  onChange={setTerminal}
+                  options={[
+                    { value: 'wt', label: 'Windows Terminal' },
+                    { value: 'powershell', label: 'PowerShell' },
+                    { value: 'cmd', label: 'cmd' }
+                  ]}
                 />
-              </Tooltip>
-            </div>
-            <SessionModelControls session={session} />
-          </div>
-
-          {caps.remoteControl && (
-            <RemoteControlOption
-              checked={remoteControl}
-              onChange={setRemoteControl}
-              name={preview?.remoteControlName}
-            />
-          )}
-
-          <div className="rounded-lg border border-border p-3">
-            <label
-              className={cn(
-                'flex items-start gap-2.5',
-                askForced ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'
-              )}
-            >
-              <Checkbox
-                checked={skip && !askForced}
-                disabled={askForced}
-                onCheckedChange={(v) => setSkip(v === true)}
-                className="mt-0.5"
-              />
-              <span className="min-w-0">
-                <span className="block text-[13px] font-medium">
-                  {codex ? 'Bypass approvals and sandbox' : 'Skip permission prompts'}
-                </span>
-                <span className="block font-mono text-[11px] text-muted-foreground">
-                  {codex
-                    ? '--dangerously-bypass-approvals-and-sandbox'
-                    : '--dangerously-skip-permissions'}
-                </span>
-              </span>
-            </label>
-            {askForced ? (
-              <div className="mt-2 pl-[26px] text-xs text-muted-foreground">
-                Off for a WSL folder run with Windows Codex. It runs in its read-only sandbox (
-                <span className="font-mono">-a on-request -s read-only</span>): a command that would
-                change anything needs your approval. Codex decides when to ask; it has no setting
-                that asks before every command.
+                {preview?.fellBack && (
+                  <div className="mt-1.5 text-xs text-muted-foreground">
+                    Windows Terminal wasn't found, so PowerShell will be used.
+                  </div>
+                )}
+                {preview?.terminalReason && (
+                  <div className="mt-1.5 flex items-start gap-1.5 text-xs text-muted-foreground">
+                    <Info className="mt-px size-3.5 shrink-0" />
+                    {preview.terminalReason}
+                  </div>
+                )}
               </div>
-            ) : (
-              skip && <SkipPermissionsWarning className="mt-2 pl-[26px]" codex={codex} />
-            )}
-          </div>
 
-          <div>
-            <div className="mb-1.5 flex items-center justify-between">
-              <span className="text-xs font-medium">PowerShell command</span>
-              {/* Continue fresh writes its handoff file and links the new session only
-                  when launched from here: a copied command would point at no file. */}
-              {!continueFresh && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (!preview?.commandLine) return
-                    void api.copyText(preview.commandLine)
-                    setCopied(true)
-                    setTimeout(() => setCopied(false), 1200)
-                  }}
-                  className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-2xs font-medium text-muted-foreground hover:bg-hover hover:text-foreground"
+              {caps.apiBilling && (
+                <div>
+                  <div className="mb-1.5 flex items-center gap-1.5 text-xs font-medium">
+                    Billing
+                    <Tooltip
+                      content="With an API key, Claude Code may ask once to confirm that it should use the key. The key is only given to this one terminal."
+                      side="right"
+                    >
+                      <Info
+                        className="size-3.5 text-subtle-foreground"
+                        aria-label="About billing"
+                      />
+                    </Tooltip>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-3">
+                    <BillingPicker value={billing} onChange={pickBilling} />
+                    {projectKey && (
+                      <label className="flex cursor-pointer items-center gap-2 text-xs text-muted-foreground">
+                        <Checkbox
+                          checked={rememberProject}
+                          onCheckedChange={(v) => setRememberProject(v === true)}
+                        />
+                        Always use this for {session.projectName}
+                      </label>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              <div>
+                <div className="mb-1.5 flex items-center gap-1.5 text-xs font-medium">
+                  Model and effort
+                  <Tooltip
+                    content={
+                      codex
+                        ? "Saved for this session. Default uses the project's default, then Settings → Codex, then Codex's own (no -m / -c model_reasoning_effort)."
+                        : "Saved for this session. Default uses the project's default, then Settings, then Claude Code's own (no flag). An effort level set with CLAUDE_CODE_EFFORT_LEVEL wins over --effort."
+                    }
+                    side="right"
+                  >
+                    <Info
+                      className="size-3.5 text-subtle-foreground"
+                      aria-label="About model and effort"
+                    />
+                  </Tooltip>
+                </div>
+                <SessionModelControls session={session} />
+              </div>
+
+              {caps.remoteControl && (
+                <RemoteControlOption
+                  checked={remoteControl}
+                  onChange={setRemoteControl}
+                  name={preview?.remoteControlName}
+                />
+              )}
+
+              <div className="rounded-lg border border-border p-3">
+                <label
+                  className={cn(
+                    'flex items-start gap-2.5',
+                    askForced ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'
+                  )}
                 >
-                  {copied ? <Check className="size-3" /> : <Copy className="size-3" />}
-                  {copied ? 'Copied' : 'Copy'}
-                </button>
-              )}
-            </div>
-            {continueFresh && (
-              <div className="mb-1.5 flex items-start gap-1.5 text-xs text-muted-foreground">
-                <Info className="mt-px size-3.5 shrink-0" />
-                Not for copying: the handoff file is written, and the new session linked, only when
-                you click Continue fresh.
+                  <Checkbox
+                    checked={skip && !askForced}
+                    disabled={askForced}
+                    onCheckedChange={(v) => setSkip(v === true)}
+                    className="mt-0.5"
+                  />
+                  <span className="min-w-0">
+                    <span className="block text-[13px] font-medium">
+                      {codex ? 'Bypass approvals and sandbox' : 'Skip permission prompts'}
+                    </span>
+                    <span className="block font-mono text-[11px] text-muted-foreground">
+                      {codex
+                        ? '--dangerously-bypass-approvals-and-sandbox'
+                        : '--dangerously-skip-permissions'}
+                    </span>
+                  </span>
+                </label>
+                {askForced ? (
+                  <div className="mt-2 pl-[26px] text-xs text-muted-foreground">
+                    Off for a WSL folder run with Windows Codex. It runs in its read-only sandbox (
+                    <span className="font-mono">-a on-request -s read-only</span>): a command that
+                    would change anything needs your approval. Codex decides when to ask; it has no
+                    setting that asks before every command.
+                  </div>
+                ) : (
+                  skip && <SkipPermissionsWarning className="mt-2 pl-[26px]" codex={codex} />
+                )}
               </div>
-            )}
-            <pre className="selectable max-h-28 overflow-auto rounded-lg border border-code-border bg-code-bg px-3 py-2 font-mono text-[11.5px] leading-relaxed break-all whitespace-pre-wrap text-foreground/90">
-              {preview ? preview.commandLine || '—' : '…'}
-            </pre>
-          </div>
+
+              <div>
+                <div className="mb-1.5 flex items-center justify-between">
+                  <span className="text-xs font-medium">PowerShell command</span>
+                  {/* Continue fresh writes its handoff file and links the new session only
+                  when launched from here: a copied command would point at no file. */}
+                  {!continueFresh && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (!preview?.commandLine) return
+                        void api.copyText(preview.commandLine)
+                        setCopied(true)
+                        setTimeout(() => setCopied(false), 1200)
+                      }}
+                      className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-2xs font-medium text-muted-foreground hover:bg-hover hover:text-foreground"
+                    >
+                      {copied ? <Check className="size-3" /> : <Copy className="size-3" />}
+                      {copied ? 'Copied' : 'Copy'}
+                    </button>
+                  )}
+                </div>
+                {continueFresh && (
+                  <div className="mb-1.5 flex items-start gap-1.5 text-xs text-muted-foreground">
+                    <Info className="mt-px size-3.5 shrink-0" />
+                    Not for copying: the handoff file is written, and the new session linked, only
+                    when you click Continue fresh.
+                  </div>
+                )}
+                <pre className="selectable max-h-28 overflow-auto rounded-lg border border-code-border bg-code-bg px-3 py-2 font-mono text-[11.5px] leading-relaxed break-all whitespace-pre-wrap text-foreground/90">
+                  {preview ? preview.commandLine || '—' : '…'}
+                </pre>
+              </div>
+            </>
+          )}
         </div>
 
         <DialogFooter>
@@ -751,6 +837,8 @@ function ResumeDialogBody({ resume }: { resume: ResumeRequest }) {
           >
             {launching ? (
               <Loader2 className="animate-spin" />
+            ) : appMode ? (
+              <AppWindow />
             ) : branchAt ? (
               <GitBranchPlus />
             ) : continueFresh ? (
@@ -762,18 +850,20 @@ function ResumeDialogBody({ resume }: { resume: ResumeRequest }) {
             ) : (
               <Play className="fill-current" />
             )}
-            {branchAt
-              ? 'Branch'
-              : continueFresh
-                ? 'Continue fresh'
-                : newSession
-                  ? 'Start'
-                  : fork
-                    ? 'Fork'
-                    : warn
-                      ? 'Resume anyway'
-                      : 'Resume'}
-            {choice && <span className="font-normal opacity-85">· {choice}</span>}
+            {appMode
+              ? 'Open in Codex app'
+              : branchAt
+                ? 'Branch'
+                : continueFresh
+                  ? 'Continue fresh'
+                  : newSession
+                    ? 'Start'
+                    : fork
+                      ? 'Fork'
+                      : warn
+                        ? 'Resume anyway'
+                        : 'Resume'}
+            {choice && !appMode && <span className="font-normal opacity-85">· {choice}</span>}
             <Kbd className="ml-1 border-white/25 bg-white/15 text-primary-foreground">↵</Kbd>
           </Button>
         </DialogFooter>

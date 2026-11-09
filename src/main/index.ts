@@ -26,7 +26,7 @@ import type { ThemePref } from '@shared/types'
 import { SOURCE_LABELS } from '@shared/source-label'
 import { isDevServerUrl } from './core/app-url'
 import { NO_CWD_SEARCH } from './core/launch'
-import { callHandler, setAppPage } from './ipc-guard'
+import { callHandler, handle, setAppPage } from './ipc-guard'
 import { JsonStore } from './core/json-store'
 import { registerMobileIpc } from './ipc-mobile'
 import { registerLiveIpc } from './ipc-live'
@@ -90,6 +90,7 @@ import { httpsFetcher } from './services/anthropic-api'
 import { BillingService } from './services/billing'
 import { createFixturesPlatform, createRealPlatform, type Platform } from './platform'
 import { mark, profileStartup, timed, watchEventLoop } from './timing'
+import { HIDDEN_ARG, setStartWithWindows, startWithWindows } from './login-item'
 import { CodexAppService, codexProtocolRegistered } from './providers/codex/app'
 import { BridgeInstaller, cleanupSettingsLeftovers, createBridgeStore } from './services/bridge'
 import { Launcher } from './services/launcher'
@@ -136,6 +137,24 @@ const CHROME = {
 }
 
 let mainWindow: BrowserWindow | undefined
+/** Started at login (Settings → Start with Windows): only the tray icon until it's opened. */
+const START_HIDDEN = process.argv.includes(HIDDEN_ARG)
+/** The window was maximized when last closed, and a hidden start hasn't shown it yet. */
+let maximizeOnReveal = false
+
+/** Show and focus the main window (also the first time after a hidden start). */
+function revealMain(): BrowserWindow | undefined {
+  const w = mainWindow
+  if (!w || w.isDestroyed()) return undefined
+  if (maximizeOnReveal) {
+    maximizeOnReveal = false
+    w.maximize()
+  }
+  if (w.isMinimized()) w.restore()
+  w.show()
+  w.focus()
+  return w
+}
 let mobile: MobileService
 
 /**
@@ -143,10 +162,8 @@ let mobile: MobileService
  * minute counts as no.
  */
 async function confirmOnPc(device: string, what: string): Promise<boolean> {
-  const w = mainWindow
-  if (!w || w.isDestroyed()) return false
-  if (w.isMinimized()) w.restore()
-  w.show()
+  const w = revealMain()
+  if (!w) return false
   w.flashFrame(true)
   const ac = new AbortController()
   const timer = setTimeout(() => ac.abort(), 60_000)
@@ -233,10 +250,7 @@ async function main(): Promise<void> {
     return
   }
   app.on('second-instance', () => {
-    if (mainWindow) {
-      if (mainWindow.isMinimized()) mainWindow.restore()
-      mainWindow.focus()
-    }
+    revealMain()
   })
 
   await app.whenReady()
@@ -597,6 +611,13 @@ async function main(): Promise<void> {
     dataDir: paths.dataDir,
     appVersion: app.getVersion(),
     encryptor,
+    // A backup missed while the app was closed has run (done or failed).
+    notify: (title, body) => {
+      if (!Notification.isSupported()) return
+      const n = new Notification({ title, body, icon: join(appRoot, 'resources', 'icon.png') })
+      n.on('click', () => showBackup())
+      n.show()
+    },
     beforeBackup: async () => {
       await Promise.all([
         metadata.flush(),
@@ -622,6 +643,11 @@ async function main(): Promise<void> {
     }
   })
   backup.start()
+
+  // Settings → Start with Windows (minimized to tray): read from and written to Windows itself.
+  const loginEnv = { platform: process.platform, execPath: process.execPath, env: process.env }
+  handle('app:startWithWindows', () => startWithWindows(app, loginEnv))
+  handle('app:setStartWithWindows', (_e, on) => setStartWithWindows(app, loginEnv, on === true))
 
   // Phone companion: off by default, 127.0.0.1 only (see mobile/).
   const mobileStore = new JsonStore<MobileFile>(
@@ -784,6 +810,9 @@ async function main(): Promise<void> {
   // fills Node's file threads: the first Resume dialog then doesn't wait for it.
   void timed('startup: terminal and Claude lookup', platform.launchTools()).catch(() => undefined)
   createWindow(settings.value.window)
+  // A hidden start has no window to open from: the tray icon is there at once
+  // (the renderer paints the usage ring onto it once the limits load).
+  if (START_HIDDEN) meter.ensureTray()
   meter.restore()
 
   void sessions
@@ -913,10 +942,15 @@ async function main(): Promise<void> {
       }
     })
     mainWindow = win
-    if (bounds?.maximized) win.maximize()
+    // Started with Windows (--hidden): no window, just the tray icon, until
+    // it's opened (maximize() would show it, so that waits too).
+    if (bounds?.maximized) {
+      if (START_HIDDEN) maximizeOnReveal = true
+      else win.maximize()
+    }
     win.once('ready-to-show', () => {
       mark('window ready to show')
-      win.show()
+      if (!START_HIDDEN) win.show()
     })
     win.webContents.once('did-finish-load', () => mark('window page loaded'))
     lockNavigation(win)
@@ -942,21 +976,15 @@ async function main(): Promise<void> {
 
   /** A session alert was clicked: show the window on that session. */
   function showLive(key: string): void {
-    const w = mainWindow
-    if (!w || w.isDestroyed()) return
-    if (w.isMinimized()) w.restore()
-    w.show()
-    w.focus()
-    w.webContents.send('app:showLive', key)
+    revealMain()?.webContents.send('app:showLive', key)
+  }
+
+  function showBackup(): void {
+    revealMain()?.webContents.send('app:showSettings', 'backup')
   }
 
   function showUsage(): void {
-    const w = mainWindow
-    if (!w || w.isDestroyed()) return
-    if (w.isMinimized()) w.restore()
-    w.show()
-    w.focus()
-    w.webContents.send('app:showUsage')
+    revealMain()?.webContents.send('app:showUsage')
   }
 
   app.on('window-all-closed', () => app.quit())

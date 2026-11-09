@@ -12,6 +12,7 @@ import type {
   SessionMeta,
   SessionsPayload,
   SessionSummary,
+  StartWithWindows,
   ThemePref
 } from './types'
 import type {
@@ -224,6 +225,8 @@ export interface CsdApi {
   /** The renderer draws the tray icon (a ring with the 5-hour %) and hands it over as a PNG. */
   setTrayImage(dataUrl: string, tooltip: string): Promise<void>
   onShowUsage(cb: () => void): () => void
+  /** A notification asked for a Settings section (e.g. "backup"). */
+  onShowSettings(cb: (section: string) => void): () => void
 
   // Phone companion (desktop only: a phone can't reach any of these)
   mobileStatus(): Promise<MobileStatus>
@@ -317,6 +320,9 @@ export interface CsdApi {
   ): Promise<{ ok: true; written: number; relaunch: boolean } | BackupError>
   backupOpenFolder(): Promise<void>
   backupOpenSafety(): Promise<void>
+  /** "Start with Windows (minimized to tray)", as Windows reports it now. */
+  startWithWindows(): Promise<StartWithWindows>
+  setStartWithWindows(on: boolean): Promise<StartWithWindows>
   /** The restore safety copies in the app's data folder, and which are older than 30 days. */
   backupSafetyCopies(): Promise<SafetySummary>
   /** Delete these safety copies (only those still older than 30 days, never the newest). */

@@ -69,6 +69,7 @@ import { assertSetRoot } from '../core/backup-fs'
 import { JsonStore } from '../core/json-store'
 import { isInside, isInsideClaudeDir } from '../core/safe-paths'
 import { deleteSafetyCopies, listSafetyCopies } from '../core/restore-safety'
+import { formatDateTime } from '@shared/format'
 import type { Encryptor } from './accounts'
 
 export interface BackupFile {
@@ -118,6 +119,11 @@ export interface BackupDeps {
   encryptor: Encryptor
   /** Save the app's in-memory data first, so the snapshot is current. */
   beforeBackup?: () => Promise<void>
+  /**
+   * A desktop notification. Used once per start: when a scheduled backup
+   * missed while the app was closed has run (done or failed).
+   */
+  notify?: (title: string, body: string) => void
   now?: () => number
   /** Tests use cheaper key derivation. */
   kdf?: { N: number; r: number; p: number }
@@ -277,6 +283,10 @@ export class BackupService extends EventEmitter<{ changed: [] }> {
 
   start(): void {
     this.stop()
+    // Due already: it came due while the app was closed. It runs at the first
+    // check (two minutes after start, so the app's own start isn't slowed),
+    // and says so when it's done.
+    this.catchUp = this.overdue()
     this.firstTick = setTimeout(() => void this.tick(), 2 * 60_000)
     this.timer = setInterval(() => void this.tick(), TICK_MS)
     this.firstTick.unref?.()
@@ -312,8 +322,41 @@ export class BackupService extends EventEmitter<{ changed: [] }> {
   }
 
   async tick(): Promise<void> {
-    if (await this.due()) await this.runNow('scheduled')
+    if (await this.due()) {
+      const catchUp = this.catchUp
+      const r = await this.runNow('scheduled')
+      if (catchUp) {
+        this.catchUp = undefined
+        this.notifyCatchUp(catchUp, r)
+      }
+    }
     await this.autoCleanSafety()
+  }
+
+  /** A scheduled backup that is due now, with the last successful one's time. */
+  private catchUp: { lastOk: string } | undefined
+
+  private overdue(): { lastOk: string } | undefined {
+    const f = this.file
+    // Never backed up yet: that's the first backup, not a missed one.
+    if (f.schedule === 'off' || !f.setDir || !f.lastSuccessAt) return undefined
+    const lastOk = Date.parse(f.lastSuccessAt)
+    if (!Number.isFinite(lastOk) || this.now() - lastOk < INTERVAL[f.schedule]) return undefined
+    return { lastOk: f.lastSuccessAt }
+  }
+
+  private notifyCatchUp(c: { lastOk: string }, r: BackupRunSummary): void {
+    const since = `The last one was on ${formatDateTime(c.lastOk)}.`
+    if (r.ok)
+      this.deps.notify?.(
+        'Missed backup done',
+        `${since} ${r.added ? `${r.added} new or changed file${r.added === 1 ? '' : 's'} copied.` : 'Nothing had changed.'}`
+      )
+    else
+      this.deps.notify?.(
+        'Missed backup failed',
+        `${since} ${r.error ?? 'Unknown error'}. It's tried again in an hour (Settings → Backup).`
+      )
   }
 
   // ------------------------------------------------------------- restore safety copies

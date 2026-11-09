@@ -345,7 +345,15 @@ settings backups can hold secrets from Claude's `env`), caches, and `backup.json
   as soon as the drive is back, without a restart.
 - **Schedule:** daily or weekly while the app is open (checked every 15 minutes), plus **Back up
   now**. A failed backup (drive missing, folder full) is tried again after an hour. A newly chosen
-  folder gets its first backup at the next check.
+  folder gets its first backup at the next check. A backup that came due while the app was closed
+  (catch-up) runs at the first check, two minutes after start, and shows one notification when it's
+  done or has failed (click it for Settings → Backup).
+- **Start with Windows (minimized to tray):** Settings → Startup, off by default, installed or
+  portable app only. Electron's login item API adds or removes only the app's own `Run` value
+  (named "Claude Session Dashboard", with `--hidden`; the portable build registers the exe that was
+  started, not its temporary copy). The switch shows what Windows reports, including "turned off in
+  Task Manager". Started that way the app shows only its tray icon until it's opened. Nothing else in
+  Windows startup is touched.
 - **Retention:** keep the last N snapshots (default 14, up to 365). Older manifests are deleted, then
   objects no remaining snapshot uses, once they're 12 hours old (so another PC still writing into a
   shared folder keeps its new files). If any manifest can't be read (still syncing), if the

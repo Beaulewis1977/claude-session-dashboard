@@ -36,6 +36,7 @@ import { api } from '@/lib/api'
 import { copyText } from '@/lib/actions'
 import { LEVEL_CLASS, PR_STATE, levelTitle, shortSha } from '@/lib/git'
 import { searchCommit, searchTouched, useGitView } from '@/lib/git-view'
+import { useApp } from '@/lib/store'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import {
@@ -220,15 +221,22 @@ function FileRow({
           ) : df ? (
             <>
               <DiffView file={df} />
-              {diff?.truncated && (
+              {diff?.truncated && !diff.all && (
                 <button
                   type="button"
                   className="w-full border-t border-code-border/70 py-1.5 text-center text-xs font-medium text-primary hover:bg-hover"
                   onClick={() => load(true)}
                   disabled={loading}
                 >
-                  This diff was cut at {Math.round(diff.bytes / 1024)} KB. Load the whole diff
+                  This diff is cut short
+                  {df.cut ? ` (${df.cut.toLocaleString()} more lines)` : ''}. Load the whole diff
                 </button>
+              )}
+              {diff?.truncated && diff.all && (
+                <div className="border-t border-code-border/70 px-3 py-1.5 text-center text-xs text-muted-foreground">
+                  This diff is too large to show in full here
+                  {df.cut ? ` (${df.cut.toLocaleString()} more lines)` : ''}.
+                </div>
               )}
             </>
           ) : (
@@ -340,13 +348,11 @@ function CommitRow({
               {action === 'unlink' && (
                 <DropdownMenuItem
                   onSelect={() =>
-                    void api
-                      .unlinkCommit(sessionKey, c.sha)
-                      .then(() =>
-                        toast.success('Unlinked', {
-                          description: "It's listed under Unlinked, where you can link it again."
-                        })
-                      )
+                    void api.unlinkCommit(sessionKey, c.sha).then(() =>
+                      toast.success('Unlinked', {
+                        description: "It's listed under Unlinked, where you can link it again."
+                      })
+                    )
                   }
                 >
                   <Link2Off /> Unlink from this session
@@ -423,6 +429,8 @@ function GhQuestion() {
     setBusy(true)
     void api
       .updateGitSettings({ gh })
+      // Settings → Git's switch reads the renderer's copy of the settings.
+      .then(async () => useApp.getState().set({ settings: await api.getSettings() }))
       .catch((e: Error) => toast.error("Couldn't save", { description: e.message }))
       .finally(() => setBusy(false))
   }

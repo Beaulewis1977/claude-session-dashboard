@@ -38,7 +38,6 @@ function useConnection(): ReturnType<typeof phone.connection> {
 function useSearch(): [string, (q: string) => void] {
   const query = useApp((s) => s.query)
   const set = useApp((s) => s.set)
-  const timer = useRef<number | undefined>(undefined)
   const setQuery = (q: string): void => {
     const st = useApp.getState()
     if (q.trim() && !st.query.trim())
@@ -46,17 +45,23 @@ function useSearch(): [string, (q: string) => void] {
     else if (!q.trim())
       set({ query: q, hits: null, sort: st.sort === 'relevance' ? st.sortBeforeSearch : st.sort })
     else set({ query: q })
-    window.clearTimeout(timer.current)
-    if (!q.trim()) return
-    timer.current = window.setTimeout(() => {
+  }
+  // Searched on the PC whenever the query changes, however it was set (typed, or
+  // "Sessions that touched this file" in a session's Changes).
+  useEffect(() => {
+    const q = query.trim()
+    if (!q) return
+    const t = window.setTimeout(() => {
       void api
-        .search(q.trim())
+        .search(q)
         .then((hits) => {
-          if (useApp.getState().query === q) set({ hits: new Map(hits.map((h) => [h.key, h])) })
+          if (useApp.getState().query.trim() === q)
+            set({ hits: new Map(hits.map((h) => [h.key, h])) })
         })
         .catch(() => undefined)
     }, 220)
-  }
+    return () => window.clearTimeout(t)
+  }, [query, set])
   return [query, setQuery]
 }
 

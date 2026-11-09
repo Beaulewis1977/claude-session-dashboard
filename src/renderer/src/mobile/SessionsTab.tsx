@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { toast } from 'sonner'
 import { FolderOpen, ListFilter, Search, SearchX, SquareTerminal, X } from 'lucide-react'
-import { api } from '@/lib/api'
 import { projectSessionKey, toggleHidden, togglePinned } from '@/lib/actions'
 import {
   clearedFilters,
@@ -21,6 +20,7 @@ import { Button } from '@/components/ui/button'
 import { Sheet, SheetContent } from '@/components/ui/sheet'
 import { SessionCard } from './SessionCard'
 import { useMobile } from './state'
+import { useSearch } from './search'
 import { useMobileScope, usePhoneProviders, usePhoneScope } from './scope'
 import { hasSubagents } from '@/lib/scope'
 import { ProviderSwitch } from '@/components/ProviderSwitch'
@@ -32,37 +32,6 @@ function useConnection(): ReturnType<typeof phone.connection> {
   const [c, setC] = useState(phone.connection)
   useEffect(() => phone.onConnection(setC), [])
   return c
-}
-
-/** Debounced full-text search on the PC (the same index as the desktop). */
-function useSearch(): [string, (q: string) => void] {
-  const query = useApp((s) => s.query)
-  const set = useApp((s) => s.set)
-  const setQuery = (q: string): void => {
-    const st = useApp.getState()
-    if (q.trim() && !st.query.trim())
-      set({ query: q, sortBeforeSearch: st.sort, sort: 'relevance' })
-    else if (!q.trim())
-      set({ query: q, hits: null, sort: st.sort === 'relevance' ? st.sortBeforeSearch : st.sort })
-    else set({ query: q })
-  }
-  // Searched on the PC whenever the query changes, however it was set (typed, or
-  // "Sessions that touched this file" in a session's Changes).
-  useEffect(() => {
-    const q = query.trim()
-    if (!q) return
-    const t = window.setTimeout(() => {
-      void api
-        .search(q)
-        .then((hits) => {
-          if (useApp.getState().query.trim() === q)
-            set({ hits: new Map(hits.map((h) => [h.key, h])) })
-        })
-        .catch(() => undefined)
-    }, 220)
-    return () => window.clearTimeout(t)
-  }, [query, set])
-  return [query, setQuery]
 }
 
 function Chip({

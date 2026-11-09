@@ -1205,7 +1205,9 @@ from it. It summarizes an earlier session.` (Codex has no @-mention that attache
   them use failing exit codes in tool output) and the share of interrupted or failed turns. Per
   prompt I wrote, in main threads only (a subagent's "prompts" are the main agent's): responses and
   tool calls. Context use: the last reading of each session in each week. Weekly per model or Codex
-  CLI version, with markers for a new model and a new minor version, and compare mode (two date
+  CLI version, with markers for a new model (one with at least 2% of the responses) and a new
+  version (every change "By version"; otherwise every ten minor versions, as Codex ships one
+  almost weekly), and compare mode (two date
   ranges or two versions). The usage reader keeps only these fields, never text; a fork's copied
   turns count once by Codex's turn id. A turn that hasn't ended isn't counted.
 - **Never**: `auth.json` or any credential file, and no OpenAI or ChatGPT endpoint. Logs only.

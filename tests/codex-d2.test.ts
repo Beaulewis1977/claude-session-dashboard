@@ -16,7 +16,12 @@ import type { CodexTurnSample, UsageRecord } from '@shared/usage/types'
 import { DEFAULT_CODEX_PRICES, DEFAULT_PRICES } from '@shared/usage/pricing'
 import { DEFAULT_WEIGHTS } from '@shared/usage/limits'
 import { ContextCost } from '../src/main/services/context-cost'
-import { buildCodexTrends, codexMetricValue, compareCodexTrends } from '@shared/usage/codex-trends'
+import {
+  buildCodexTrends,
+  codexMetricValue,
+  compareCodexTrends,
+  versionStep
+} from '@shared/usage/codex-trends'
 import { blocksMatching } from '@/lib/transcript'
 import { blocksToPlainText } from '@/lib/copy'
 import { fixturesLayout, prepareFixtures, seedFixtureData } from '../src/main/fixtures'
@@ -959,10 +964,33 @@ describe('Codex trends', () => {
   it('marks a new model and a new Codex version, and groups by either', () => {
     const r = buildCodexTrends({ ...input, groupBy: 'model' })
     expect(r.groups.map((g) => g.key).sort()).toEqual(['gpt-6.1-sol', 'gpt-6.2-sol'])
-    expect(r.markers.map((m) => m.kind).sort()).toEqual(['model', 'version'])
-    expect(r.markers.find((m) => m.kind === 'version')!.label).toBe('v0.166.0')
+    // By model, 0.163 → 0.166 is too small a step for a marker (Codex ships one almost weekly).
+    expect(r.markers.map((m) => m.kind)).toEqual(['model'])
     const byVersion = buildCodexTrends({ ...input, groupBy: 'version' })
     expect(byVersion.versions).toEqual(['0.163.0', '0.166.0'])
+    // By version, every change is marked.
+    expect(byVersion.markers.find((m) => m.kind === 'version')!.label).toBe('v0.166.0')
+  })
+
+  it('keeps markers readable: no marker for a rarely used model, versions in big steps', () => {
+    const W3 = W2 + 7 * DAY
+    const W4 = W3 + 7 * DAY
+    const many = [
+      ...records,
+      // A model used for 1 of 100+ responses (a review agent): no "new model" line.
+      rec(W3, 'codex-auto-review', '0.167.0', 10, 0, 0),
+      ...Array.from({ length: 100 }, (_, i) => rec(W3 + i, 'gpt-6.2-sol', '0.167.0', 300, 60, 900)),
+      ...Array.from({ length: 20 }, (_, i) => rec(W4 + i, 'gpt-6.2-sol', '0.174.0', 300, 60, 900))
+    ]
+    const r = buildCodexTrends({ ...input, records: many, groupBy: 'all' })
+    expect(r.markers.filter((m) => m.kind === 'model').map((m) => m.label)).not.toContain(
+      'codex-auto-review'
+    )
+    // 0.163 → 0.167 isn't marked (four minors); 0.174 is eleven past the first: one marker.
+    expect(r.markers.filter((m) => m.kind === 'version').map((m) => m.label)).toEqual(['v0.174.0'])
+    expect(versionStep('0.163.0', '0.168.2')).toBe(5)
+    expect(versionStep('0.163.0', '1.0.0')).toBe(Infinity)
+    expect(versionStep('0.166.0-alpha.5', '0.166.0')).toBe(0)
   })
 
   it('compares two date ranges or two versions', () => {

@@ -299,8 +299,8 @@ function AgentMessage({
       header={
         <>
           <Bot className="size-3.5 shrink-0 text-muted-foreground" />
-          <span className="font-medium">Agent → Agent</span>
-          <span className="shrink-0 font-mono text-2xs text-muted-foreground">
+          <span className="shrink-0 font-medium whitespace-nowrap">Agent → Agent</span>
+          <span className="max-w-[45%] shrink-0 truncate font-mono text-2xs whitespace-nowrap text-muted-foreground">
             <span aria-label="From">{agentName(author)}</span>
             {' → '}
             <span aria-label="To">{agentName(recipient)}</span>

@@ -232,6 +232,20 @@ export interface CodexTrendsInput {
 
 export type CodexTrendsReport = TrendsReport<CodexMetricId>
 
+/** A model gets a "new model" marker only with at least this share of the responses. */
+export const MARKER_MIN_SHARE = 0.02
+/** Outside "By version", a version is marked this many minor versions after the last one marked. */
+export const VERSION_MARKER_STEP = 10
+
+/** How many minor versions `b` is past `a` (a new major counts as a big step). */
+export function versionStep(a: string, b: string): number {
+  const [a0, a1] = a.split(/[.-]/).map(Number)
+  const [b0, b1] = b.split(/[.-]/).map(Number)
+  if (!Number.isFinite(a0) || !Number.isFinite(b0)) return 0
+  if (b0 !== a0) return b0 > a0 ? Infinity : 0
+  return (b1 || 0) - (a1 || 0)
+}
+
 const groupOf = (by: TrendGroupBy, model?: string, version?: string): string =>
   by === 'all' ? 'all' : by === 'model' ? (model ?? 'unknown') : (version ?? 'unknown')
 
@@ -320,10 +334,16 @@ export function buildCodexTrends(input: CodexTrendsInput): CodexTrendsReport {
     }
 
   // Markers: a model's first week, and a new Codex CLI version taking over.
+  // Codex releases a new minor version almost every week and tries many
+  // models, so only models with a real share of the responses are marked,
+  // and (outside "By version") only a version well past the last one marked.
   const markers: TrendMarker[] = []
   const firstWeek = weeks[0]?.week
+  const perModel = new Map<string, number>()
+  for (const r of input.records) perModel.set(r.model, (perModel.get(r.model) ?? 0) + 1)
+  const minShare = input.records.length * MARKER_MIN_SHARE
   for (const [model, w] of firstModel) {
-    if (w === firstWeek) continue
+    if (w === firstWeek || (perModel.get(model) ?? 0) < minShare) continue
     markers.push({
       week: w,
       start: bucketRange(w, 'week', tz).start,
@@ -332,16 +352,19 @@ export function buildCodexTrends(input: CodexTrendsInput): CodexTrendsReport {
     })
   }
   let prevDominant: string | undefined
+  // The version last marked (or the first one): steps are measured from it.
+  let lastMarked: string | undefined
   for (const w of weeks) {
     const vw = versionWeek.get(w.week)
     if (!vw) continue
     const dominant = [...vw.entries()].sort((a, b) => b[1] - a[1])[0][0]
+    lastMarked ??= dominant
     if (prevDominant && dominant !== prevDominant && compareVersions(dominant, prevDominant) > 0) {
-      // Codex numbers releases 0.<minor>.<patch>: mark a new minor, or every change by version.
-      const [a1, b1] = [prevDominant.split(/[.-]/), dominant.split(/[.-]/)]
-      const big = a1[0] !== b1[0] || a1[1] !== b1[1]
-      if (groupBy === 'version' || big)
+      // Codex numbers releases 0.<minor>.<patch>: by version, every change; else a big step.
+      if (groupBy === 'version' || versionStep(lastMarked, dominant) >= VERSION_MARKER_STEP) {
         markers.push({ ...w, kind: 'version', label: `v${dominant}` })
+        lastMarked = dominant
+      }
     }
     prevDominant = dominant
   }

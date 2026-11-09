@@ -5,7 +5,13 @@
 import type { PushKind } from './mobile'
 import type { LiveSession } from './live'
 
-export type AlertKind = Exclude<PushKind, 'test'>
+/** What alerts (and their settings) are about. A guessed approval is an 'approval' too; only its push says "may". */
+export type AlertKind = Exclude<PushKind, 'test' | 'approval_maybe'>
+
+/** The push for an alert: a guessed approval (Codex without its hook) says it only may need you. */
+export function pushKindOf(a: Pick<Alert, 'kind' | 'session'>): Exclude<PushKind, 'test'> {
+  return a.kind === 'approval' && a.session.guess ? 'approval_maybe' : a.kind
+}
 
 export interface QuietHours {
   enabled: boolean
@@ -123,7 +129,9 @@ export function detectAlerts(
       continue
     }
     if (!p) continue
-    if (s.state === 'idle' && p.state === 'working') {
+    // Finished: also straight from an approval (answered, and the turn ended before
+    // the next read, so Working was never seen in between).
+    if (s.state === 'idle' && (p.state === 'working' || p.state === 'approval')) {
       add(s.failed ? 'failed' : 'finished')
       continue
     }
@@ -178,7 +186,10 @@ export function desktopText(a: Alert, title: string): { title: string; body: str
   const d = a.session.detail
   switch (a.kind) {
     case 'approval':
-      return { title: 'Needs your approval', body: d ? `${title}: ${d}` : title }
+      return {
+        title: a.session.guess ? 'Probably needs your approval' : 'Needs your approval',
+        body: d ? `${title}: ${d}` : title
+      }
     case 'finished':
       return { title: 'Finished', body: `${title} is waiting for your next message` }
     case 'failed':

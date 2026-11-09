@@ -242,6 +242,82 @@ export function parseTermList(json: string): TermList {
   return { ancestor: o.ancestor ? Number(o.ancestor) : undefined, windows }
 }
 
+/**
+ * Which processes have a file open, from Windows' Restart Manager (the API
+ * installers use to find what holds a file). Read only: Restart Manager
+ * looks the file up with FILE_READ_ATTRIBUTES access, which Windows never
+ * checks against share modes, and it takes no lock; RmEndSession ends the
+ * query. It never closes, signals or restarts anything (RmShutdown and
+ * RmRestart are never called). Used for Codex's thread-writer locks, to find
+ * the Codex process (and so the terminal) that has a thread open. The path
+ * arrives as base64 data, never as script text.
+ */
+export const RM_HOLDERS = String.raw`
+$ErrorActionPreference = 'Stop'
+$ProgressPreference = 'SilentlyContinue'
+Add-Type -TypeDefinition @'
+using System;
+using System.Collections.Generic;
+using System.Runtime.InteropServices;
+public static class CsdRm {
+  [StructLayout(LayoutKind.Sequential)] public struct UNIQUE { public int pid; public System.Runtime.InteropServices.ComTypes.FILETIME start; }
+  [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)] public struct INFO {
+    public UNIQUE p;
+    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 256)] public string app;
+    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 64)] public string svc;
+    public int type; public int status; public int sess;
+    [MarshalAs(UnmanagedType.Bool)] public bool restartable;
+  }
+  [DllImport("rstrtmgr.dll", CharSet = CharSet.Unicode)] static extern int RmStartSession(out uint h, int f, string key);
+  [DllImport("rstrtmgr.dll")] static extern int RmEndSession(uint h);
+  [DllImport("rstrtmgr.dll", CharSet = CharSet.Unicode)] static extern int RmRegisterResources(uint h, uint n, string[] files, uint a, IntPtr b, uint c, string[] d);
+  [DllImport("rstrtmgr.dll")] static extern int RmGetList(uint h, out uint need, ref uint n, [In, Out] INFO[] info, ref uint reasons);
+  public static string Holders(string file) {
+    uint h;
+    if (RmStartSession(out h, 0, Guid.NewGuid().ToString()) != 0) return "";
+    try {
+      if (RmRegisterResources(h, 1, new[] { file }, 0, IntPtr.Zero, 0, null) != 0) return "";
+      uint need = 0, n = 0, reasons = 0;
+      if (RmGetList(h, out need, ref n, null, ref reasons) == 0 || need == 0) return "";
+      var arr = new INFO[need]; n = need;
+      if (RmGetList(h, out need, ref n, arr, ref reasons) != 0) return "";
+      var s = new List<string>();
+      for (int i = 0; i < n; i++) {
+        long ft = ((long)(uint)arr[i].p.start.dwHighDateTime << 32) | (uint)arr[i].p.start.dwLowDateTime;
+        s.Add(arr[i].p.pid + ":" + ft);
+      }
+      return string.Join(" ", s);
+    } finally { RmEndSession(h); }
+  }
+}
+'@
+$p = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($env:CSD_RM_FILE))
+[Console]::Out.WriteLine((@{ holders = [CsdRm]::Holders($p) } | ConvertTo-Json -Compress))
+`
+
+/** "pid:filetime pid:filetime" → holders. */
+export function parseHolders(json: string): { pid: number; start: string }[] {
+  const o = JSON.parse(json) as { holders?: unknown }
+  return String(o.holders ?? '')
+    .split(/\s+/)
+    .map((x) => /^(\d+):(\d+)$/.exec(x))
+    .filter((m): m is RegExpExecArray => !!m)
+    .map((m) => ({ pid: Number(m[1]), start: m[2] }))
+    .filter((h) => h.pid > 0)
+}
+
+/** The processes holding a file open (Windows; empty elsewhere or on failure). */
+export async function fileHolders(path: string): Promise<{ pid: number; start: string }[]> {
+  if (process.platform !== 'win32') return []
+  try {
+    return parseHolders(
+      await runPs(RM_HOLDERS, { CSD_RM_FILE: Buffer.from(path, 'utf8').toString('base64') })
+    )
+  } catch {
+    return []
+  }
+}
+
 /** Bring the session's terminal forward. Windows only; elsewhere it says so. */
 export async function focusTerminal(
   req: FocusRequest,

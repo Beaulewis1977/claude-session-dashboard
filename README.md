@@ -160,6 +160,12 @@ Everything stays on your PC and your own private network.
   sessions.
 - Works without any setup from Claude Code's own session files. **Enable session alerts** for exact,
   instant states: it adds a few hooks to Claude Code's `settings.json`, after you review the diff.
+- **Codex threads too** (CLI, VS Code and the desktop app, on Windows and in WSL), with no setup:
+  states come from Codex's own session files and its thread locks (read only, without ever getting
+  in Codex's way). Only "needs approval" is a guess there ("Needs approval?"); **Enable approval
+  alerts** for a Codex home adds one hook to its `~/.codex/hooks.json` (after you review the diff,
+  and once you trust it in Codex's `/hooks`) to make it exact. Codex threads offer **Open in Codex
+  app** instead of Remote Control. Running now follows the **All / Claude / Codex** switch.
 
 ### Backups
 
@@ -407,7 +413,10 @@ Six opt-in exceptions, each only after you approve it in the app:
 5. **Session alerts** add the app's hooks to the `hooks` key in Claude Code's `settings.json`
    (appended, never replacing yours). You see the diff first, the file is backed up, and Disable
    takes out exactly the app's hooks. The hook script only saves each event in the app's own
-   `~/.claude-session-dashboard/events` folder.
+   `~/.claude-session-dashboard/events` folder. **Codex approval alerts** do the same with one
+   PermissionRequest hook in `~/.codex/hooks.json` (never `config.toml`: Codex asks you to trust
+   the hook in `/hooks`, and the app never does that for you); its script saves only the session,
+   the event and the tool name.
 6. **Phone push alerts** are off until you turn them on, on each phone. The PC then sends an
    end-to-end encrypted Web Push message to that phone's browser push service (Google, Apple,
    Mozilla or Microsoft), which can't read it. It holds only the kind of alert and a random

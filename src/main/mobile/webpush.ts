@@ -47,6 +47,7 @@ export interface PushSubscriptionData {
 
 export const PUSH_KINDS: readonly PushKind[] = [
   'approval',
+  'approval_maybe',
   'finished',
   'waiting',
   'exited',
@@ -282,7 +283,10 @@ export async function sendPush(
     'Content-Type': 'application/octet-stream',
     'Content-Encoding': 'aes128gcm',
     TTL: String(notice.kind === 'test' ? 60 : TTL_SECONDS),
-    Urgency: notice.kind === 'approval' || notice.kind === 'failed' ? 'high' : 'normal',
+    Urgency:
+      notice.kind === 'approval' || notice.kind === 'approval_maybe' || notice.kind === 'failed'
+        ? 'high'
+        : 'normal',
     Authorization: `vapid t=${jwt}, k=${vapid.publicKey}`
   }
   try {

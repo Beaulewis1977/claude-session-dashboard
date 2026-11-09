@@ -130,7 +130,8 @@ export const PROVIDER_CAPABILITIES: Record<ProviderId, ProviderCapabilities> = {
     summaries: false,
     usage: true,
     restore: false,
-    live: false
+    // Phase D1: Running now and alerts, from thread locks and rollouts (+ the opt-in hook).
+    live: true
   }
 }
 

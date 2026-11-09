@@ -22,6 +22,7 @@ import { RunningTab } from './RunningTab'
 import { useOpenLive } from './open-live'
 import { bootstrap } from './bootstrap'
 import { useMobile } from './state'
+import { useMobileScope } from './scope'
 
 function useBootstrap(paired: boolean): void {
   const set = useApp((s) => s.set)
@@ -111,7 +112,7 @@ export function MobileApp() {
   useBootstrap(paired)
   useLiveData(useApp((s) => s.info !== null) && paired)
   useLiveSessions(useApp((s) => s.info !== null) && paired)
-  const live = useLiveCounts()
+  const live = useLiveCounts(useMobileScope().view)
   // A tapped push alert: Running now, then its session once it can be shown.
   useOpenLive(paired)
   const view = useApp((s) => s.view)

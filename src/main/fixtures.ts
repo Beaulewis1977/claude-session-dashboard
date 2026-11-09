@@ -3,7 +3,16 @@
 // Files are only copied when missing; nothing is ever deleted.
 
 import { constants } from 'node:fs'
-import { access, copyFile, mkdir, readdir, readFile, utimes, writeFile } from 'node:fs/promises'
+import {
+  access,
+  appendFile,
+  copyFile,
+  mkdir,
+  readdir,
+  readFile,
+  utimes,
+  writeFile
+} from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { clockOffset, FIXTURES_NOW, now } from '@shared/clock'
 import type { JsonStore } from './core/json-store'
@@ -13,6 +22,7 @@ import { BRIDGE_DIR_NAME } from './services/bridge'
 import type { HooksInstaller } from './services/hooks'
 import type { ProcCheck } from './services/live'
 import type { SessionService } from './services/sessions'
+import { CodexLiveReader, realCodexLiveFs } from './providers/codex/live'
 import type { MetadataFile, SettingsFile } from './services/store'
 
 async function exists(p: string): Promise<boolean> {
@@ -375,4 +385,109 @@ export async function seedFixtureLive(
       runningFile({ ...busy, changed: 0 }, at, working ? 'busy' : 'idle')
     ).catch(() => undefined)
   }, 45_000).unref()
+}
+
+// ------------------------------------------------------------ Codex live
+
+/** Codex threads whose locks are "held" in fixtures mode, per home (Windows, WSL). */
+const FIXTURE_CODEX_HELD = {
+  windows: ['019a4444-0000-7000-8000-000000000004', '019a1111-0000-7000-8000-000000000001'],
+  wsl: ['019a7777-0000-7000-8000-000000000007']
+}
+
+const fakeIno = (id: string): bigint => BigInt(parseInt(id.slice(-6), 16) + 900_000)
+
+/**
+ * Codex's thread locks in fixtures mode: three threads are open (two on
+ * Windows, one in WSL), without any real lock. Everything else is read from
+ * the fixture copies as usual.
+ */
+export function fixtureCodexReader(): CodexLiveReader {
+  const heldIn = (dir: string): string[] =>
+    /[\\/]wsl[\\/]/.test(dir) ? FIXTURE_CODEX_HELD.wsl : FIXTURE_CODEX_HELD.windows
+  const all = [...FIXTURE_CODEX_HELD.windows, ...FIXTURE_CODEX_HELD.wsl]
+  const lockOf = (path: string): string | undefined =>
+    all.find((id) => path.endsWith(`${id}.lock`) && /thread-writer-locks/.test(path))
+  const since = Date.now() - 35 * 60_000
+  return new CodexLiveReader({
+    ...realCodexLiveFs,
+    readdir: async (dir) =>
+      /thread-writer-locks$/.test(dir)
+        ? heldIn(dir).map((id) => `${id}.lock`)
+        : realCodexLiveFs.readdir(dir),
+    stat: async (path) => {
+      const id = lockOf(path)
+      return id
+        ? { mtimeMs: since, size: 0, ino: fakeIno(id), isFile: true }
+        : realCodexLiveFs.stat(path)
+    },
+    probeLock: async (path) => !!lockOf(path),
+    readSmall: async (path) => {
+      if (/[\\/]proc[\\/]locks$/.test(path))
+        return FIXTURE_CODEX_HELD.wsl
+          .map((id, i) => `${i + 1}: FLOCK  ADVISORY  WRITE 6100${i} 08:30:${fakeIno(id)} 0 EOF`)
+          .join('\n')
+      if (/[\\/]proc[\\/]\d+[\\/]cmdline$/.test(path)) return 'codex\0resume\0'
+      return realCodexLiveFs.readSmall(path)
+    }
+  })
+}
+
+/**
+ * Codex in Running now (fixtures mode): one thread keeps switching between
+ * working and finished, one has an escalated command waiting (a "probably
+ * needs approval"), by appending turn events to the fixture copies of their
+ * rollouts in `.fixtures-data`.
+ */
+export async function seedFixtureCodexLive(sessions: SessionService): Promise<void> {
+  const path = (id: string): string | undefined => sessions.get(`codex-windows:${id}`)?.originalPath
+  const iso = (ms: number): string => new Date(ms).toISOString()
+  const line = (ms: number, type: string, payload: Record<string, unknown>): string =>
+    `${JSON.stringify({ timestamp: iso(ms), type, payload })}\n`
+  const [busyId, waitId] = FIXTURE_CODEX_HELD.windows
+  const wait = path(waitId)
+  if (wait) {
+    const t = now() - 3 * 60_000
+    await appendFile(
+      wait,
+      line(t, 'event_msg', {
+        type: 'task_started',
+        turn_id: 'fx-turn-wait',
+        started_at: Math.floor(t / 1000)
+      }) +
+        line(t + 20_000, 'response_item', {
+          type: 'function_call',
+          name: 'exec_command',
+          call_id: 'fx-call-wait',
+          arguments: JSON.stringify({
+            cmd: 'npm publish',
+            sandbox_permissions: 'require_escalated'
+          })
+        })
+    ).catch(() => undefined)
+  }
+  const busy = path(busyId)
+  if (!busy) return
+  let n = 0
+  const flip = (): void => {
+    const t = now()
+    const id = `fx-turn-${n++}`
+    const working = n % 2 === 1
+    void appendFile(
+      busy,
+      working
+        ? line(t, 'event_msg', {
+            type: 'task_started',
+            turn_id: id,
+            started_at: Math.floor(t / 1000)
+          })
+        : line(t, 'event_msg', {
+            type: 'task_complete',
+            turn_id: `fx-turn-${n - 2}`,
+            completed_at: Math.floor(t / 1000)
+          })
+    ).catch(() => undefined)
+  }
+  flip()
+  setInterval(flip, 45_000).unref()
 }

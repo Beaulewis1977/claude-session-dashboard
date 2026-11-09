@@ -65,8 +65,8 @@ is off by default; when you turn it on, a small server for the app's own phone w
 An optional home Wi-Fi mode listens on one private LAN address instead, behind a firewall rule you
 approve. See [Phone companion](#phone-companion).
 
-**Running now** reads Claude Code's `~/.claude/sessions/*.json` (read only). Two opt-in additions,
-each only after you approve it:
+**Running now** reads Claude Code's `~/.claude/sessions/*.json` and, for Codex, its thread locks and
+rollouts (read only). Two opt-in additions, each only after you approve it:
 
 - **Session alerts** add the app's hooks to the `hooks` key of a `~/.claude/settings.json`, with
   the status line bridge's safety model: the exact diff first, a backup, the app's hook groups
@@ -80,6 +80,11 @@ each only after you approve it:
   possible, nothing changes. An editor that already has settings.json open can still save over the
   change afterwards; the backup keeps your reviewed file. The hook script only saves each event to
   `~/.claude-session-dashboard/events/`; the app prunes its own event files there after a week.
+- **Codex approval alerts** change only a Codex home's `~/.codex/hooks.json` the same way (one
+  PermissionRequest hook group appended; Disable takes out exactly the app's handler; the file is
+  saved with the same backup, re-check and atomic rename). `config.toml` is only read (to show
+  whether you trusted the hook in Codex's `/hooks`), never written, and `auth.json` is never opened.
+  Its script saves only the session id, event and tool name to `~/.claude-session-dashboard/codex-events/`.
 - **Phone push alerts** (opt-in on each phone) are the one outgoing call of the phone feature: an
   end-to-end encrypted Web Push message (RFC 8291 with VAPID) to the push endpoint that phone's
   browser registered, and only to the browser push services (Google FCM, Apple, Mozilla,
@@ -387,6 +392,89 @@ tab whose title holds the session's name (Claude Code puts it there; give a sess
 `/rename` to make it easy to find). WSL sessions are found by their tab title. It never types into
 or changes a terminal. A session in VS Code or another IDE can't be focused this way; the app says
 so.
+
+**Codex threads** (Phase D1) show in the same list, from three signals, all read only:
+
+- **Thread locks.** While a Codex process (the CLI, VS Code's or the desktop app's app-server, a
+  plugin's) has a thread open, it holds a kernel lock on
+  `~/.codex/thread-writer-locks/<thread-id>.lock`; the OS drops it when that process ends, so a
+  crashed or reused PID can never keep a thread "running". The lock file's time is when the holder
+  took it: turns that started before it belong to an earlier run (a crash, then a resume). On
+  Windows the app opens the file read only and reads one byte: a held lock fails that read at
+  once. In WSL it reads only the distro's `/proc/locks` (the holder's PID and the file's inode)
+  and the lock files' inodes, and checks that the holder is a Codex process.
+- **The rollout's events**, read as the file grows: `task_started` (Working, and for how long),
+  `task_complete` (Waiting for you, since then), `turn_aborted` (an interrupt, or a failure for any
+  other reason), and tool calls still waiting for their output.
+- **Approvals.** Codex doesn't log approval requests in its rollouts. An escalated command
+  (`require_escalated`) left without output for 5 seconds shows as **Needs approval?** (a guess:
+  a long command that was already approved looks the same), unless approvals are off for the turn
+  (`never`). Its phone push says "A session may need your approval". A question for you (`request_user_input`) waits for you. For exact approvals,
+  **Enable approval alerts** for that Codex home adds one PermissionRequest hook to
+  `~/.codex/hooks.json` (same safety model as Claude Code's hooks: diff, backup, appended, atomic
+  save with a re-check, Disable takes out exactly the app's handler). Codex runs a new hook only
+  after you trust it in its `/hooks`; the app shows whether you have (read from `config.toml`'s
+  `[hooks.state]`, never written) and never marks it trusted itself. An entry an older hook left at
+  the same position (Codex keys trust by position) doesn't count: only one Codex saved after the app
+  added its hook, or an approval the hook delivered after the last save of both config.toml and
+  hooks.json (so an older event never overrides a later change, and "turned off" always wins; a save
+  time that can't be read never counts). Codex trusts a hash of the whole hook group, so if the
+  app's group is edited (a matcher added, an option changed) it counts as untrusted again. An exact
+  approval belongs to the call that asked (one running when the request came, an escalated one if
+  any): it lasts until that call's output or the turn's end. The hook event names no call, so when
+  several calls could have asked and only some have answered, the row shows **Needs approval?** (and
+  its push says "may") until all have. Another tool finishing or starting
+  doesn't end it. Codex logs nothing when you approve; an approved command's call returns within
+  its yield time (about a second in code mode), so the row goes back to Working then. A tool that
+  returns nothing until it's done stays shown as needing approval until then. Once Codex has
+  trusted the app's hook (while hooks.json is still exactly what the app wrote, or proved by an
+  approval the hook delivered), the app keeps that hook's own hash (Codex hashes a hook's content, not its
+  position): a trust entry another group left at the hook's position never counts, nor does any
+  hash that was in config.toml before the hook was added. An edited hook shows as "Changed", with
+  Disable and enable again as the fix. Codex keys trust by position,
+  so if you later add a PermissionRequest hook of your own after the app's, Disable warns that
+  Codex will ask you to trust yours again. The script saves only the session id, the event and the
+  tool name in `~/.claude-session-dashboard/codex-events/` and prints nothing, so Codex still asks
+  you as usual.
+
+What shows: subagent threads never get a row (a working or waiting subagent shows on its parent);
+Claude Code's Codex plugin and `codex exec` threads show only while they work; VS Code's and the
+desktop app's idle threads (their app-server keeps them loaded) for 30 minutes after their last
+turn; a desktop-app or VS Code thread nobody holds a lock on (their app-server may not lock an idle
+thread) while it works, and then as "waiting for you" for 30 minutes. A CLI thread always holds its
+lock, so an open turn in the rollout of an unlocked CLI thread (a crash) is not work. Exited is a
+lock the app saw held and then released. A lock that can't be checked for a moment (an unreadable
+WSL share, a holder whose command line can't be read) is "can't tell", never "free": a thread seen
+open keeps its row, marked unconfirmed, for up to 30 minutes, and nothing is reported as ended. The
+same goes for a single lock file or rollout that can't be read, for a whole home that becomes
+unreadable (a WSL share outage), and for a home that drops out of the source list (a stopped
+distro's home replaced by a placeholder): during such an outage each thread keeps its last known
+state (an approval stays an approval, a desktop-app thread stays too), marked "can't check". Only
+turning Codex off clears its rows at once. A session in a custom Codex folder gets a note instead
+of the setup banner: the app adds its hook only to a `~/.codex` home it found. An
+answered approval whose turn ends before the next read still alerts "Finished" (with the minimum
+work time counted from the turn's start). Every
+lock file is looked at (Codex keeps old ones): on Windows each is probed and only held ones are
+`stat`ed; in WSL their inodes are cached for a minute (recently active threads are looked at
+afresh).
+Each Codex home is read every 2 seconds (5 in WSL) while one of its threads is open or recently
+active, every 10 (15) while nothing runs; an unchanged rollout costs one `stat`. Codex has no
+"still waiting" reminder, and no Remote Control: its threads offer **Open in Codex app**
+(`codex://threads/<id>`) and **Copy resume command** (`codex resume <id>`). **Focus terminal**
+finds the Codex process holding a Windows thread's lock through Windows' Restart Manager (read
+only), then its window; a WSL thread is found by its tab title.
+
+**Never in Codex's way.** The Windows probe opens the lock file with every share mode (read, write
+and delete) and takes no lock; byte-range locks only conflict with other locks, and a read of a
+locked range fails immediately instead of waiting, so the probe can't block or delay Codex taking,
+rewriting or releasing its lock. Restart Manager looks a file up with attribute-only access (never
+checked against share modes) and is only asked when you click Focus terminal. In WSL a lock file is
+never opened at all (on Linux, opening a file never conflicts with `flock` anyway).
+`tests/codex-lock-probe.test.ts` checks this against a real lock on Windows: a stand-in takes
+Codex's whole-file `LockFileEx` lock with "fail immediately" 400 times while the probe runs as fast
+as it can (about 87,000 probes) and Restart Manager is queried; the stand-in never once failed to
+take or release its lock. To check by hand: run Codex in a terminal and watch Running now while you
+work; Codex never reports a locked or busy thread.
 
 **Push alerts on a phone.** On the phone, Running now → **Turn on push alerts** asks the browser for
 permission and registers with its push service; the PC stores only that subscription (the endpoint
@@ -1002,7 +1090,7 @@ folder plus Codex's name index, `config.toml`, `archived_sessions` or `sessions/
     folders only the session's own WSL user can read. Those are checked inside the distro
     (`test -r`), as the user Codex will run as.
 - **Not for Codex** (hidden): Branch from here (it would write into `~/.codex`), Continue fresh and
-  summaries (later phase), New session in this folder, Remote Control, API billing, Running now. A
+  summaries (later phase), New session in this folder, Remote Control, API billing. A
   Codex session whose file is gone can be read but not resumed: the app never copies files back
   into `~/.codex`.
 - **Usage** (Phase C): from each rollout's `event_msg` / `token_count` events, read in full (also

@@ -9,7 +9,7 @@
 import { randomBytes } from 'node:crypto'
 import { EventEmitter } from 'node:events'
 import { lstat, readdir, readFile, realpath, stat, unlink } from 'node:fs/promises'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { clockOffset, now } from '@shared/clock'
 import {
   computeLive,
@@ -19,20 +19,27 @@ import {
   type LiveSnapshot,
   type ProcInput,
   type RunningFile,
-  EXITED_KEEP_MS
+  EXITED_KEEP_MS,
+  UNVERIFIED_MAX_MS
 } from '@shared/live'
 import {
   alertVerdict,
   detectAlerts,
+  pushKindOf,
   type Alert,
-  type AlertKind,
   type LiveAlertSettings
 } from '@shared/live-alerts'
+import { computeCodexLive, UNLOCKED_ACTIVE_MS, type CodexThreadInput } from '@shared/codex-live'
+import { liveOrder, parseHookEvent } from '@shared/live'
+import type { PushKind } from '@shared/mobile'
+import type { SourceInfo } from '@shared/types'
 import { isInsideClaudeDir } from '../core/safe-paths'
 import type { Alive, ProcQuery } from '../core/procs'
+import { CodexLiveReader, type ProcLockIndex, type ThreadLock } from '../providers/codex/live'
 import { catalogueProviders } from '../providers/registry'
 import type { LiveDirs, SessionProvider } from '../providers/types'
 import { BRIDGE_DIR_NAME } from './bridge'
+import { CODEX_EVENTS_DIR, codexHookPaths, type CodexHooksInstaller } from './codex-hooks'
 import type { HooksInstaller } from './hooks'
 import type { SessionService } from './sessions'
 
@@ -64,12 +71,23 @@ export interface LiveDeps {
    * Web Push to phones that turned it on; returns how many got it. Each phone
    * gets its own reference (`refFor(deviceId)`).
    */
-  push: (kind: AlertKind, refFor: (deviceId: string) => string) => Promise<number>
+  push: (kind: Exclude<PushKind, 'test'>, refFor: (deviceId: string) => string) => Promise<number>
   /** Host path of a WSL source's distro root (for /proc). */
   distroRoot: (sourceId: string) => string | undefined
   /** Monotonic milliseconds, for intervals (the wall clock can jump back). */
   mono?: () => number
+  /** Codex's opt-in PermissionRequest hook (absent: Codex rows come from locks and rollouts only). */
+  codexHooks?: CodexHooksInstaller
+  /** Reads Codex's thread locks and rollouts (a seam for tests and fixtures mode). */
+  codexReader?: CodexLiveReader
 }
+
+/** Codex homes are polled this often while one of their threads is open… */
+const CODEX_ACTIVE_MS = 2000
+const CODEX_ACTIVE_UNC_MS = 5000
+/** …and backed off to this while nothing runs there. */
+const CODEX_IDLE_MS = 10_000
+const CODEX_IDLE_UNC_MS = 15_000
 
 /** How long a push reference can be opened. */
 export const REF_TTL_MS = 24 * 60 * 60_000
@@ -99,16 +117,43 @@ export class LiveService extends EventEmitter<{ changed: [] }> {
   private hookEnvs: HookEnv[] = []
   private hookEnvsAt: number | undefined
   private lastShown = new Map<string, number>()
+  /** When each session last started working (seen Working), for approval → finished. */
+  private workStart = new Map<string, number>()
   private refs = new Map<string, { key: string; deviceId: string; at: number }>()
   /** Sessions whose running file disappeared after the app saw them running. */
   private tombstones = new Map<string, { input: Omit<ProcInput, 'alive'>; goneAt: number }>()
   private lastPrune: number | undefined
   private at = 0
   private readonly mono: () => number
+  /** Per Codex home: its locks and thread inputs from the last read. */
+  private codex = new Map<
+    string,
+    {
+      at: number
+      locks: ThreadLock[]
+      inputs: CodexThreadInput[]
+      /** Gone from the source list (a stopped distro's home, replaced by a placeholder). */
+      missingSince?: number
+    }
+  >()
+  private codexEvents = new Map<string, Cached<HookEvent>>()
+  /** Codex threads seen working while nobody held their lock (the desktop app). */
+  private codexSeenWorking = new Set<string>()
+  /** When each Codex thread's lock was last seen held (see CodexLiveInputs.lockSeenAt). */
+  private codexLockSeen = new Map<string, number>()
+  private readonly codexReader: CodexLiveReader
 
   constructor(private readonly deps: LiveDeps) {
     super()
     this.mono = deps.mono ?? (() => performance.now())
+    this.codexReader = deps.codexReader ?? new CodexLiveReader()
+  }
+
+  /** A Codex thread's lock file (for Focus terminal: who holds it). */
+  codexLockPath(key: string): string | undefined {
+    const i = key.indexOf(':')
+    const id = key.slice(i + 1)
+    return this.codex.get(key.slice(0, i))?.locks.find((l) => l.threadId === id)?.path
   }
 
   start(): void {
@@ -226,7 +271,7 @@ export class LiveService extends EventEmitter<{ changed: [] }> {
       await this.describeHooks(events)
     const hooksOn = new Set(this.hookEnvs.filter((h) => h.installed).map((h) => h.sourceId))
 
-    const next = computeLive({
+    const claude = computeLive({
       now: t,
       procs: inputs,
       events,
@@ -247,8 +292,15 @@ export class LiveService extends EventEmitter<{ changed: [] }> {
         return s ? { env: s.env, distro: s.distro } : undefined
       }
     })
+    const next = [...claude, ...(await this.pollCodex(t, m, force))].sort(liveOrder)
 
     this.alert(this.prev, next, idlePrompts, t)
+    for (const s of next) {
+      if (s.state === 'working') this.workStart.set(s.key, s.since)
+      else if (s.state !== 'approval') this.workStart.delete(s.key)
+    }
+    for (const k of this.workStart.keys())
+      if (!next.some((s) => s.key === k)) this.workStart.delete(k)
     this.prev = new Map(next.map((s) => [s.key, s]))
     this.current = next
     this.at = t
@@ -259,8 +311,203 @@ export class LiveService extends EventEmitter<{ changed: [] }> {
     }
     if (this.lastPrune === undefined || m - this.lastPrune > 60 * 60_000) {
       this.lastPrune = m
-      void this.prune(dirs).catch((err: unknown) => console.warn('event prune failed', err))
+      const codexDirs = this.codexSources().flatMap((src) => {
+        const p = codexHookPaths(src)
+        return p ? [{ eventsDir: join(p.bridgeDir, CODEX_EVENTS_DIR), home: dirname(p.home) }] : []
+      })
+      void this.prune([
+        ...dirs.map((d) => ({ eventsDir: d.eventsDir, home: d.home, name: 'events' })),
+        ...codexDirs.map((d) => ({ ...d, name: CODEX_EVENTS_DIR }))
+      ]).catch((err: unknown) => console.warn('event prune failed', err))
+      this.codexReader.prune()
     }
+  }
+
+  /** Readable Codex homes, while Codex is on (Settings → Providers). */
+  private codexSources(unreadableToo = false): SourceInfo[] {
+    const providers = catalogueProviders(this.deps.sessions)
+    return this.deps.sessions.sources.filter((src) => {
+      const p = providers.find(src)
+      return p?.id === 'codex' && p.capabilities.live && (unreadableToo || src.status === 'ok')
+    })
+  }
+
+  /**
+   * Codex's part of Running now (see shared/codex-live.ts). Each home is read
+   * every 2 s (5 s for WSL) while one of its threads is open or recently
+   * active, and every 10 s (15 s) while nothing runs there.
+   */
+  private async pollCodex(t: number, m: number, force: boolean): Promise<LiveSession[]> {
+    // Codex turned off (Settings → Providers): nothing of it shows, at once.
+    if (!catalogueProviders(this.deps.sessions).isOn('codex')) {
+      this.codex.clear()
+      return []
+    }
+    const all = this.codexSources(true)
+    const known = new Set(all.map((s) => s.id))
+    // A home gone from the source list (its distro stopped, say): its threads stay a
+    // while as "can't tell", like an unreadable one, never "ended" at once.
+    for (const [id, c] of this.codex) {
+      if (known.has(id)) {
+        c.missingSince = undefined
+        continue
+      }
+      if (c.missingSince === undefined)
+        this.codex.set(id, {
+          ...c,
+          missingSince: m,
+          locks: c.locks.map((l) => ({ ...l, held: undefined })),
+          inputs: c.inputs.map((i) => ({ ...i, held: undefined, outageSince: i.outageSince ?? t }))
+        })
+      else if (m - c.missingSince > UNVERIFIED_MAX_MS) this.codex.delete(id)
+    }
+    if (!all.length && !this.codex.size) return []
+    // A home that can't be read right now (a stopped distro, a WSL share outage): its
+    // threads stay as they were, as "can't tell" (never "ended"; see computeCodexLive).
+    for (const src of all) {
+      const have = this.codex.get(src.id)
+      if (src.status === 'ok' || !have) continue
+      this.codex.set(src.id, {
+        at: have.at,
+        locks: have.locks.map((l) => ({ ...l, held: undefined })),
+        inputs: have.inputs.map((i) => ({ ...i, held: undefined, outageSince: i.outageSince ?? t }))
+      })
+    }
+    const sources = all.filter((s) => s.status === 'ok')
+    const off = clockOffset()
+    // Threads whose rollout changed recently (a thread the desktop app runs may not be locked).
+    const recent = new Map<string, string[]>()
+    for (const s of this.deps.sessions.list()) {
+      if (s.provider !== 'codex' || !known.has(s.sourceId) || !s.lastActivityAt) continue
+      const at = Date.parse(s.lastActivityAt)
+      if (!Number.isFinite(at) || t - at > UNLOCKED_ACTIVE_MS) continue
+      const list = recent.get(s.sourceId) ?? []
+      list.push(s.sessionId)
+      recent.set(s.sourceId, list)
+    }
+    const procLocks = new Map<string, ProcLockIndex>()
+    for (const src of sources) {
+      const unc = isUnc(src.projectsDir)
+      const open = [...(this.prev?.values() ?? [])].some(
+        (s) => s.sourceId === src.id && s.state !== 'exited'
+      )
+      const active = open || !!recent.get(src.id)?.length
+      const every = active
+        ? unc
+          ? CODEX_ACTIVE_UNC_MS
+          : CODEX_ACTIVE_MS
+        : unc
+          ? CODEX_IDLE_UNC_MS
+          : CODEX_IDLE_MS
+      const have = this.codex.get(src.id)
+      if (!force && have && m - have.at < every - 200) continue
+      // Threads with recent activity: their lock files are looked at afresh.
+      const fresh = new Set(recent.get(src.id) ?? [])
+      for (const s of this.prev?.values() ?? [])
+        if (s.sourceId === src.id && s.provider === 'codex' && s.state !== 'exited')
+          fresh.add(s.sessionId)
+      const read = await this.codexReader.locks(
+        { env: src.env, home: dirname(src.projectsDir), distroRoot: this.deps.distroRoot(src.id) },
+        procLocks,
+        fresh
+      )
+      // The folder can't be read right now: what was known stays, as "can't tell"
+      // (never "free": that would end open threads and send exit alerts).
+      const unknown = read === undefined
+      const locks = read ?? (have?.locks ?? []).map((l) => ({ ...l, held: undefined }))
+      await this.readCodexEvents(src)
+      // Open threads, threads the last poll showed, and recently active ones.
+      const ids = new Set<string>()
+      for (const l of locks) if (l.held !== false) ids.add(l.threadId)
+      for (const s of this.prev?.values() ?? [])
+        if (s.sourceId === src.id && s.provider === 'codex') ids.add(s.sessionId)
+      for (const id of recent.get(src.id) ?? []) ids.add(id)
+      const byId = new Map(locks.map((l) => [l.threadId, l]))
+      const inputs: CodexThreadInput[] = []
+      for (const id of ids) {
+        const key = `${src.id}:${id}`
+        const s = this.deps.sessions.get(key)
+        const lock = byId.get(id)
+        const path = s && s.availability === 'live' ? s.originalPath : undefined
+        const r = path ? await this.codexReader.rollout(path) : undefined
+        inputs.push({
+          sourceId: src.id,
+          env: src.env,
+          distro: src.distro,
+          threadId: id,
+          held: lock ? lock.held : unknown ? undefined : false,
+          // 0: its time couldn't be read (never a 1970 start).
+          heldSince: lock?.mtimeMs ? Math.round(lock.mtimeMs + off) : undefined,
+          pid: lock?.pid,
+          rollout: r?.state,
+          rolloutMtime: r ? Math.round(r.mtimeMs + off) : undefined,
+          info: {
+            label: s?.source,
+            parentId: s?.subagent?.parentId,
+            cwd: s?.cwd
+          }
+        })
+      }
+      this.codex.set(src.id, { at: m, locks, inputs })
+    }
+
+    const events = [...this.codexEvents.values()]
+      .map((c) => c.value)
+      .filter((e): e is HookEvent => !!e && known.has(e.source) && t - e.ts < EVENT_RELEVANT_MS)
+    const exact = this.deps.codexHooks?.exactSources(
+      this.hookEnvs.filter((h) => h.provider === 'codex' && !h.hooksFeatureOff)
+    )
+    const rows = computeCodexLive({
+      now: t,
+      threads: [...this.codex.values()].flatMap((c) => c.inputs),
+      events,
+      exactApprovals: exact ?? new Set(),
+      prev: this.prev,
+      seenWorking: this.codexSeenWorking,
+      lockSeenAt: this.codexLockSeen
+    })
+    for (const i of [...this.codex.values()].flatMap((c) => c.inputs))
+      if (i.held === true) this.codexLockSeen.set(`${i.sourceId}:${i.threadId}`, t)
+    const keys = new Set(rows.map((r) => r.key))
+    for (const k of this.codexLockSeen.keys()) if (!keys.has(k)) this.codexLockSeen.delete(k)
+    for (const k of this.codexSeenWorking) if (!keys.has(k)) this.codexSeenWorking.delete(k)
+    for (const r of rows) if (r.state === 'working' && !r.lockHeld) this.codexSeenWorking.add(r.key)
+    return rows
+  }
+
+  /** The app's own Codex hook events (only for homes where it's installed). */
+  private async readCodexEvents(src: SourceInfo): Promise<void> {
+    const prefix = `${src.id}|`
+    const installed = this.hookEnvs.some((h) => h.sourceId === src.id && h.installed)
+    const p = codexHookPaths(src)
+    const seen = new Set<string>()
+    if (installed && p) {
+      const dir = join(p.bridgeDir, CODEX_EVENTS_DIR)
+      const names = await readdir(dir).then(
+        (all) => all.filter((n) => EVENT_FILE_RE.test(n)),
+        () => [] as string[]
+      )
+      for (const n of names) {
+        const path = join(dir, n)
+        const k = prefix + path
+        seen.add(k)
+        try {
+          const st = await stat(path)
+          if (!st.isFile() || st.size > 64 * 1024) continue
+          const c = this.codexEvents.get(k)
+          if (c && c.mtimeMs === st.mtimeMs && c.size === st.size) continue
+          const value = parseHookEvent(await readFile(path, 'utf8'), {
+            ts: Math.round(st.mtimeMs + clockOffset()),
+            source: src.id
+          })
+          this.codexEvents.set(k, { mtimeMs: st.mtimeMs, size: st.size, value })
+        } catch {
+          // Being replaced right now: read it next time.
+        }
+      }
+    }
+    for (const k of this.codexEvents.keys())
+      if (k.startsWith(prefix) && !seen.has(k)) this.codexEvents.delete(k)
   }
 
   /** Every readable home whose provider has "Running now". */
@@ -280,8 +527,16 @@ export class LiveService extends EventEmitter<{ changed: [] }> {
     for (const e of events) last.set(e.source, Math.max(last.get(e.source) ?? 0, e.ts))
     const out: HookEnv[] = []
     const providers = catalogueProviders(this.deps.sessions)
+    for (const e of this.codexEvents.values())
+      if (e.value) last.set(e.value.source, Math.max(last.get(e.value.source) ?? 0, e.value.ts))
     for (const src of this.deps.sessions.sources) {
-      if (!providers.find(src)?.live?.hooksPossible(src)) continue
+      const p = providers.find(src)
+      if (p?.id === 'codex' && p.capabilities.live && this.deps.codexHooks) {
+        const d = await this.deps.codexHooks.describe(src, last.get(src.id)).catch(() => undefined)
+        if (d) out.push(d)
+        continue
+      }
+      if (!p?.live?.hooksPossible(src)) continue
       const d = await this.deps.hooks.describe(src, last.get(src.id)).catch(() => undefined)
       if (d) out.push(d)
     }
@@ -385,9 +640,13 @@ export class LiveService extends EventEmitter<{ changed: [] }> {
       const v = alertVerdict(a, settings, {
         now: t,
         muted: (key) => this.deps.sessions.get(key)?.meta.muteAlerts === true,
+        // When the turn began: Working's start, or (approval → finished) the start of
+        // the turn that asked, so "Finished only after …" applies there too.
         workedSince: (key) => {
           const p = prev?.get(key)
-          return p?.state === 'working' ? p.since : undefined
+          if (p?.state === 'working') return p.since
+          if (p?.state === 'approval') return p.turnStartedAt ?? this.workStart.get(key)
+          return undefined
         },
         lastShown: (key, kind) => this.lastShown.get(`${key}|${kind}`)
       })
@@ -404,7 +663,7 @@ export class LiveService extends EventEmitter<{ changed: [] }> {
       }
       if (v.phone) {
         void this.deps
-          .push(a.kind, (deviceId) => this.newRef(a.key, deviceId, t))
+          .push(pushKindOf(a), (deviceId) => this.newRef(a.key, deviceId, t))
           .catch((err: unknown) => console.warn('push failed', err))
       }
     }
@@ -427,13 +686,13 @@ export class LiveService extends EventEmitter<{ changed: [] }> {
    * `<home>/.claude-session-dashboard/events` folder (links followed), never
    * anything in `.claude`.
    */
-  private async prune(dirs: SourceDirs[]): Promise<void> {
+  private async prune(dirs: { eventsDir: string; home: string; name: string }[]): Promise<void> {
     const cutoff = Date.now() - EVENT_KEEP_MS
     for (const d of dirs) {
       let real: string
       try {
         const [r, h] = await Promise.all([realpath(d.eventsDir), realpath(d.home)])
-        const expected = join(h, BRIDGE_DIR_NAME, 'events')
+        const expected = join(h, BRIDGE_DIR_NAME, d.name)
         const same =
           process.platform === 'win32' ? r.toLowerCase() === expected.toLowerCase() : r === expected
         if (!same || isInsideClaudeDir(r)) continue

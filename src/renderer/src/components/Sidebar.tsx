@@ -123,7 +123,7 @@ export function Sidebar() {
   const f = facets(sessions, filters, scope)
   const subagents = hasSubagents(sessions) && scope.view !== 'claude'
   const notices = sources.filter((s) => s.status !== 'ok' && s.status !== 'missing').length
-  const live = useLiveCounts()
+  const live = useLiveCounts(scope.view)
 
   const showSessions = (patch: Partial<Filters>): void => {
     set({ view: 'sessions' })

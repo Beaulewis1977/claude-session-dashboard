@@ -217,7 +217,15 @@ export type MobileEvent =
  * no session name, project, path or message text. Just the kind of alert and
  * an opaque reference that the phone resolves over Tailscale when tapped.
  */
-export type PushKind = 'approval' | 'finished' | 'waiting' | 'exited' | 'failed' | 'test'
+export type PushKind =
+  | 'approval'
+  /** A guessed approval (Codex without its PermissionRequest hook): it may already be answered. */
+  | 'approval_maybe'
+  | 'finished'
+  | 'waiting'
+  | 'exited'
+  | 'failed'
+  | 'test'
 
 export interface PushNotice {
   v: 1
@@ -228,6 +236,7 @@ export interface PushNotice {
 
 export const PUSH_TEXT: Record<PushKind, string> = {
   approval: 'A session needs your approval',
+  approval_maybe: 'A session may need your approval',
   finished: 'A session finished',
   waiting: 'A session is waiting for you',
   exited: 'A session ended',

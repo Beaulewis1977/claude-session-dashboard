@@ -11,6 +11,7 @@ const CACHE = 'csd-shell-v2'
 /** Same wording as PUSH_TEXT in src/shared/mobile.ts. */
 const PUSH_TEXT = {
   approval: 'A session needs your approval',
+  approval_maybe: 'A session may need your approval',
   finished: 'A session finished',
   waiting: 'A session is waiting for you',
   exited: 'A session ended',

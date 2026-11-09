@@ -41,7 +41,22 @@ const KINDS = {
     apply: (id: string, a: 'install' | 'uninstall', t: string) => api.applyHooks(id, a, t),
     name: 'session alerts',
     Name: 'Session alerts'
+  },
+  // The same IPC: for a Codex home the main process changes its hooks.json instead.
+  codexAlerts: {
+    plan: (id: string, a: 'install' | 'uninstall') => api.planHooks(id, a),
+    apply: (id: string, a: 'install' | 'uninstall', t: string) => api.applyHooks(id, a, t),
+    name: 'Codex approval alerts',
+    Name: 'Codex approval alerts'
   }
+}
+
+/** The file the change is in, as the user knows it. */
+function fileLabel(kind: keyof typeof KINDS, env: EnvLike): string {
+  const win = env.env === 'windows'
+  const home = win ? '%USERPROFILE%' : env.user === 'root' ? '/root' : `/home/${env.user ?? '…'}`
+  const parts = kind === 'codexAlerts' ? ['.codex', 'hooks.json'] : ['.claude', 'settings.json']
+  return [home, ...parts].join(win ? '\\' : '/')
 }
 
 export function BridgeDialog({
@@ -80,15 +95,19 @@ export function BridgeDialog({
       install ? `${k.Name} enabled for ${env.label}` : `${k.Name} disabled for ${env.label}`,
       {
         description:
-          kind === 'alerts'
+          kind === 'codexAlerts'
             ? install
-              ? 'Sessions started (or resumed) from now on send their events. Running sessions pick it up when they restart.'
+              ? 'Next: open Codex, type /hooks and trust the PermissionRequest hook. Sessions started (or resumed) after that send their approvals.'
               : 'Your other hooks are untouched.'
-            : install
-              ? 'Data appears after Claude Code next updates its status line (send any message).'
-              : res.backupPath
-                ? 'Your previous status line is back.'
-                : undefined
+            : kind === 'alerts'
+              ? install
+                ? 'Sessions started (or resumed) from now on send their events. Running sessions pick it up when they restart.'
+                : 'Your other hooks are untouched.'
+              : install
+                ? 'Data appears after Claude Code next updates its status line (send any message).'
+                : res.backupPath
+                  ? 'Your previous status line is back.'
+                  : undefined
       }
     )
     onClose()
@@ -105,21 +124,23 @@ export function BridgeDialog({
           }
           title={install ? `Enable ${k.name} · ${env.label}` : `Disable ${k.name} · ${env.label}`}
           description={
-            kind === 'alerts'
+            kind === 'codexAlerts'
               ? install
-                ? 'Claude Code will run a tiny script on a few session events (needs approval, finished, started, ended) that saves the event for the dashboard. Your existing hooks stay exactly as they are; these are added at the end:'
-                : 'This takes out exactly the hooks the app added. Your own hooks stay as they are:'
-              : install
-                ? 'Claude Code will run a tiny status line script that saves the usage data it already shows in /usage. This is the only change:'
-                : 'This puts your previous status line setting back exactly as it was:'
+                ? 'Codex will run a tiny script when a session is about to ask for your approval. It saves only which session asked and for which tool, so the dashboard can alert you at once. Your existing hooks stay exactly as they are; this one is added at the end:'
+                : 'This takes out exactly the hook the app added. Your own hooks stay as they are:'
+              : kind === 'alerts'
+                ? install
+                  ? 'Claude Code will run a tiny script on a few session events (needs approval, finished, started, ended) that saves the event for the dashboard. Your existing hooks stay exactly as they are; these are added at the end:'
+                  : 'This takes out exactly the hooks the app added. Your own hooks stay as they are:'
+                : install
+                  ? 'Claude Code will run a tiny status line script that saves the usage data it already shows in /usage. This is the only change:'
+                  : 'This puts your previous status line setting back exactly as it was:'
           }
         />
         <div className="space-y-3 px-5 pt-3 pb-5">
           <div className="flex items-center gap-2 font-mono text-[11.5px] text-muted-foreground">
             <span className="truncate" title={env.settingsPath}>
-              {env.env === 'windows'
-                ? '%USERPROFILE%\\.claude\\settings.json'
-                : `${env.user === 'root' ? '/root' : `/home/${env.user ?? '…'}`}/.claude/settings.json`}
+              {fileLabel(kind, env)}
               {env.env === 'wsl' && ` (${env.label.replace('WSL: ', '')})`}
             </span>
             {plan?.createsFile && (
@@ -168,7 +189,23 @@ export function BridgeDialog({
           )}
           {plan && !plan.error && !plan.noop && (
             <div className="space-y-1.5 text-xs text-muted-foreground">
-              {kind === 'alerts' ? (
+              {plan.notes?.map((n) => (
+                <div key={n} className="flex items-start gap-2 text-foreground/85">
+                  <TriangleAlert className="mt-px size-3.5 shrink-0 text-warning" />
+                  <span>{n}</span>
+                </div>
+              ))}
+              {kind === 'codexAlerts' ? (
+                install && (
+                  <div className="flex items-start gap-2">
+                    <Link2 className="mt-px size-3.5 shrink-0 text-info" />
+                    <span>
+                      The hook runs in the background and prints nothing, so it never answers an
+                      approval for you: Codex still asks you as usual. No command text is saved.
+                    </span>
+                  </div>
+                )
+              ) : kind === 'alerts' ? (
                 install && (
                   <div className="flex items-start gap-2">
                     <Link2 className="mt-px size-3.5 shrink-0 text-info" />
@@ -201,10 +238,18 @@ export function BridgeDialog({
               )}
               <div className="flex items-start gap-2">
                 <ShieldCheck className="mt-px size-3.5 shrink-0 text-success" />
-                <span>
-                  A backup of settings.json goes to the app&apos;s data folder first. Nothing else
-                  in <span className="font-mono">.claude</span> is touched.
-                </span>
+                {kind === 'codexAlerts' ? (
+                  <span>
+                    A backup of hooks.json goes to the app&apos;s data folder first. Nothing else in{' '}
+                    <span className="font-mono">.codex</span> is touched: not config.toml, and the
+                    app never marks the hook trusted for you.
+                  </span>
+                ) : (
+                  <span>
+                    A backup of settings.json goes to the app&apos;s data folder first. Nothing else
+                    in <span className="font-mono">.claude</span> is touched.
+                  </span>
+                )}
               </div>
             </div>
           )}

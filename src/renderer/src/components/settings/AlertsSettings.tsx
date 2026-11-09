@@ -27,8 +27,22 @@ import { Input } from '../ui/input'
 import { Row, Section } from '../SettingsView'
 import { BridgeDialog } from './BridgeDialog'
 
+/** A Codex home's hook state: Codex runs it only once trusted in its /hooks. */
+function codexStatus(e: HookEnv, last: string | undefined): string {
+  if (!e.installed) return 'Off · approvals are a guess from the session files'
+  if (e.hookModified)
+    return 'Changed in hooks.json since the app added it, so approvals are guesses again. Disable, then enable it again.'
+  if (e.hooksFeatureOff) return 'Added, but hooks are turned off in config.toml ([features] hooks)'
+  if (e.trust === 'disabled') return 'Added, but turned off in Codex’s /hooks'
+  if (e.trust !== 'trusted')
+    return 'Added · not trusted yet: open Codex, type /hooks and trust “PermissionRequest” (if you already did, its first approval confirms it)'
+  return last ? `On · last approval ${last}` : 'On · trusted in Codex'
+}
+
 function EnvRow({ e, onAction }: { e: HookEnv; onAction: (a: 'install' | 'uninstall') => void }) {
   const last = e.lastEventAt ? ago(e.lastEventAt) : undefined
+  const codex = e.provider === 'codex'
+  const pending = codex && e.installed && (e.trust !== 'trusted' || e.hooksFeatureOff)
   return (
     <div className="flex items-center gap-3 px-3 py-2.5">
       <div
@@ -48,14 +62,16 @@ function EnvRow({ e, onAction }: { e: HookEnv; onAction: (a: 'install' | 'uninst
           {e.label}
           {e.user && <span className="text-xs font-normal text-muted-foreground">{e.user}</span>}
         </div>
-        <div className="text-xs text-muted-foreground">
+        <div className={cn('text-xs text-muted-foreground', pending && 'text-warning')}>
           {e.unavailable
             ? e.unavailable
-            : e.installed
-              ? last
-                ? `On · last event ${last}`
-                : 'On · events arrive from sessions started or resumed from now on'
-              : 'Off · states come from Claude Code’s session files and activity'}
+            : codex
+              ? codexStatus(e, last)
+              : e.installed
+                ? last
+                  ? `On · last event ${last}`
+                  : 'On · events arrive from sessions started or resumed from now on'
+                : 'Off · states come from Claude Code’s session files and activity'}
         </div>
         {e.changedSinceInstall && (
           <div className="mt-0.5 flex items-center gap-1 text-xs text-warning">
@@ -64,9 +80,14 @@ function EnvRow({ e, onAction }: { e: HookEnv; onAction: (a: 'install' | 'uninst
           </div>
         )}
       </div>
-      {e.installed && (
+      {e.installed && !pending && (
         <Badge variant="muted" className="text-success">
           <Activity /> On
+        </Badge>
+      )}
+      {pending && (
+        <Badge variant="muted" className="text-warning">
+          <TriangleAlert /> {e.hookModified ? 'Changed' : 'Needs trust'}
         </Badge>
       )}
       <Button
@@ -79,7 +100,9 @@ function EnvRow({ e, onAction }: { e: HookEnv; onAction: (a: 'install' | 'uninst
           ? 'Disable'
           : e.changedSinceInstall
             ? 'Repair'
-            : 'Enable session alerts'}
+            : codex
+              ? 'Enable approval alerts'
+              : 'Enable session alerts'}
       </Button>
       {e.installed && e.changedSinceInstall && (
         <Button variant="ghost" size="sm" onClick={() => onAction('uninstall')}>
@@ -109,7 +132,7 @@ const EVENTS: { key: keyof LiveAlertSettings; label: string; hint: string }[] = 
   {
     key: 'waiting',
     label: 'Still waiting',
-    hint: 'Claude Code’s own reminder after a minute of waiting for you (needs session alerts on).'
+    hint: 'Claude Code’s own reminder after a minute of waiting for you (Claude Code only; needs session alerts on).'
   },
   { key: 'exited', label: 'Ended', hint: 'A session’s process ended (closed or crashed).' }
 ]
@@ -126,7 +149,9 @@ export function AlertsSettings({ update }: { update: (p: Partial<AppSettings>) =
     void update({ liveAlerts: { ...a, ...patch } })
   const setQuiet = (patch: Partial<LiveAlertSettings['quiet']>): void =>
     set({ quiet: { ...a.quiet, ...patch } })
-  const envs = live?.hooks ?? []
+  const all = live?.hooks ?? []
+  const envs = all.filter((e) => e.provider !== 'codex')
+  const codexEnvs = all.filter((e) => e.provider === 'codex')
   const muted = sessions.filter((s) => s.meta.muteAlerts)
 
   return (
@@ -142,6 +167,7 @@ export function AlertsSettings({ update }: { update: (p: Partial<AppSettings>) =
         </>
       }
     >
+      {codexEnvs.length > 0 && <div className="-mb-2 text-[13px] font-medium">Claude Code</div>}
       <div className="divide-y divide-border overflow-hidden rounded-lg border border-border">
         {envs.map((e) => (
           <EnvRow key={e.sourceId} e={e} onAction={(action) => setDialog({ env: e, action })} />
@@ -152,10 +178,40 @@ export function AlertsSettings({ update }: { update: (p: Partial<AppSettings>) =
           </div>
         )}
       </div>
+      {codexEnvs.length > 0 && (
+        <div className="space-y-2">
+          <div>
+            <div className="text-[13px] font-medium">Codex</div>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              Codex threads show in Running now without any setup (from Codex&apos;s own session
+              files and thread locks, read only). Only &ldquo;needs approval&rdquo; is a guess
+              there. For exact approvals, the app can add one hook to that home&apos;s{' '}
+              <span className="font-mono">~/.codex/hooks.json</span>, after you review the change.
+              Codex runs it only once you trust it in Codex (type{' '}
+              <span className="font-mono">/hooks</span>); the app never does that for you, and never
+              changes <span className="font-mono">config.toml</span>. Codex folders added by hand
+              (Settings → Sources) aren&apos;t listed here: the app adds its hook only to a{' '}
+              <span className="font-mono">~/.codex</span> home it found, so approvals there stay
+              guesses.
+            </p>
+          </div>
+          <div className="divide-y divide-border overflow-hidden rounded-lg border border-border">
+            {codexEnvs.map((e) => (
+              <EnvRow key={e.sourceId} e={e} onAction={(action) => setDialog({ env: e, action })} />
+            ))}
+          </div>
+        </div>
+      )}
       <div className="flex items-center justify-between gap-4">
         <p className="text-xs text-muted-foreground">
-          Backups of <span className="font-mono">settings.json</span> are kept in the app&apos;s
-          data folder.
+          Backups of <span className="font-mono">settings.json</span>
+          {codexEnvs.length > 0 && (
+            <>
+              {' '}
+              and <span className="font-mono">hooks.json</span>
+            </>
+          )}{' '}
+          are kept in the app&apos;s data folder.
         </p>
         <Button variant="ghost" size="sm" onClick={() => void api.openBackupFolder()}>
           <FolderOpen /> Backups
@@ -317,7 +373,7 @@ export function AlertsSettings({ update }: { update: (p: Partial<AppSettings>) =
       </div>
       {dialog && (
         <BridgeDialog
-          kind="alerts"
+          kind={dialog.env.provider === 'codex' ? 'codexAlerts' : 'alerts'}
           env={dialog.env}
           action={dialog.action}
           onClose={() => setDialog(null)}

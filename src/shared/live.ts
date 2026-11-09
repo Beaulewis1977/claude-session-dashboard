@@ -11,6 +11,7 @@
 // 3. Recent activity in the session's JSONL transcript (the fallback).
 
 import { remoteSessionUrl } from './jsonl'
+import type { ProviderId } from './provider'
 import type { EnvKind } from './types'
 
 export type LiveState = 'working' | 'approval' | 'idle' | 'exited'
@@ -207,10 +208,23 @@ export interface LiveSession {
   remoteUrl?: string
   version?: string
   entrypoint?: string
-  /** Which signal the state comes from. */
-  basis: 'status' | 'hook' | 'activity'
+  /**
+   * Which signal the state comes from: Claude Code's status file, a hook
+   * event, transcript activity; Codex's rollout events or its thread lock.
+   */
+  basis: 'status' | 'hook' | 'activity' | 'rollout' | 'lock'
   /** The process couldn't be checked: it may have ended. */
   unverified?: boolean
+  /** Whose session (absent: Claude Code). */
+  provider?: ProviderId
+  /** "Needs approval" is a guess (Codex without the PermissionRequest hook). */
+  guess?: boolean
+  /** Codex: a process held the thread's lock at the last check. */
+  lockHeld?: boolean
+  /** Codex: its lock can't be checked right now (an unreadable WSL share, say). */
+  lockUnknown?: boolean
+  /** When the turn waiting for approval began (for "Finished only after …"). */
+  turnStartedAt?: number
 }
 
 /** A running file with its process check. */
@@ -543,7 +557,13 @@ export function stateLine(s: LiveSession, now: number, time: (ms: number) => str
     mins < 1 ? '<1m' : mins < 60 ? `${mins}m` : `${Math.floor(mins / 60)}h ${mins % 60}m`
   if (s.state === 'working') return `Working for ${short}`
   if (s.state === 'exited') return `${s.failed ? 'Stopped' : 'Exited'} at ${time(s.since)}`
-  return `${s.state === 'approval' ? 'Needs approval' : 'Waiting for you'} since ${time(s.since)}`
+  const waits =
+    s.state === 'approval'
+      ? s.guess
+        ? 'Probably needs approval'
+        : 'Needs approval'
+      : 'Waiting for you'
+  return `${waits} since ${time(s.since)}`
 }
 
 /** The state shown in the list, from the running data (for the badge). */
@@ -569,6 +589,17 @@ export interface HookEnv {
   /** Our hooks were removed or changed by someone else since the app added them. */
   changedSinceInstall?: boolean
   unavailable?: string
+  /** Whose home (absent: Claude Code). Codex: `settingsPath` is its hooks.json. */
+  provider?: ProviderId
+  /**
+   * Codex: whether Codex trusts the app's hook yet (it runs only once
+   * trusted, in Codex's /hooks). Read from config.toml; never written.
+   */
+  trust?: 'trusted' | 'untrusted' | 'disabled'
+  /** Codex: hooks are turned off in config.toml (`[features] hooks = false`). */
+  hooksFeatureOff?: boolean
+  /** Codex: the app's hook group was changed in hooks.json since it added it. */
+  hookModified?: boolean
 }
 
 /** What "Focus terminal" did. */
@@ -579,4 +610,57 @@ export interface FocusResult {
   /** Why it didn't work, for the user. */
   error?: string
   simulated?: boolean
+}
+
+/** Do a home's session alerts really run? A Codex hook only once Codex trusts it (and hooks are on). */
+export function alertsWork(
+  h: Pick<HookEnv, 'installed' | 'provider' | 'trust' | 'hooksFeatureOff'>
+): boolean {
+  if (!h.installed) return false
+  if ((h.provider ?? 'claude') !== 'codex') return true
+  return h.trust === 'trusted' && !h.hooksFeatureOff
+}
+
+/**
+ * Do exact alerts work for what Running now shows? For the homes of the sessions
+ * listed (every one of them; a home nothing runs in doesn't matter). With nothing
+ * listed: for each agent in the view, somewhere. (The "set up alerts" banner.)
+ */
+export function alertsCover(
+  listed: readonly Pick<LiveSession, 'sourceId' | 'state' | 'provider'>[],
+  hooks: readonly HookEnv[],
+  providers: readonly ProviderId[]
+): boolean {
+  return alertsGap(listed, hooks, providers) === 'none'
+}
+
+/**
+ * What's missing for exact alerts: 'setup' (a home where they can be turned on,
+ * or turned on but not running yet), 'custom' (only sessions in custom Codex
+ * folders, where the app can't add its hook: approvals stay guesses there), or
+ * 'none'.
+ */
+export function alertsGap(
+  listed: readonly Pick<LiveSession, 'sourceId' | 'state' | 'provider'>[],
+  hooks: readonly HookEnv[],
+  providers: readonly ProviderId[]
+): 'none' | 'setup' | 'custom' {
+  const hookOf = new Map(hooks.map((h) => [h.sourceId, h]))
+  const running = listed.filter((s) => s.state !== 'exited')
+  if (running.length) {
+    let custom = false
+    for (const s of running) {
+      const h = hookOf.get(s.sourceId)
+      if (h) {
+        if (!alertsWork(h)) return 'setup'
+      } else if ((s.provider ?? 'claude') === 'codex') custom = true
+      // A home without any alert setup: Claude Code's status files still tell approvals.
+    }
+    return custom ? 'custom' : 'none'
+  }
+  const ok = providers.every((p) => {
+    const mine = hooks.filter((h) => (h.provider ?? 'claude') === p)
+    return !mine.length || mine.some((h) => alertsWork(h))
+  })
+  return ok ? 'none' : 'setup'
 }

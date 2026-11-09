@@ -6,6 +6,7 @@ import { toast } from 'sonner'
 import { now } from '@shared/clock'
 import { baseName, formatDuration, formatTime } from '@shared/format'
 import { isRunning, stateLine, type LiveSession } from '@shared/live'
+import { inProviderView, PROVIDER_BIN, providerOf, type ProviderView } from '@shared/provider'
 import type { SessionSummary } from '@shared/types'
 import { api } from './api'
 import { copyResumeCommand, updateMeta } from './actions'
@@ -53,19 +54,30 @@ export function useNow(everyMs = 15_000): number {
   return now()
 }
 
-/** Running now with the session list's summary of each (if it knows it yet). */
-export function useLiveList(): { live: LiveSession; summary?: SessionSummary }[] {
+/**
+ * Running now with the session list's summary of each (if it knows it yet),
+ * in the All / Claude / Codex view.
+ */
+export function useLiveList(
+  view: ProviderView = 'all'
+): { live: LiveSession; summary?: SessionSummary }[] {
   const live = useApp((s) => s.live)
   const sessions = useApp((s) => s.sessions)
   if (!live) return []
   const byKey = new Map(sessions.map((s) => [s.key, s]))
-  return live.sessions.map((l) => ({ live: l, summary: byKey.get(l.key) }))
+  return live.sessions
+    .filter((l) => inProviderView(view, l))
+    .map((l) => ({ live: l, summary: byKey.get(l.key) }))
 }
 
-/** How many are running, and how many wait for me (approval or my next message). */
-export function useLiveCounts(): { running: number; needsMe: number; approval: number } {
+/** How many are running, and how many wait for me (approval or my next message), in the view. */
+export function useLiveCounts(view: ProviderView = 'all'): {
+  running: number
+  needsMe: number
+  approval: number
+} {
   const live = useApp((s) => s.live)
-  const list = live?.sessions ?? []
+  const list = (live?.sessions ?? []).filter((l) => inProviderView(view, l))
   return {
     running: list.filter(isRunning).length,
     needsMe: list.filter((s) => s.state === 'approval' || s.state === 'idle').length,
@@ -100,9 +112,14 @@ export async function focusLive(key: string): Promise<void> {
   }
 }
 
-/** `claude --resume <id>`: what a phone (or a session the list doesn't know yet) can copy. */
+/**
+ * `claude --resume <id>` / `codex resume <id>`: what a phone (or a session
+ * the list doesn't know yet) can copy.
+ */
 export function plainResume(l: LiveSession): string {
-  return `claude --resume ${l.sessionId}`
+  return providerOf(l) === 'codex'
+    ? `${PROVIDER_BIN.codex} resume ${l.sessionId}`
+    : `${PROVIDER_BIN.claude} --resume ${l.sessionId}`
 }
 
 export async function copyLiveResume(l: LiveSession, s?: SessionSummary): Promise<void> {

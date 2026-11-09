@@ -60,14 +60,17 @@ export const MAX_APP_LINK = 16_000
 export const FORK_IN_APP_NOTE = "Use Fork in the Codex app's menu."
 
 /**
- * A folder in one comparable form, or undefined when it isn't an absolute path:
+ * A Windows-side folder in one comparable form, or undefined when it isn't one:
  * - `win:c:\x\y` (lower-cased, backslashes, no trailing slash but the drive's);
- * - `wsl:<distro>:/x/y` (distro lower-cased, path as it is; `*` = any distro);
+ * - `wsl:<distro>:/x/y` for `\\wsl$\<distro>\…` and `\\wsl.localhost\<distro>\…`
+ *   (distro lower-cased, the Linux path as it is);
  * - `unc:\\server\share\x` (lower-cased).
- * A Linux path needs `distro` (a WSL session's), else it matches any distro.
- * `/mnt/<drive>/…` is taken as that Windows drive (WSL's default mounts).
+ * A bare Linux path is never accepted: which Windows folder it is depends on
+ * the distro and its own mounts (a custom wsl.conf can put a Linux folder at
+ * /mnt/c), so the launcher asks the distro first (`wslpath -w`) and passes the
+ * answer here.
  */
-export function canonicalFolder(path: string, distro?: string): string | undefined {
+export function canonicalFolder(path: string): string | undefined {
   const p = path.trim()
   if (!p) return undefined
   const drive = /^([A-Za-z]):(?:[\\/](.*))?$/.exec(p)
@@ -77,11 +80,6 @@ export function canonicalFolder(path: string, distro?: string): string | undefin
   if (/^[\\/]{2}[^\\/]/.test(p)) {
     const rest = winRest(p.replace(/^[\\/]{2}/, ''))
     return rest ? `unc:\\\\${rest}` : undefined
-  }
-  if (p.startsWith('/')) {
-    const mnt = /^\/mnt\/([A-Za-z])(?:\/(.*))?$/.exec(p)
-    if (mnt) return `win:${mnt[1].toLowerCase()}:\\${winRest(mnt[2] ?? '')}`
-    return `wsl:${distro ? distro.toLowerCase() : '*'}:${linuxPath(p)}`
   }
   return undefined
 }
@@ -99,20 +97,12 @@ function linuxPath(rest: string): string {
   return '/' + parts.join('/')
 }
 
-/** Same folder? (`wsl:*:` matches the same path in any distro.) */
-function sameFolder(a: string, b: string): boolean {
-  if (a === b) return true
-  const wa = /^wsl:([^:]+):(.*)$/.exec(a)
-  const wb = /^wsl:([^:]+):(.*)$/.exec(b)
-  return !!wa && !!wb && wa[2] === wb[2] && (wa[1] === '*' || wb[1] === '*')
-}
-
-/** Is `inner` strictly inside `outer`? */
+/** Is `inner` strictly inside `outer`? (Both canonical.) */
 function insideFolder(inner: string, outer: string): boolean {
   const wi = /^wsl:([^:]+):(.*)$/.exec(inner)
   const wo = /^wsl:([^:]+):(.*)$/.exec(outer)
   if (wi && wo) {
-    if (wi[1] !== wo[1] && wi[1] !== '*' && wo[1] !== '*') return false
+    if (wi[1] !== wo[1]) return false
     return wo[2] === '/' ? wi[2] !== '/' : wi[2].startsWith(wo[2] + '/')
   }
   if (wi || wo) return false
@@ -133,36 +123,29 @@ export type ProjectMatch =
  * Which Codex app project a session belongs to: the one the app assigned its
  * thread to, else the project whose root is the session's folder, else (to
  * offer, never used without asking) the closest project whose root holds it.
+ * `folder` is the session's folder as Windows sees it, already confirmed by the
+ * launcher (a Windows path, or `\\wsl.localhost\<distro>\…` for a distro's own
+ * folder); `folderReason` says why there is none (then only the assignment counts).
  */
 export function matchProject(
   state: CodexAppState,
-  session: { sessionId: string; cwd?: string; distro?: string; env?: 'windows' | 'wsl' }
+  session: { sessionId: string; folder?: string; folderReason?: string }
 ): ProjectMatch {
   const assigned = state.assignments[session.sessionId.toLowerCase()]
   const byId = assigned ? state.projects.find((p) => p.id === assigned) : undefined
   if (byId) return { kind: 'assigned', project: byId }
-  if (!session.cwd) return { kind: 'none', reason: 'No working folder is recorded.' }
-  const target = canonicalFolder(session.cwd, session.env === 'wsl' ? session.distro : undefined)
-  if (!target) return { kind: 'none' }
+  const target = session.folder ? canonicalFolder(session.folder) : undefined
+  if (!target) return { kind: 'none', reason: session.folderReason }
   const roots = state.projects
     .map((project) => ({ project, root: canonicalFolder(project.root) }))
     .filter((r): r is { project: CodexAppProject; root: string } => !!r.root)
-  const exact = roots.filter((r) => sameFolder(target, r.root))
-  // A Linux folder with no known distro: only when every match is one distro's.
-  if (exact.length && distinctDistros(exact.map((r) => r.root)) > 1)
-    return { kind: 'none', reason: 'This folder matches Codex projects in more than one distro.' }
-  if (exact.length) return { kind: 'exact', project: exact[0].project }
+  const exact = roots.find((r) => r.root === target)
+  if (exact) return { kind: 'exact', project: exact.project }
   const inside = roots
     .filter((r) => insideFolder(target, r.root))
     .sort((a, b) => b.root.length - a.root.length)
-  if (inside.length && distinctDistros(inside.map((r) => r.root)) > 1)
-    return { kind: 'none', reason: 'This folder matches Codex projects in more than one distro.' }
   if (inside.length) return { kind: 'inside', project: inside[0].project }
   return { kind: 'none' }
-}
-
-function distinctDistros(roots: string[]): number {
-  return new Set(roots.map((r) => /^wsl:([^:]+):/.exec(r)?.[1] ?? '')).size
 }
 
 /** `codex://threads/<uuid>`: open an existing thread. */
@@ -217,8 +200,13 @@ export interface CodexAppFacts {
   installed: boolean
   /** Not Windows (or fixtures): nothing to offer. */
   unsupportedPlatform?: boolean
-  /** config.toml `[windows] runCodexInWindowsSubsystemForLinux = true`. */
+  /**
+   * config.toml `[windows] runCodexInWindowsSubsystemForLinux`: true, false, or
+   * undefined when config.toml couldn't be read or parsed (then nothing is offered).
+   */
   wslMode?: boolean
+  /** Why config.toml couldn't be read or parsed. */
+  configError?: string
   /** The app's state file, or why it couldn't be read. */
   state?: CodexAppState
   stateError?: string
@@ -228,19 +216,37 @@ export interface CodexAppFacts {
   sourceLabel: string
   /** The session's rollout file is still there. */
   fileExists: boolean
+  /**
+   * Continue fresh: the session's folder as Windows sees it, confirmed by the
+   * distro when it's a Linux path (never guessed), or why it couldn't be.
+   */
+  folder?: string
+  folderReason?: string
+}
+
+/** The project the user agreed to use for a folder inside it: its id and root, as shown. */
+export interface AcceptedProject {
+  id: string
+  root: string
 }
 
 /** Can this session open in the Codex app for this kind? (The availability rules.) */
 export function codexAppPreview(
   kind: CodexAppKind,
-  session: { sessionId: string; cwd?: string; distro?: string; env?: 'windows' | 'wsl' },
+  session: { sessionId: string },
   f: CodexAppFacts,
-  insideOptIn = false
+  /** "Use that project anyway?": counts only for exactly this project (id and root). */
+  accepted?: AcceptedProject
 ): CodexAppPreview {
   if (f.unsupportedPlatform)
     return { available: false, hidden: true, reason: 'The Codex app opens on Windows only.' }
   if (!f.installed)
     return { available: false, hidden: true, reason: "The Codex app isn't installed." }
+  if (f.wslMode === undefined)
+    return {
+      available: false,
+      reason: `Couldn't read Codex's config.toml${f.configError ? ` (${f.configError})` : ''}, so it isn't known whether the Codex app runs Codex in WSL.`
+    }
   if (f.wslMode)
     return {
       available: false,
@@ -268,12 +274,16 @@ export function codexAppPreview(
       }
     return { available: true, ...(kind === 'fork' ? { note: FORK_IN_APP_NOTE } : {}) }
   }
-  const m = matchProject(f.state, session)
+  const m = matchProject(f.state, {
+    sessionId: session.sessionId,
+    folder: f.folder,
+    folderReason: f.folderReason
+  })
   if (m.kind === 'assigned' || m.kind === 'exact')
     return { available: true, project: { ...m.project } }
   if (m.kind === 'inside') {
     const inside = { ...m.project }
-    return insideOptIn
+    return accepted && accepted.id === inside.id && accepted.root === inside.root
       ? { available: true, project: inside, inside }
       : {
           available: false,

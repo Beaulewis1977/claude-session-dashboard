@@ -25,7 +25,7 @@ import {
   type ResumeEstimate,
   type SessionContext
 } from './context'
-import type { CodexAppPreview, OpenIn } from './codex-app'
+import type { AcceptedProject, CodexAppPreview, OpenIn } from './codex-app'
 
 export type EnvKind = 'windows' | 'wsl'
 
@@ -496,8 +496,11 @@ export interface LaunchOptions {
   distro?: string
   /** Codex: open in the Codex desktop app instead of a terminal (desktop and phone; see codex-app.ts). */
   openIn?: OpenIn
-  /** Continue fresh in the Codex app: use the project whose folder holds this one (explicit opt-in). */
-  codexAppInside?: boolean
+  /**
+   * Continue fresh in the Codex app: the project whose folder holds this one, as
+   * the dialog showed it ("Use that project anyway?"). Used only if it's still that project.
+   */
+  codexAppProject?: AcceptedProject
 }
 
 /**

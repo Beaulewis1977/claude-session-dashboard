@@ -23,7 +23,7 @@ import {
 } from '@shared/model-choice'
 import { isProviderView, sanitizeProviderToggles } from '@shared/provider'
 import { normalizeProjectKey } from '@shared/project-key'
-import { isOpenIn, sanitizeProjectOpenIn } from '@shared/codex-app'
+import { isOpenIn, PROJECT_ID_RE, sanitizeProjectOpenIn } from '@shared/codex-app'
 import { sanitizeLiveAlerts } from '@shared/live-alerts'
 import { sanitizeSummarySettings } from '@shared/summary'
 import { sanitizeContextWarning } from '@shared/context'
@@ -173,9 +173,22 @@ function launchOpts(v: unknown): LaunchOptions {
     remoteControl: o.remoteControl === true,
     continueFresh: continueRequest(o.continueFresh),
     ...(o.openIn === 'codex-app' ? { openIn: 'codex-app' as const } : {}),
-    ...(o.codexAppInside === true ? { codexAppInside: true } : {}),
+    ...acceptedProject(o.codexAppProject),
     ...placeOpts(o)
   }
+}
+
+/** "Use that project anyway?": the Codex app project the dialog showed (id and root). */
+function acceptedProject(v: unknown): Pick<LaunchOptions, 'codexAppProject'> {
+  if (!v || typeof v !== 'object') return {}
+  const p = v as Record<string, unknown>
+  return typeof p.id === 'string' &&
+    PROJECT_ID_RE.test(p.id) &&
+    typeof p.root === 'string' &&
+    p.root.length > 0 &&
+    p.root.length < 2000
+    ? { codexAppProject: { id: p.id, root: p.root } }
+    : {}
 }
 
 /** The opt-in for a session in a WSL-only folder, and its distro (see Launcher.place). */

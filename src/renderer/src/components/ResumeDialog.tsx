@@ -40,7 +40,7 @@ import { BranchPointCard } from './viewer/Branches'
 import { SessionModelControls } from './ModelPicker'
 import { choiceLabel } from '@shared/model-choice'
 import { projectDefault, projectDefaultKey, withProjectDefault } from '@shared/project-key'
-import type { CodexAppKind, OpenIn } from '@shared/codex-app'
+import type { AcceptedProject, CodexAppKind, OpenIn } from '@shared/codex-app'
 import { CodexAppPanel, OpenInChoice } from './CodexAppOpen'
 import { appChoosable, useOpenIn } from '@/lib/open-in'
 
@@ -149,7 +149,8 @@ function ResumeDialogBody({ resume }: { resume: ResumeRequest }) {
   const resolvedOpenIn = useOpenIn(session)
   const [openInChoice, setOpenIn] = useState<OpenIn>(carry?.openIn ?? resolvedOpenIn.value)
   // Continue fresh in the app: the project whose folder holds this one, only when asked.
-  const [insideOptIn, setInsideOptIn] = useState(false)
+  // The exact project (id and root) the user agreed to: main checks it's still that one.
+  const [acceptedProject, setAcceptedProject] = useState<AcceptedProject | undefined>(undefined)
   const appKind: CodexAppKind | undefined =
     codex && !resume.newSession && !resume.branch
       ? resume.continueFresh
@@ -164,7 +165,10 @@ function ResumeDialogBody({ resume }: { resume: ResumeRequest }) {
     openInChoice === 'codex-app' &&
     (preview === null || appChoosable(preview.codexApp))
   const appOpts = appMode
-    ? { openIn: 'codex-app' as const, ...(insideOptIn ? { codexAppInside: true } : {}) }
+    ? {
+        openIn: 'codex-app' as const,
+        ...(acceptedProject ? { codexAppProject: acceptedProject } : {})
+      }
     : {}
   // Approvals are always on for a WSL-only folder run with Windows Codex (main enforces it too).
   const askForced = preview?.placement?.askForced === true
@@ -262,7 +266,7 @@ function ResumeDialogBody({ resume }: { resume: ResumeRequest }) {
     wslFolder,
     distro,
     appMode,
-    insideOptIn,
+    acceptedProject,
     // The session's context changed (it grew, shrank or was compacted): a new estimate.
     session?.sizeBytes,
     session?.context?.tokens,
@@ -541,8 +545,8 @@ function ResumeDialogBody({ resume }: { resume: ResumeRequest }) {
             <CodexAppPanel
               kind={appKind}
               app={preview?.codexApp}
-              insideOptIn={insideOptIn}
-              onInside={setInsideOptIn}
+              accepted={acceptedProject}
+              onAccept={setAcceptedProject}
             />
           )}
           {!appMode &&

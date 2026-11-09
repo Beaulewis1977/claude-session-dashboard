@@ -712,21 +712,59 @@ export class Launcher {
   }
 
   /** What the "Open in Codex app" rules need about this session (see codexAppPreview). */
-  private async codexAppFacts(s: SessionSummary): Promise<CodexAppFacts> {
+  private async codexAppFacts(s: SessionSummary, kind: CodexAppKind): Promise<CodexAppFacts> {
     const base = { appHome: false, sourceLabel: s.sourceLabel, fileExists: false }
     const app = this.codexApp
     if (!app || !app.service.supported || !this.platform.canLaunch)
       return { ...base, installed: false, unsupportedPlatform: true }
     const snap = await app.service.snapshot()
+    // Continue fresh matches the folder to a project, unless the app assigned the thread itself.
+    const assigned = snap.state?.assignments[s.sessionId.toLowerCase()]
+    const where = kind === 'continue' && snap.state && !assigned ? await this.appFolder(s) : {}
     return {
       installed: snap.installed,
-      wslMode: snap.wslMode,
+      ...(snap.wslMode !== undefined ? { wslMode: snap.wslMode } : {}),
+      ...(snap.configError ? { configError: snap.configError } : {}),
+      ...where,
       ...(snap.state ? { state: snap.state } : {}),
       ...(snap.stateError ? { stateError: snap.stateError } : {}),
       // The app keeps its threads in the Windows .codex (it shows no other home).
       appHome: s.sourceId === CODEX_APP_SOURCE_ID,
       sourceLabel: s.sourceLabel,
       fileExists: await this.platform.pathExists(s.originalPath)
+    }
+  }
+
+  /**
+   * The session's folder as Windows sees it, for matching a Codex app project.
+   * A Linux path is asked in its distro (`wslpath -w`, so its own mounts count:
+   * a custom wsl.conf can put a Linux folder at /mnt/c); never guessed. A Windows
+   * .codex session that ran in WSL doesn't record its distro: only a Windows
+   * drive folder every distro agrees on is used, never a distro's own folder.
+   */
+  private async appFolder(s: SessionSummary): Promise<{ folder?: string; folderReason?: string }> {
+    const cwd = s.cwd
+    if (!cwd) return { folderReason: 'No working folder is recorded.' }
+    if (!isLinuxPath(cwd)) return { folder: cwd }
+    if (s.env === 'wsl') {
+      if (!s.distro) return { folderReason: "This session doesn't record its WSL distro." }
+      const asked = await this.windowsPathIn(s.distro, cwd)
+      if (asked) return { folder: asked }
+      // A distro's own folder is that folder through \\wsl.localhost, whatever its
+      // mounts; a mounted drive needs the distro's answer.
+      if (cwd.startsWith('/mnt/'))
+        return {
+          folderReason: `${s.sourceLabel} couldn't confirm which Windows folder ${cwd} is. Start the distro, then try again.`
+        }
+      return { folder: linuxToUnc(wslRoots(s.distro)[0], cwd) }
+    }
+    const { list } = await this.distros()
+    const answers = await Promise.all(list.map((d) => this.windowsPathIn(d, cwd)))
+    const drives = new Set(answers.filter((a): a is string => !!a && !isUncPath(a)))
+    if (list.length > 0 && answers.every((a) => a && !isUncPath(a)) && drives.size === 1)
+      return { folder: [...drives][0] }
+    return {
+      folderReason: `This session ran in WSL in ${cwd} and doesn't record which distro, so it can't be matched to a Codex project.`
     }
   }
 
@@ -737,7 +775,7 @@ export class Launcher {
   ): Promise<CodexAppPreview | undefined> {
     const kind = appKind(opts)
     if (this.provider(s).id !== 'codex' || !kind) return undefined
-    return codexAppPreview(kind, s, await this.codexAppFacts(s), opts.codexAppInside === true)
+    return codexAppPreview(kind, s, await this.codexAppFacts(s, kind), opts.codexAppProject)
   }
 
   /**
@@ -763,7 +801,8 @@ export class Launcher {
       return fail("This can't be opened in the Codex app.")
     if (s.availability === 'imported') return fail("This session can't be opened in the Codex app.")
     const app = this.codexApp
-    const prev = codexAppPreview(kind, s, await this.codexAppFacts(s), opts.codexAppInside === true)
+    // Re-read now: a consent given in the dialog counts only for the same project (id and root).
+    const prev = codexAppPreview(kind, s, await this.codexAppFacts(s, kind), opts.codexAppProject)
     if (!app || !prev.available)
       return fail(prev.reason ?? "This session can't be opened in the Codex app.")
     let link: string

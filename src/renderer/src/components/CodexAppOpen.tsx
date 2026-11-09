@@ -5,7 +5,7 @@
 
 import { toast } from 'sonner'
 import { AppWindow, ChevronDown, Info, SquareTerminal, TriangleAlert } from 'lucide-react'
-import type { CodexAppKind, CodexAppPreview, OpenIn } from '@shared/codex-app'
+import type { AcceptedProject, CodexAppKind, CodexAppPreview, OpenIn } from '@shared/codex-app'
 import { projectDefaultKey } from '@shared/project-key'
 import type { SessionMeta, SessionSummary } from '@shared/types'
 import { api } from '@/lib/api'
@@ -128,16 +128,20 @@ export function OpenInChoice({
 export function CodexAppPanel({
   kind,
   app,
-  insideOptIn,
-  onInside
+  accepted,
+  onAccept
 }: {
   kind: CodexAppKind
   app: CodexAppPreview | undefined
-  insideOptIn: boolean
-  onInside: (v: boolean) => void
+  /** The project the user agreed to use ("Use that project anyway?"). */
+  accepted: AcceptedProject | undefined
+  onAccept: (p: AcceptedProject | undefined) => void
 }) {
   if (!app) return <div className="text-xs text-muted-foreground">Checking the Codex app…</div>
-  if (app.inside && !insideOptIn)
+  // The consent counts only for the project it was given for (same id and root).
+  const insideOk =
+    !!app.inside && accepted?.id === app.inside.id && accepted.root === app.inside.root
+  if (app.inside && !insideOk)
     return (
       <div className="space-y-2 rounded-lg border border-warning/40 bg-warning-soft px-3 py-2.5 text-xs">
         <div className="flex items-start gap-2">
@@ -150,7 +154,11 @@ export function CodexAppPanel({
           </span>
         </div>
         <div className="pl-[22px]">
-          <Button variant="outline" size="xs" onClick={() => onInside(true)}>
+          <Button
+            variant="outline"
+            size="xs"
+            onClick={() => app.inside && onAccept({ id: app.inside.id, root: app.inside.root })}
+          >
             Use {app.inside.name}
           </Button>
         </div>
@@ -180,13 +188,13 @@ export function CodexAppPanel({
             <span className="font-mono break-all">{app.project.root}</span>) with a line asking
             Codex to read the handoff typed in. It isn&apos;t sent: press Enter in the Codex app to
             send it.
-            {insideOptIn && app.inside && (
+            {insideOk && (
               <>
                 {' '}
                 <button
                   type="button"
                   className="font-medium text-primary hover:underline"
-                  onClick={() => onInside(false)}
+                  onClick={() => onAccept(undefined)}
                 >
                   Don&apos;t use this project
                 </button>

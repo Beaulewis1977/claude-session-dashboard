@@ -103,6 +103,9 @@ export const realCodexLiveFs: CodexLiveFs = {
   }
 }
 
+/** A process whose command line runs Codex (its binary, or its npm/pnpm package). */
+const CODEX_CMDLINE = /(^|[/\0 ])codex(\0|$| )|\/codex[^/\0]*\/|codex-/i
+
 export const LOCKS_DIR = 'thread-writer-locks'
 
 /** One thread lock file and whether a process holds it. */
@@ -129,7 +132,10 @@ export interface LockSource {
 const TAIL_BYTES = 2 * 1024 * 1024
 /** Most read from one rollout in one poll; more than that starts again from the tail. */
 const MAX_READ = 8 * 1024 * 1024
-const MAX_LOCKS = 500
+/** A sanity bound only (Codex keeps old lock files; thousands are fine). */
+const MAX_LOCKS = 20_000
+/** WSL lock files' inodes are looked at again this often (new files at once). */
+const INODE_TTL_MS = 60_000
 
 interface Tail {
   size: number
@@ -146,52 +152,103 @@ interface Tail {
 export class CodexLiveReader {
   private tails = new Map<string, Tail>()
   private codexPid = new Map<string, { codex: boolean; at: number }>()
+  private inodes = new Map<string, { ino: string; mtimeMs: number; at: number }>()
 
   constructor(private readonly fs: CodexLiveFs = realCodexLiveFs) {}
 
-  /** Lock files of a Codex home, with whether each is held. Undefined: the folder can't be read. */
-  async locks(src: LockSource, procLocks?: Map<string, ProcLockIndex>): Promise<ThreadLock[]> {
+  /**
+   * Every lock file of a Codex home, with whether each is held (Codex keeps
+   * old lock files, so there can be many: all are looked at, none skipped).
+   * Undefined: the folder can't be read right now (a WSL share, permissions),
+   * which is "can't tell", never "nothing is open". A home without the folder
+   * has no open threads.
+   *
+   * `fresh`: threads whose lock file must be looked at again now (recently
+   * active ones); WSL inodes of the others are re-read once a minute.
+   */
+  async locks(
+    src: LockSource,
+    procLocks?: Map<string, ProcLockIndex>,
+    fresh: ReadonlySet<string> = new Set()
+  ): Promise<ThreadLock[] | undefined> {
     const dir = join(src.home, LOCKS_DIR)
     let names: string[]
     try {
       names = (await this.fs.readdir(dir)).filter((n) => lockThreadId(n)).slice(0, MAX_LOCKS)
-    } catch {
-      return []
+    } catch (err) {
+      return (err as NodeJS.ErrnoException).code === 'ENOENT' ? [] : undefined
     }
-    const index =
-      src.env === 'wsl' && src.distroRoot
-        ? await this.procLocks(src.distroRoot, procLocks)
-        : undefined
+    return src.env === 'windows'
+      ? this.windowsLocks(dir, names)
+      : this.wslLocks(dir, names, src.distroRoot, procLocks, fresh)
+  }
+
+  /** Windows: probe every lock (cheap, read only); only held ones need their time. */
+  private async windowsLocks(dir: string, names: string[]): Promise<ThreadLock[]> {
     const out: ThreadLock[] = []
     for (const n of names) {
       const path = join(dir, n)
-      let st
-      try {
-        st = await this.fs.stat(path)
-      } catch {
-        continue
+      const held = await this.fs.probeLock(path).catch(() => undefined)
+      let mtimeMs = 0
+      if (held !== false) {
+        try {
+          mtimeMs = (await this.fs.stat(path)).mtimeMs
+        } catch {
+          continue
+        }
       }
-      if (!st.isFile) continue
-      const lock: ThreadLock = {
-        threadId: lockThreadId(n)!,
-        path,
-        mtimeMs: st.mtimeMs,
-        held: undefined
+      out.push({ threadId: lockThreadId(n)!, path, mtimeMs, held })
+    }
+    return out
+  }
+
+  /**
+   * WSL: the held flocks in /proc/locks, matched by inode. Inodes are cached
+   * (a minute), except for new files, recently active threads and any whose
+   * cached inode is held right now (looked at again for its time).
+   */
+  private async wslLocks(
+    dir: string,
+    names: string[],
+    root: string | undefined,
+    procLocks: Map<string, ProcLockIndex> | undefined,
+    fresh: ReadonlySet<string>
+  ): Promise<ThreadLock[]> {
+    const index = root ? await this.procLocks(root, procLocks) : undefined
+    const now = Date.now()
+    const out: ThreadLock[] = []
+    const seen = new Set<string>()
+    for (const n of names) {
+      const path = join(dir, n)
+      const threadId = lockThreadId(n)!
+      seen.add(path)
+      let c = this.inodes.get(path)
+      const heldNow = !!c && !!index?.byInode.get(c.ino)?.length
+      if (!c || now - c.at > INODE_TTL_MS || fresh.has(threadId) || heldNow) {
+        try {
+          const st = await this.fs.stat(path)
+          if (!st.isFile) continue
+          c = { ino: st.ino.toString(), mtimeMs: st.mtimeMs, at: now }
+          this.inodes.set(path, c)
+        } catch {
+          this.inodes.delete(path)
+          continue
+        }
       }
-      if (src.env === 'windows') {
-        lock.held = await this.fs.probeLock(path).catch(() => undefined)
-      } else if (index) {
-        const pids = index.byInode.get(st.ino.toString())
+      const lock: ThreadLock = { threadId, path, mtimeMs: c.mtimeMs, held: undefined }
+      if (index) {
+        const pids = index.byInode.get(c.ino)
         if (!pids?.length) lock.held = false
         else {
           // An inode number can repeat on another file system: the holder must be Codex.
-          const holder = await this.firstCodex(src.distroRoot!, pids)
-          lock.held = holder !== undefined
-          if (holder !== undefined) lock.pid = holder
+          const holder = await this.firstCodex(root!, pids)
+          lock.held = holder === 'unknown' ? undefined : holder !== 'none'
+          if (typeof holder === 'number') lock.pid = holder
         }
       }
       out.push(lock)
     }
+    for (const k of this.inodes.keys()) if (k.startsWith(dir) && !seen.has(k)) this.inodes.delete(k)
     return out
   }
 
@@ -219,26 +276,29 @@ export class CodexLiveReader {
     return idx
   }
 
-  private async firstCodex(root: string, pids: number[]): Promise<number | undefined> {
+  /** The first holder that is a Codex process; 'unknown' if one couldn't be checked. */
+  private async firstCodex(root: string, pids: number[]): Promise<number | 'none' | 'unknown'> {
     const t = Date.now()
+    let unknown = false
     for (const pid of pids) {
       const k = `${root}|${pid}`
       let c = this.codexPid.get(k)
       if (!c || t - c.at > 60_000) {
-        let codex = false
         try {
           const cmd = await this.fs.readSmall(join(root, 'proc', String(pid), 'cmdline'))
-          codex = /(^|[/\0 ])codex(\0|$| )|\/codex[^/\0]*\/|codex-/i.test(cmd)
-        } catch {
-          // Gone, or not readable: not counted as Codex.
+          c = { codex: CODEX_CMDLINE.test(cmd), at: t }
+          this.codexPid.set(k, c)
+          if (this.codexPid.size > 2000) this.codexPid.clear()
+        } catch (err) {
+          // Gone since /proc/locks was read: it holds nothing. Anything else: can't tell
+          // (never cached, never counted as "not Codex").
+          if ((err as NodeJS.ErrnoException).code !== 'ENOENT') unknown = true
+          continue
         }
-        c = { codex, at: t }
-        this.codexPid.set(k, c)
-        if (this.codexPid.size > 2000) this.codexPid.clear()
       }
       if (c.codex) return pid
     }
-    return undefined
+    return unknown ? 'unknown' : 'none'
   }
 
   /**

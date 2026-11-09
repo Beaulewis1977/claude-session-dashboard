@@ -24,12 +24,13 @@ import {
 import {
   alertVerdict,
   detectAlerts,
+  pushKindOf,
   type Alert,
-  type AlertKind,
   type LiveAlertSettings
 } from '@shared/live-alerts'
 import { computeCodexLive, UNLOCKED_ACTIVE_MS, type CodexThreadInput } from '@shared/codex-live'
 import { liveOrder, parseHookEvent } from '@shared/live'
+import type { PushKind } from '@shared/mobile'
 import type { SourceInfo } from '@shared/types'
 import { isInsideClaudeDir } from '../core/safe-paths'
 import type { Alive, ProcQuery } from '../core/procs'
@@ -69,7 +70,7 @@ export interface LiveDeps {
    * Web Push to phones that turned it on; returns how many got it. Each phone
    * gets its own reference (`refFor(deviceId)`).
    */
-  push: (kind: AlertKind, refFor: (deviceId: string) => string) => Promise<number>
+  push: (kind: Exclude<PushKind, 'test'>, refFor: (deviceId: string) => string) => Promise<number>
   /** Host path of a WSL source's distro root (for /proc). */
   distroRoot: (sourceId: string) => string | undefined
   /** Monotonic milliseconds, for intervals (the wall clock can jump back). */
@@ -126,6 +127,8 @@ export class LiveService extends EventEmitter<{ changed: [] }> {
   private codexEvents = new Map<string, Cached<HookEvent>>()
   /** Codex threads seen working while nobody held their lock (the desktop app). */
   private codexSeenWorking = new Set<string>()
+  /** When each Codex thread's lock was last seen held (see CodexLiveInputs.lockSeenAt). */
+  private codexLockSeen = new Map<string, number>()
   private readonly codexReader: CodexLiveReader
 
   constructor(private readonly deps: LiveDeps) {
@@ -348,10 +351,20 @@ export class LiveService extends EventEmitter<{ changed: [] }> {
           : CODEX_IDLE_MS
       const have = this.codex.get(src.id)
       if (!force && have && m - have.at < every - 200) continue
-      const locks = await this.codexReader.locks(
+      // Threads with recent activity: their lock files are looked at afresh.
+      const fresh = new Set(recent.get(src.id) ?? [])
+      for (const s of this.prev?.values() ?? [])
+        if (s.sourceId === src.id && s.provider === 'codex' && s.state !== 'exited')
+          fresh.add(s.sessionId)
+      const read = await this.codexReader.locks(
         { env: src.env, home: dirname(src.projectsDir), distroRoot: this.deps.distroRoot(src.id) },
-        procLocks
+        procLocks,
+        fresh
       )
+      // The folder can't be read right now: what was known stays, as "can't tell"
+      // (never "free": that would end open threads and send exit alerts).
+      const unknown = read === undefined
+      const locks = read ?? (have?.locks ?? []).map((l) => ({ ...l, held: undefined }))
       await this.readCodexEvents(src)
       // Open threads, threads the last poll showed, and recently active ones.
       const ids = new Set<string>()
@@ -372,7 +385,7 @@ export class LiveService extends EventEmitter<{ changed: [] }> {
           env: src.env,
           distro: src.distro,
           threadId: id,
-          held: lock ? lock.held : false,
+          held: lock ? lock.held : unknown ? undefined : false,
           heldSince: lock ? Math.round(lock.mtimeMs + off) : undefined,
           pid: lock?.pid,
           rollout: r?.state,
@@ -399,9 +412,13 @@ export class LiveService extends EventEmitter<{ changed: [] }> {
       events,
       exactApprovals: exact ?? new Set(),
       prev: this.prev,
-      seenWorking: this.codexSeenWorking
+      seenWorking: this.codexSeenWorking,
+      lockSeenAt: this.codexLockSeen
     })
+    for (const i of [...this.codex.values()].flatMap((c) => c.inputs))
+      if (i.held === true) this.codexLockSeen.set(`${i.sourceId}:${i.threadId}`, t)
     const keys = new Set(rows.map((r) => r.key))
+    for (const k of this.codexLockSeen.keys()) if (!keys.has(k)) this.codexLockSeen.delete(k)
     for (const k of this.codexSeenWorking) if (!keys.has(k)) this.codexSeenWorking.delete(k)
     for (const r of rows) if (r.state === 'working' && !r.lockHeld) this.codexSeenWorking.add(r.key)
     return rows
@@ -591,7 +608,7 @@ export class LiveService extends EventEmitter<{ changed: [] }> {
       }
       if (v.phone) {
         void this.deps
-          .push(a.kind, (deviceId) => this.newRef(a.key, deviceId, t))
+          .push(pushKindOf(a), (deviceId) => this.newRef(a.key, deviceId, t))
           .catch((err: unknown) => console.warn('push failed', err))
       }
     }

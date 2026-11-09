@@ -21,7 +21,7 @@
 
 import type { ProviderId } from './provider'
 import type { HookEvent, LiveSession, LiveState } from './live'
-import { EXITED_KEEP_MS } from './live'
+import { EXITED_KEEP_MS, UNVERIFIED_MAX_MS } from './live'
 import type { EnvKind } from './types'
 
 // --------------------------------------------------------------- rollouts
@@ -298,6 +298,12 @@ export interface CodexLiveInputs {
   prev?: ReadonlyMap<string, LiveSession>
   /** Threads the app saw working this run, while nobody held their lock (desktop app). */
   seenWorking: ReadonlySet<string>
+  /**
+   * When the app last saw each thread's lock held (kept by the caller, outside the
+   * snapshot, so it doesn't change every poll). A lock that can't be checked now
+   * keeps its thread open (unconfirmed) for UNVERIFIED_MAX_MS after that.
+   */
+  lockSeenAt?: ReadonlyMap<string, number>
 }
 
 /** An escalated command without output for this long probably waits for approval. */
@@ -320,6 +326,11 @@ const ONLY_WHILE_WORKING = new Set(['codex-claude-code', 'codex-exec'])
  * desktop app): an idle one shows only for a while after its last turn.
  */
 const APP_SERVER = new Set(['codex-vscode', 'codex-desktop'])
+/**
+ * Threads that may run without anyone holding their lock: the desktop app's and
+ * VS Code's (their app-server), and subagents (shown only on their parent).
+ */
+const RUNS_UNLOCKED = new Set([...APP_SERVER, 'codex-subagent'])
 
 const keyOf = (sourceId: string, id: string): string => `${sourceId}:${id}`
 
@@ -451,10 +462,19 @@ export function computeCodexLive(inp: CodexLiveInputs): LiveSession[] {
       name: t.info.name,
       cwd: t.info.cwd
     }
+    // The lock can't be checked right now (an unreadable WSL share, say), but it was
+    // held lately: the thread is still taken as open (unconfirmed), never as ended.
+    const lockSeenAt = t.held === true ? now : inp.lockSeenAt?.get(key)
+    const stillOpen =
+      t.held === undefined &&
+      !!prev?.lockHeld &&
+      lockSeenAt !== undefined &&
+      now - lockSeenAt <= UNVERIFIED_MAX_MS
+    const heldLike = t.held === true || stillOpen
     if (t.held === false) {
       // It ended (the app saw it open before), or it's the desktop app's.
       const wasOpen = prev && prev.state !== 'exited' && prev.basis !== 'activity'
-      if (wasOpen && prev.unverified === undefined && prev.lockHeld) {
+      if (wasOpen && prev.lockHeld) {
         rows.set(key, {
           ...base,
           state: 'exited',
@@ -469,11 +489,19 @@ export function computeCodexLive(inp: CodexLiveInputs): LiveSession[] {
         rows.set(key, { ...prev, pid: undefined })
         continue
       }
+      // Free, and not a product that runs threads without a lock (the CLI always
+      // holds it): a crashed run's open turn must not look like work.
+      if (!RUNS_UNLOCKED.has(t.info.label ?? '')) continue
     }
-    const d = deriveCodex(t, hooks.get(key), inp.exactApprovals.has(t.sourceId), now)
+    const d = deriveCodex(
+      heldLike ? { ...t, held: true } : t,
+      hooks.get(key),
+      inp.exactApprovals.has(t.sourceId),
+      now
+    )
     if (!d) continue
     const lastSeenAt = Math.max(t.rollout?.lastLineAt ?? 0, t.rolloutMtime ?? 0, t.heldSince ?? 0)
-    if (t.held !== true) {
+    if (!heldLike) {
       // Nobody holds it (or that can't be checked): only fresh work counts.
       const active = d.state !== 'idle' && now - lastSeenAt <= UNLOCKED_ACTIVE_MS
       const recentlyDone =
@@ -498,13 +526,13 @@ export function computeCodexLive(inp: CodexLiveInputs): LiveSession[] {
       ...base,
       state: d.state,
       since: d.since,
-      startedAt: t.held ? t.heldSince : undefined,
+      startedAt: heldLike ? t.heldSince : undefined,
       lastSeenAt,
       detail: d.detail,
       failed: d.failed,
       guess: d.guess,
       basis: d.basis,
-      lockHeld: t.held === true || undefined,
+      lockHeld: heldLike || undefined,
       unverified: t.held === true ? undefined : true
     }
     if (prev && prev.state === s.state && prev.since <= s.since) s.since = prev.since

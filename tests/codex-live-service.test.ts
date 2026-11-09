@@ -76,11 +76,14 @@ async function setup() {
     list: () => [summary]
   } as unknown as SessionService
   // The lock: held while `held` says so. Counts how often the lock folder is read.
-  const state = { held: true, lists: 0 }
+  const state = { held: true, lists: 0, unreadable: false }
   const reader = new CodexLiveReader({
     ...realCodexLiveFs,
     readdir: async (dir) => {
-      if (/thread-writer-locks$/.test(dir)) state.lists++
+      if (/thread-writer-locks$/.test(dir)) {
+        state.lists++
+        if (state.unreadable) throw Object.assign(new Error('EIO'), { code: 'EIO' })
+      }
       return realCodexLiveFs.readdir(dir)
     },
     probeLock: async (p) => (p === lockPath ? state.held : false)
@@ -146,6 +149,22 @@ describe('LiveService · Codex', () => {
     expect(t.notified).toEqual(['finished:Coupon fix', 'exited:Coupon fix'])
   })
 
+  it('a lock folder that can’t be read for a moment ends nothing and sends no exit alert', async () => {
+    const t = await setup()
+    await t.live.poll(true)
+    expect(t.live.snapshot().sessions[0].state).toBe('working')
+    t.state.unreadable = true
+    t.tick(3000)
+    await t.live.poll()
+    expect(t.live.snapshot().sessions[0]).toMatchObject({ state: 'working', unverified: true })
+    t.state.unreadable = false
+    t.tick(3000)
+    await t.live.poll()
+    expect(t.live.snapshot().sessions[0]).toMatchObject({ state: 'working', lockHeld: true })
+    expect(t.live.snapshot().sessions[0].unverified).toBeUndefined()
+    expect(t.notified).toEqual([])
+  })
+
   it('an escalated command left waiting alerts as a (guessed) approval', async () => {
     const t = await setup()
     await t.live.poll(true)
@@ -166,7 +185,8 @@ describe('LiveService · Codex', () => {
     await t.live.poll()
     expect(t.live.snapshot().sessions[0]).toMatchObject({ state: 'approval', guess: true })
     expect(t.notified).toEqual(['approval:Coupon fix'])
-    expect(t.pushed).toEqual(['approval'])
+    // A guess: the phone hears it only *may* need approval.
+    expect(t.pushed).toEqual(['approval_maybe'])
   })
 
   it('follows Settings → Providers: no Codex rows while Codex is off', async () => {

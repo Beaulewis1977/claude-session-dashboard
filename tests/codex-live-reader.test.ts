@@ -10,7 +10,8 @@ import {
   CodexLiveReader,
   realCodexLiveFs,
   type CodexLiveFs,
-  type ProcLockIndex
+  type ProcLockIndex,
+  type ThreadLock
 } from '../src/main/providers/codex/live'
 
 const A = '019b0000-0000-7000-8000-0000000000a1'
@@ -81,7 +82,7 @@ describe('WSL: /proc/locks and inodes only', () => {
       51234: '/home/beau/.local/bin/codex\0resume\0' + A + '\0'
     })
     const r = new CodexLiveReader(fs)
-    const out = await r.locks({ env: 'wsl', home, distroRoot: root })
+    const out = (await r.locks({ env: 'wsl', home, distroRoot: root })) as ThreadLock[]
     expect(out.map((l) => [l.threadId, l.held, l.pid])).toEqual([
       [A, true, 51234],
       [B, false, undefined]
@@ -95,7 +96,11 @@ describe('WSL: /proc/locks and inodes only', () => {
 
   it('a dead PID holds nothing: the kernel dropped its lock, so no line names the inode', async () => {
     const { fs } = base('3: FLOCK  ADVISORY  WRITE 372 00:3d:800 0 EOF\n', {})
-    const out = await new CodexLiveReader(fs).locks({ env: 'wsl', home, distroRoot: root })
+    const out = (await new CodexLiveReader(fs).locks({
+      env: 'wsl',
+      home,
+      distroRoot: root
+    })) as ThreadLock[]
     expect(out.every((l) => l.held === false)).toBe(true)
   })
 
@@ -103,7 +108,11 @@ describe('WSL: /proc/locks and inodes only', () => {
     const { fs } = base('9: FLOCK  ADVISORY  WRITE 4242 00:3d:4711001 0 EOF\n', {
       4242: '/usr/bin/dockerd\0'
     })
-    const out = await new CodexLiveReader(fs).locks({ env: 'wsl', home, distroRoot: root })
+    const out = (await new CodexLiveReader(fs).locks({
+      env: 'wsl',
+      home,
+      distroRoot: root
+    })) as ThreadLock[]
     expect(out.find((l) => l.threadId === A)?.held).toBe(false)
   })
 
@@ -113,7 +122,11 @@ describe('WSL: /proc/locks and inodes only', () => {
       inodes: { [join(locks, `${A}.lock`)]: 4711001n },
       small: {}
     })
-    const out = await new CodexLiveReader(fs).locks({ env: 'wsl', home, distroRoot: root })
+    const out = (await new CodexLiveReader(fs).locks({
+      env: 'wsl',
+      home,
+      distroRoot: root
+    })) as ThreadLock[]
     expect(out[0].held).toBeUndefined()
   })
 
@@ -143,7 +156,7 @@ describe('Windows: the read-only probe', () => {
       small: {},
       held: new Set([held])
     })
-    const out = await new CodexLiveReader(fs).locks({ env: 'windows', home })
+    const out = (await new CodexLiveReader(fs).locks({ env: 'windows', home })) as ThreadLock[]
     expect(out.map((l) => [l.threadId, l.held])).toEqual([
       [A, true],
       [B, false]
@@ -225,5 +238,80 @@ describe('rollouts, read as they grow', () => {
     const s = (await new CodexLiveReader(realCodexLiveFs).rollout(path))!.state
     expect(s.lastEnd).toBe('complete')
     expect(s.partial).toBeUndefined()
+  })
+})
+
+describe('every lock counts, and a failed read is never "free"', () => {
+  const uuid = (i: number): string => `019b0000-0000-7000-8000-${String(i).padStart(12, '0')}`
+
+  it('finds a held lock among hundreds of old ones (no cap)', async () => {
+    const home = String.raw`C:\Users\beau\.codex`
+    const dir = join(home, 'thread-writer-locks')
+    const names = Array.from({ length: 1200 }, (_, i) => `${uuid(i)}.lock`)
+    const held = join(dir, `${uuid(1150)}.lock`)
+    const { fs, calls } = fakeFs({
+      dirs: { [dir]: names },
+      inodes: Object.fromEntries(names.map((n, i) => [join(dir, n), BigInt(i + 1)])),
+      small: {},
+      held: new Set([held])
+    })
+    const out = (await new CodexLiveReader(fs).locks({ env: 'windows', home })) as ThreadLock[]
+    expect(out).toHaveLength(1200)
+    expect(out.filter((l) => l.held).map((l) => l.threadId)).toEqual([uuid(1150)])
+    // Only the held one needs its time: one stat, not 1200.
+    expect(calls.stat).toEqual([held])
+  })
+
+  it('a lock folder that can’t be read is "can’t tell"; a missing one has nothing open', async () => {
+    const fs: CodexLiveFs = {
+      ...fakeFs({ dirs: {}, inodes: {}, small: {} }).fs,
+      readdir: async () => {
+        throw Object.assign(new Error('EACCES'), { code: 'EACCES' })
+      }
+    }
+    const home = String.raw`C:\x\.codex`
+    expect(await new CodexLiveReader(fs).locks({ env: 'windows', home })).toBe(undefined)
+    const { fs: none } = fakeFs({ dirs: {}, inodes: {}, small: {} })
+    expect(await new CodexLiveReader(none).locks({ env: 'windows', home })).toEqual([])
+  })
+
+  it('a holder whose command line can’t be read is "can’t tell", and isn’t remembered', async () => {
+    const root = String.raw`\\wsl.localhost\Ubuntu`
+    const home = String.raw`${root}\home\beau\.codex`
+    const locks = join(home, 'thread-writer-locks')
+    const small: Record<string, string> = {
+      [join(root, 'proc', 'locks')]: '17: FLOCK  ADVISORY  WRITE 51234 08:30:4711001 0 EOF\n'
+    }
+    const { fs } = fakeFs({
+      dirs: { [locks]: [`${A}.lock`] },
+      inodes: { [join(locks, `${A}.lock`)]: 4711001n },
+      small
+    })
+    const r = new CodexLiveReader(fs)
+    expect(((await r.locks({ env: 'wsl', home, distroRoot: root })) as ThreadLock[])[0].held).toBe(
+      undefined
+    )
+    // Readable now: it's Codex, at once (the failure wasn't cached as "not Codex").
+    small[join(root, 'proc', '51234', 'cmdline')] = 'codex\0resume\0'
+    const again = (await r.locks({ env: 'wsl', home, distroRoot: root })) as ThreadLock[]
+    expect(again[0]).toMatchObject({ held: true, pid: 51234 })
+  })
+
+  it('WSL inodes are cached, but a recently active thread’s lock is looked at again', async () => {
+    const root = String.raw`\\wsl.localhost\Ubuntu`
+    const home = String.raw`${root}\home\beau\.codex`
+    const locks = join(home, 'thread-writer-locks')
+    const { fs, calls } = fakeFs({
+      dirs: { [locks]: [`${A}.lock`, `${B}.lock`] },
+      inodes: { [join(locks, `${A}.lock`)]: 1n, [join(locks, `${B}.lock`)]: 2n },
+      small: { [join(root, 'proc', 'locks')]: '' }
+    })
+    const r = new CodexLiveReader(fs)
+    await r.locks({ env: 'wsl', home, distroRoot: root })
+    expect(calls.stat).toHaveLength(2)
+    await r.locks({ env: 'wsl', home, distroRoot: root })
+    expect(calls.stat).toHaveLength(2)
+    await r.locks({ env: 'wsl', home, distroRoot: root }, undefined, new Set([B]))
+    expect(calls.stat.slice(2)).toEqual([join(locks, `${B}.lock`)])
   })
 })

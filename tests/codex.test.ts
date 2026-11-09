@@ -138,7 +138,8 @@ async function setup(
     sessions,
     () => 'wt',
     undefined,
-    () => settings.value
+    () => settings.value,
+    paths.dataDir
   )
   await sessions.start()
   await sessions.idle()
@@ -1601,6 +1602,47 @@ describe('a session whose folder belongs to the other environment', () => {
     )
     expect(phone.ok).toBe(false)
     expect(phone.error).toMatch(/Linux-only folder/)
+  })
+
+  it('Continue fresh into a Linux-only folder keeps the forced read-only sandbox (never bypass)', async () => {
+    const { sessions, launcher } = await crossSetup()
+    const s = codexOf(sessions.list(), XID.home)
+    sessions.setAiSummary(s.key, {
+      done: ['Notes'],
+      files: [],
+      decisions: [],
+      todos: [],
+      pickUp: 'Go on.',
+      generatedAt: '2026-10-22T11:00:00.000Z',
+      messageCount: 1
+    })
+    // Not opted in: the dialog gets the same placement (opt-in, distros) and guidance as Resume.
+    const p0 = await launcher.preview({ key: s.key, ...base, continueFresh: {} })
+    expect(p0.placement).toMatchObject({ kind: 'wsl-only', distros: ['Ubuntu', 'Debian'] })
+    expect(p0.launchError).toMatch(/Linux-only folder/)
+    const r0 = await launcher.launch({ key: s.key, ...base, continueFresh: {} })
+    expect(r0.ok).toBe(false)
+    expect(r0.error).toMatch(/Linux-only folder/)
+    // Opted in, bypass asked for: still read-only, asking, never the bypass flag.
+    const opts = {
+      key: s.key,
+      fork: false,
+      skipPermissions: true,
+      wslFolder: true,
+      continueFresh: {}
+    }
+    const p = await launcher.preview(opts)
+    expect(p.continueError).toBeUndefined()
+    expect(p.launchError).toBeUndefined()
+    expect(p.placement).toMatchObject({ optedIn: true, askForced: true })
+    expect(p.claudeCommand).toContain('-a on-request -s read-only')
+    expect(p.claudeCommand).toContain('Read the handoff file')
+    expect(p.claudeCommand).not.toContain('dangerously')
+    expect(p.commandLine).not.toContain('dangerously')
+    const r = await launcher.launch(opts)
+    expect(r.ok).toBe(true)
+    expect(r.commandLine).toContain('-s read-only')
+    expect(r.commandLine).not.toContain('dangerously')
   })
 
   it('a Windows folder in a WSL .codex resumes in WSL, in /mnt/c/…', async () => {

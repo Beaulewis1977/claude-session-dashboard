@@ -65,9 +65,19 @@ export interface AiSummary {
   costUsd?: number
 }
 
+/**
+ * The version of the notice about what is sent. Bumped whenever what a summary
+ * sends grows, so an acceptance of an older notice (auto-summarize included)
+ * doesn't carry over: the notice is shown and accepted again first.
+ * 2: compaction summaries and Codex's messages between agents.
+ */
+export const SUMMARY_NOTICE_VERSION = 2
+
 export interface SummarySettings {
-  /** The user read the notice about what is sent, and agreed. */
+  /** The user read the current notice about what is sent (see SUMMARY_NOTICE_VERSION), and agreed. */
   noticeAccepted: boolean
+  /** The notice version the acceptance is for (always the current one once cleaned). */
+  noticeVersion?: number
   model: SummaryModel
   /** Summarize sessions with at least `autoMinMessages` messages by themselves. */
   autoEnabled: boolean
@@ -96,7 +106,9 @@ export function sanitizeSummarySettings(v: unknown): SummarySettings {
   const int = (x: unknown, lo: number, hi: number, def: number): number =>
     typeof x === 'number' && Number.isFinite(x) ? Math.min(hi, Math.max(lo, Math.round(x))) : def
   return {
-    noticeAccepted: o.noticeAccepted === true,
+    // Accepted only for the current notice: an older acceptance is asked again.
+    noticeAccepted: o.noticeAccepted === true && o.noticeVersion === SUMMARY_NOTICE_VERSION,
+    noticeVersion: SUMMARY_NOTICE_VERSION,
     model: isSummaryModel(o.model) ? o.model : d.model,
     autoEnabled: o.autoEnabled === true,
     autoMinMessages: int(o.autoMinMessages, 10, 100_000, d.autoMinMessages),

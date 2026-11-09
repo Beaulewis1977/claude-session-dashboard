@@ -258,7 +258,21 @@ export function SummariesSettings({
           aria-label="Auto-summarize big sessions"
         />
       </Row>
-      {confirmAuto && !sum.autoEnabled && (
+      {sum.autoEnabled && !sum.noticeAccepted && !confirmAuto && (
+        <div
+          role="status"
+          className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-warning/30 bg-warning-soft px-3 py-2.5 text-xs"
+        >
+          <span>
+            Paused: what a summary sends has changed (compaction summaries and Codex&apos;s messages
+            between agents). Read the updated notice to go on.
+          </span>
+          <Button variant="outline" size="sm" onClick={() => setConfirmAuto(true)}>
+            Read the notice
+          </Button>
+        </div>
+      )}
+      {confirmAuto && (!sum.autoEnabled || !sum.noticeAccepted) && (
         <div className="rounded-lg border border-info/25 bg-info/5 p-3">
           <SummaryNotice maxChars={sum.maxChars} />
           <div className="mt-3 flex justify-end gap-2">

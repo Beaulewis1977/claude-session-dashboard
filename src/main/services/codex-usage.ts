@@ -21,7 +21,9 @@ import { listFiles, readNdjson, writeNdjson } from '../core/ndjson'
 // 2: records carry the plan_type of the account that ran them; 299/10079-minute windows.
 // 3: identities count repeats within a file; readings without a plan take their session's.
 // 4: turns for Codex trends (task_started → task_complete, tool outcomes, prompts).
-export const CODEX_USAGE_VERSION = 4
+// 5: a turn's model from its own turn_context, failed turns without a response, every tool item,
+//    prompt-split turn ids per session (a fork's copies left out).
+export const CODEX_USAGE_VERSION = 5
 
 const RECORDS_RE = /^codex-records-\d{4}-\d{2}\.ndjson$/
 const LIMITS_RE = /^codex-limits-\d{4}-\d{2}\.ndjson$/

@@ -598,6 +598,16 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
       pending[handoffId] = p
       d.pendingContinues = pending
     })
+    // Already indexed (Codex wrote its file before this was recorded): link it now.
+    for (const e of this.entries.values()) this.linkContinued(e.base)
+  }
+
+  /** Forget a pending Continue fresh link (nothing was started). */
+  dropPendingContinue(handoffId: string): void {
+    if (!this.metadata.value.pendingContinues?.[handoffId]) return
+    this.metadata.update((d) => {
+      if (d.pendingContinues) delete d.pendingContinues[handoffId]
+    })
   }
 
   /**

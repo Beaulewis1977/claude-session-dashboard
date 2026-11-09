@@ -308,6 +308,19 @@ export class Launcher {
   /** Sessions place() gave a translated folder: the agent is told it (`-C`), not just started there. */
   private translated = new WeakSet<SessionSummary>()
 
+  /**
+   * A copy of a placed session (Continue fresh's or a branch's target) that
+   * keeps how place() placed it: the forced read-only sandbox and the
+   * translated folder are tracked by object, so a plain spread would lose them
+   * (and could let a WSL-only folder run with the bypass flag).
+   */
+  private derived(s: SessionSummary, patch: Partial<SessionSummary>): SessionSummary {
+    const copy: SessionSummary = { ...s, ...patch }
+    if (this.askForced.has(s)) this.askForced.add(copy)
+    if (this.translated.has(s)) this.translated.add(copy)
+    return copy
+  }
+
   /** Remember a placed session's folder as translated, and return it. */
   private translatedTo(s: SessionSummary, cwd: string): SessionSummary {
     const placed: SessionSummary = { ...s, cwd }
@@ -595,13 +608,12 @@ export class Launcher {
       },
       summary
     )
-    const target: SessionSummary = {
-      ...s,
+    const target = this.derived(s, {
       key: `${s.sourceId}:${id}`,
       sessionId: id,
       // Remote Control is named after the new session.
       meta: { ...s.meta, name }
-    }
+    })
     return {
       preview: {
         newSessionId: id,
@@ -677,7 +689,7 @@ export class Launcher {
       } catch (err) {
         branchError = (err as Error).message
       }
-      const target = branch ? { ...s, sessionId: branch.newSessionId } : s
+      const target = branch ? this.derived(s, { sessionId: branch.newSessionId }) : s
       const branchOpts = { ...opts, fork: false, newSession: false }
       const { cmd, error } = this.tryCommand(
         target,
@@ -745,9 +757,12 @@ export class Launcher {
         billingLabel: this.billingLabel(opts),
         continueFresh: plan?.preview,
         continueError,
-        launchError: this.unsupported(s, opts) ?? built.error ?? folderError,
+        launchError:
+          this.unsupported(s, opts) ?? placeError(placed, opts) ?? built.error ?? folderError,
         remoteControlName: this.remoteControl(target, opts)?.name,
-        modelChoice: this.modelChoice(s)
+        modelChoice: this.modelChoice(s),
+        // A WSL-only folder: the same opt-in and distro choice as Resume.
+        ...(placed.placement ? { placement: placed.placement } : {})
       }
     }
     const originalExists = await this.platform.pathExists(s.originalPath)
@@ -1021,6 +1036,24 @@ export class Launcher {
     const late = ctx.stillAllowed?.()
     if (late)
       return { ok: false, restored, commandLine: cmd.commandLine, error: `Not launched: ${late}.` }
+    // Codex: linked when a new session whose first prompt names this handoff shows up.
+    // Recorded before the terminal starts, so a scan that finds the new session first
+    // still links it; dropped again if nothing starts.
+    const pendingId = cont && !pickedId ? cont.preview.newSessionId : undefined
+    if (pendingId)
+      this.sessions.recordPendingContinue(pendingId, {
+        parentSessionId: s.sessionId,
+        parentKey: s.key,
+        sourceId: s.sourceId,
+        name: cont!.preview.name,
+        ...(s.meta.model ? { model: s.meta.model } : {}),
+        ...(s.meta.effort ? { effort: s.meta.effort } : {}),
+        createdAt: new Date().toISOString()
+      })
+    const notStarted = (r: LaunchResult): LaunchResult => {
+      if (pendingId) this.sessions.dropPendingContinue(pendingId)
+      return r
+    }
     try {
       await this.platform.spawnDetached(cmd)
     } catch (err) {
@@ -1030,44 +1063,32 @@ export class Launcher {
         // The first attempt took time: ask again before the second.
         const again = ctx.stillAllowed?.()
         if (again)
-          return {
+          return notStarted({
             ok: false,
             restored,
             commandLine: cmd.commandLine,
             error: `Not launched: ${again}.`
-          }
+          })
         try {
           await this.platform.spawnDetached(cmd)
         } catch (err2) {
-          return {
+          return notStarted({
             ok: false,
             restored,
             commandLine: cmd.commandLine,
             error: String((err2 as Error).message)
-          }
+          })
         }
       } else {
-        return {
+        return notStarted({
           ok: false,
           restored,
           commandLine: cmd.commandLine,
           error: String((err as Error).message)
-        }
+        })
       }
     }
-    if (cont && !pickedId) {
-      // Codex: linked when a new session whose first prompt names this handoff shows up.
-      this.sessions.recordPendingContinue(cont.preview.newSessionId, {
-        parentSessionId: s.sessionId,
-        parentKey: s.key,
-        sourceId: s.sourceId,
-        name: cont.preview.name,
-        ...(s.meta.model ? { model: s.meta.model } : {}),
-        ...(s.meta.effort ? { effort: s.meta.effort } : {}),
-        createdAt: new Date().toISOString()
-      })
-      return { ok: true, restored, commandLine: cmd.commandLine, ...continued }
-    }
+    if (pendingId) return { ok: true, restored, commandLine: cmd.commandLine, ...continued }
     if (cont) {
       // Where the new session came from (the app's metadata only), named and
       // with the parent's own model / effort, before Claude Code writes its file.

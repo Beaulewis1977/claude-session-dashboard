@@ -356,9 +356,10 @@ and the files it replaces are kept in `%APPDATA%\ClaudeSessionDashboard\restore-
 ### Summarize and continue fresh
 
 - Click **Summarize** at the top of a session (or right-click it in the list). The first time, the
-  app shows what is sent and asks before sending: the conversation's text and one line per tool call
-  (never tool output, thinking or images), with common secrets masked, cut to 120,000 characters
-  keeping the start and the end. **Show exactly what is sent** shows the full text.
+  app shows what is sent and asks before sending: the conversation's text, one line per tool call,
+  compaction summaries and (for Codex) short messages between agents, which can quote tool output
+  (never the raw tool output, thinking or images), with common secrets masked, cut to 120,000
+  characters keeping the start and the end. When this list grows, the app asks again. **Show exactly what is sent** shows the full text.
 - To summarize many at once, pick them with <kbd>Ctrl</kbd>+click or <kbd>Shift</kbd>+click and
   click **Summarize selected**. You see the estimate first; a panel in the corner shows progress,
   and Cancel stops it.

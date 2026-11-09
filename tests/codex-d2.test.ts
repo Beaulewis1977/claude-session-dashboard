@@ -8,7 +8,9 @@ import {
   readHandoffPrompt,
   transcriptForSummary,
   type AiSummary,
-  DEFAULT_SUMMARY_SETTINGS
+  DEFAULT_SUMMARY_SETTINGS,
+  sanitizeSummarySettings,
+  SUMMARY_NOTICE_VERSION
 } from '@shared/summary'
 import { blockToMarkdown } from '@shared/markdown'
 import type { LaunchOptions, SessionSummary } from '@shared/types'
@@ -91,6 +93,13 @@ afterEach(async () => {
 
 const line = (type: string, payload: Record<string, unknown>, ts = '2026-10-20T10:00:00Z') =>
   JSON.stringify({ timestamp: ts, type, payload })
+
+/** A user message (a prompt I wrote). */
+const prompt = (text: string) => ({
+  type: 'message',
+  role: 'user',
+  content: [{ type: 'input_text', text }]
+})
 
 // ------------------------------------------------------- agent messages
 
@@ -1053,9 +1062,304 @@ describe('Codex login is never read', () => {
   })
 })
 
+// ------------------------------------------------- review fixes (PR #35)
+
+describe('the summary notice covers what is sent', () => {
+  it('an acceptance of the older notice is asked again (auto-summarize too)', async () => {
+    // Accepted before compaction summaries and agent messages were described: not accepted now.
+    expect(sanitizeSummarySettings({ noticeAccepted: true }).noticeAccepted).toBe(false)
+    expect(
+      sanitizeSummarySettings({ noticeAccepted: true, noticeVersion: SUMMARY_NOTICE_VERSION - 1 })
+        .noticeAccepted
+    ).toBe(false)
+    const now = sanitizeSummarySettings({
+      noticeAccepted: true,
+      noticeVersion: SUMMARY_NOTICE_VERSION
+    })
+    expect(now).toMatchObject({ noticeAccepted: true, noticeVersion: SUMMARY_NOTICE_VERSION })
+    // Accepting again (the dialog sends the cleaned settings with noticeAccepted: true) sticks.
+    const again = sanitizeSummarySettings({
+      ...sanitizeSummarySettings({ noticeAccepted: true, autoEnabled: true }),
+      noticeAccepted: true
+    })
+    expect(again.noticeAccepted).toBe(true)
+
+    const { sessions } = await setup()
+    const s = sessions.list().find((x) => x.provider === 'codex' && x.sessionId === CLI)!
+    const summaries = new SummaryService({
+      sessions,
+      dataDir: join(root, 'data'),
+      runner: new PrintRunner({
+        findCli: async () => undefined,
+        checkAuth: async () => ({ ok: true, method: 'claude.ai' })
+      }),
+      // What the app passes: the cleaned settings of an older acceptance with auto on.
+      settings: () =>
+        sanitizeSummarySettings({ noticeAccepted: true, autoEnabled: true, autoMinMessages: 10 }),
+      timeoutSec: () => 60,
+      prices: () => DEFAULT_PRICES,
+      fiveHourPct: async () => undefined,
+      dollarsPerPct: () => undefined,
+      recordUsage: () => undefined
+    })
+    await expect(summaries.enqueue([s.key])).rejects.toThrow(/notice/)
+    expect(await summaries.autoTick()).toBe(0)
+  })
+})
+
+describe('Codex turn trends after review', () => {
+  const ctx = {
+    key: `windows-codex:${CLI}`,
+    project: 'shop',
+    env: 'windows' as const,
+    sessionId: CLI
+  }
+  const tc = (total: number, o: number) => ({
+    type: 'token_count',
+    info: {
+      total_token_usage: { input_tokens: total, output_tokens: 0, total_tokens: total },
+      last_token_usage: { input_tokens: 1000, output_tokens: o, total_tokens: 1000 + o },
+      model_context_window: 100_000
+    }
+  })
+  const prompt = (text: string) => ({
+    type: 'message',
+    role: 'user',
+    content: [{ type: 'input_text', text }]
+  })
+
+  it("a turn after a model switch is the new model's (task_started comes before turn_context)", () => {
+    const text = [
+      line('session_meta', { id: CLI }, '2026-10-20T10:00:00Z'),
+      line('event_msg', { type: 'task_started', turn_id: 'a' }, '2026-10-20T10:00:01Z'),
+      line('turn_context', { model: 'gpt-old' }, '2026-10-20T10:00:01Z'),
+      line('response_item', prompt('one'), '2026-10-20T10:00:02Z'),
+      line('event_msg', tc(1000, 10), '2026-10-20T10:00:03Z'),
+      line(
+        'event_msg',
+        { type: 'task_complete', turn_id: 'a', duration_ms: 2000 },
+        '2026-10-20T10:00:04Z'
+      ),
+      line('event_msg', { type: 'task_started', turn_id: 'b' }, '2026-10-20T10:01:00Z'),
+      line('turn_context', { model: 'gpt-new' }, '2026-10-20T10:01:00Z'),
+      line('response_item', prompt('two'), '2026-10-20T10:01:01Z'),
+      line('event_msg', tc(2000, 20), '2026-10-20T10:01:02Z'),
+      line(
+        'event_msg',
+        { type: 'task_complete', turn_id: 'b', duration_ms: 3000 },
+        '2026-10-20T10:01:03Z'
+      )
+    ].join('\n')
+    const a = analyzeCodexUsage(text, ctx)
+    expect(a.codexTurns!.map((t) => [t.id, t.model])).toEqual([
+      ['codex-turn:a', 'gpt-old'],
+      ['codex-turn:b', 'gpt-new']
+    ])
+    // The same model as its responses.
+    expect(a.records.map((r) => r.model)).toEqual(['gpt-old', 'gpt-new'])
+  })
+
+  it('a turn that fails before its first response still counts (failure and prompt)', () => {
+    const text = [
+      line('session_meta', { id: CLI }, '2026-10-20T10:00:00Z'),
+      line('event_msg', { type: 'task_started', turn_id: 'x' }, '2026-10-20T10:00:01Z'),
+      line('turn_context', { model: 'gpt-6.1-sol' }, '2026-10-20T10:00:01Z'),
+      line('response_item', prompt('do it'), '2026-10-20T10:00:02Z'),
+      line(
+        'event_msg',
+        { type: 'task_complete', turn_id: 'x', error: { message: 'stream error' } },
+        '2026-10-20T10:00:05Z'
+      )
+    ].join('\n')
+    const turns = analyzeCodexUsage(text, ctx).codexTurns!
+    expect(turns).toHaveLength(1)
+    expect(turns[0]).toMatchObject({
+      failed: true,
+      prompted: true,
+      responses: 0,
+      model: 'gpt-6.1-sol'
+    })
+    const r = buildCodexTrends({
+      records: [],
+      turns,
+      timeZone: 'UTC',
+      weekStart: 'monday',
+      groupBy: 'all'
+    })
+    expect(r.weeks).toHaveLength(1)
+  })
+
+  it("sibling forks keep their own prompt-split turns; a fork's copy of its parent's isn't counted twice", () => {
+    const PARENT = '019a0000-0000-7000-8000-00000000000a'
+    const old = (id: string, forked: boolean, metaAt: string, prompts: [string, string][]) =>
+      [
+        line('session_meta', { id, ...(forked ? { forked_from_id: PARENT } : {}) }, metaAt),
+        line('turn_context', { model: 'gpt-5-codex' }, metaAt),
+        ...prompts.flatMap(([at, t], i) => [
+          line('response_item', prompt(t), at),
+          line('event_msg', tc(1000 * (i + 1), 10 + i), at)
+        ])
+      ].join('\n')
+    const ctxOf = (id: string) => ({ ...ctx, key: `w:${id}`, sessionId: id, lineageRoot: PARENT })
+    // The parent's one turn; each fork copies it (within a second of its meta), then adds its own.
+    const parent = analyzeCodexUsage(
+      old(PARENT, false, '2026-10-20T09:00:00Z', [['2026-10-20T09:00:01Z', 'p']]),
+      ctxOf(PARENT)
+    )
+    const f1id = '019a0000-0000-7000-8000-0000000000f1'
+    const f2id = '019a0000-0000-7000-8000-0000000000f2'
+    const fork = (id: string, own: string) =>
+      analyzeCodexUsage(
+        old(id, true, '2026-10-20T10:00:00.000Z', [
+          ['2026-10-20T10:00:00.005Z', 'p'],
+          ['2026-10-20T10:05:00Z', own]
+        ]),
+        ctxOf(id)
+      )
+    const f1 = fork(f1id, 'left')
+    const f2 = fork(f2id, 'right')
+    const store = new CodexUsageStore()
+    store.set(`w:${PARENT}`, [], [], 's', parent.codexTurns)
+    store.set(`w:${f1id}`, [], [], 's', f1.codexTurns)
+    store.set(`w:${f2id}`, [], [], 's', f2.codexTurns)
+    // The parent's turn once, and each fork's own turn: three, not one or five.
+    expect(
+      store
+        .turns()
+        .map((t) => t.key)
+        .sort()
+    ).toEqual([`w:${PARENT}`, `w:${f1id}`, `w:${f2id}`])
+  })
+
+  it('every kind of finished tool counts toward the tool error rate (collaboration tools too)', async () => {
+    const item = (type: string, status: string) =>
+      line(
+        'event_msg',
+        { type: 'item_completed', item: { type, id: 'i', status } },
+        '2026-10-20T10:00:03Z'
+      )
+    const rollout = [
+      line('session_meta', { id: CLI }, '2026-10-20T10:00:00Z'),
+      line('event_msg', { type: 'task_started', turn_id: 't' }, '2026-10-20T10:00:01Z'),
+      line('response_item', prompt('go'), '2026-10-20T10:00:02Z'),
+      item('CommandExecution', 'failed'),
+      item('CollabAgentToolCall', 'completed'),
+      item('CollabAgentToolCall', 'completed'),
+      item('Extension', 'completed'),
+      // Not tool calls: never counted.
+      line(
+        'event_msg',
+        { type: 'item_completed', item: { type: 'AgentMessage', id: 'm', status: 'completed' } },
+        '2026-10-20T10:00:03Z'
+      ),
+      line('event_msg', tc(1000, 10), '2026-10-20T10:00:04Z'),
+      line('event_msg', { type: 'task_complete', turn_id: 't' }, '2026-10-20T10:00:05Z')
+    ].join('\n')
+    const plain = analyzeCodexUsage(rollout, ctx).codexTurns![0]
+    expect(plain).toMatchObject({ toolResults: 4, toolErrors: 1 })
+    const file = join(root, `rollout-2026-10-20T10-00-00-${CLI}.jsonl`)
+    await writeFile(file, rollout + '\n')
+    const viaReader = analyzeCodexUsage(await readCodexUsageText(file), ctx).codexTurns![0]
+    expect(viaReader).toMatchObject({ toolResults: 4, toolErrors: 1 })
+  })
+})
+
+describe('Continue fresh for Codex: the link is never missed', { timeout: 30_000 }, () => {
+  it('a scan that finds the new session before the launch returns still links it', async () => {
+    const ref: { sessions?: SessionService } = {}
+    const { sessions, launcher, metadata } = await setup({
+      launch: true,
+      // Codex writes its rollout and the app scans it while the terminal is still starting.
+      spawn: async (cmd) => {
+        const s = ref.sessions!.list().find((x) => x.provider === 'codex' && x.sessionId === CLI)!
+        const rolloutPath = join(
+          dirname(s.filePath),
+          `rollout-2026-10-20T11-00-00-${NEW_CODEX}.jsonl`
+        )
+        await writeFile(
+          rolloutPath,
+          [
+            line('session_meta', { id: NEW_CODEX, cwd: s.cwd }, '2026-10-20T16:00:00Z'),
+            line(
+              'response_item',
+              prompt(cmd.claudeArgs[cmd.claudeArgs.length - 1]),
+              '2026-10-20T16:00:01Z'
+            )
+          ].join('\n') + '\n'
+        )
+        await ref.sessions!.fileChanged(s.sourceId, rolloutPath)
+      }
+    })
+    ref.sessions = sessions
+    const s = sessions.list().find((x) => x.provider === 'codex' && x.sessionId === CLI)!
+    sessions.setAiSummary(s.key, SUMMARY)
+    const r = await launcher.launch({
+      key: s.key,
+      fork: false,
+      skipPermissions: false,
+      continueFresh: {}
+    })
+    expect(r.ok).toBe(true)
+    expect(metadata.value.sessions[`codex:${NEW_CODEX}`]?.branch).toMatchObject({
+      parentKey: s.key,
+      via: 'continue'
+    })
+    expect(Object.keys(metadata.value.pendingContinues ?? {})).toEqual([])
+  })
+
+  it('a session indexed before the link was recorded is linked when it is', async () => {
+    const { sessions, metadata } = await setup()
+    const s = sessions.list().find((x) => x.provider === 'codex' && x.sessionId === CLI)!
+    const rollout = join(dirname(s.filePath), `rollout-2026-10-20T11-00-00-${NEW_CODEX}.jsonl`)
+    await writeFile(
+      rollout,
+      [
+        line('session_meta', { id: NEW_CODEX, cwd: s.cwd }, '2026-10-20T16:00:00Z'),
+        line(
+          'response_item',
+          prompt(
+            `Read the handoff file C:\\x\\handoffs\\codex\\${HANDOFF_ID}.md first, then continue from it.`
+          ),
+          '2026-10-20T16:00:01Z'
+        )
+      ].join('\n') + '\n'
+    )
+    await sessions.fileChanged(s.sourceId, rollout)
+    expect(metadata.value.sessions[`codex:${NEW_CODEX}`]?.branch).toBeUndefined()
+    sessions.recordPendingContinue(HANDOFF_ID, {
+      parentSessionId: CLI,
+      parentKey: s.key,
+      sourceId: s.sourceId,
+      createdAt: new Date().toISOString()
+    })
+    expect(metadata.value.sessions[`codex:${NEW_CODEX}`]?.branch).toMatchObject({ via: 'continue' })
+  })
+
+  it('nothing started: the pending link is dropped', async () => {
+    const { sessions, launcher, metadata } = await setup({
+      launch: true,
+      spawn: async () => {
+        throw Object.assign(new Error('no terminal'), { code: 'EACCES' })
+      }
+    })
+    const s = sessions.list().find((x) => x.provider === 'codex' && x.sessionId === CLI)!
+    sessions.setAiSummary(s.key, SUMMARY)
+    const r = await launcher.launch({
+      key: s.key,
+      fork: false,
+      skipPermissions: false,
+      continueFresh: {}
+    })
+    expect(r.ok).toBe(false)
+    expect(Object.keys(metadata.value.pendingContinues ?? {})).toEqual([])
+  })
+})
+
 // ------------------------------------------------------------- helpers
 
-async function setup(opts: { launch?: boolean } = {}) {
+async function setup(
+  opts: { launch?: boolean; spawn?: (cmd: LaunchCommand) => Promise<void> } = {}
+) {
   await cp(FIXTURES, join(root, 'fixtures'), { recursive: true })
   await prepareFixtures(root, { codex: true })
   const layout = fixturesLayout(root)
@@ -1067,6 +1371,7 @@ async function setup(opts: { launch?: boolean } = {}) {
         canLaunch: true,
         spawnDetached: async (cmd: LaunchCommand) => {
           spawned.push(cmd)
+          await opts.spawn?.(cmd)
         },
         wslCanRead: async () => true
       }

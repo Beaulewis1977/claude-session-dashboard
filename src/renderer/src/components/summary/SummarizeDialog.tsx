@@ -16,7 +16,7 @@ import {
   TriangleAlert
 } from 'lucide-react'
 import { formatBytes, formatInt } from '@shared/format'
-import { SUMMARY_MODEL_LABEL, type SummaryEstimate } from '@shared/summary'
+import { MAX_AGENT_MESSAGE_CHARS, SUMMARY_MODEL_LABEL, type SummaryEstimate } from '@shared/summary'
 import type { SummaryBatchEstimate, SummaryPreview } from '@shared/summary-queue'
 import { api } from '@/lib/api'
 import { queue } from '@/lib/summaries'
@@ -86,9 +86,13 @@ export function SummaryNotice({ maxChars }: { maxChars: number }) {
     <ul className="space-y-2.5 text-[13px] leading-relaxed text-foreground/85">
       <Point icon={FileText}>
         <strong className="font-semibold">What is sent:</strong> the conversation&apos;s text (your
-        messages and Claude&apos;s replies) and one line per tool call (its name and file path or
-        command). Never tool output, thinking or images. Up to {formatInt(maxChars)} characters per
-        session; for longer ones the start and the end are kept.
+        messages and the agent&apos;s replies, Claude&apos;s or Codex&apos;s), one line per tool
+        call (its name and file path or command), the summary of earlier context left by a
+        compaction, and for Codex one line per message between agents (up to{' '}
+        {formatInt(MAX_AGENT_MESSAGE_CHARS)} characters each). Compaction summaries and messages
+        between agents are written by the agent and can quote tool output or files. Never the raw
+        tool output, thinking or images. Up to {formatInt(maxChars)} characters per session; for
+        longer ones the start and the end are kept.
       </Point>
       <Point icon={KeyRound}>
         Common secrets (API keys, tokens, passwords, private keys) are masked before anything is

@@ -385,13 +385,33 @@ const TOOL_CALL_RE =
 /** Tool outputs: only whether they report a failing exit code (from their start). */
 const TOOL_OUTPUT_RE = /"payload":\{"type":"(function_call_output|custom_tool_call_output)"/
 const EXIT_RE = /Exit code: (\d+)|Process exited with code (\d+)|\\"exit_code\\":(\d+)/
-/** A finished tool item with its status (newer Codex): the most reliable error signal. */
-const TOOL_ITEM_RE =
-  /"type":"item_completed".*?"item":\{"type":"(CommandExecution|McpToolCall|FileChange|DynamicToolCall)"/
+/**
+ * A finished tool item with its status (newer Codex): the most reliable error
+ * signal. Every kind of tool counts (commands, MCP and dynamic tools, file
+ * changes, collaboration tools such as spawn_agent, extensions, …), so the
+ * rate isn't taken from a few kinds only; the items that aren't tool calls
+ * are left out (see isToolItemType).
+ */
+const TOOL_ITEM_RE = /"type":"item_completed".*?"item":\{"type":"([A-Za-z]+)"/
+
+/** Finished items that aren't tool calls: messages, reasoning, compaction, subagent activity. */
+const NOT_TOOL_ITEMS = new Set([
+  'AgentMessage',
+  'UserMessage',
+  'Reasoning',
+  'ContextCompaction',
+  'SubAgentActivity',
+  // The output of a function call, already counted with its call.
+  'FunctionCallOutput'
+])
+
+export function isToolItemType(type: unknown): boolean {
+  return typeof type === 'string' && /^[A-Za-z]+$/.test(type) && !NOT_TOOL_ITEMS.has(type)
+}
 const MESSAGE_RE = /"payload":\{"type":"message"/
 
 /** The version of the usage text: bumped when it keeps more (see CODEX_USAGE_VERSION). */
-export const USAGE_TEXT_FORMAT = 2
+export const USAGE_TEXT_FORMAT = 3
 
 /**
  * Only what token usage, plan limits and trends need, from the whole file
@@ -433,7 +453,8 @@ export async function readCodexUsageText(path: string): Promise<string> {
         )
         return
       }
-      const item = TOOL_ITEM_RE.exec(head)
+      const itemType = TOOL_ITEM_RE.exec(head)?.[1]
+      const item = isToolItemType(itemType) ? itemType : undefined
       const message = !item && MESSAGE_RE.test(head)
       if (!item && !message && !USAGE_TYPES_RE.test(line.slice(0, 300))) return
       let o: Record<string, unknown>

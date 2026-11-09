@@ -195,9 +195,14 @@ up" line (or the first thing done) shows on the session's card when it has no de
 palette), **Summarize selected** for several, or opt-in auto-summarize. One runs at a time, in the
 background; a panel in the corner shows the queue, with Cancel for one or all.
 
-- **What is sent:** your messages and Claude's replies as plain text, and one line per tool call
-  (`[tool] Edit src/app.ts`, `[tool] Bash: npm test`). Never tool results, thinking, images, slash
-  commands or their output. API keys, tokens, passwords, private keys and credentials in URLs are
+- **What is sent:** your messages and the agent's replies as plain text, one line per tool call
+  (`[tool] Edit src/app.ts`, `[tool] Bash: npm test`), the summary of earlier context a compaction
+  left, and for Codex one line per message between agents (up to 2,000 characters each). Compaction
+  summaries and messages between agents are written by the agent and can quote tool output or
+  files; the notice says so. Never the raw tool results, thinking, images, slash commands or their
+  output. The notice is versioned: when what is sent grows, an earlier acceptance (auto-summarize
+  included) no longer counts, and the notice is shown again before the next summary (Settings →
+  Summaries says when auto-summarize is paused for this). API keys, tokens, passwords, private keys and credentials in URLs are
   masked first. One very long message keeps its start and end (6,000 characters), and a session
   longer than the limit (120,000 characters by default, Settings → Summaries) keeps its first quarter
   and its last three quarters, with a note of how many messages were left out in the middle.
@@ -1192,7 +1197,10 @@ from it. It summarizes an earlier session.` (Codex has no @-mention that attache
   make the folder writable. In WSL the path comes from the distro (`wslpath`) and must be readable
   there before anything starts. The new session is linked as "continued from" once a Codex session
   whose first prompt names that handoff file appears (a pending link in `metadata.json`, kept for a
-  week); it gets the "<title> — continued" name and the parent's model and effort. The context-size
+  week); it's recorded before the terminal starts (and dropped if nothing starts), so a scan
+  that finds the new session first still links it. It gets the "<title> — continued" name and the
+  parent's model and effort. A session with a Linux-only folder in a Windows Codex home gets the
+  same opt-in and distro choice as Resume, and the same forced read-only sandbox. The context-size
   warning offers it with an estimate (Codex's own first input plus the handoff).
 - **Handoff files** (Claude Code's and Codex's) are never deleted on their own. Settings → Summaries
   shows their count and size, and **Clean up handoffs older than 30 days** (after asking) deletes only
@@ -1201,15 +1209,20 @@ from it. It summarizes an earlier session.` (Codex has no @-mention that attache
   Claude Code's (in All, a switch picks whose). Per response, from `token_count`: output and
   reasoning tokens and the cached share of input. Per turn (`task_started` → `task_complete` /
   `turn_aborted`): median turn time (`duration_ms`), time to first token, the tool error rate
-  (finished tool items' `status`: CommandExecution, McpToolCall, FileChange; older rollouts without
-  them use failing exit codes in tool output) and the share of interrupted or failed turns. Per
+  (every finished tool item's `status`: commands, MCP and dynamic tools, file changes,
+  collaboration tools, extensions; older rollouts without them use failing exit codes in tool
+  output) and the share of interrupted or failed turns (one that failed before any response
+  counts too). A turn's model is the one its own `turn_context` names (Codex writes
+  `task_started` first). Per
   prompt I wrote, in main threads only (a subagent's "prompts" are the main agent's): responses and
   tool calls. Context use: the last reading of each session in each week. Weekly per model or Codex
   CLI version, with markers for a new model (one with at least 2% of the responses) and a new
   version (every change "By version"; otherwise every ten minor versions, as Codex ships one
   almost weekly), and compare mode (two date
   ranges or two versions). The usage reader keeps only these fields, never text; a fork's copied
-  turns count once by Codex's turn id. A turn that hasn't ended isn't counted.
+  turns count once by Codex's turn id. Older rollouts without turn events are split at each prompt,
+  numbered per session; in a fork, the copy of its parent's history (written within a second of
+  the fork's meta) isn't counted again. A turn that hasn't ended isn't counted.
 - **Never**: `auth.json` or any credential file, and no OpenAI or ChatGPT endpoint. Logs only.
 - **Archive**: Settings → Archive → "Archive Codex sessions": Off (default; Codex doesn't delete
   old sessions itself), Named, pinned or tagged, or All. The size it would copy, and about what a

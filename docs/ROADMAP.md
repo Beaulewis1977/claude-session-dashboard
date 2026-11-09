@@ -369,6 +369,8 @@ Run typecheck, lint, tests and the build. Commit, push the branch and open a PR 
   - Guessing a gone fork's parent (no saved link) matches its first rows in order, and rows with the same timestamp are ordered by their identity hash, which doesn't keep Codex's order. If several copied events share a millisecond, a real match can miss the 80% threshold, and that unavailable fork's copied history counts twice.
   - One-account mode: the plan in force now is taken from main-limit readings. If a model limit (e.g. Pro Spark) reports a new plan while the newest main reading is still the old one, the cutoff is 0 and the old plan's and new plan's Spark windows can be grouped together.
 - Codex (Phase D2) known issues:
+  - The summary notice changed (compaction summaries and messages between agents are now
+    described), so everyone is asked to accept it again once; auto-summarize waits until then.
   - Summaries are written by Claude only. `codex exec` couldn't be made tool-free (0.166 still
     offered 19 tools with every disable flag), so the "summarize with codex exec" option wasn't built.
     Re-test if a newer Codex adds a real no-tools switch.
@@ -381,7 +383,7 @@ Run typecheck, lint, tests and the build. Commit, push the branch and open a PR 
     rollouts older than Codex's turn events (no `task_started`) are split at each prompt, without
     turn time or time to first token; tool errors before `item_completed` statuses come only from
     exit codes in tool output (about 12% of outputs have one).
-  - The first start after updating re-reads every Codex rollout once (CODEX_USAGE_VERSION 4), in the
+  - The first start after updating re-reads every Codex rollout once (CODEX_USAGE_VERSION 5), in the
     background.
 
 ---

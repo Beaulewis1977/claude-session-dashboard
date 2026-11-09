@@ -5,7 +5,13 @@
 import type { PushKind } from './mobile'
 import type { LiveSession } from './live'
 
-export type AlertKind = Exclude<PushKind, 'test'>
+/** What alerts (and their settings) are about. A guessed approval is an 'approval' too; only its push says "may". */
+export type AlertKind = Exclude<PushKind, 'test' | 'approval_maybe'>
+
+/** The push for an alert: a guessed approval (Codex without its hook) says it only may need you. */
+export function pushKindOf(a: Pick<Alert, 'kind' | 'session'>): Exclude<PushKind, 'test'> {
+  return a.kind === 'approval' && a.session.guess ? 'approval_maybe' : a.kind
+}
 
 export interface QuietHours {
   enabled: boolean

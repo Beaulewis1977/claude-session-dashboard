@@ -605,3 +605,12 @@ export interface FocusResult {
   error?: string
   simulated?: boolean
 }
+
+/** Do a home's session alerts really run? A Codex hook only once Codex trusts it (and hooks are on). */
+export function alertsWork(
+  h: Pick<HookEnv, 'installed' | 'provider' | 'trust' | 'hooksFeatureOff'>
+): boolean {
+  if (!h.installed) return false
+  if ((h.provider ?? 'claude') !== 'codex') return true
+  return h.trust === 'trusted' && !h.hooksFeatureOff
+}

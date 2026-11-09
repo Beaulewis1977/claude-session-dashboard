@@ -17,6 +17,7 @@
 
 import { mkdir, readFile, stat } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
+import { clockOffset } from '@shared/clock'
 import type { BridgeApplyResult, BridgePlan } from '@shared/usage/limits'
 import type { HookEnv } from '@shared/live'
 import { hooksFeatureOff, parseHookTrust, trustEntry, trustOf } from '@shared/codex-live'
@@ -282,6 +283,7 @@ export class CodexHooksInstaller {
         // Read only, and only the hook trust and the hooks feature switch.
         const toml = (await this.read(p.configPath).catch(() => undefined)) ?? ''
         const installedAt = rec?.installedAt ? Date.parse(rec.installedAt) : undefined
+        const configSavedAt = await this.savedAt(p.configPath)
         env.trust = trustOf(
           parseHookTrust(toml),
           {
@@ -294,11 +296,18 @@ export class CodexHooksInstaller {
           {
             priorHash: rec?.priorTrustHash,
             installedAt: Number.isFinite(installedAt) ? installedAt : undefined,
-            configSavedAt: await this.savedAt(p.configPath)
+            configSavedAt
           }
         )
-        // An approval the hook saved since it was added: it runs, whatever config.toml says.
-        if (lastEventAt && installedAt && lastEventAt >= installedAt) env.trust = 'trusted'
+        // An approval the hook delivered proves it runs, but only if it came after the
+        // latest save of both files: a later change (trust revoked in /hooks, the hook
+        // edited) is never overridden by an older event, and "disabled" never is.
+        if (env.trust === 'untrusted' && lastEventAt && installedAt && lastEventAt >= installedAt) {
+          const hooksSavedAt = await this.savedAt(p.hooksPath)
+          const off = clockOffset()
+          const after = (t: number | undefined): boolean => t === undefined || lastEventAt > t + off
+          if (after(configSavedAt) && after(hooksSavedAt)) env.trust = 'trusted'
+        }
         if (hooksFeatureOff(toml)) env.hooksFeatureOff = true
       }
     } catch {

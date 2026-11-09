@@ -352,6 +352,12 @@ settings backups can hold secrets from Claude's `env`), caches, and `backup.json
   snapshots can't be listed, or if no snapshot is left, no object is deleted. Retention runs under
   the same lock as a backup, so it never removes an object a backup is reusing. Only the app's own files, by their exact names, inside its own subfolder, are ever
   deleted.
+- **Restore safety copies:** Settings → Backup shows the size of `restore-backups\`. **Clean up
+  restore safety copies older than 30 days** lists those copies (date, files, size) and asks first.
+  Only folders named with a restore's own time stamp count, aged by that name (not by file dates);
+  the newest is always kept; a link or junction is never followed or deleted; the list is checked
+  again right before deleting, and only copies that were shown and are still old enough go. **Clean
+  up automatically** (off by default) does the same at most once a day while the app is open.
 - **Restore:** pick a snapshot and see what would change, per kind of data. Files are restored only
   to the app's own data folder, and only paths on the backup's allow-list (a crafted manifest can't
   point anywhere else, `.claude` included). Every file is decrypted and checked into

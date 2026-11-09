@@ -608,6 +608,8 @@ async function main(): Promise<void> {
   })
   if (restored) backup.recordRestore(restored)
   await backup.init()
+  // Opt-in (off by default): restore safety copies older than 30 days.
+  void backup.autoCleanSafety()
   const devServer = !!process.env.ELECTRON_RENDERER_URL
   registerBackupIpc({
     backup,

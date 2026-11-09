@@ -356,7 +356,9 @@ export const webApi: CsdApi = {
   backupPreview: onPc('Backups'),
   backupRestore: onPc('Backups'),
   backupOpenFolder: onPc('Backups'),
-  backupOpenSafety: onPc('Backups')
+  backupOpenSafety: onPc('Backups'),
+  backupSafetyCopies: onPc('Backups'),
+  backupCleanSafety: onPc('Backups')
 }
 
 function pushSupported(): boolean {

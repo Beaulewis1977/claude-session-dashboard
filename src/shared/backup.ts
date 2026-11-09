@@ -71,6 +71,9 @@ export interface BackupStatus {
   damagedCount: number
   setBytes?: number
   lastRestore?: RestoreRecord
+  /** Clean up restore safety copies older than 30 days by itself (opt-in, off by default). */
+  autoCleanSafety: boolean
+  lastSafetyCleanup?: SafetyCleanup
 }
 
 export interface SnapshotInfo {
@@ -141,3 +144,34 @@ export type BackupError = {
 
 export const isBackupError = (v: unknown): v is BackupError =>
   !!v && typeof v === 'object' && typeof (v as BackupError).error === 'string'
+
+/** A restore safety copy: `restore-backups/<time>/` in the app's data folder. */
+export interface SafetyCopy {
+  /** The folder's name (the restore's time stamp). */
+  name: string
+  /** When the restore that made it ran (from the name). */
+  at: string
+  bytes: number
+  files: number
+}
+
+export interface SafetySummary {
+  /** Newest first. */
+  copies: SafetyCopy[]
+  bytes: number
+  /** Entries in restore-backups that aren't the app's (left alone, never deleted). */
+  other: number
+  /** Copies old enough to clean up (never the newest). */
+  old: SafetyCopy[]
+  oldBytes: number
+}
+
+/** What a cleanup of restore safety copies did. */
+export interface SafetyCleanup {
+  at: string
+  deleted: number
+  bytes: number
+  /** "manual" (Settings → Backup) or "auto" (the opt-in setting). */
+  by: 'manual' | 'auto'
+  errors?: string[]
+}

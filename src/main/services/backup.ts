@@ -27,6 +27,8 @@ import {
   type BackupStatus,
   type RestorePreview,
   type RestoreRecord,
+  type SafetyCleanup,
+  type SafetySummary,
   type SnapshotInfo
 } from '@shared/backup'
 import {
@@ -66,6 +68,7 @@ import {
 import { assertSetRoot } from '../core/backup-fs'
 import { JsonStore } from '../core/json-store'
 import { isInside, isInsideClaudeDir } from '../core/safe-paths'
+import { deleteSafetyCopies, listSafetyCopies } from '../core/restore-safety'
 import type { Encryptor } from './accounts'
 
 export interface BackupFile {
@@ -92,6 +95,11 @@ export interface BackupFile {
    * (edited, or an old copy back from syncing), pauses backups until I choose.
    */
   known?: Record<string, { setId: string; keyId: string | null }>
+  /** Clean up restore safety copies older than 30 days by itself (opt-in). */
+  autoCleanSafety?: boolean
+  lastSafetyCleanup?: SafetyCleanup
+  /** When the automatic cleanup last looked (it looks at most once a day). */
+  lastSafetyCheckAt?: string
 }
 
 export function createBackupStore(dataDir: string): JsonStore<BackupFile> {
@@ -305,6 +313,58 @@ export class BackupService extends EventEmitter<{ changed: [] }> {
 
   async tick(): Promise<void> {
     if (await this.due()) await this.runNow('scheduled')
+    await this.autoCleanSafety()
+  }
+
+  // ------------------------------------------------------------- restore safety copies
+
+  /** The restore safety copies (`restore-backups\<time>\`) and which are old enough to clean up. */
+  safetyCopies(): Promise<SafetySummary> {
+    return listSafetyCopies(this.deps.dataDir, this.now())
+  }
+
+  /**
+   * Delete the restore safety copies I confirmed (by name), but only those
+   * still older than 30 days now, and never the newest one.
+   */
+  async cleanSafetyCopies(
+    names: string[],
+    by: 'manual' | 'auto' = 'manual'
+  ): Promise<SafetyCleanup> {
+    if (this.restoring) throw new Error('A restore is being prepared. Try again when it’s done.')
+    const r = await deleteSafetyCopies(this.deps.dataDir, names, this.now())
+    const done: SafetyCleanup = {
+      at: new Date(this.now()).toISOString(),
+      deleted: r.deleted.length,
+      bytes: r.deleted.reduce((n, c) => n + c.bytes, 0),
+      by,
+      ...(r.errors.length ? { errors: r.errors.slice(0, 10) } : {})
+    }
+    if (done.deleted || done.errors) {
+      this.deps.store.update((f) => {
+        f.lastSafetyCleanup = done
+      })
+      await this.deps.store.flush()
+      this.emit('changed')
+    }
+    return done
+  }
+
+  /** The opt-in automatic cleanup: at most once a day (at startup, then from the timer). */
+  async autoCleanSafety(): Promise<SafetyCleanup | undefined> {
+    const f = this.file
+    if (!f.autoCleanSafety || this.restoring) return undefined
+    const last = Date.parse(f.lastSafetyCheckAt ?? '') || 0
+    if (this.now() - last < DAY - TICK_MS) return undefined
+    this.deps.store.update((x) => {
+      x.lastSafetyCheckAt = new Date(this.now()).toISOString()
+    })
+    const { old } = await this.safetyCopies().catch(() => ({ old: [] }))
+    if (!old.length) return undefined
+    return this.cleanSafetyCopies(
+      old.map((c) => c.name),
+      'auto'
+    ).catch(() => undefined)
   }
 
   // ------------------------------------------------------------- status
@@ -340,7 +400,9 @@ export class BackupService extends EventEmitter<{ changed: [] }> {
       lastSuccessAt: f.lastSuccessAt,
       snapshotCount: 0,
       damagedCount: 0,
-      lastRestore: f.lastRestore
+      lastRestore: f.lastRestore,
+      autoCleanSafety: !!f.autoCleanSafety,
+      ...(f.lastSafetyCleanup ? { lastSafetyCleanup: f.lastSafetyCleanup } : {})
     }
     if (f.schedule !== 'off' && f.setDir) {
       const lastOk = Date.parse(f.lastSuccessAt ?? '') || 0
@@ -553,12 +615,21 @@ export class BackupService extends EventEmitter<{ changed: [] }> {
     return this.status()
   }
 
-  async update(patch: { schedule?: unknown; keep?: unknown }): Promise<BackupStatus> {
+  async update(patch: {
+    schedule?: unknown
+    keep?: unknown
+    autoCleanSafety?: unknown
+  }): Promise<BackupStatus> {
     this.deps.store.update((f) => {
       if (BACKUP_SCHEDULES.includes(patch.schedule as BackupSchedule))
         f.schedule = patch.schedule as BackupSchedule
       const keep = cleanKeep(patch.keep)
       if (keep) f.keep = keep
+      if (typeof patch.autoCleanSafety === 'boolean') {
+        f.autoCleanSafety = patch.autoCleanSafety
+        // Turned on: check soon (the next tick), not a day later.
+        if (patch.autoCleanSafety) delete f.lastSafetyCheckAt
+      }
     })
     await this.deps.store.flush()
     this.emit('changed')

@@ -363,6 +363,9 @@ change.
 Backup → **Restore…**, pick a snapshot, check what would change, then **Restore and restart**. Files
 that aren't in the snapshot stay, archived sessions are never replaced by an older (smaller) copy,
 and the files it replaces are kept in `%APPDATA%\ClaudeSessionDashboard\restore-backups\`.
+Settings → Backup shows how much space those safety copies take; **Clean up restore safety copies
+older than 30 days** lists them and asks before deleting (the newest copy is always kept). An
+optional setting, off by default, does the same once a day.
 
 ### Summarize and continue fresh
 

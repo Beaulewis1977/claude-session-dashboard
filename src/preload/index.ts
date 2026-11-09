@@ -167,7 +167,9 @@ const api: CsdApi = {
   backupPreview: (id, password) => ipcRenderer.invoke('backup:preview', id, password),
   backupRestore: (token) => ipcRenderer.invoke('backup:restore', token),
   backupOpenFolder: () => ipcRenderer.invoke('backup:openFolder'),
-  backupOpenSafety: () => ipcRenderer.invoke('backup:openSafety')
+  backupOpenSafety: () => ipcRenderer.invoke('backup:openSafety'),
+  backupSafetyCopies: () => ipcRenderer.invoke('backup:safetyCopies'),
+  backupCleanSafety: (names) => ipcRenderer.invoke('backup:cleanSafety', names)
 }
 
 contextBridge.exposeInMainWorld('csd', api)

@@ -1223,11 +1223,8 @@ from it. It summarizes an earlier session.` (Codex has no @-mention that attache
   almost weekly), and compare mode (two date
   ranges or two versions). The usage reader keeps only these fields, never text; a fork's copied
   turns count once by Codex's turn id. Older rollouts without turn events are split at each prompt;
-  such a turn takes the identity and model of its first response (its fork lineage plus its exact
-  token counts, as usage records do), so a fork's copy of its parent's turn counts once however
-  long the copy took to write, still counts when the parent's file is gone, and sibling forks keep
-  their own turns. A turn that hasn't ended isn't counted. Turns an older build saved are kept until
-  their session is read again, so an update never drops an offline session's history. A Codex
+  such a turn takes the identity and model of its first response (its fork lineage plus its exact token counts, as usage records do) and counts exactly when that response counts in usage: a fork's copy of its parent's turn once, sibling forks' own turns each (also with identical token counts). A turn that hasn't ended isn't counted. Turns an older build saved are kept until
+  their session is read again, so an update never drops an offline session's history; an older build's prompt-split turns of a session in a fork family wait for that re-read (their ids can't be matched to the new ones). A Codex
   session's handoff is checked readable in WSL as the user Codex runs as.
 - **Never**: `auth.json` or any credential file, and no OpenAI or ChatGPT endpoint. Logs only.
 - **Archive**: Settings → Archive → "Archive Codex sessions": Off (default; Codex doesn't delete

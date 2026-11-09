@@ -42,7 +42,7 @@ import { analyzeCodex, buildCodexMessages } from '../src/main/providers/codex/pa
 import { readCodexUsageText } from '../src/main/providers/codex/read'
 import { analyzeCodexUsage } from '../src/main/providers/codex/usage'
 import { buildCodexLaunch, codexContinueArgs } from '../src/main/providers/codex/launch'
-import { CodexUsageStore } from '../src/main/services/codex-usage'
+import { CODEX_USAGE_VERSION, CodexUsageStore } from '../src/main/services/codex-usage'
 import { cleanupHandoffs, handoffPath, handoffStats, writeHandoff } from '../src/main/core/handoff'
 import type { LaunchCommand, LaunchTools } from '../src/main/core/launch'
 import {
@@ -867,7 +867,7 @@ describe('Codex turns for trends', () => {
   it("count once across forks (a fork copies its parent's turns with their ids)", () => {
     const store = new CodexUsageStore()
     const t = (key: string, ts: number): CodexTurnSample => ({
-      id: 'codex-turn:t1',
+      id: 'codex-turn:01a1be2d-ffaf-7940-9787-c139b0068ac9',
       ts,
       key,
       responses: 1,
@@ -1226,10 +1226,25 @@ describe('Codex turn trends after review', () => {
       )
     const f1 = fork(f1id, '2026-10-20T10:00:00.005Z', { total: 2100, out: 20 })
     const f2 = fork(f2id, '2026-10-20T10:00:06.000Z', { total: 2300, out: 30 })
-    const store = new CodexUsageStore()
-    store.set(`w:${PARENT}`, [], [], 's', parent.codexTurns)
-    store.set(`w:${f1id}`, [], [], 's', f1.codexTurns)
-    store.set(`w:${f2id}`, [], [], 's', f2.codexTurns)
+    // As the app holds them: each session's usage rows and turns, and the fork links.
+    const lineage = [
+      { sessionId: PARENT, startedAt: '2026-10-20T09:00:00Z' },
+      { sessionId: f1id, forkedFromId: PARENT, startedAt: '2026-10-20T10:00:00Z' },
+      { sessionId: f2id, forkedFromId: PARENT, startedAt: '2026-10-20T10:00:00Z' }
+    ]
+    const load = (
+      store: CodexUsageStore,
+      list: [string, ReturnType<typeof analyzeCodexUsage>][]
+    ) => {
+      store.setLineage(lineage)
+      for (const [id, a] of list) store.set(`w:${id}`, a.records, [], 's', a.codexTurns)
+      return store
+    }
+    const store = load(new CodexUsageStore(), [
+      [PARENT, parent],
+      [f1id, f1],
+      [f2id, f2]
+    ])
     // The parent's turn once (its earliest copy, the original), and each fork's own turn.
     expect(
       store
@@ -1238,10 +1253,33 @@ describe('Codex turn trends after review', () => {
         .sort()
     ).toEqual([`w:${PARENT}`, `w:${f1id}`, `w:${f2id}`])
     // The parent's file gone: the fork's copy of that turn still counts, once.
-    const alone = new CodexUsageStore()
-    alone.set(`w:${f1id}`, [], [], 's', f1.codexTurns)
-    alone.set(`w:${f2id}`, [], [], 's', f2.codexTurns)
+    // The same decision as the usage rows: a turn counts with its first response.
+    const counted = new Set(store.records().map((r) => `codex-turn:${r.id}|${r.key}`))
+    expect(store.turns().every((t) => counted.has(`${t.id}|${t.key}`))).toBe(true)
+    // The parent's file gone (forks that copied it promptly, as nearly all do): the copied
+    // turn still counts, once. (A copy written seconds late with the parent gone counts per
+    // fork, exactly as its usage does: the Phase C limit in docs/ROADMAP.md.)
+    const alone = load(new CodexUsageStore(), [
+      [f1id, f1],
+      [f2id, fork(f2id, '2026-10-20T10:00:00.005Z', { total: 2300, out: 30 })]
+    ])
     expect(alone.turns()).toHaveLength(3)
+    const aloneCounted = new Set(alone.records().map((r) => `codex-turn:${r.id}|${r.key}`))
+    expect(alone.turns().every((t) => aloneCounted.has(`${t.id}|${t.key}`))).toBe(true)
+
+    // Two siblings whose own (different) responses have exactly the same token counts:
+    // both turns count, they aren't copies of each other.
+    const twin = load(new CodexUsageStore(), [
+      [PARENT, parent],
+      [f1id, fork(f1id, '2026-10-20T10:00:00.005Z', { total: 2100, out: 20 })],
+      [f2id, fork(f2id, '2026-10-20T10:00:00.005Z', { total: 2100, out: 20 })]
+    ])
+    expect(
+      twin
+        .turns()
+        .map((t) => t.key)
+        .sort()
+    ).toEqual([`w:${PARENT}`, `w:${f1id}`, `w:${f2id}`])
   })
 
   it('in older rollouts a model switch before the next prompt stays with the next turn', () => {
@@ -1422,6 +1460,81 @@ describe('second review fixes', { timeout: 30_000 }, () => {
     expect(r.ok).toBe(false)
     expect(r.error).toMatch(/can't read the handoff file/)
     expect(spawned).toHaveLength(0)
+  })
+
+  it('a cache from the previous parser (version 5) is read again, not reused', async () => {
+    expect(CODEX_USAGE_VERSION).toBe(6)
+    const dir = join(root, 'usage-v5')
+    await mkdir(dir, { recursive: true })
+    await writeFile(
+      join(dir, 'codex-index.json'),
+      JSON.stringify({ version: 5, sessions: { 'w:a': 'path|1|t|root' } })
+    )
+    const store = new CodexUsageStore()
+    await store.load(dir)
+    // No signature kept: every Codex session is parsed again by the current parser.
+    expect(store.index).toEqual({})
+  })
+
+  it("an older build's prompt-split turns of a fork family wait for a re-read (never counted twice)", async () => {
+    const dir = join(root, 'usage-mixed')
+    await mkdir(dir, { recursive: true })
+    const P = '019a0000-0000-7000-8000-00000000000b'
+    const F = '019a0000-0000-7000-8000-0000000000fb'
+    const S = '019a0000-0000-7000-8000-0000000000cc'
+    const t = (key: string, id: string): CodexTurnSample => ({
+      id,
+      ts: Date.parse('2026-10-20T10:00:00Z'),
+      key,
+      responses: 1,
+      outputTokens: 10,
+      reasoningTokens: 0,
+      toolCalls: 0,
+      toolResults: 0,
+      toolErrors: 0,
+      aborted: false,
+      failed: false,
+      prompted: true
+    })
+    // Saved by an earlier build (version 5): ordinal ids, a parent, its fork and an unrelated session,
+    // plus a turn with Codex's own id (stable across versions).
+    const realId = 'codex-turn:01a1be2d-0000-7940-9787-c139b0068ac9'
+    await writeFile(
+      join(dir, 'codex-index.json'),
+      JSON.stringify({
+        version: 5,
+        sessions: {},
+        lineage: { [P]: [null, null], [F]: [P, null], [S]: [null, null] }
+      })
+    )
+    await writeFile(
+      join(dir, 'codex-turns-2026-10.ndjson'),
+      [
+        t(`w:${P}`, `codex-turn:${P}:p0`),
+        t(`w:${P}`, realId),
+        t(`w:${F}`, `codex-turn:${F}:p0`),
+        t(`w:${S}`, `codex-turn:${S}:p0`)
+      ]
+        .map((x) => JSON.stringify(x))
+        .join('\n') + '\n'
+    )
+    const store = new CodexUsageStore()
+    await store.load(dir)
+    // The fork family's old prompt-split turns wait; the unrelated session's and the real id stay.
+    expect(
+      store
+        .turns()
+        .map((x) => x.id)
+        .sort()
+    ).toEqual([`codex-turn:${S}:p0`, realId].sort())
+    // Once the fork is read again, its (new) turns count; the offline parent's old ones still wait.
+    store.set(`w:${F}`, [], [], 'sig', [t(`w:${F}`, 'codex-turn:codex:abc')])
+    expect(
+      store
+        .turns()
+        .map((x) => x.id)
+        .sort()
+    ).toEqual([`codex-turn:${S}:p0`, realId, 'codex-turn:codex:abc'].sort())
   })
 
   it('turns an older build wrote are kept until their session is read again (never erased by a rebuild)', async () => {

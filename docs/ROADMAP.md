@@ -371,6 +371,8 @@ Run typecheck, lint, tests and the build. Commit, push the branch and open a PR 
 - Codex (Phase D2) known issues:
   - The summary notice changed (compaction summaries and messages between agents are now
     described), so everyone is asked to accept it again once; auto-summarize waits until then.
+  - Codex trends follow usage for older (prompt-split) turns: like a response's usage, a fork's
+    copy written seconds late while the parent's file is gone counts once per fork.
   - Summaries are written by Claude only. `codex exec` couldn't be made tool-free (0.166 still
     offered 19 tools with every disable flag), so the "summarize with codex exec" option wasn't built.
     Re-test if a newer Codex adds a real no-tools switch.
@@ -383,7 +385,7 @@ Run typecheck, lint, tests and the build. Commit, push the branch and open a PR 
     rollouts older than Codex's turn events (no `task_started`) are split at each prompt, without
     turn time or time to first token; tool errors before `item_completed` statuses come only from
     exit codes in tool output (about 12% of outputs have one).
-  - The first start after updating re-reads every Codex rollout once (CODEX_USAGE_VERSION 5), in the
+  - The first start after updating re-reads every Codex rollout once (CODEX_USAGE_VERSION 6), in the
     background.
 
 ---

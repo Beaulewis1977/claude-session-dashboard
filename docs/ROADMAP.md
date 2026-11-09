@@ -383,6 +383,9 @@ Run typecheck, lint, tests and the build. Commit, push the branch and open a PR 
   - Resume / Fork in the app need the thread in the Windows `.codex`; WSL-home threads open in a
     terminal (Continue fresh from them can still open in a WSL project of the app).
   - Projects are matched on their first root folder only.
+  - A Windows `.codex` session that ran in WSL in a Linux-only folder doesn't record its distro:
+    Continue fresh in the app works only when the app assigned the thread to a project itself
+    (a `/mnt/<drive>` folder works when every distro maps it to the same Windows folder).
 - Codex (Phase D2) known issues:
   - The summary notice changed (compaction summaries and messages between agents are now
     described), so everyone is asked to accept it again once; auto-summarize waits until then.

@@ -820,7 +820,10 @@ async function main(): Promise<void> {
     sessions,
     backend: FIXTURES
       ? await createFixturesBackend(fixturesLayout(appRoot).fixturesDir)
-      : createRealBackend(createProcessRunner({ cwd: paths.dataDir }), { exists: fileExists, wslRoots }),
+      : createRealBackend(createProcessRunner({ cwd: paths.dataDir }), {
+          exists: fileExists,
+          wslRoots
+        }),
     platform,
     dataDir: paths.dataDir,
     settings: () => ({
@@ -869,9 +872,13 @@ async function main(): Promise<void> {
     .then(() => mark('first session scan done'))
     .then(() => migrateBillingKeys())
     .then(() => watcher.restart())
-    // Git links read repos in the background, after the scan (nothing waits for them).
+    // Git links read repos in the background, after the scan and the forks' lineage
+    // (a fork's copied history is its parent's work). Nothing waits for them.
     .then(() => {
-      void gitLinks.start().catch((err: unknown) => console.warn('git links start failed', err))
+      void lineage
+        .refresh()
+        .then(() => gitLinks.start())
+        .catch((err: unknown) => console.warn('git links start failed', err))
     })
     // An interrupted save of settings.json: the app's own leftovers go
     // (a moved-aside file is put back only where settings.json is missing).

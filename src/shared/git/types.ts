@@ -127,14 +127,7 @@ export interface GitBadge {
 }
 
 export type GitFolderStatus =
-  | 'ok'
-  | 'no-folder'
-  | 'missing'
-  | 'not-repo'
-  | 'no-git'
-  | 'untrusted'
-  | 'distro-stopped'
-  | 'error'
+  'ok' | 'no-folder' | 'missing' | 'not-repo' | 'no-git' | 'untrusted' | 'distro-stopped' | 'error'
 
 export type GhState = 'ask' | 'on' | 'off' | 'missing' | 'signed-out' | 'not-github'
 

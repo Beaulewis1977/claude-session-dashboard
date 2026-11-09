@@ -24,7 +24,13 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { formatDateTime, formatRelative } from '@shared/format'
-import { LEVEL_LABEL, type CommitDiff, type CommitView, type DiffFile, type PrLink } from '@shared/git/types'
+import {
+  LEVEL_LABEL,
+  type CommitDiff,
+  type CommitView,
+  type DiffFile,
+  type PrLink
+} from '@shared/git/types'
 import type { SessionSummary } from '@shared/types'
 import { api } from '@/lib/api'
 import { copyText } from '@/lib/actions'
@@ -44,7 +50,6 @@ import { DiffView } from './DiffView'
 /** Called after a search is set from the tab (the phone then goes back to its list). */
 const AfterSearch = createContext<(() => void) | undefined>(undefined)
 
-
 function useSearchTouched(): (path: string) => void {
   const after = useContext(AfterSearch)
   return (path) => {
@@ -53,8 +58,13 @@ function useSearchTouched(): (path: string) => void {
   }
 }
 
-
-export function LevelBadge({ c, className }: { c: Pick<CommitView, 'level' | 'reasons'>; className?: string }) {
+export function LevelBadge({
+  c,
+  className
+}: {
+  c: Pick<CommitView, 'level' | 'reasons'>
+  className?: string
+}) {
   return (
     <span
       className={cn(
@@ -96,7 +106,9 @@ function Notice({ tone, children }: { tone: 'info' | 'warning'; children: React.
         tone === 'info' ? 'border-info/25 bg-info/5' : 'border-warning/25 bg-warning-soft'
       )}
     >
-      <Icon className={cn('mt-px size-3.5 shrink-0', tone === 'info' ? 'text-info' : 'text-warning')} />
+      <Icon
+        className={cn('mt-px size-3.5 shrink-0', tone === 'info' ? 'text-info' : 'text-warning')}
+      />
       <div className="min-w-0 text-foreground/85">{children}</div>
     </div>
   )
@@ -133,7 +145,9 @@ function FileRow({
       void api
         .getGitDiff(sessionKey, sha, file.path, all)
         .then(setDiff)
-        .catch((e: Error) => setDiff({ sha, files: [], truncated: false, bytes: 0, error: e.message }))
+        .catch((e: Error) =>
+          setDiff({ sha, files: [], truncated: false, bytes: 0, error: e.message })
+        )
         .finally(() => setLoading(false))
     },
     [sessionKey, sha, file.path]
@@ -149,7 +163,10 @@ function FileRow({
       <div className="group/file flex items-center gap-2 px-3 py-1 text-xs">
         <button
           type="button"
-          className={cn('flex min-w-0 flex-1 items-center gap-1.5 text-left', canDiff && 'hover:text-foreground')}
+          className={cn(
+            'flex min-w-0 flex-1 items-center gap-1.5 text-left',
+            canDiff && 'hover:text-foreground'
+          )}
           onClick={toggle}
           aria-expanded={canDiff ? open : undefined}
           disabled={!canDiff}
@@ -163,7 +180,10 @@ function FileRow({
           ) : (
             <FileCode2 className="size-3 shrink-0 text-subtle-foreground" />
           )}
-          <span className="truncate font-mono text-[11.5px]" title={file.from ? `${file.from} → ${file.path}` : file.path}>
+          <span
+            className="truncate font-mono text-[11.5px]"
+            title={file.from ? `${file.from} → ${file.path}` : file.path}
+          >
             {file.from ? `${file.from} → ` : ''}
             {file.path}
           </span>
@@ -265,7 +285,10 @@ function CommitRow({
             </button>
             <span title={c.at}>{formatDateTime(c.at)}</span>
             {c.branches.slice(0, 3).map((b) => (
-              <span key={b} className="inline-flex max-w-48 items-center gap-1 truncate font-mono text-[11px]">
+              <span
+                key={b}
+                className="inline-flex max-w-48 items-center gap-1 truncate font-mono text-[11px]"
+              >
                 <GitBranch className="size-3 shrink-0" />
                 <span className="truncate">{b}</span>
               </span>
@@ -284,18 +307,26 @@ function CommitRow({
                 <span className="text-[var(--hl-addition)]">+{c.add}</span>{' '}
                 <span className="text-[var(--hl-deletion)]">−{c.del}</span>
                 <span className="ml-1.5 text-subtle-foreground">
-                  {c.files.length + (c.moreFiles ?? 0)} file{c.files.length + (c.moreFiles ?? 0) === 1 ? '' : 's'}
+                  {c.files.length + (c.moreFiles ?? 0)} file
+                  {c.files.length + (c.moreFiles ?? 0) === 1 ? '' : 's'}
                 </span>
               </span>
             )}
-            {c.unknown && <span className="italic">seen in the session; the repo isn't available</span>}
+            {c.unknown && (
+              <span className="italic">seen in the session; the repo isn't available</span>
+            )}
             {c.parents > 1 && <span className="text-subtle-foreground">merge</span>}
           </div>
         </div>
         {!api.remote && (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon-sm" className="shrink-0" aria-label="Commit actions">
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                className="shrink-0"
+                aria-label="Commit actions"
+              >
                 <Ellipsis />
               </Button>
             </DropdownMenuTrigger>
@@ -311,7 +342,11 @@ function CommitRow({
                   onSelect={() =>
                     void api
                       .unlinkCommit(sessionKey, c.sha)
-                      .then(() => toast.success('Unlinked', { description: "It's listed under Unlinked, where you can link it again." }))
+                      .then(() =>
+                        toast.success('Unlinked', {
+                          description: "It's listed under Unlinked, where you can link it again."
+                        })
+                      )
                   }
                 >
                   <Link2Off /> Unlink from this session
@@ -329,17 +364,24 @@ function CommitRow({
       {open && c.files.length > 0 && (
         <div className="border-t border-border/70 pb-1">
           {c.files.map((f) => (
-            <FileRow key={`${f.from ?? ''}>${f.path}`} sessionKey={sessionKey} sha={c.sha} file={f} canDiff={canDiff} />
+            <FileRow
+              key={`${f.from ?? ''}>${f.path}`}
+              sessionKey={sessionKey}
+              sha={c.sha}
+              file={f}
+              canDiff={canDiff}
+            />
           ))}
           {c.moreFiles ? (
-            <div className="px-3 py-1 text-2xs text-subtle-foreground">…and {c.moreFiles} more files</div>
+            <div className="px-3 py-1 text-2xs text-subtle-foreground">
+              …and {c.moreFiles} more files
+            </div>
           ) : null}
         </div>
       )}
     </div>
   )
 }
-
 
 function Section({
   title,
@@ -388,9 +430,10 @@ function GhQuestion() {
     <div className="flex flex-col gap-2 rounded-lg border border-primary/25 bg-accent-soft px-3 py-2.5 text-xs sm:flex-row sm:items-center">
       <GitPullRequest className="size-4 shrink-0 text-primary" />
       <div className="min-w-0 flex-1 text-foreground/85">
-        <span className="font-medium">Look up pull requests with your GitHub CLI?</span> The app runs{' '}
-        <code className="font-mono">gh pr list</code> (read-only) for the branches of sessions in GitHub repos.
-        gh talks to GitHub; nothing else leaves your PC. You can change this in Settings → Git.
+        <span className="font-medium">Look up pull requests with your GitHub CLI?</span> The app
+        runs <code className="font-mono">gh pr list</code> (read-only) for the branches of sessions
+        in GitHub repos. gh talks to GitHub; nothing else leaves your PC. You can change this in
+        Settings → Git.
       </div>
       <div className="flex shrink-0 gap-1.5">
         <Button size="sm" variant="primary" disabled={busy} onClick={() => choose('on')}>
@@ -446,15 +489,23 @@ function Changes({ session, className }: { session: SessionSummary; className?: 
       </div>
     )
   if (view === null)
-    return <div className="mx-auto max-w-[860px] px-8 py-10 text-sm text-muted-foreground">No git information for this session.</div>
+    return (
+      <div className="mx-auto max-w-[860px] px-8 py-10 text-sm text-muted-foreground">
+        No git information for this session.
+      </div>
+    )
   if (!view.enabled)
     return (
       <div className="mx-auto max-w-[860px] px-8 py-10 text-sm text-muted-foreground">
-        Git links are off. Turn them on in Settings → Git to see the commits and pull requests each session made.
+        Git links are off. Turn them on in Settings → Git to see the commits and pull requests each
+        session made.
       </div>
     )
 
-  const totals = view.commits.reduce((t, c) => ({ add: t.add + c.add, del: t.del + c.del }), { add: 0, del: 0 })
+  const totals = view.commits.reduce((t, c) => ({ add: t.add + c.add, del: t.del + c.del }), {
+    add: 0,
+    del: 0
+  })
   const refresh = (): void => {
     setRefreshing(true)
     void api.refreshGit(session.key).finally(() => setRefreshing(false))
@@ -465,7 +516,10 @@ function Changes({ session, className }: { session: SessionSummary; className?: 
     <div className={cn('mx-auto max-w-[860px] px-8 pt-5 pb-16', className)}>
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-muted-foreground">
         {view.repo ? (
-          <span className="inline-flex min-w-0 items-center gap-1.5" title={view.repo.remote ?? view.repo.root}>
+          <span
+            className="inline-flex min-w-0 items-center gap-1.5"
+            title={view.repo.remote ?? view.repo.root}
+          >
             <FolderGit2 className="size-3.5 shrink-0 text-subtle-foreground" />
             <span className="selectable truncate font-mono text-[11.5px]">{view.repo.root}</span>
             <span className="shrink-0 text-subtle-foreground">· {view.repo.env}</span>
@@ -487,7 +541,9 @@ function Changes({ session, className }: { session: SessionSummary; className?: 
           </span>
         )}
         <span className="ml-auto inline-flex shrink-0 items-center gap-2">
-          {view.checkedAt && <span className="text-subtle-foreground">Checked {formatRelative(view.checkedAt)}</span>}
+          {view.checkedAt && (
+            <span className="text-subtle-foreground">Checked {formatRelative(view.checkedAt)}</span>
+          )}
           {!api.remote && (
             <Button variant="outline" size="sm" onClick={refresh} disabled={busy}>
               <RefreshCw className={cn(busy && 'animate-spin')} /> Refresh
@@ -498,28 +554,30 @@ function Changes({ session, className }: { session: SessionSummary; className?: 
 
       <div className="mt-3 space-y-2">
         {view.status !== 'ok' && view.status !== 'pending' && (
-          <Notice tone={view.status === 'not-repo' || view.status === 'no-folder' ? 'info' : 'warning'}>
+          <Notice
+            tone={view.status === 'not-repo' || view.status === 'no-folder' ? 'info' : 'warning'}
+          >
             {view.message ?? STATUS_FALLBACK[view.status]}
           </Notice>
         )}
         {view.repo?.note && <Notice tone="info">{view.repo.note}</Notice>}
         {view.repo?.truncated && (
           <Notice tone="info">
-            This repo has a lot of history: only the latest 5,000 commits of its sessions' time were read, so
-            older matches may be missing.
+            This repo has a lot of history: only the latest 5,000 commits of its sessions' time were
+            read, so older matches may be missing.
           </Notice>
         )}
         {!api.remote && view.gh === 'ask' && view.repo?.github && <GhQuestion />}
         {view.gh === 'missing' && view.repo?.github && (
           <Notice tone="info">
-            The GitHub CLI (gh) isn't installed, so PR links come only from the session's own output and merge
-            commits.
+            The GitHub CLI (gh) isn't installed, so PR links come only from the session's own output
+            and merge commits.
           </Notice>
         )}
         {view.gh === 'signed-out' && view.repo?.github && (
           <Notice tone="info">
-            The GitHub CLI isn't signed in (run <code className="font-mono">gh auth login</code>), so PR links
-            come only from the session's own output and merge commits.
+            The GitHub CLI isn't signed in (run <code className="font-mono">gh auth login</code>),
+            so PR links come only from the session's own output and merge commits.
           </Notice>
         )}
       </div>
@@ -548,7 +606,13 @@ function Changes({ session, className }: { session: SessionSummary; className?: 
           </div>
           <div className="mt-2 space-y-2">
             {view.commits.map((c) => (
-              <CommitRow key={c.sha} sessionKey={session.key} c={c} github={view.repo?.github} action={c.unknown ? 'none' : 'unlink'} />
+              <CommitRow
+                key={c.sha}
+                sessionKey={session.key}
+                c={c}
+                github={view.repo?.github}
+                action={c.unknown ? 'none' : 'unlink'}
+              />
             ))}
           </div>
         </section>
@@ -563,8 +627,8 @@ function Changes({ session, className }: { session: SessionSummary; className?: 
               <>
                 No commits were linked to this session.
                 <div className="mt-1 text-xs">
-                  Commits count when the session's own output shows them, or when they were made while it was
-                  active (on its branch, or touching files it edited).
+                  Commits count when the session's own output shows them, or when they were made
+                  while it was active (on its branch, or touching files it edited).
                 </div>
               </>
             )}
@@ -575,7 +639,10 @@ function Changes({ session, className }: { session: SessionSummary; className?: 
       <Section title="Files changed" count={files.length} defaultOpen={false}>
         <div className="rounded-lg border border-border bg-card">
           {files.map((f) => (
-            <div key={f.path} className="group/file flex items-center gap-2 border-t border-border/60 px-3 py-1 text-xs first:border-t-0">
+            <div
+              key={f.path}
+              className="group/file flex items-center gap-2 border-t border-border/60 px-3 py-1 text-xs first:border-t-0"
+            >
               <span className="min-w-0 flex-1 truncate font-mono text-[11.5px]" title={f.path}>
                 {f.path}
               </span>
@@ -609,7 +676,10 @@ function Changes({ session, className }: { session: SessionSummary; className?: 
       >
         <div className="rounded-lg border border-border bg-card">
           {view.uncommitted.map((p) => (
-            <div key={p} className="flex items-center gap-2 border-t border-border/60 px-3 py-1 text-xs first:border-t-0">
+            <div
+              key={p}
+              className="flex items-center gap-2 border-t border-border/60 px-3 py-1 text-xs first:border-t-0"
+            >
               <span className="min-w-0 flex-1 truncate font-mono text-[11.5px]" title={p}>
                 {p}
               </span>
@@ -635,13 +705,30 @@ function Changes({ session, className }: { session: SessionSummary; className?: 
         hint="Made while this session was active, with nothing else pointing to it. Not counted in the session's badge."
       >
         {view.possible.map((c) => (
-          <CommitRow key={c.sha} sessionKey={session.key} c={c} github={view.repo?.github} action="unlink" />
+          <CommitRow
+            key={c.sha}
+            sessionKey={session.key}
+            c={c}
+            github={view.repo?.github}
+            action="unlink"
+          />
         ))}
       </Section>
 
-      <Section title="Unlinked" count={view.unlinked.length} defaultOpen={false} hint="Commits you unlinked from this session.">
+      <Section
+        title="Unlinked"
+        count={view.unlinked.length}
+        defaultOpen={false}
+        hint="Commits you unlinked from this session."
+      >
         {view.unlinked.map((c) => (
-          <CommitRow key={c.sha} sessionKey={session.key} c={c} github={view.repo?.github} action="relink" />
+          <CommitRow
+            key={c.sha}
+            sessionKey={session.key}
+            c={c}
+            github={view.repo?.github}
+            action="relink"
+          />
         ))}
       </Section>
     </div>

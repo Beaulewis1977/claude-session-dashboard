@@ -3,14 +3,25 @@
 
 import { posix, win32 } from 'node:path'
 import { GH_AUTH_ARGS, gitArgs, ghPrListArgs } from '@shared/git/guard'
-import { LOG_FORMAT, REF_FORMAT, parseLog, parseRefs, parseRevParse, type RefTip } from '@shared/git/log'
+import {
+  LOG_FORMAT,
+  REF_FORMAT,
+  parseLog,
+  parseRefs,
+  parseRevParse,
+  type RefTip
+} from '@shared/git/log'
 import type { GhPr } from '@shared/git/prs'
 import type { CommitInfo, GitFolderStatus } from '@shared/git/types'
 import type { GitEnv, ProcessRunner, RunOutput } from './runner'
 
 export type ResolveResult =
   | { ok: true; root: string; commonDir: string; gitDir: string }
-  | { ok: false; status: Exclude<GitFolderStatus, 'ok' | 'no-folder' | 'distro-stopped'>; message: string }
+  | {
+      ok: false
+      status: Exclude<GitFolderStatus, 'ok' | 'no-folder' | 'distro-stopped'>
+      message: string
+    }
 
 export interface LogOptions {
   /** Revisions: `--branches --remotes --tags HEAD`, or the tips to read from. */
@@ -45,7 +56,13 @@ export interface GitBackend {
   remoteUrl(env: GitEnv, root: string): Promise<string | undefined>
   refs(env: GitEnv, root: string): Promise<RefTip[] | undefined>
   log(env: GitEnv, root: string, opts: LogOptions): Promise<LogResult | undefined>
-  show(env: GitEnv, root: string, sha: string, paths: string[] | undefined, maxBytes: number): Promise<ShowResult>
+  show(
+    env: GitEnv,
+    root: string,
+    sha: string,
+    paths: string[] | undefined,
+    maxBytes: number
+  ): Promise<ShowResult>
   ghAuth(): Promise<GhAuth>
   ghPrs(slug: string, by: { head: string } | { search: string }): Promise<GhPr[] | undefined>
 }
@@ -77,8 +94,12 @@ export function createRealBackend(
   runner: ProcessRunner,
   fs: { exists(p: string): Promise<boolean>; wslRoots(distro: string): string[] }
 ): GitBackend {
-  const git = (env: GitEnv, dir: string, sub: string[], opts?: { timeoutMs?: number; maxBytes?: number }) =>
-    runner.git(env, gitArgs(dir, sub), opts)
+  const git = (
+    env: GitEnv,
+    dir: string,
+    sub: string[],
+    opts?: { timeoutMs?: number; maxBytes?: number }
+  ) => runner.git(env, gitArgs(dir, sub), opts)
   const ok = (r: RunOutput): boolean => r.code === 0 && !r.timedOut && !r.missing
 
   return {
@@ -88,18 +109,33 @@ export function createRealBackend(
       return { error: classifyGitError(r).message }
     },
     async resolve(env, dir) {
-      const r = await git(env, dir, ['rev-parse', '--path-format=absolute', '--show-toplevel', '--git-common-dir', '--git-dir'], { timeoutMs: 20_000 })
+      const r = await git(
+        env,
+        dir,
+        ['rev-parse', '--path-format=absolute', '--show-toplevel', '--git-common-dir', '--git-dir'],
+        { timeoutMs: 20_000 }
+      )
       if (ok(r)) {
         const p = parseRevParse(r.stdout)
         if (p) return { ok: true, ...p }
       }
       // git before 2.31 has no --path-format: relative folders are then resolved here.
       if (/path-format/i.test(r.stderr)) {
-        const r2 = await git(env, dir, ['rev-parse', '--show-toplevel', '--git-common-dir', '--git-dir'], { timeoutMs: 20_000 })
+        const r2 = await git(
+          env,
+          dir,
+          ['rev-parse', '--show-toplevel', '--git-common-dir', '--git-dir'],
+          { timeoutMs: 20_000 }
+        )
         const p = ok(r2) ? parseRevParse(r2.stdout) : undefined
         if (p) {
           const path = env.kind === 'windows' ? win32 : posix
-          return { ok: true, root: p.root, commonDir: path.resolve(dir, p.commonDir), gitDir: path.resolve(dir, p.gitDir) }
+          return {
+            ok: true,
+            root: p.root,
+            commonDir: path.resolve(dir, p.commonDir),
+            gitDir: path.resolve(dir, p.gitDir)
+          }
         }
         return classifyGitError(r2)
       }
@@ -118,14 +154,23 @@ export function createRealBackend(
       return ok(r) ? r.stdout.trim() || undefined : undefined
     },
     async remoteUrl(env, root) {
-      const r = await git(env, root, ['config', '--get', 'remote.origin.url'], { timeoutMs: 15_000 })
+      const r = await git(env, root, ['config', '--get', 'remote.origin.url'], {
+        timeoutMs: 15_000
+      })
       if (ok(r) && r.stdout.trim()) return r.stdout.trim()
-      const all = await git(env, root, ['config', '--get-regexp', '^remote\\..*\\.url$'], { timeoutMs: 15_000 })
+      const all = await git(env, root, ['config', '--get-regexp', '^remote\\..*\\.url$'], {
+        timeoutMs: 15_000
+      })
       const first = ok(all) ? all.stdout.split('\n')[0]?.trim().split(/\s+/)[1] : undefined
       return first || undefined
     },
     async refs(env, root) {
-      const r = await git(env, root, ['for-each-ref', `--format=${REF_FORMAT}`, 'refs/heads', 'refs/remotes', 'refs/tags'], { timeoutMs: 30_000 })
+      const r = await git(
+        env,
+        root,
+        ['for-each-ref', `--format=${REF_FORMAT}`, 'refs/heads', 'refs/remotes', 'refs/tags'],
+        { timeoutMs: 30_000 }
+      )
       return ok(r) ? parseRefs(r.stdout) : undefined
     },
     async log(env, root, o) {
@@ -139,7 +184,9 @@ export function createRealBackend(
         '--date-order',
         `--format=${LOG_FORMAT}`,
         `--max-count=${o.maxCount}`,
-        ...(o.since !== undefined ? [`--since=${new Date(o.since).toISOString().replace(/\.\d{3}Z$/, 'Z')}`] : []),
+        ...(o.since !== undefined
+          ? [`--since=${new Date(o.since).toISOString().replace(/\.\d{3}Z$/, 'Z')}`]
+          : []),
         ...(o.not?.length ? ['--ignore-missing'] : []),
         ...o.revs,
         ...(o.not?.length ? ['--not', ...o.not] : [])
@@ -154,7 +201,17 @@ export function createRealBackend(
       const r = await git(
         env,
         root,
-        ['show', '--format=', '--patch', '--no-color', '--no-ext-diff', '--no-textconv', '-M', sha, ...(paths?.length ? ['--', ...paths] : [])],
+        [
+          'show',
+          '--format=',
+          '--patch',
+          '--no-color',
+          '--no-ext-diff',
+          '--no-textconv',
+          '-M',
+          sha,
+          ...(paths?.length ? ['--', ...paths] : [])
+        ],
         { timeoutMs: 60_000, maxBytes }
       )
       if (ok(r) || (r.truncated && r.stdout)) return { text: r.stdout, truncated: r.truncated }
@@ -166,7 +223,10 @@ export function createRealBackend(
       return r.code === 0 ? 'ok' : 'signed-out'
     },
     async ghPrs(slug, by) {
-      const r = await runner.gh(ghPrListArgs(slug, by), { timeoutMs: 45_000, maxBytes: 4 * 1024 * 1024 })
+      const r = await runner.gh(ghPrListArgs(slug, by), {
+        timeoutMs: 45_000,
+        maxBytes: 4 * 1024 * 1024
+      })
       if (!ok(r)) return undefined
       try {
         const v = JSON.parse(r.stdout) as unknown

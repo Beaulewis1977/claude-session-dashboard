@@ -1,0 +1,270 @@
+{
+  "repos": [
+    {
+      "env": "windows",
+      "root": "C:\\Users\\beau\\code\\acme-web",
+      "remote": "https://github.com/beau/acme-web.git",
+      "userEmail": "beau@example.com",
+      "refs": [
+        {
+          "ref": "refs/heads/main",
+          "sha": "1adbae7b7bf582e9d2d020a74ef99967c2fda2ba"
+        },
+        {
+          "ref": "refs/remotes/origin/main",
+          "sha": "1adbae7b7bf582e9d2d020a74ef99967c2fda2ba"
+        },
+        {
+          "ref": "refs/remotes/origin/HEAD",
+          "sha": "1adbae7b7bf582e9d2d020a74ef99967c2fda2ba",
+          "symref": "refs/remotes/origin/main"
+        },
+        {
+          "ref": "refs/heads/fix/login-redirect",
+          "sha": "009c48c2e7510515b05a75baff8cbf63c4056f93"
+        }
+      ],
+      "commits": [
+        {
+          "sha": "51b35d1506aa69b8d1e7174194c7c243bf4304ca",
+          "parents": [],
+          "email": "beau@example.com",
+          "at": "2026-10-01T09:00:00Z",
+          "subject": "Add session cookie helpers",
+          "files": [
+            {
+              "path": "src/lib/auth/cookies.ts",
+              "add": 20,
+              "del": 0
+            }
+          ]
+        },
+        {
+          "sha": "088c9ceddb42e01f7713a44e7077f05eedaa8cf9",
+          "parents": [
+            "51b35d1506aa69b8d1e7174194c7c243bf4304ca"
+          ],
+          "email": "beau@example.com",
+          "at": "2026-10-21T13:04:10Z",
+          "subject": "Fix login redirect: SameSite=Lax session cookie",
+          "trailers": [
+            "Co-Authored-By: Claude <noreply@anthropic.com>"
+          ],
+          "files": [
+            {
+              "path": "src/lib/auth/cookies.ts",
+              "add": 3,
+              "del": 2
+            }
+          ]
+        },
+        {
+          "sha": "009c48c2e7510515b05a75baff8cbf63c4056f93",
+          "parents": [
+            "088c9ceddb42e01f7713a44e7077f05eedaa8cf9"
+          ],
+          "email": "beau@example.com",
+          "at": "2026-10-21T13:05:30Z",
+          "subject": "Add cookie tests",
+          "trailers": [
+            "Co-Authored-By: Claude <noreply@anthropic.com>"
+          ],
+          "files": [
+            {
+              "path": "src/lib/auth/cookies.test.ts",
+              "add": 11,
+              "del": 0
+            }
+          ]
+        },
+        {
+          "sha": "b4864abdd0ff7570b74c4490b939c0d23142ec9f",
+          "parents": [
+            "51b35d1506aa69b8d1e7174194c7c243bf4304ca",
+            "009c48c2e7510515b05a75baff8cbf63c4056f93"
+          ],
+          "email": "beau@example.com",
+          "at": "2026-10-22T08:30:00Z",
+          "subject": "Merge pull request #14 from beau/fix/login-redirect",
+          "files": []
+        },
+        {
+          "sha": "1adbae7b7bf582e9d2d020a74ef99967c2fda2ba",
+          "parents": [
+            "b4864abdd0ff7570b74c4490b939c0d23142ec9f"
+          ],
+          "email": "beau@example.com",
+          "at": "2026-10-22T08:45:00Z",
+          "subject": "Bump version to 3.4.1",
+          "files": [
+            {
+              "path": "package.json",
+              "add": 1,
+              "del": 1
+            }
+          ]
+        }
+      ],
+      "patches": {
+        "088c9ceddb42e01f7713a44e7077f05eedaa8cf9": "diff --git a/src/lib/auth/cookies.ts b/src/lib/auth/cookies.ts\nindex 1111111..2222222 100644\n--- a/src/lib/auth/cookies.ts\n+++ b/src/lib/auth/cookies.ts\n@@ -8,9 +8,10 @@ export function setSessionCookie(token: string) {\n   cookies().set(SESSION_COOKIE, token, {\n     httpOnly: true,\n     secure: true,\n-    sameSite: 'none',\n-    domain: '.acme.dev',\n+    // Lax keeps the cookie on the redirect back from the identity provider.\n+    sameSite: 'lax',\n     path: '/',\n+    maxAge: 60 * 60 * 24 * 7\n   })\n }\n",
+        "009c48c2e7510515b05a75baff8cbf63c4056f93": "diff --git a/src/lib/auth/cookies.test.ts b/src/lib/auth/cookies.test.ts\nnew file mode 100644\nindex 0000000..1111111\n--- /dev/null\n+++ b/src/lib/auth/cookies.test.ts\n@@ -0,0 +1,11 @@\n+import { describe, it, expect, vi } from 'vitest'\n+import { setSessionCookie } from './cookies'\n+\n+describe('setSessionCookie', () => {\n+  it('uses SameSite=Lax so the redirect keeps the session', () => {\n+    const set = vi.fn()\n+    vi.mock('next/headers', () => ({ cookies: () => ({ set }) }))\n+    setSessionCookie('t0ken')\n+    expect(set).toHaveBeenCalledWith('session_token', 't0ken', expect.objectContaining({ sameSite: 'lax' }))\n+  })\n+})\n",
+        "1adbae7b7bf582e9d2d020a74ef99967c2fda2ba": "diff --git a/package.json b/package.json\nindex 1111111..2222222 100644\n--- a/package.json\n+++ b/package.json\n@@ -1,6 +1,6 @@\n {\n   \"name\": \"acme-web\",\n-  \"version\": \"3.4.0\",\n+  \"version\": \"3.4.1\",\n   \"private\": true,\n   \"scripts\": {\n"
+      }
+    },
+    {
+      "env": "wsl:Ubuntu",
+      "root": "/home/beau/projects/orders-api",
+      "remote": "git@github.com:beau/orders-api.git",
+      "userEmail": "beau@example.com",
+      "refs": [
+        {
+          "ref": "refs/heads/main",
+          "sha": "e840b9c1a5247df0010497475635f7622c5fd0a4"
+        },
+        {
+          "ref": "refs/remotes/origin/main",
+          "sha": "e840b9c1a5247df0010497475635f7622c5fd0a4"
+        },
+        {
+          "ref": "refs/remotes/origin/HEAD",
+          "sha": "e840b9c1a5247df0010497475635f7622c5fd0a4",
+          "symref": "refs/remotes/origin/main"
+        },
+        {
+          "ref": "refs/heads/feature/pagination",
+          "sha": "fa9dba53314c00c17670422437ae54afc3ca8763"
+        },
+        {
+          "ref": "refs/remotes/origin/feature/pagination",
+          "sha": "fa9dba53314c00c17670422437ae54afc3ca8763"
+        }
+      ],
+      "commits": [
+        {
+          "sha": "e840b9c1a5247df0010497475635f7622c5fd0a4",
+          "parents": [],
+          "email": "beau@example.com",
+          "at": "2026-10-10T10:00:00Z",
+          "subject": "Orders API: list and get",
+          "files": [
+            {
+              "path": "internal/http/orders.go",
+              "add": 80,
+              "del": 0
+            }
+          ]
+        },
+        {
+          "sha": "fa9dba53314c00c17670422437ae54afc3ca8763",
+          "parents": [
+            "e840b9c1a5247df0010497475635f7622c5fd0a4"
+          ],
+          "email": "beau@example.com",
+          "at": "2026-10-20T15:31:45Z",
+          "subject": "Cursor pagination for GET /orders",
+          "files": [
+            {
+              "path": "internal/http/orders.go",
+              "add": 7,
+              "del": 6
+            },
+            {
+              "path": "internal/http/cursor.go",
+              "add": 13,
+              "del": 0
+            },
+            {
+              "path": "api/openapi.yaml",
+              "add": 2,
+              "del": 1
+            }
+          ]
+        }
+      ],
+      "patches": {
+        "fa9dba53314c00c17670422437ae54afc3ca8763": "diff --git a/internal/http/orders.go b/internal/http/orders.go\nindex 1111111..2222222 100644\n--- a/internal/http/orders.go\n+++ b/internal/http/orders.go\n@@ -10,12 +10,13 @@ func (h *Handler) ListOrders(w http.ResponseWriter, r *http.Request) {\n-\tpage, _ := strconv.Atoi(r.URL.Query().Get(\"page\"))\n-\tif page < 1 {\n-\t\tpage = 1\n-\t}\n-\torders, err := h.store.ListOrders(r.Context(), (page-1)*50, 50)\n+\tcursor, err := decodeCursor(r.URL.Query().Get(\"cursor\"))\n+\tif err != nil {\n+\t\thttp.Error(w, \"bad cursor\", http.StatusBadRequest)\n+\t\treturn\n+\t}\n+\torders, next, err := h.listOrdersByCursor(r.Context(), cursor, 50)\n \tif err != nil {\n \t\thttp.Error(w, err.Error(), http.StatusInternalServerError)\n \t\treturn\n \t}\n-\twriteJSON(w, orders)\n+\twriteJSON(w, listResponse{Orders: orders, NextCursor: encodeCursor(next)})\n }\ndiff --git a/internal/http/cursor.go b/internal/http/cursor.go\nnew file mode 100644\nindex 0000000..1111111\n--- /dev/null\n+++ b/internal/http/cursor.go\n@@ -0,0 +1,13 @@\n+package http\n+\n+import (\n+\t\"encoding/base64\"\n+\t\"encoding/json\"\n+\t\"time\"\n+)\n+\n+// cursor marks where the next page starts: (created_at, id) of the last order.\n+type cursor struct {\n+\tCreatedAt time.Time `json:\"t\"`\n+\tID        int64     `json:\"id\"`\n+}\ndiff --git a/api/openapi.yaml b/api/openapi.yaml\nindex 1111111..2222222 100644\n--- a/api/openapi.yaml\n+++ b/api/openapi.yaml\n@@ -41,6 +41,7 @@ paths:\n       parameters:\n-        - name: page\n+        - name: cursor\n           in: query\n           schema:\n             type: string\n+          description: Opaque cursor from next_cursor of the previous page.\n"
+      }
+    },
+    {
+      "env": "windows",
+      "root": "C:\\Users\\beau\\code\\shop api",
+      "remote": "https://example.com/beau/shop-api.git",
+      "userEmail": "beau@example.com",
+      "refs": [
+        {
+          "ref": "refs/heads/main",
+          "sha": "3cbf5462cc2f2af7c60c250931c2b49095500cfa"
+        },
+        {
+          "ref": "refs/heads/fix/checkout-totals",
+          "sha": "d23e7fe068deb5a20508caf57af6b13b425e0a81"
+        }
+      ],
+      "commits": [
+        {
+          "sha": "3cbf5462cc2f2af7c60c250931c2b49095500cfa",
+          "parents": [],
+          "email": "beau@example.com",
+          "at": "2026-10-01T12:00:00Z",
+          "subject": "Checkout totals",
+          "files": [
+            {
+              "path": "src/checkout/total.ts",
+              "add": 40,
+              "del": 0
+            }
+          ]
+        },
+        {
+          "sha": "d23e7fe068deb5a20508caf57af6b13b425e0a81",
+          "parents": [
+            "3cbf5462cc2f2af7c60c250931c2b49095500cfa"
+          ],
+          "email": "beau@example.com",
+          "at": "2026-10-20T14:16:30Z",
+          "subject": "Round the discount before the total",
+          "files": [
+            {
+              "path": "src/checkout/total.ts",
+              "add": 2,
+              "del": 1
+            },
+            {
+              "path": "tests/checkout.test.ts",
+              "add": 4,
+              "del": 0
+            }
+          ]
+        }
+      ],
+      "patches": {
+        "d23e7fe068deb5a20508caf57af6b13b425e0a81": "diff --git a/src/checkout/total.ts b/src/checkout/total.ts\nindex 1111111..2222222 100644\n--- a/src/checkout/total.ts\n+++ b/src/checkout/total.ts\n@@ -12,4 +12,5 @@ export function total(subtotal: number, coupon: number): number {\n-  const discounted = round(subtotal - coupon)\n+  // Round the discount on its own first, like the receipt does.\n+  const discounted = subtotal - round(coupon)\n   return round(discounted * (1 + TAX_RATE))\n }\ndiff --git a/tests/checkout.test.ts b/tests/checkout.test.ts\nindex 1111111..2222222 100644\n--- a/tests/checkout.test.ts\n+++ b/tests/checkout.test.ts\n@@ -20,3 +20,7 @@ describe('total', () => {\n     expect(total(10, 0)).toBe(10.83)\n   })\n+\n+  it('rounds the discount before the total', () => {\n+    expect(total(21.66, 1.666)).toBe(19.99)\n+  })\n })\n"
+      }
+    }
+  ],
+  "gh": {
+    "auth": "ok",
+    "prs": {
+      "beau/orders-api": [
+        {
+          "number": 22,
+          "title": "Cursor pagination for /orders",
+          "url": "https://github.com/beau/orders-api/pull/22",
+          "state": "OPEN",
+          "isDraft": false,
+          "headRefName": "feature/pagination"
+        }
+      ],
+      "beau/acme-web": [
+        {
+          "number": 14,
+          "title": "Fix login redirect on Safari",
+          "url": "https://github.com/beau/acme-web/pull/14",
+          "state": "MERGED",
+          "isDraft": false,
+          "headRefName": "fix/login-redirect"
+        }
+      ]
+    }
+  }
+}

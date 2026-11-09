@@ -41,7 +41,10 @@ describe('git log output', () => {
       at: 1761051840_000,
       ct: 1761051900_000,
       subject: 'Fix it',
-      trailers: ['Co-Authored-By: Claude <noreply@anthropic.com>', 'Claude-Session: https://claude.ai/code/session_01AbCdEf9876']
+      trailers: [
+        'Co-Authored-By: Claude <noreply@anthropic.com>',
+        'Claude-Session: https://claude.ai/code/session_01AbCdEf9876'
+      ]
     })
     expect(c2.files).toEqual([
       { path: 'src/a.ts', add: 3, del: 1 },
@@ -85,8 +88,12 @@ describe('git log output', () => {
     expect(githubSlug('ssh://git@github.com/beau/acme-web')).toBe('beau/acme-web')
     expect(githubSlug('https://user:token@github.com/beau/x.y')).toBe('beau/x.y')
     expect(githubSlug('https://gitlab.com/beau/acme')).toBeUndefined()
-    expect(normalizeRemote('git@github.com:Beau/Acme.git')).toBe(normalizeRemote('https://github.com/beau/acme'))
-    expect(normalizeRemote('https://u:p@example.com/beau/shop-api.git')).toBe('example.com/beau/shop-api')
+    expect(normalizeRemote('git@github.com:Beau/Acme.git')).toBe(
+      normalizeRemote('https://github.com/beau/acme')
+    )
+    expect(normalizeRemote('https://u:p@example.com/beau/shop-api.git')).toBe(
+      'example.com/beau/shop-api'
+    )
   })
 })
 
@@ -238,7 +245,12 @@ describe.runIf(hasGit())('the real backend on a temporary repo', () => {
     const date = at ? { GIT_AUTHOR_DATE: at, GIT_COMMITTER_DATE: at } : {}
     return execFileSync('git', args, {
       cwd: repo,
-      env: { ...process.env, ...date, GIT_CONFIG_GLOBAL: join(root, 'gitconfig'), GIT_CONFIG_NOSYSTEM: '1' },
+      env: {
+        ...process.env,
+        ...date,
+        GIT_CONFIG_GLOBAL: join(root, 'gitconfig'),
+        GIT_CONFIG_NOSYSTEM: '1'
+      },
       encoding: 'utf8'
     })
   }
@@ -247,7 +259,10 @@ describe.runIf(hasGit())('the real backend on a temporary repo', () => {
     root = await mkdtemp(join(tmpdir(), 'csd-git-'))
     repo = join(root, 'my repo')
     await mkdir(repo)
-    await writeFile(join(root, 'gitconfig'), '[user]\n\tname = Sample\n\temail = sample@example.com\n[init]\n\tdefaultBranch = main\n')
+    await writeFile(
+      join(root, 'gitconfig'),
+      '[user]\n\tname = Sample\n\temail = sample@example.com\n[init]\n\tdefaultBranch = main\n'
+    )
     git(['init', '-q'])
     git(['config', 'user.email', 'sample@example.com'])
     git(['config', 'user.name', 'Sample'])
@@ -259,11 +274,22 @@ describe.runIf(hasGit())('the real backend on a temporary repo', () => {
     await writeFile(join(repo, 'a.ts'), 'one\ntwo\n')
     await writeFile(join(repo, 'with space.md'), 'hi\n')
     git(['add', '.'])
-    git(['commit', '-q', '-m', 'Add two\n\nClaude-Session: https://claude.ai/code/session_01AbCdEf9876'], '2026-10-21T13:04:00Z')
+    git(
+      [
+        'commit',
+        '-q',
+        '-m',
+        'Add two\n\nClaude-Session: https://claude.ai/code/session_01AbCdEf9876'
+      ],
+      '2026-10-21T13:04:00Z'
+    )
     git(['mv', 'with space.md', 'renamed.md'])
     git(['commit', '-q', '-m', 'Rename'], '2026-10-21T13:05:00Z')
     git(['switch', '-q', 'main'])
-    git(['merge', '-q', '--no-ff', 'feat/x', '-m', 'Merge pull request #7 from sample/feat/x'], '2026-10-22T09:00:00Z')
+    git(
+      ['merge', '-q', '--no-ff', 'feat/x', '-m', 'Merge pull request #7 from sample/feat/x'],
+      '2026-10-22T09:00:00Z'
+    )
     git(['switch', '-q', '-c', 'wip/y'])
     await writeFile(join(repo, 'b.ts'), 'b\n')
     git(['add', '.'])
@@ -283,7 +309,9 @@ describe.runIf(hasGit())('the real backend on a temporary repo', () => {
     const wt = await b.resolve(env, join(root, 'wt'))
     expect(main.ok && wt.ok).toBe(true)
     if (!main.ok || !wt.ok) return
-    expect(wt.commonDir.replace(/\\/g, '/').toLowerCase()).toBe(main.commonDir.replace(/\\/g, '/').toLowerCase())
+    expect(wt.commonDir.replace(/\\/g, '/').toLowerCase()).toBe(
+      main.commonDir.replace(/\\/g, '/').toLowerCase()
+    )
     expect(wt.root).not.toBe(main.root)
     expect(await b.resolve(env, join(root, 'nope'))).toMatchObject({ ok: false, status: 'missing' })
     expect(await b.resolve(env, tmpdir())).toMatchObject({ ok: false })
@@ -296,8 +324,17 @@ describe.runIf(hasGit())('the real backend on a temporary repo', () => {
     expect(await b.remoteUrl(env, r.root)).toBe('https://github.com/sample/my-repo.git')
     expect(await b.userEmail(env, r.root)).toBe('sample@example.com')
     const refs = (await b.refs(env, r.root))!
-    expect(refs.map((x) => x.ref).sort()).toEqual(['refs/heads/feat/x', 'refs/heads/main', 'refs/heads/wip/y', 'refs/tags/v1'])
-    const res = (await b.log(env, r.root, { revs: ['--branches', '--remotes', '--tags'], since: Date.parse('2026-10-01T00:00:00Z'), maxCount: 100 }))!
+    expect(refs.map((x) => x.ref).sort()).toEqual([
+      'refs/heads/feat/x',
+      'refs/heads/main',
+      'refs/heads/wip/y',
+      'refs/tags/v1'
+    ])
+    const res = (await b.log(env, r.root, {
+      revs: ['--branches', '--remotes', '--tags'],
+      since: Date.parse('2026-10-01T00:00:00Z'),
+      maxCount: 100
+    }))!
     expect(res.truncated).toBe(false)
     const map = new Map(res.commits.map((c) => [c.sha, c]))
     labelBranches(map, refs)
@@ -308,8 +345,14 @@ describe.runIf(hasGit())('the real backend on a temporary repo', () => {
       trailers: ['Claude-Session: https://claude.ai/code/session_01AbCdEf9876'],
       at: Date.parse('2026-10-21T13:04:00Z')
     })
-    expect(by('Add two').files.map((f) => f.path).sort()).toEqual(['a.ts', 'with space.md'])
-    expect(by('Rename').files).toEqual([{ path: 'renamed.md', from: 'with space.md', add: 0, del: 0 }])
+    expect(
+      by('Add two')
+        .files.map((f) => f.path)
+        .sort()
+    ).toEqual(['a.ts', 'with space.md'])
+    expect(by('Rename').files).toEqual([
+      { path: 'renamed.md', from: 'with space.md', add: 0, del: 0 }
+    ])
     expect(by('Wip').branches).toEqual(['wip/y'])
     expect(by('First').branches).toEqual(['main'])
     // Only what's new since the tips read before.
@@ -324,9 +367,15 @@ describe.runIf(hasGit())('the real backend on a temporary repo', () => {
     if (!r.ok) throw new Error(r.message)
     const sha = git(['rev-parse', 'feat/x~1']).trim()
     const whole = await b.show(env, r.root, sha, undefined, 1024 * 1024)
-    expect(parsePatch(whole.text).map((f) => f.path).sort()).toEqual(['a.ts', 'with space.md'])
+    expect(
+      parsePatch(whole.text)
+        .map((f) => f.path)
+        .sort()
+    ).toEqual(['a.ts', 'with space.md'])
     const one = await b.show(env, r.root, sha, ['with space.md'], 1024 * 1024)
-    expect(parsePatch(one.text).map((f) => [f.path, f.status])).toEqual([['with space.md', 'added']])
+    expect(parsePatch(one.text).map((f) => [f.path, f.status])).toEqual([
+      ['with space.md', 'added']
+    ])
     const cut = await b.show(env, r.root, sha, undefined, 40)
     expect(cut.truncated).toBe(true)
   })

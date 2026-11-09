@@ -61,7 +61,14 @@ const GH_OPEN_TTL = 3600_000
 const GH_PER_PASS = 20
 const DIFF_BYTES = 1024 * 1024
 const DIFF_BYTES_ALL = 8 * 1024 * 1024
-const EMPTY_SIGNALS: SessionGitSignals = { branches: [], files: [], commits: [], prs: [], spans: [], sessionUrls: [] }
+const EMPTY_SIGNALS: SessionGitSignals = {
+  branches: [],
+  files: [],
+  commits: [],
+  prs: [],
+  spans: [],
+  sessionUrls: []
+}
 
 interface FolderState {
   status: GitFolderStatus
@@ -257,7 +264,12 @@ export class GitLinksService extends EventEmitter<{ changed: [] }> {
       platform.listRunningDistros().catch(() => undefined),
       platform.defaultDistro?.().catch(() => undefined)
     ])
-    return { platform, running, defaultDistro: def, scanStopped: this.deps.settings().scanStoppedDistros }
+    return {
+      platform,
+      running,
+      defaultDistro: def,
+      scanStopped: this.deps.settings().scanStoppedDistros
+    }
   }
 
   private async pass(opts: { force: boolean; repos?: Set<string> }): Promise<void> {
@@ -293,7 +305,8 @@ export class GitLinksService extends EventEmitter<{ changed: [] }> {
     const byRepo = new Map<string, GitInput[]>()
     for (const i of inputs) {
       const f = this.folders.get(placeKey(i))
-      if (f?.status === 'ok' && f.repoKey) byRepo.set(f.repoKey, [...(byRepo.get(f.repoKey) ?? []), i])
+      if (f?.status === 'ok' && f.repoKey)
+        byRepo.set(f.repoKey, [...(byRepo.get(f.repoKey) ?? []), i])
       else this.computeWithoutRepo(i, f)
     }
 
@@ -344,7 +357,8 @@ export class GitLinksService extends EventEmitter<{ changed: [] }> {
         if (r2.ok && relativeTo(normPath(pl.dir), normPath(r2.root), ci) !== undefined) {
           r = r2
           ownRoot = normPath(pl.dir)
-          note = "This session's folder no longer exists; its commits were looked up in the repo that held it."
+          note =
+            "This session's folder no longer exists; its commits were looked up in the repo that held it."
         }
       }
       // A Codex session's recorded remote: another local clone of the same repo.
@@ -358,7 +372,8 @@ export class GitLinksService extends EventEmitter<{ changed: [] }> {
           if (r3.ok) {
             r = r3
             ownRoot = normPath(pl.dir)
-            note = "This session's folder no longer exists; its commits were looked up in another clone of the same repo."
+            note =
+              "This session's folder no longer exists; its commits were looked up in another clone of the same repo."
           }
         }
       }
@@ -367,7 +382,15 @@ export class GitLinksService extends EventEmitter<{ changed: [] }> {
     const common = normPath(r.commonDir)
     const repoKey = `${envKey(pl.env)}|${ci ? common.toLowerCase() : common}`
     if (!this.repos.has(repoKey))
-      this.repos.set(repoKey, { key: repoKey, env: pl.env, root: r.root, refs: [], commits: new Map(), truncated: false, checkedAt: 0 })
+      this.repos.set(repoKey, {
+        key: repoKey,
+        env: pl.env,
+        root: r.root,
+        refs: [],
+        commits: new Map(),
+        truncated: false,
+        checkedAt: 0
+      })
     const root = ownRoot ?? normPath(r.root)
     const cwdRel = ownRoot ? '' : (relativeTo(normPath(pl.dir), root, ci) ?? '')
     return { status: 'ok', env: pl.env, repoKey, root, cwdRel, ...(note ? { note } : {}), at }
@@ -379,7 +402,9 @@ export class GitLinksService extends EventEmitter<{ changed: [] }> {
     for (let n = parts.length - 1; n >= 1 && parts.length - n <= 8; n--) {
       const p =
         env.kind === 'windows'
-          ? (dir.startsWith('\\\\') ? '\\\\' : '') + parts.slice(0, n).join('\\') + (n === 1 && !dir.startsWith('\\\\') ? '\\' : '')
+          ? (dir.startsWith('\\\\') ? '\\\\' : '') +
+            parts.slice(0, n).join('\\') +
+            (n === 1 && !dir.startsWith('\\\\') ? '\\' : '')
           : '/' + parts.slice(0, n).join('/')
       if (await this.deps.backend.exists(env, p)) return p
     }
@@ -388,7 +413,9 @@ export class GitLinksService extends EventEmitter<{ changed: [] }> {
 
   private async refreshRepo(repo: RepoState, sessions: GitInput[], force: boolean): Promise<void> {
     const { backend } = this.deps
-    const starts = sessions.map((s) => s.signals?.spans[0]?.[0]).filter((x): x is number => x !== undefined)
+    const starts = sessions
+      .map((s) => s.signals?.spans[0]?.[0])
+      .filter((x): x is number => x !== undefined)
     const need = (starts.length ? Math.min(...starts) : now()) - WINDOW_SLACK_MS
     const refs = await backend.refs(repo.env, repo.root)
     if (!refs) {
@@ -416,7 +443,11 @@ export class GitLinksService extends EventEmitter<{ changed: [] }> {
     if (!widen && !force && old.size && tips.length + old.size <= 400) {
       const fresh = tips.filter((s) => !old.has(s))
       if (fresh.length) {
-        const res = await backend.log(repo.env, repo.root, { revs: fresh, not: [...old], maxCount: MAX_COMMITS })
+        const res = await backend.log(repo.env, repo.root, {
+          revs: fresh,
+          not: [...old],
+          maxCount: MAX_COMMITS
+        })
         if (!res) {
           repo.error = "Couldn't read this repo's new commits."
           return
@@ -454,6 +485,8 @@ export class GitLinksService extends EventEmitter<{ changed: [] }> {
         sessionId: i.sessionId,
         provider: i.provider,
         ...(i.parentId ? { parentId: i.parentId } : {}),
+        ...(i.forkOf ? { forkOf: i.forkOf } : {}),
+        ...(i.forkAt !== undefined ? { forkAt: i.forkAt } : {}),
         ...(i.title ? { title: i.title } : {}),
         root: f?.root ?? normPath(repo.root),
         cwdRel: f?.cwdRel ?? '',
@@ -468,7 +501,8 @@ export class GitLinksService extends EventEmitter<{ changed: [] }> {
     const def = defaultBranch(repo.refs)
     const out = new Set<string>()
     const linked = links.filter((l) => LEVEL_RANK[l.level] >= LEVEL_RANK.medium)
-    if (linked.length || i.signals?.prs.length) for (const b of i.signals?.branches ?? []) out.add(b)
+    if (linked.length || i.signals?.prs.length)
+      for (const b of i.signals?.branches ?? []) out.add(b)
     for (const l of linked) for (const b of repo.commits.get(l.sha)?.branches ?? []) out.add(b)
     out.delete(def ?? '')
     return [...out].slice(0, 20)
@@ -486,7 +520,11 @@ export class GitLinksService extends EventEmitter<{ changed: [] }> {
   private computeRepo(repo: RepoState, list: GitInput[]): void {
     const commits = [...repo.commits.values()]
     const links = matchRepo(
-      { caseInsensitive: repo.env.kind === 'windows', ...(repo.userEmail ? { userEmail: repo.userEmail } : {}), commits },
+      {
+        caseInsensitive: repo.env.kind === 'windows',
+        ...(repo.userEmail ? { userEmail: repo.userEmail } : {}),
+        commits
+      },
       this.matchSessions(repo, list)
     )
     for (const i of list) {
@@ -496,7 +534,8 @@ export class GitLinksService extends EventEmitter<{ changed: [] }> {
       const gh = this.ghOn() ? this.ghPrsFor(repo.github, branches, exact) : []
       // A PR found by one of its exact commits is the session's whatever its branch.
       for (const sha of exact)
-        for (const p of this.gh.get(`${repo.github}@${sha}`)?.prs ?? []) branches.push(p.headRefName)
+        for (const p of this.gh.get(`${repo.github}@${sha}`)?.prs ?? [])
+          branches.push(p.headRefName)
       const prs = sessionPrs({
         signals: i.signals,
         links: own,
@@ -508,7 +547,14 @@ export class GitLinksService extends EventEmitter<{ changed: [] }> {
       const f = this.folders.get(placeKey(i))
       const touched = new Set<string>()
       for (const file of i.signals?.files ?? []) {
-        const rel = f?.root !== undefined ? repoFile(file, { root: f.root, caseInsensitive: repo.env.kind === 'windows' }, f.cwdRel ?? '') : undefined
+        const rel =
+          f?.root !== undefined
+            ? repoFile(
+                file,
+                { root: f.root, caseInsensitive: repo.env.kind === 'windows' },
+                f.cwdRel ?? ''
+              )
+            : undefined
         touched.add(rel ?? normPath(file))
       }
       for (const l of own)
@@ -558,7 +604,12 @@ export class GitLinksService extends EventEmitter<{ changed: [] }> {
   }
 
   /** Looks up PRs for a repo's session branches not cached yet; returns the gh calls made. */
-  private async ghLookups(repo: RepoState, list: GitInput[], budget: number, onlyKey?: string): Promise<number> {
+  private async ghLookups(
+    repo: RepoState,
+    list: GitInput[],
+    budget: number,
+    onlyKey?: string
+  ): Promise<number> {
     if (budget <= 0 || !repo.github || (await this.ensureGhAuth()) !== 'ok') return 0
     let calls = 0
     const wanted = new Set<string>()
@@ -677,11 +728,17 @@ export class GitLinksService extends EventEmitter<{ changed: [] }> {
     views.sort(byTime)
     possible.sort(byTime)
     const committed = new Set<string>()
-    for (const v of views) for (const cf of v.files) committed.add(repo?.env.kind === 'windows' ? cf.path.toLowerCase() : cf.path)
+    for (const v of views)
+      for (const cf of v.files)
+        committed.add(repo?.env.kind === 'windows' ? cf.path.toLowerCase() : cf.path)
     const uncommitted: string[] = []
     if (repo && f?.root !== undefined) {
       for (const file of sig.files) {
-        const rel = repoFile(file, { root: f.root, caseInsensitive: repo.env.kind === 'windows' }, f.cwdRel ?? '')
+        const rel = repoFile(
+          file,
+          { root: f.root, caseInsensitive: repo.env.kind === 'windows' },
+          f.cwdRel ?? ''
+        )
         if (rel && !committed.has(rel)) uncommitted.push(rel)
       }
     }
@@ -724,18 +781,21 @@ export class GitLinksService extends EventEmitter<{ changed: [] }> {
       if (!this.computed.has(key)) void this.schedule({ force: false })
       return
     }
-    if (now() - repo.checkedAt > FRESH_MS) void this.schedule({ force: false, repos: new Set([repo.key]) })
+    if (now() - repo.checkedAt > FRESH_MS)
+      void this.schedule({ force: false, repos: new Set([repo.key]) })
     // Its own PR lookups, not waiting for a background pass.
     if (this.cfg().gh === 'on' && repo.github) {
-      const list = [...this.inputs.values()].filter((x) => this.computed.get(x.key)?.repoKey === repo.key)
+      const list = [...this.inputs.values()].filter(
+        (x) => this.computed.get(x.key)?.repoKey === repo.key
+      )
       void this.ghLookups(repo, list, 5, key)
         .then(async (n) => n + (await this.ghShaLookups(repo, key, 3)))
         .then((n) => {
-        if (!n) return
-        this.computeRepo(repo, list)
-        this.saveSoon()
-        this.emitChanged()
-      })
+          if (!n) return
+          this.computeRepo(repo, list)
+          this.saveSoon()
+          this.emitChanged()
+        })
     }
   }
 
@@ -746,16 +806,41 @@ export class GitLinksService extends EventEmitter<{ changed: [] }> {
     const unlinked = this.deps.sessions.gitUnlinked(key)
     const ci = repo?.commits.get(sha)
     const shown = !!c && (c.links.some((l) => l.sha === sha) || unlinked.includes(sha))
-    if (!repo || !ci || !shown) return { sha, files: [], truncated: false, bytes: 0, error: "This commit isn't linked to this session." }
+    if (!repo || !ci || !shown)
+      return {
+        sha,
+        files: [],
+        truncated: false,
+        bytes: 0,
+        error: "This commit isn't linked to this session."
+      }
     let paths: string[] | undefined
     if (path !== undefined) {
       const file = ci.files.find((x) => x.path === path)
-      if (!file) return { sha, files: [], truncated: false, bytes: 0, error: "This file isn't part of the commit." }
+      if (!file)
+        return {
+          sha,
+          files: [],
+          truncated: false,
+          bytes: 0,
+          error: "This file isn't part of the commit."
+        }
       paths = file.from ? [file.from, file.path] : [file.path]
     }
-    const r = await this.deps.backend.show(repo.env, repo.root, sha, paths, all ? DIFF_BYTES_ALL : DIFF_BYTES)
+    const r = await this.deps.backend.show(
+      repo.env,
+      repo.root,
+      sha,
+      paths,
+      all ? DIFF_BYTES_ALL : DIFF_BYTES
+    )
     if (r.error) return { sha, files: [], truncated: false, bytes: 0, error: r.error }
-    return { sha, files: parsePatch(r.text), truncated: r.truncated, bytes: Buffer.byteLength(r.text) }
+    return {
+      sha,
+      files: parsePatch(r.text),
+      truncated: r.truncated,
+      bytes: Buffer.byteLength(r.text)
+    }
   }
 
   unlink(key: string, sha: string): SessionGitView | null {
@@ -805,9 +890,14 @@ export class GitLinksService extends EventEmitter<{ changed: [] }> {
       const ok =
         q.touched.every((p) => c.touched.some((f) => pathMatches(f, p))) &&
         q.commits.every((sha) => {
-          if (c.links.some((l) => LEVEL_RANK[l.level] >= LEVEL_RANK.medium && l.sha.startsWith(sha))) return true
+          if (
+            c.links.some((l) => LEVEL_RANK[l.level] >= LEVEL_RANK.medium && l.sha.startsWith(sha))
+          )
+            return true
           const sig = this.inputs.get(key)?.signals
-          return !!sig?.commits.some((s) => s.kind === 'commit-line' && (s.sha.startsWith(sha) || sha.startsWith(s.sha)))
+          return !!sig?.commits.some(
+            (s) => s.kind === 'commit-line' && (s.sha.startsWith(sha) || sha.startsWith(s.sha))
+          )
         })
       if (ok) out.add(key)
     }

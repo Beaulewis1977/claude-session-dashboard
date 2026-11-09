@@ -63,7 +63,14 @@ const LOG_FLAGS = new Set([
   '--no-textconv'
 ])
 
-const SHOW_FLAGS = new Set(['--patch', '--no-color', '-M', '--no-ext-diff', '--no-textconv', '--format='])
+const SHOW_FLAGS = new Set([
+  '--patch',
+  '--no-color',
+  '-M',
+  '--no-ext-diff',
+  '--no-textconv',
+  '--format='
+])
 
 const CONFIG_KEYS = new Set(['user.email', 'remote.origin.url'])
 const CONFIG_REGEXPS = new Set(['^remote\\..*\\.url$'])
@@ -172,7 +179,11 @@ export const GH_PR_FIELDS = 'number,title,url,state,isDraft,headRefName'
 const SLUG = /^[A-Za-z0-9-]{1,39}\/[A-Za-z0-9._-]{1,100}$/
 const BRANCH = /^[A-Za-z0-9._/+@-]{1,250}$/
 
-export function ghPrListArgs(slug: string, by: { head: string } | { search: string }, limit = 20): string[] {
+export function ghPrListArgs(
+  slug: string,
+  by: { head: string } | { search: string },
+  limit = 20
+): string[] {
   return [
     'pr',
     'list',

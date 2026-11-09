@@ -21,11 +21,28 @@ const at = (m: number): number => T0 + m * MIN
 const S = (n: number): string => n.toString(16).padStart(40, '0')
 
 function sig(p: Partial<SessionGitSignals> = {}): SessionGitSignals {
-  return { branches: [], files: [], commits: [], prs: [], spans: [[at(0), at(60)]], sessionUrls: [], ...p }
+  return {
+    branches: [],
+    files: [],
+    commits: [],
+    prs: [],
+    spans: [[at(0), at(60)]],
+    sessionUrls: [],
+    ...p
+  }
 }
 
 function input(key: string, p: Partial<GitInput> = {}): GitInput {
-  return { key, sessionId: key, provider: 'claude', env: 'windows', cwd: 'C:\\code\\acme', signals: sig(), rev: '1', ...p }
+  return {
+    key,
+    sessionId: key,
+    provider: 'claude',
+    env: 'windows',
+    cwd: 'C:\\code\\acme',
+    signals: sig(),
+    rev: '1',
+    ...p
+  }
 }
 
 function commit(n: number, p: Partial<CommitInfo> = {}): CommitInfo {
@@ -57,7 +74,8 @@ interface Repo {
 
 function fakeBackend(repos: Repo[]) {
   const calls: { op: string; env: string; arg?: unknown }[] = []
-  const key = (e: GitEnv): string => (e.kind === 'windows' ? 'windows' : `wsl:${e.distro}${e.user ? `:${e.user}` : ''}`)
+  const key = (e: GitEnv): string =>
+    e.kind === 'windows' ? 'windows' : `wsl:${e.distro}${e.user ? `:${e.user}` : ''}`
   const norm = (p: string) => p.replace(/\\/g, '/').toLowerCase()
   // Like git: the repo of any folder inside its work tree.
   const find = (e: GitEnv, dir: string) =>
@@ -73,7 +91,8 @@ function fakeBackend(repos: Repo[]) {
     },
     async resolve(e, dir) {
       calls.push({ op: 'resolve', env: key(e), arg: dir })
-      if (/gone/.test(dir)) return { ok: false, status: 'missing', message: 'The folder no longer exists.' }
+      if (/gone/.test(dir))
+        return { ok: false, status: 'missing', message: 'The folder no longer exists.' }
       const r = find(e, dir)
       if (r) return { ok: true, root: r.root, commonDir: r.commonDir, gitDir: r.commonDir }
       return { ok: false, status: 'not-repo', message: 'Not a repo' }
@@ -96,11 +115,17 @@ function fakeBackend(repos: Repo[]) {
       const r = byRoot(e, root)
       if (!r) return undefined
       const skip = new Set(o.not ?? [])
-      return { commits: r.commits.filter((c) => !skip.has(c.sha)).map((c) => ({ ...c, branches: [] })), truncated: false }
+      return {
+        commits: r.commits.filter((c) => !skip.has(c.sha)).map((c) => ({ ...c, branches: [] })),
+        truncated: false
+      }
     },
     async show(_e, _root, sha, paths) {
       calls.push({ op: 'show', env: 'windows', arg: { sha, paths } })
-      return { text: `diff --git a/src/a.ts b/src/a.ts\n--- a/src/a.ts\n+++ b/src/a.ts\n@@ -1 +1 @@\n-x\n+y\n`, truncated: false }
+      return {
+        text: `diff --git a/src/a.ts b/src/a.ts\n--- a/src/a.ts\n+++ b/src/a.ts\n@@ -1 +1 @@\n-x\n+y\n`,
+        truncated: false
+      }
     },
     async ghAuth() {
       calls.push({ op: 'ghAuth', env: '' })
@@ -109,7 +134,15 @@ function fakeBackend(repos: Repo[]) {
     async ghPrs(slug, by) {
       calls.push({ op: 'ghPrs', env: '', arg: { slug, by } })
       return 'head' in by && by.head === 'fix/login'
-        ? [{ number: 14, title: 'Fix login', url: 'https://github.com/beau/acme/pull/14', state: 'OPEN', headRefName: 'fix/login' }]
+        ? [
+            {
+              number: 14,
+              title: 'Fix login',
+              url: 'https://github.com/beau/acme/pull/14',
+              state: 'OPEN',
+              headRefName: 'fix/login'
+            }
+          ]
         : []
     }
   }
@@ -149,7 +182,8 @@ function service(
     platform: {
       listRunningDistros: async () => opts.running ?? ['Ubuntu'],
       defaultDistro: async () => 'Ubuntu',
-      wslWindowsPath: async (_d, p) => (p.startsWith('/mnt/c/') ? `C:\\${p.slice(7).replace(/\//g, '\\')}` : undefined)
+      wslWindowsPath: async (_d, p) =>
+        p.startsWith('/mnt/c/') ? `C:\\${p.slice(7).replace(/\//g, '\\')}` : undefined
     },
     dataDir,
     settings: () => ({ git: settings, scanStoppedDistros: false })
@@ -168,7 +202,16 @@ const ACME: Repo = {
     { ref: 'refs/heads/main', sha: S(3) },
     { ref: 'refs/heads/fix/login', sha: S(2) }
   ],
-  commits: [commit(1, { at: at(-5000), ct: at(-5000) }), commit(2, { subject: 'Fix login' }), commit(3, { parents: [S(1)], at: at(45), ct: at(45), files: [{ path: 'README.md', add: 1, del: 0 }] })]
+  commits: [
+    commit(1, { at: at(-5000), ct: at(-5000) }),
+    commit(2, { subject: 'Fix login' }),
+    commit(3, {
+      parents: [S(1)],
+      at: at(45),
+      ct: at(45),
+      files: [{ path: 'README.md', add: 1, del: 0 }]
+    })
+  ]
 }
 
 describe('the git links service', () => {
@@ -176,7 +219,9 @@ describe('the git links service', () => {
     const f = fakeBackend([ACME])
     const { svc } = service(
       [
-        input('a', { signals: sig({ branches: ['fix/login'], files: ['C:\\code\\acme\\src\\a.ts'] }) }),
+        input('a', {
+          signals: sig({ branches: ['fix/login'], files: ['C:\\code\\acme\\src\\a.ts'] })
+        }),
         input('wt', { cwd: 'C:\\code\\acme\\.claude\\worktrees\\x' }),
         input('none', { cwd: 'C:\\elsewhere' })
       ],
@@ -192,7 +237,10 @@ describe('the git links service', () => {
     // The main-branch commit at minute 45 is a time-only match for both sessions in the repo.
     expect(v.possible.map((c) => c.subject)).toEqual(['Commit 3'])
     // The remote never shows its credentials.
-    expect(v.repo).toMatchObject({ github: 'beau/acme', remote: 'https://github.com/beau/acme.git' })
+    expect(v.repo).toMatchObject({
+      github: 'beau/acme',
+      remote: 'https://github.com/beau/acme.git'
+    })
     expect(phoneGitView(v).repo?.remote).toBeUndefined()
     expect(svc.view('none', { refresh: false })).toMatchObject({ status: 'not-repo', commits: [] })
   })
@@ -214,7 +262,12 @@ describe('the git links service', () => {
     const last = f.calls.filter((c) => c.op === 'log').pop()!.arg as LogOptions
     expect(last.revs).toEqual([S(4)])
     expect(last.not?.sort()).toEqual([S(2), S(3)].sort())
-    expect(svc.view('a', { refresh: false })!.commits.map((c) => c.subject).sort()).toEqual(['Fix login', 'More'])
+    expect(
+      svc
+        .view('a', { refresh: false })!
+        .commits.map((c) => c.subject)
+        .sort()
+    ).toEqual(['Fix login', 'More'])
   })
 
   it('keeps its results in the cache: a new start reads no history again', async () => {
@@ -235,7 +288,10 @@ describe('the git links service', () => {
   it('unlink moves a commit to the next best session; link again brings it back', async () => {
     const f = fakeBackend([ACME])
     const { svc, unlinked } = service(
-      [input('a', { signals: sig({ branches: ['fix/login'], files: ['src/a.ts'] }) }), input('b', { signals: sig({ files: ['src/a.ts'] }) })],
+      [
+        input('a', { signals: sig({ branches: ['fix/login'], files: ['src/a.ts'] }) }),
+        input('b', { signals: sig({ files: ['src/a.ts'] }) })
+      ],
       f.backend
     )
     await svc.start()
@@ -255,7 +311,12 @@ describe('the git links service', () => {
   it('a gone folder is looked up in the repo that held it', async () => {
     const f = fakeBackend([ACME])
     const { svc } = service(
-      [input('w', { cwd: 'C:\\code\\acme\\.claude\\worktrees\\gone', signals: sig({ files: ['C:\\code\\acme\\.claude\\worktrees\\gone\\src\\a.ts'] }) })],
+      [
+        input('w', {
+          cwd: 'C:\\code\\acme\\.claude\\worktrees\\gone',
+          signals: sig({ files: ['C:\\code\\acme\\.claude\\worktrees\\gone\\src\\a.ts'] })
+        })
+      ],
       f.backend
     )
     await svc.start()
@@ -272,8 +333,25 @@ describe('the git links service', () => {
         input('x', {
           cwd: 'C:\\nowhere',
           signals: sig({
-            commits: [{ sha: 'abc1234', kind: 'commit-line', subject: 'Did it', branch: 'main', from: at(1), to: at(1) }],
-            prs: [{ owner: 'beau', repo: 'acme', number: 3, url: 'https://github.com/beau/acme/pull/3', at: at(2) }]
+            commits: [
+              {
+                sha: 'abc1234',
+                kind: 'commit-line',
+                subject: 'Did it',
+                branch: 'main',
+                from: at(1),
+                to: at(1)
+              }
+            ],
+            prs: [
+              {
+                owner: 'beau',
+                repo: 'acme',
+                number: 3,
+                url: 'https://github.com/beau/acme/pull/3',
+                at: at(2)
+              }
+            ]
           })
         })
       ],
@@ -311,7 +389,9 @@ describe('the git links service', () => {
     s.svc.settingsChanged()
     await s.svc.schedule({ force: false })
     expect(f.count('ghAuth')).toBe(1)
-    expect(f.calls.filter((c) => c.op === 'ghPrs').map((c) => c.arg)).toEqual([{ slug: 'beau/acme', by: { head: 'fix/login' } }])
+    expect(f.calls.filter((c) => c.op === 'ghPrs').map((c) => c.arg)).toEqual([
+      { slug: 'beau/acme', by: { head: 'fix/login' } }
+    ])
     const v = s.svc.view('a', { refresh: false })!
     expect(v.gh).toBe('on')
     expect(v.prs).toMatchObject([{ number: 14, state: 'open', via: 'gh' }])
@@ -334,7 +414,12 @@ describe('the git links service', () => {
   it('finds sessions by touched: and commit:', async () => {
     const f = fakeBackend([ACME])
     const { svc } = service(
-      [input('a', { signals: sig({ branches: ['fix/login'], files: ['C:\\code\\acme\\src\\b.ts'] }) }), input('b', { cwd: 'C:\\elsewhere', signals: sig({ files: ['C:\\elsewhere\\notes.md'] }) })],
+      [
+        input('a', {
+          signals: sig({ branches: ['fix/login'], files: ['C:\\code\\acme\\src\\b.ts'] })
+        }),
+        input('b', { cwd: 'C:\\elsewhere', signals: sig({ files: ['C:\\elsewhere\\notes.md'] }) })
+      ],
       f.backend
     )
     await svc.start()
@@ -349,39 +434,63 @@ describe('the git links service', () => {
 
 describe('where a session’s git runs', () => {
   const ctx = {
-    platform: { wslWindowsPath: async (_d: string, p: string) => (p.startsWith('/mnt/c/') ? `C:\\${p.slice(7).replace(/\//g, '\\')}` : undefined) },
+    platform: {
+      wslWindowsPath: async (_d: string, p: string) =>
+        p.startsWith('/mnt/c/') ? `C:\\${p.slice(7).replace(/\//g, '\\')}` : undefined
+    },
     running: ['Ubuntu'],
     defaultDistro: 'Ubuntu',
     scanStopped: false
   }
   it('Windows folders: Windows git', async () => {
-    expect(await placeSession({ env: 'windows', cwd: 'C:\\code\\my app' }, ctx)).toEqual({ ok: true, env: { kind: 'windows' }, dir: 'C:\\code\\my app' })
+    expect(await placeSession({ env: 'windows', cwd: 'C:\\code\\my app' }, ctx)).toEqual({
+      ok: true,
+      env: { kind: 'windows' },
+      dir: 'C:\\code\\my app'
+    })
   })
   it('WSL folders: the distro’s own git, as the home’s user', async () => {
-    expect(await placeSession({ env: 'wsl', distro: 'Ubuntu', sourceUser: 'beau', cwd: '/home/beau/api' }, ctx)).toEqual({
+    expect(
+      await placeSession(
+        { env: 'wsl', distro: 'Ubuntu', sourceUser: 'beau', cwd: '/home/beau/api' },
+        ctx
+      )
+    ).toEqual({
       ok: true,
       env: { kind: 'wsl', distro: 'Ubuntu', user: 'beau' },
       dir: '/home/beau/api'
     })
-    expect(await placeSession({ env: 'windows', cwd: '\\\\wsl.localhost\\Ubuntu\\home\\beau\\x' }, ctx)).toEqual({
+    expect(
+      await placeSession({ env: 'windows', cwd: '\\\\wsl.localhost\\Ubuntu\\home\\beau\\x' }, ctx)
+    ).toEqual({
       ok: true,
       env: { kind: 'wsl', distro: 'Ubuntu' },
       dir: '/home/beau/x'
     })
   })
   it('a Windows drive seen from WSL: mapped by the distro, then Windows git', async () => {
-    expect(await placeSession({ env: 'wsl', distro: 'Ubuntu', cwd: '/mnt/c/code/acme' }, ctx)).toEqual({
+    expect(
+      await placeSession({ env: 'wsl', distro: 'Ubuntu', cwd: '/mnt/c/code/acme' }, ctx)
+    ).toEqual({
       ok: true,
       env: { kind: 'windows' },
       dir: 'C:\\code\\acme'
     })
   })
   it('a Linux folder in a Windows Codex home: the default distro', async () => {
-    expect(await placeSession({ env: 'windows', cwd: '/home/beau/x' }, ctx)).toMatchObject({ ok: true, env: { kind: 'wsl', distro: 'Ubuntu' } })
+    expect(await placeSession({ env: 'windows', cwd: '/home/beau/x' }, ctx)).toMatchObject({
+      ok: true,
+      env: { kind: 'wsl', distro: 'Ubuntu' }
+    })
   })
   it('never starts a stopped distro; no folder, no git', async () => {
-    expect(await placeSession({ env: 'wsl', distro: 'Debian', cwd: '/home/beau/x' }, ctx)).toMatchObject({ ok: false, status: 'distro-stopped' })
-    expect(await placeSession({ env: 'windows' }, ctx)).toMatchObject({ ok: false, status: 'no-folder' })
+    expect(
+      await placeSession({ env: 'wsl', distro: 'Debian', cwd: '/home/beau/x' }, ctx)
+    ).toMatchObject({ ok: false, status: 'distro-stopped' })
+    expect(await placeSession({ env: 'windows' }, ctx)).toMatchObject({
+      ok: false,
+      status: 'no-folder'
+    })
   })
   it('strips credentials from a remote URL', () => {
     expect(safeRemote('https://user:tok@github.com/a/b.git')).toBe('https://github.com/a/b.git')
@@ -393,7 +502,9 @@ describe('the phone and settings', () => {
   it('a phone can read git links, nothing more', async () => {
     const { RPC, phoneSettingsPatch } = await import('../src/main/mobile/rpc')
     const git = Object.entries(RPC).filter(([, m]) => m.channel.startsWith('git:'))
-    expect(git.map(([name, m]) => [name, m.channel, m.kind])).toEqual([['getGitLinks', 'git:session', 'read']])
+    expect(git.map(([name, m]) => [name, m.channel, m.kind])).toEqual([
+      ['getGitLinks', 'git:session', 'read']
+    ])
     expect(phoneSettingsPatch({ gitLinks: { enabled: false, gh: 'on' } })).toEqual({})
   })
 

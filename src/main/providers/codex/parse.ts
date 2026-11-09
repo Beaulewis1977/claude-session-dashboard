@@ -836,7 +836,13 @@ export function rolloutIdOf(fileName: string): string | undefined {
 // ------------------------------------------------------------- git signals
 
 /** Codex's shell tools (their names differ between versions). */
-const SHELL_TOOLS = new Set(['shell', 'shell_command', 'exec_command', 'local_shell', 'container.exec'])
+const SHELL_TOOLS = new Set([
+  'shell',
+  'shell_command',
+  'exec_command',
+  'local_shell',
+  'container.exec'
+])
 
 /**
  * The lines a fork (or a subagent started with its parent's history) copied

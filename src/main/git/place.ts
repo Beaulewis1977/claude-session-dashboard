@@ -40,13 +40,18 @@ export async function placeSession(
   ctx: PlaceContext
 ): Promise<Placement> {
   const cwd = s.cwd
-  if (!cwd) return { ok: false, status: 'no-folder', message: "The session doesn't record its folder." }
+  if (!cwd)
+    return { ok: false, status: 'no-folder', message: "The session doesn't record its folder." }
   const unc = parseWslUnc(cwd)
   if (unc) {
     if (!isRunning(unc.distro, ctx))
       return { ok: false, status: 'distro-stopped', message: `${unc.distro} isn't running.` }
     const user = s.env === 'wsl' && s.distro === unc.distro ? s.sourceUser : undefined
-    return { ok: true, env: { kind: 'wsl', distro: unc.distro, ...(user ? { user } : {}) }, dir: unc.linuxPath }
+    return {
+      ok: true,
+      env: { kind: 'wsl', distro: unc.distro, ...(user ? { user } : {}) },
+      dir: unc.linuxPath
+    }
   }
   if (isWindowsPath(cwd)) return { ok: true, env: { kind: 'windows' }, dir: cwd }
   if (!cwd.startsWith('/'))
@@ -54,7 +59,11 @@ export async function placeSession(
   const distro = s.env === 'wsl' ? s.distro : ctx.defaultDistro
   if (!distro) return { ok: false, status: 'error', message: 'No WSL distro to look in.' }
   if (!isRunning(distro, ctx))
-    return { ok: false, status: 'distro-stopped', message: `${distro} isn't running, so its git isn't asked.` }
+    return {
+      ok: false,
+      status: 'distro-stopped',
+      message: `${distro} isn't running, so its git isn't asked.`
+    }
   if (/^\/mnt\/[a-zA-Z](?:\/|$)/.test(cwd)) {
     const win = await ctx.platform.wslWindowsPath?.(distro, cwd)
     if (win && /^[A-Za-z]:\\/.test(win)) return { ok: true, env: { kind: 'windows' }, dir: win }

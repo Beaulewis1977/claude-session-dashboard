@@ -76,9 +76,11 @@ export async function createFixturesBackend(fixturesDir: string): Promise<GitBac
       return { version: `2.51.0 (sample data, ${envKey(env)})` }
     },
     async resolve(env, dir) {
-      if (/old-prototype/i.test(dir)) return { ok: false, status: 'missing', message: 'The folder no longer exists.' }
+      if (/old-prototype/i.test(dir))
+        return { ok: false, status: 'missing', message: 'The folder no longer exists.' }
       const r = repoAt(env, dir)
-      if (!r) return { ok: false, status: 'not-repo', message: "This folder isn't in a git repository." }
+      if (!r)
+        return { ok: false, status: 'not-repo', message: "This folder isn't in a git repository." }
       return { ok: true, root: r.root, commonDir: `${r.root}/.git`, gitDir: `${r.root}/.git` }
     },
     async exists(_env, dir) {
@@ -102,10 +104,13 @@ export async function createFixturesBackend(fixturesDir: string): Promise<GitBac
     async show(env, root, sha, paths) {
       const r = repoAt(env, root)
       const text = r?.patches?.[sha]
-      if (text === undefined) return { text: '', truncated: false, error: 'No sample diff for this commit.' }
+      if (text === undefined)
+        return { text: '', truncated: false, error: 'No sample diff for this commit.' }
       if (!paths?.length) return { text, truncated: false }
       // Only the asked files' parts of the sample patch.
-      const parts = text.split(/(?=^diff --git )/m).filter((p) => paths.some((x) => p.includes(` b/${x}`)))
+      const parts = text
+        .split(/(?=^diff --git )/m)
+        .filter((p) => paths.some((x) => p.includes(` b/${x}`)))
       return { text: parts.join(''), truncated: false }
     },
     async ghAuth() {

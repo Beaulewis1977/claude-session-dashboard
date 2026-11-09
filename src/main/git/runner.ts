@@ -66,7 +66,10 @@ export const GH_ENV: Record<string, string> = {
   CLICOLOR: '0'
 }
 
-export function childEnv(base: NodeJS.ProcessEnv, extra: Record<string, string>): NodeJS.ProcessEnv {
+export function childEnv(
+  base: NodeJS.ProcessEnv,
+  extra: Record<string, string>
+): NodeJS.ProcessEnv {
   const out: NodeJS.ProcessEnv = {}
   for (const [k, v] of Object.entries(base)) {
     const u = k.toUpperCase()
@@ -122,9 +125,22 @@ function runProcess(
   return new Promise((resolve) => {
     let child
     try {
-      child = spawn(file, args, { cwd, env, windowsHide: true, shell: false, stdio: ['ignore', 'pipe', 'pipe'] })
+      child = spawn(file, args, {
+        cwd,
+        env,
+        windowsHide: true,
+        shell: false,
+        stdio: ['ignore', 'pipe', 'pipe']
+      })
     } catch {
-      resolve({ stdout: '', stderr: '', code: null, truncated: false, timedOut: false, missing: true })
+      resolve({
+        stdout: '',
+        stderr: '',
+        code: null,
+        truncated: false,
+        timedOut: false,
+        missing: true
+      })
       return
     }
     const out: Buffer[] = []
@@ -190,7 +206,11 @@ function runProcess(
 async function findWindowsGit(): Promise<string | undefined> {
   const onPath = await findOnPath('git', ['.exe'])
   if (onPath) return onPath
-  const roots = [process.env.ProgramFiles, process.env['ProgramFiles(x86)'], process.env.LOCALAPPDATA && `${process.env.LOCALAPPDATA}\\Programs`]
+  const roots = [
+    process.env.ProgramFiles,
+    process.env['ProgramFiles(x86)'],
+    process.env.LOCALAPPDATA && `${process.env.LOCALAPPDATA}\\Programs`
+  ]
   for (const r of roots) {
     const p = r && `${r}\\Git\\cmd\\git.exe`
     if (p && (await fileExists(p))) return p
@@ -203,14 +223,27 @@ export function createProcessRunner(opts: { cwd: string }): ProcessRunner {
   const isWindows = process.platform === 'win32'
   let gitPath: Promise<string | undefined> | undefined
   let ghPath: Promise<string | undefined> | undefined
-  const notFound: RunOutput = { stdout: '', stderr: '', code: null, truncated: false, timedOut: false, missing: true }
+  const notFound: RunOutput = {
+    stdout: '',
+    stderr: '',
+    code: null,
+    truncated: false,
+    timedOut: false,
+    missing: true
+  }
   return {
     async git(env, args, o = {}) {
       assertReadOnlyGit(args)
       return gate.run(async () => {
         if (env.kind === 'wsl') {
           if (!isWindows) return notFound
-          return runProcess(systemExe('wsl.exe'), wslGitArgs(env, args), childEnv(process.env, {}), opts.cwd, o)
+          return runProcess(
+            systemExe('wsl.exe'),
+            wslGitArgs(env, args),
+            childEnv(process.env, {}),
+            opts.cwd,
+            o
+          )
         }
         gitPath ??= isWindows ? findWindowsGit() : Promise.resolve('git')
         const file = await gitPath

@@ -14,14 +14,17 @@ const TOKEN = /(?:^|\s)(touched|commit):(?:"([^"]*)"|(\S+))/gi
 export function parseGitQuery(q: string): GitQuery {
   const touched: string[] = []
   const commits: string[] = []
-  const text = q.replace(TOKEN, (_m, key: string, quoted: string | undefined, bare: string | undefined) => {
-    const v = (quoted ?? bare ?? '').trim()
-    if (key.toLowerCase() === 'touched') {
-      const p = normQueryPath(v)
-      if (p) touched.push(p)
-    } else if (/^[0-9a-f]{4,64}$/i.test(v)) commits.push(v.toLowerCase())
-    return ' '
-  })
+  const text = q.replace(
+    TOKEN,
+    (_m, key: string, quoted: string | undefined, bare: string | undefined) => {
+      const v = (quoted ?? bare ?? '').trim()
+      if (key.toLowerCase() === 'touched') {
+        const p = normQueryPath(v)
+        if (p) touched.push(p)
+      } else if (/^[0-9a-f]{4,64}$/i.test(v)) commits.push(v.toLowerCase())
+      return ' '
+    }
+  )
   return { text: text.replace(/\s+/g, ' ').trim(), touched, commits }
 }
 
@@ -48,10 +51,7 @@ export function pathMatches(file: string, query: string): boolean {
   const f = normQueryPath(file)
   if (!query) return false
   return (
-    f === query ||
-    f.endsWith(`/${query}`) ||
-    f.startsWith(`${query}/`) ||
-    f.includes(`/${query}/`)
+    f === query || f.endsWith(`/${query}`) || f.startsWith(`${query}/`) || f.includes(`/${query}/`)
   )
 }
 

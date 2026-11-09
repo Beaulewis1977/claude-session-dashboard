@@ -14,9 +14,23 @@ import {
   ghPrListArgs
 } from '@shared/git/guard'
 import { createRealBackend } from '../src/main/git/backend'
-import { childEnv, GH_ENV, GIT_ENV, wslGitArgs, type ProcessRunner, type RunOutput } from '../src/main/git/runner'
+import {
+  childEnv,
+  GH_ENV,
+  GIT_ENV,
+  wslGitArgs,
+  type ProcessRunner,
+  type RunOutput
+} from '../src/main/git/runner'
 
-const OK: RunOutput = { stdout: '', stderr: '', code: 0, truncated: false, timedOut: false, missing: false }
+const OK: RunOutput = {
+  stdout: '',
+  stderr: '',
+  code: 0,
+  truncated: false,
+  timedOut: false,
+  missing: false
+}
 const SHA = 'a'.repeat(40)
 const dir = 'C:\\code\\acme'
 
@@ -52,7 +66,11 @@ describe('the read-only guard', () => {
     await b.userEmail(env, dir)
     await b.remoteUrl(env, dir)
     await b.refs(env, dir)
-    await b.log(env, dir, { revs: ['--branches', '--remotes', '--tags'], since: Date.UTC(2026, 0, 1), maxCount: 5000 })
+    await b.log(env, dir, {
+      revs: ['--branches', '--remotes', '--tags'],
+      since: Date.UTC(2026, 0, 1),
+      maxCount: 5000
+    })
     await b.log(env, dir, { revs: [SHA], not: ['b'.repeat(40)], maxCount: 5000 })
     await b.show(env, dir, SHA, undefined, 1024)
     await b.show(env, dir, SHA, ['src/a b.ts', 'src/old.ts'], 1024)
@@ -66,7 +84,8 @@ describe('the read-only guard', () => {
       ghPrListArgs('beau/acme-web', { search: 'abc1234' })
     ])
     // Every git call starts with the safety settings.
-    for (const args of r.git.filter((a) => a.includes('-C'))) expect(args.slice(0, GIT_PREFIX.length)).toEqual(GIT_PREFIX)
+    for (const args of r.git.filter((a) => a.includes('-C')))
+      expect(args.slice(0, GIT_PREFIX.length)).toEqual(GIT_PREFIX)
   })
 
   const refusedGit: [string, string[]][] = [
@@ -127,15 +146,47 @@ describe('the read-only guard', () => {
     ['worktree prune', gitArgs(dir, ['worktree', 'prune'])],
     ['log --output', gitArgs(dir, ['log', '--no-ext-diff', '--no-textconv', '--output=C:\\x.txt'])],
     ['log without --no-ext-diff', gitArgs(dir, ['log', '--no-textconv', '--numstat'])],
-    ['log with an external diff', gitArgs(dir, ['log', '--no-ext-diff', '--no-textconv', '--ext-diff'])],
-    ['log with a ref option value', gitArgs(dir, ['log', '--no-ext-diff', '--no-textconv', '--exec=sh'])],
-    ['log with a made-up format', gitArgs(dir, ['log', '--no-ext-diff', '--no-textconv', '--format=%H'])],
-    ['show without a commit', gitArgs(dir, ['show', '--format=', '--no-ext-diff', '--no-textconv'])],
-    ['show with two commits', gitArgs(dir, ['show', '--format=', '--no-ext-diff', '--no-textconv', SHA, SHA])],
-    ['show of a ref name', gitArgs(dir, ['show', '--format=', '--no-ext-diff', '--no-textconv', 'HEAD'])],
-    ['show with pathspec magic', gitArgs(dir, ['show', '--format=', '--no-ext-diff', '--no-textconv', SHA, '--', ':(exclude)x'])],
+    [
+      'log with an external diff',
+      gitArgs(dir, ['log', '--no-ext-diff', '--no-textconv', '--ext-diff'])
+    ],
+    [
+      'log with a ref option value',
+      gitArgs(dir, ['log', '--no-ext-diff', '--no-textconv', '--exec=sh'])
+    ],
+    [
+      'log with a made-up format',
+      gitArgs(dir, ['log', '--no-ext-diff', '--no-textconv', '--format=%H'])
+    ],
+    [
+      'show without a commit',
+      gitArgs(dir, ['show', '--format=', '--no-ext-diff', '--no-textconv'])
+    ],
+    [
+      'show with two commits',
+      gitArgs(dir, ['show', '--format=', '--no-ext-diff', '--no-textconv', SHA, SHA])
+    ],
+    [
+      'show of a ref name',
+      gitArgs(dir, ['show', '--format=', '--no-ext-diff', '--no-textconv', 'HEAD'])
+    ],
+    [
+      'show with pathspec magic',
+      gitArgs(dir, [
+        'show',
+        '--format=',
+        '--no-ext-diff',
+        '--no-textconv',
+        SHA,
+        '--',
+        ':(exclude)x'
+      ])
+    ],
     ['an alias as config', ['-c', 'alias.log=!rm -rf /', '-C', dir, 'log']],
-    ['fsmonitor turned on', ['-c', 'core.fsmonitor=evil.exe', '-C', dir, 'rev-parse', '--show-toplevel']],
+    [
+      'fsmonitor turned on',
+      ['-c', 'core.fsmonitor=evil.exe', '-C', dir, 'rev-parse', '--show-toplevel']
+    ],
     ['another git dir', ['--git-dir=C:\\x', '-C', dir, 'rev-parse', '--show-toplevel']],
     ['exec path', ['--exec-path=C:\\x', '-C', dir, 'version']],
     ['no folder', ['--no-pager', 'rev-parse', '--show-toplevel']],
@@ -163,7 +214,23 @@ describe('the read-only guard', () => {
     ['a search that is not a SHA', ghPrListArgs('beau/acme', { search: 'is:open author:me' })],
     ['a big limit', ghPrListArgs('beau/acme', { head: 'x' }, 1000)],
     ['an extra flag', [...ghPrListArgs('beau/acme', { head: 'x' }), '--web']],
-    ['other fields', ['pr', 'list', '--repo', 'beau/acme', '--state', 'all', '--limit', '20', '--json', 'body', '--head', 'x']]
+    [
+      'other fields',
+      [
+        'pr',
+        'list',
+        '--repo',
+        'beau/acme',
+        '--state',
+        'all',
+        '--limit',
+        '20',
+        '--json',
+        'body',
+        '--head',
+        'x'
+      ]
+    ]
   ]
 
   it.each(refusedGh)('refuses %s', (_name, args) => {
@@ -174,7 +241,14 @@ describe('the read-only guard', () => {
 describe('the processes', () => {
   it("drops the app's own GIT_* and gh host variables", () => {
     const env = childEnv(
-      { PATH: 'x', GIT_DIR: 'C:\\elsewhere', git_work_tree: 'y', GH_HOST: 'evil', GH_REPO: 'a/b', GH_TOKEN: 't' },
+      {
+        PATH: 'x',
+        GIT_DIR: 'C:\\elsewhere',
+        git_work_tree: 'y',
+        GH_HOST: 'evil',
+        GH_REPO: 'a/b',
+        GH_TOKEN: 't'
+      },
       GIT_ENV
     )
     expect(env.GIT_DIR).toBeUndefined()
@@ -187,7 +261,9 @@ describe('the processes', () => {
   })
 
   it("runs a WSL repo's git through wsl.exe without a shell, as the home's user", () => {
-    expect(wslGitArgs({ kind: 'wsl', distro: 'Ubuntu-24.04', user: 'beau' }, ['--no-pager', 'version'])).toEqual([
+    expect(
+      wslGitArgs({ kind: 'wsl', distro: 'Ubuntu-24.04', user: 'beau' }, ['--no-pager', 'version'])
+    ).toEqual([
       '-d',
       'Ubuntu-24.04',
       '-u',

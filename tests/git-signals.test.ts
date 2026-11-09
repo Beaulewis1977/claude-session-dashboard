@@ -9,7 +9,8 @@ import { analyzeCodex, codexGitSignals, parseLines } from '../src/main/providers
 import { line } from './helpers'
 
 const SID = '11111111-2222-4333-8444-555555555555'
-const T = (min: number): string => new Date(Date.UTC(2026, 9, 21, 13, 0) + min * 60_000).toISOString()
+const T = (min: number): string =>
+  new Date(Date.UTC(2026, 9, 21, 13, 0) + min * 60_000).toISOString()
 
 function claude(events: unknown[]): string {
   return events.map(line).join('\n')
@@ -20,7 +21,10 @@ const bash = (id: string, command: string, at: number) => ({
   sessionId: SID,
   timestamp: T(at),
   gitBranch: 'fix/login',
-  message: { role: 'assistant', content: [{ type: 'tool_use', id, name: 'Bash', input: { command } }] }
+  message: {
+    role: 'assistant',
+    content: [{ type: 'tool_use', id, name: 'Bash', input: { command } }]
+  }
 })
 const result = (id: string, text: string, at: number) => ({
   type: 'user',
@@ -47,7 +51,9 @@ describe('git output parsing', () => {
   })
 
   it('falls back to SHAs at line starts (a chained git log --oneline or rev-parse)', () => {
-    expect(commitsInOutput('abc1234 Fix it\n')).toEqual([{ sha: 'abc1234', kind: 'chained', subject: 'Fix it' }])
+    expect(commitsInOutput('abc1234 Fix it\n')).toEqual([
+      { sha: 'abc1234', kind: 'chained', subject: 'Fix it' }
+    ])
     const full = 'a'.repeat(40)
     expect(commitsInOutput(`${full}\n`)).toEqual([{ sha: full, kind: 'chained' }])
     // Not a SHA: a word, or a SHA inside a line.
@@ -56,12 +62,21 @@ describe('git output parsing', () => {
   })
 
   it('reads PR links and Claude-Session trailers', () => {
-    expect(prsInOutput('Creating pull request…\nhttps://github.com/beau/acme-web/pull/14\n')).toEqual([
-      { owner: 'beau', repo: 'acme-web', number: 14, url: 'https://github.com/beau/acme-web/pull/14' }
+    expect(
+      prsInOutput('Creating pull request…\nhttps://github.com/beau/acme-web/pull/14\n')
+    ).toEqual([
+      {
+        owner: 'beau',
+        repo: 'acme-web',
+        number: 14,
+        url: 'https://github.com/beau/acme-web/pull/14'
+      }
     ])
     expect(prsInOutput('https://gitlab.com/beau/x/pull/3')).toEqual([])
     expect(
-      sessionTrailers('git commit -m "Fix\n\nClaude-Session: https://claude.ai/code/session_01ABCdef234"')
+      sessionTrailers(
+        'git commit -m "Fix\n\nClaude-Session: https://claude.ai/code/session_01ABCdef234"'
+      )
     ).toEqual(['https://claude.ai/code/session_01ABCdef234'])
   })
 
@@ -78,7 +93,13 @@ describe('git output parsing', () => {
 describe('Claude Code signals', () => {
   it('collects branches, edited files, commits, PRs and links from its own lines', () => {
     const text = claude([
-      { type: 'user', sessionId: SID, timestamp: T(0), gitBranch: 'main', message: { role: 'user', content: 'go' } },
+      {
+        type: 'user',
+        sessionId: SID,
+        timestamp: T(0),
+        gitBranch: 'main',
+        message: { role: 'user', content: 'go' }
+      },
       {
         type: 'assistant',
         sessionId: SID,
@@ -87,8 +108,18 @@ describe('Claude Code signals', () => {
         message: {
           role: 'assistant',
           content: [
-            { type: 'tool_use', id: 'e1', name: 'Edit', input: { file_path: 'C:\\code\\acme\\src\\a.ts' } },
-            { type: 'tool_use', id: 'w1', name: 'Write', input: { file_path: 'C:\\code\\acme\\src\\b.ts' } }
+            {
+              type: 'tool_use',
+              id: 'e1',
+              name: 'Edit',
+              input: { file_path: 'C:\\code\\acme\\src\\a.ts' }
+            },
+            {
+              type: 'tool_use',
+              id: 'w1',
+              name: 'Write',
+              input: { file_path: 'C:\\code\\acme\\src\\b.ts' }
+            }
           ]
         }
       },
@@ -98,16 +129,39 @@ describe('Claude Code signals', () => {
       result('c2', 'bcd2345 x', 3.1),
       bash('p1', 'gh pr create --fill', 4),
       result('p1', 'https://github.com/beau/acme/pull/14', 4.5),
-      { type: 'system', subtype: 'bridge_status', sessionId: SID, timestamp: T(5), url: 'https://claude.ai/code/session_01AbCdEf9876' },
-      bash('c3', 'git commit -m "y\n\nClaude-Session: https://claude.ai/code/session_01ZzYyXx1234"', 6),
+      {
+        type: 'system',
+        subtype: 'bridge_status',
+        sessionId: SID,
+        timestamp: T(5),
+        url: 'https://claude.ai/code/session_01AbCdEf9876'
+      },
+      bash(
+        'c3',
+        'git commit -m "y\n\nClaude-Session: https://claude.ai/code/session_01ZzYyXx1234"',
+        6
+      ),
       result('c3', 'nothing to commit', 6.1)
     ])
     const s = claudeGitSignals(parseJsonl(text).events, SID)
     expect(s.branches).toEqual(['main', 'fix/login'])
     expect(s.files).toEqual(['C:\\code\\acme\\src\\a.ts', 'C:\\code\\acme\\src\\b.ts'])
     expect(s.commits).toEqual([
-      { sha: '3e5f7a9', kind: 'commit-line', branch: 'fix/login', subject: 'Tidy', from: Date.parse(T(2)), to: Date.parse(T(2.2)) },
-      { sha: 'bcd2345', kind: 'chained', subject: 'x', from: Date.parse(T(3)), to: Date.parse(T(3.1)) }
+      {
+        sha: '3e5f7a9',
+        kind: 'commit-line',
+        branch: 'fix/login',
+        subject: 'Tidy',
+        from: Date.parse(T(2)),
+        to: Date.parse(T(2.2))
+      },
+      {
+        sha: 'bcd2345',
+        kind: 'chained',
+        subject: 'x',
+        from: Date.parse(T(3)),
+        to: Date.parse(T(3.1))
+      }
     ])
     expect(s.prs.map((p) => p.number)).toEqual([14])
     expect(s.sessionUrls.sort()).toEqual([
@@ -119,7 +173,9 @@ describe('Claude Code signals', () => {
 
   it("ignores a git log that wasn't part of a commit call, and outputs of other calls", () => {
     const s = claudeGitSignals(
-      parseJsonl(claude([bash('l1', 'git log --oneline -5', 0), result('l1', 'abc1234 Old commit', 0.1)])).events,
+      parseJsonl(
+        claude([bash('l1', 'git log --oneline -5', 0), result('l1', 'abc1234 Old commit', 0.1)])
+      ).events,
       SID
     )
     expect(s.commits).toEqual([])
@@ -127,8 +183,14 @@ describe('Claude Code signals', () => {
 
   it('leaves out lines copied from another session (a branch, an older-style copy)', () => {
     const text = claude([
-      { ...bash('c1', 'git commit -m a', 0), forkedFrom: { sessionId: 'parent', messageUuid: 'u' } },
-      { ...result('c1', '[main 1111111] a', 0.1), forkedFrom: { sessionId: 'parent', messageUuid: 'u' } },
+      {
+        ...bash('c1', 'git commit -m a', 0),
+        forkedFrom: { sessionId: 'parent', messageUuid: 'u' }
+      },
+      {
+        ...result('c1', '[main 1111111] a', 0.1),
+        forkedFrom: { sessionId: 'parent', messageUuid: 'u' }
+      },
       { ...bash('c2', 'git commit -m b', 1), sessionId: 'another-session' },
       { ...result('c2', '[main 2222222] b', 1.1), sessionId: 'another-session' },
       bash('c3', 'git commit -m c', 2),
@@ -144,7 +206,9 @@ describe('Claude Code signals', () => {
       bash('c1', 'git commit -m a', 0),
       { ...result('c1', '', 0.1), toolUseResult: { stdout: '[main 4444444] a', stderr: '' } }
     ])
-    expect(claudeGitSignals(parseJsonl(text).events, SID).commits.map((c) => c.sha)).toEqual(['4444444'])
+    expect(claudeGitSignals(parseJsonl(text).events, SID).commits.map((c) => c.sha)).toEqual([
+      '4444444'
+    ])
   })
 })
 
@@ -152,23 +216,59 @@ describe('Codex signals', () => {
   const OWN = '019a1111-0000-7000-8000-000000000001'
   const PARENT = '019a0000-0000-7000-8000-000000000000'
   const meta = (id: string, at: string, extra: Record<string, unknown> = {}) =>
-    line({ timestamp: at, type: 'session_meta', payload: { id, timestamp: at, cwd: 'C:\\code\\shop', ...extra } })
+    line({
+      timestamp: at,
+      type: 'session_meta',
+      payload: { id, timestamp: at, cwd: 'C:\\code\\shop', ...extra }
+    })
   const call = (at: string, callId: string, name: string, args: unknown) =>
-    line({ timestamp: at, type: 'response_item', payload: { type: 'function_call', name, call_id: callId, arguments: JSON.stringify(args) } })
+    line({
+      timestamp: at,
+      type: 'response_item',
+      payload: { type: 'function_call', name, call_id: callId, arguments: JSON.stringify(args) }
+    })
   const out = (at: string, callId: string, output: string) =>
-    line({ timestamp: at, type: 'response_item', payload: { type: 'function_call_output', call_id: callId, output } })
+    line({
+      timestamp: at,
+      type: 'response_item',
+      payload: { type: 'function_call_output', call_id: callId, output }
+    })
   const patch = (at: string, callId: string, input: string) =>
-    line({ timestamp: at, type: 'response_item', payload: { type: 'custom_tool_call', name: 'apply_patch', call_id: callId, input } })
+    line({
+      timestamp: at,
+      type: 'response_item',
+      payload: { type: 'custom_tool_call', name: 'apply_patch', call_id: callId, input }
+    })
 
   it('reads its starting git info, apply_patch files and commits', () => {
     const text = [
       meta(OWN, '2026-10-20T14:15:04.000Z', {
-        git: { commit_hash: 'A1B2C3D4E5F6', branch: 'fix/checkout-totals', repository_url: 'https://github.com/beau/shop.git' }
+        git: {
+          commit_hash: 'A1B2C3D4E5F6',
+          branch: 'fix/checkout-totals',
+          repository_url: 'https://github.com/beau/shop.git'
+        }
       }),
-      patch('2026-10-20T14:16:00.000Z', 'p1', '*** Begin Patch\n*** Update File: src/cart.ts\n@@\n-a\n+b\n*** Add File: src/tax.ts\n+x\n*** End Patch'),
-      call('2026-10-20T14:17:00.000Z', 's1', 'shell', { command: ['bash', '-lc', "apply_patch <<'EOF'\n*** Begin Patch\n*** Delete File: old.ts\n*** End Patch\nEOF"] }),
-      call('2026-10-20T14:18:00.000Z', 'c1', 'exec_command', { cmd: 'git commit -am "Fix totals"' }),
-      out('2026-10-20T14:18:02.000Z', 'c1', 'Exit code: 0\nOutput:\n[fix/checkout-totals 9f8e7d6] Fix totals\n 2 files changed'),
+      patch(
+        '2026-10-20T14:16:00.000Z',
+        'p1',
+        '*** Begin Patch\n*** Update File: src/cart.ts\n@@\n-a\n+b\n*** Add File: src/tax.ts\n+x\n*** End Patch'
+      ),
+      call('2026-10-20T14:17:00.000Z', 's1', 'shell', {
+        command: [
+          'bash',
+          '-lc',
+          "apply_patch <<'EOF'\n*** Begin Patch\n*** Delete File: old.ts\n*** End Patch\nEOF"
+        ]
+      }),
+      call('2026-10-20T14:18:00.000Z', 'c1', 'exec_command', {
+        cmd: 'git commit -am "Fix totals"'
+      }),
+      out(
+        '2026-10-20T14:18:02.000Z',
+        'c1',
+        'Exit code: 0\nOutput:\n[fix/checkout-totals 9f8e7d6] Fix totals\n 2 files changed'
+      ),
       call('2026-10-20T14:19:00.000Z', 'g1', 'exec_command', { cmd: 'gh pr create --fill' }),
       out('2026-10-20T14:19:05.000Z', 'g1', 'https://github.com/beau/shop/pull/7')
     ].join('\n')
@@ -177,7 +277,9 @@ describe('Codex signals', () => {
     expect(s.remote).toBe('https://github.com/beau/shop.git')
     expect(s.branches).toEqual(['fix/checkout-totals'])
     expect(s.files).toEqual(['src/cart.ts', 'src/tax.ts', 'old.ts'])
-    expect(s.commits).toMatchObject([{ sha: '9f8e7d6', kind: 'commit-line', branch: 'fix/checkout-totals', subject: 'Fix totals' }])
+    expect(s.commits).toMatchObject([
+      { sha: '9f8e7d6', kind: 'commit-line', branch: 'fix/checkout-totals', subject: 'Fix totals' }
+    ])
     expect(s.prs.map((p) => p.number)).toEqual([7])
   })
 

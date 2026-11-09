@@ -24,10 +24,12 @@ const COMMIT_LINE =
   /^\[(?:detached HEAD|([^\s\]]+))(?: \(root-commit\))? ([0-9a-fA-F]{7,40})\] ?(.*)$/gm
 /** A SHA at a line start: `git log --oneline -1` (`abc1234 Subject`) or `git rev-parse HEAD`. */
 const LINE_SHA = /^([0-9a-f]{7,40})(?:[ \t]+(.*))?$/gm
-const PR_URL = /https:\/\/github\.com\/([A-Za-z0-9-]{1,39})\/([A-Za-z0-9._-]{1,100})\/pull\/(\d{1,7})\b/g
+const PR_URL =
+  /https:\/\/github\.com\/([A-Za-z0-9-]{1,39})\/([A-Za-z0-9._-]{1,100})\/pull\/(\d{1,7})\b/g
 /** A claude.ai/code session link (a Remote Control or cloud session). */
 export const SESSION_URL_RE = /https:\/\/claude\.ai\/code\/session_[A-Za-z0-9]{8,64}/g
-const SESSION_TRAILER = /^\s*Claude-Session:\s*(https:\/\/claude\.ai\/code\/session_[A-Za-z0-9]{8,64})/gim
+const SESSION_TRAILER =
+  /^\s*Claude-Session:\s*(https:\/\/claude\.ai\/code\/session_[A-Za-z0-9]{8,64})/gim
 
 /** The commits a `git commit` call's output shows. */
 export function commitsInOutput(

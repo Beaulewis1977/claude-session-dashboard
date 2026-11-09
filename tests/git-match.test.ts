@@ -11,10 +11,21 @@ const at = (min: number): number => T0 + min * MIN
 const sha = (n: number): string => n.toString(16).padStart(40, '0')
 
 function signals(p: Partial<SessionGitSignals> = {}): SessionGitSignals {
-  return { branches: [], files: [], commits: [], prs: [], spans: [[at(0), at(60)]], sessionUrls: [], ...p }
+  return {
+    branches: [],
+    files: [],
+    commits: [],
+    prs: [],
+    spans: [[at(0), at(60)]],
+    sessionUrls: [],
+    ...p
+  }
 }
 
-function session(key: string, p: Partial<MatchSession> & { signals?: Partial<SessionGitSignals> } = {}): MatchSession {
+function session(
+  key: string,
+  p: Omit<Partial<MatchSession>, 'signals'> & { signals?: Partial<SessionGitSignals> } = {}
+): MatchSession {
   return {
     key,
     sessionId: key,
@@ -43,8 +54,13 @@ function commit(n: number, p: Partial<CommitInfo> = {}): CommitInfo {
   }
 }
 
-const repo = (commits: CommitInfo[], userEmail?: string) => ({ caseInsensitive: true, userEmail, commits })
-const links = (r: Map<string, CommitLink[]>, key: string) => r.get(key)!.map((l) => [l.sha, l.level])
+const repo = (commits: CommitInfo[], userEmail?: string) => ({
+  caseInsensitive: true,
+  userEmail,
+  commits
+})
+const links = (r: Map<string, CommitLink[]>, key: string) =>
+  r.get(key)!.map((l) => [l.sha, l.level])
 
 describe('paths', () => {
   it('normalises Windows, WSL drive and relative paths', () => {
@@ -71,9 +87,15 @@ describe('paths', () => {
 describe('confidence', () => {
   it('exact: the session printed the SHA during its git commit call', () => {
     const c = commit(1, { ct: at(10) + 30_000 })
-    const s = session('a', { signals: { commits: [{ sha: c.sha.slice(0, 7), kind: 'commit-line', from: at(10), to: at(10) + 5000 }] } })
+    const s = session('a', {
+      signals: {
+        commits: [{ sha: c.sha.slice(0, 7), kind: 'commit-line', from: at(10), to: at(10) + 5000 }]
+      }
+    })
     const r = matchRepo(repo([c]), [s])
-    expect(r.get('a')).toEqual([{ sha: c.sha, level: 'exact', reasons: [{ kind: 'seen', how: 'commit-line' }] }])
+    expect(r.get('a')).toEqual([
+      { sha: c.sha, level: 'exact', reasons: [{ kind: 'seen', how: 'commit-line' }] }
+    ])
   })
 
   it('a chained SHA counts only if the commit was made during that call (±1 minute)', () => {
@@ -95,15 +117,26 @@ describe('confidence', () => {
   it('exact: a Claude-Session trailer naming one of its links', () => {
     const url = 'https://claude.ai/code/session_01AbCdEf9876'
     const c = commit(1, { at: at(500), ct: at(500), trailers: [`Claude-Session: ${url}`] })
-    const r = matchRepo(repo([c]), [session('a', { signals: { sessionUrls: [url] } }), session('b')])
+    const r = matchRepo(repo([c]), [
+      session('a', { signals: { sessionUrls: [url] } }),
+      session('b')
+    ])
     expect(links(r, 'a')).toEqual([[c.sha, 'exact']])
     expect(r.get('b')).toEqual([])
   })
 
   it('high: a rebased copy (same subject and author time, new SHA)', () => {
     const c = commit(9, { subject: 'Tidy', at: at(10), ct: at(300) })
-    const s = session('a', { signals: { commits: [{ sha: 'abcdef1', kind: 'commit-line', subject: 'Tidy', from: at(10), to: at(10) }] } })
-    expect(matchRepo(repo([c]), [s]).get('a')).toEqual([{ sha: c.sha, level: 'high', reasons: [{ kind: 'rewritten' }] }])
+    const s = session('a', {
+      signals: {
+        commits: [
+          { sha: 'abcdef1', kind: 'commit-line', subject: 'Tidy', from: at(10), to: at(10) }
+        ]
+      }
+    })
+    expect(matchRepo(repo([c]), [s]).get('a')).toEqual([
+      { sha: c.sha, level: 'high', reasons: [{ kind: 'rewritten' }] }
+    ])
   })
 
   it('high: during a stretch, on its branch and touching files it edited', () => {
@@ -116,8 +149,12 @@ describe('confidence', () => {
 
   it('medium: branch or files; low: time only; nothing outside its stretches', () => {
     const c = commit(1)
-    expect(links(matchRepo(repo([c]), [session('a', { signals: { branches: ['fix/login'] } })]), 'a')).toEqual([[c.sha, 'medium']])
-    expect(links(matchRepo(repo([c]), [session('a', { signals: { files: ['src/a.ts'] } })]), 'a')).toEqual([[c.sha, 'medium']])
+    expect(
+      links(matchRepo(repo([c]), [session('a', { signals: { branches: ['fix/login'] } })]), 'a')
+    ).toEqual([[c.sha, 'medium']])
+    expect(
+      links(matchRepo(repo([c]), [session('a', { signals: { files: ['src/a.ts'] } })]), 'a')
+    ).toEqual([[c.sha, 'medium']])
     expect(links(matchRepo(repo([c]), [session('a')]), 'a')).toEqual([[c.sha, 'low']])
     const late = commit(2, { at: at(70) })
     expect(links(matchRepo(repo([late]), [session('a')]), 'a')).toEqual([])
@@ -131,15 +168,24 @@ describe('confidence', () => {
     expect(matchRepo(repo([c], 'beau@example.com'), [session('a')]).get('a')).toEqual([])
     expect(matchRepo(repo([c], 'BEAU@example.com'), [session('a')]).get('a')).toEqual([])
     const mine = commit(2)
-    expect(links(matchRepo(repo([mine], 'BEAU@example.com'), [session('a')]), 'a')).toEqual([[mine.sha, 'low']])
+    expect(links(matchRepo(repo([mine], 'BEAU@example.com'), [session('a')]), 'a')).toEqual([
+      [mine.sha, 'low']
+    ])
     const merge = commit(3, { parents: [sha(1), sha(2)] })
-    expect(matchRepo(repo([merge]), [session('a', { signals: { branches: ['fix/login'] } })]).get('a')).toEqual([])
+    expect(
+      matchRepo(repo([merge]), [session('a', { signals: { branches: ['fix/login'] } })]).get('a')
+    ).toEqual([])
     const byCodex = commit(4, { trailers: ['Co-authored-by: Codex <noreply@openai.com>'] })
-    const r = matchRepo(repo([byCodex]), [session('claude'), session('codex', { provider: 'codex' })])
+    const r = matchRepo(repo([byCodex]), [
+      session('claude'),
+      session('codex', { provider: 'codex' })
+    ])
     expect(r.get('claude')).toEqual([])
     expect(links(r, 'codex')).toEqual([[byCodex.sha, 'low']])
     const head = commit(5)
-    expect(matchRepo(repo([head]), [session('a', { signals: { head: head.sha.slice(0, 12) } })]).get('a')).toEqual([])
+    expect(
+      matchRepo(repo([head]), [session('a', { signals: { head: head.sha.slice(0, 12) } })]).get('a')
+    ).toEqual([])
   })
 })
 
@@ -164,7 +210,9 @@ describe('sessions sharing a commit', () => {
 
   it('an exact match wins; two "seen" claims go to the earlier call (the original)', () => {
     const c = commit(1, { ct: at(10) })
-    const seen = (from: number) => ({ commits: [{ sha: c.sha.slice(0, 7), kind: 'commit-line' as const, from, to: at(10) }] })
+    const seen = (from: number) => ({
+      commits: [{ sha: c.sha.slice(0, 7), kind: 'commit-line' as const, from, to: at(10) }]
+    })
     const r = matchRepo(repo([c]), [
       session('fork', { signals: seen(at(10)) }),
       session('orig', { signals: seen(at(9.5)) }),
@@ -184,7 +232,10 @@ describe('sessions sharing a commit', () => {
         provider: 'codex',
         parentId: 'parent',
         title: 'worker',
-        signals: { branches: ['fix/login'], commits: [{ sha: own.sha.slice(0, 8), kind: 'commit-line', from: at(40), to: at(40) }] }
+        signals: {
+          branches: ['fix/login'],
+          commits: [{ sha: own.sha.slice(0, 8), kind: 'commit-line', from: at(40), to: at(40) }]
+        }
       })
     ])
     expect(links(r, 'sub')).toEqual([[own.sha, 'exact']])
@@ -195,10 +246,41 @@ describe('sessions sharing a commit', () => {
     expect(r.get('parent')![1].reasons).toContainEqual({ kind: 'subagent', title: 'worker' })
   })
 
+  it("a fork's copy of its parent's history doesn't claim the parent's commits", () => {
+    const before = commit(1, { at: at(10), ct: at(10) })
+    const after = commit(2, { at: at(40), ct: at(40) })
+    const seen = {
+      commits: [
+        { sha: before.sha.slice(0, 7), kind: 'commit-line' as const, from: at(10), to: at(10) }
+      ]
+    }
+    const r = matchRepo(repo([before, after]), [
+      session('parent', { signals: { ...seen, branches: ['fix/login'] } }),
+      // Split at minute 30: its copy shows the same commit line and the same branch.
+      session('fork', {
+        forkOf: 'parent',
+        forkAt: at(30),
+        signals: { ...seen, branches: ['fix/login'], files: ['src/a.ts'] }
+      })
+    ])
+    expect(links(r, 'parent')).toEqual([[before.sha, 'exact']])
+    expect(links(r, 'fork')).toEqual([[after.sha, 'high']])
+    // Split point unknown: it gives way to its parent at the same level.
+    const tie = matchRepo(repo([after]), [
+      session('parent', { signals: { branches: ['fix/login'] } }),
+      session('fork', { forkOf: 'parent', signals: { branches: ['fix/login'] } })
+    ])
+    expect(links(tie, 'parent')).toEqual([[after.sha, 'medium']])
+    expect(tie.get('fork')).toEqual([])
+  })
+
   it('an unlinked commit is left out, and another session can take it', () => {
     const c = commit(1)
     const r = matchRepo(repo([c]), [
-      session('a', { unlinked: new Set([c.sha]), signals: { branches: ['fix/login'], files: ['src/a.ts'] } }),
+      session('a', {
+        unlinked: new Set([c.sha]),
+        signals: { branches: ['fix/login'], files: ['src/a.ts'] }
+      }),
       session('b')
     ])
     expect(r.get('a')).toEqual([])
@@ -208,7 +290,10 @@ describe('sessions sharing a commit', () => {
   it('worktrees: each session relative to its own worktree root', () => {
     const c = commit(1, { files: [{ path: 'src/a.ts', add: 1, del: 0 }] })
     const r = matchRepo(repo([c]), [
-      session('wt', { root: 'c:/code/acme/.claude/worktrees/x', signals: { files: ['C:\\code\\acme\\.claude\\worktrees\\x\\src\\a.ts'] } })
+      session('wt', {
+        root: 'c:/code/acme/.claude/worktrees/x',
+        signals: { files: ['C:\\code\\acme\\.claude\\worktrees\\x\\src\\a.ts'] }
+      })
     ])
     expect(links(r, 'wt')).toEqual([[c.sha, 'medium']])
   })
@@ -217,8 +302,19 @@ describe('sessions sharing a commit', () => {
 describe('pull requests and the badge', () => {
   it("takes the session's own PRs in this repo, merge PRs of linked commits, and gh by branch", () => {
     const c = commit(1, { pr: 40 })
-    const own = { owner: 'beau', repo: 'acme', number: 14, url: 'https://github.com/beau/acme/pull/14', at: at(5) }
-    const elsewhere = { ...own, repo: 'other', number: 3, url: 'https://github.com/beau/other/pull/3' }
+    const own = {
+      owner: 'beau',
+      repo: 'acme',
+      number: 14,
+      url: 'https://github.com/beau/acme/pull/14',
+      at: at(5)
+    }
+    const elsewhere = {
+      ...own,
+      repo: 'other',
+      number: 3,
+      url: 'https://github.com/beau/other/pull/3'
+    }
     const prs = sessionPrs({
       signals: signals({ prs: [own, elsewhere] }),
       links: [{ sha: c.sha, level: 'high', reasons: [] }],
@@ -226,8 +322,21 @@ describe('pull requests and the badge', () => {
       github: 'beau/acme',
       ghPrs: [
         { number: 14, title: 'Fix login', url: own.url, state: 'MERGED', headRefName: 'fix/login' },
-        { number: 99, title: 'Unrelated', url: 'https://github.com/beau/acme/pull/99', state: 'OPEN', headRefName: 'other' },
-        { number: 41, title: 'By branch', url: 'https://github.com/beau/acme/pull/41', state: 'OPEN', isDraft: true, headRefName: 'fix/login' }
+        {
+          number: 99,
+          title: 'Unrelated',
+          url: 'https://github.com/beau/acme/pull/99',
+          state: 'OPEN',
+          headRefName: 'other'
+        },
+        {
+          number: 41,
+          title: 'By branch',
+          url: 'https://github.com/beau/acme/pull/41',
+          state: 'OPEN',
+          isDraft: true,
+          headRefName: 'fix/login'
+        }
       ],
       branches: ['fix/login']
     })

@@ -2,7 +2,14 @@
 // and squash commit messages of its linked commits, and (when I turned it
 // on) from the GitHub CLI by branch. Plus the card badge.
 
-import { LEVEL_RANK, type CommitInfo, type CommitLink, type GitBadge, type PrLink, type SessionGitSignals } from './types'
+import {
+  LEVEL_RANK,
+  type CommitInfo,
+  type CommitLink,
+  type GitBadge,
+  type PrLink,
+  type SessionGitSignals
+} from './types'
 
 /** What `gh pr list --json …` returns for one pull request (only the fields the app asks for). */
 export interface GhPr {
@@ -23,7 +30,9 @@ export function prState(p: Pick<GhPr, 'state' | 'isDraft'>): PrLink['state'] {
 
 /** Only PR links of this form are ever shown or opened. */
 export function isGithubPrUrl(url: string): boolean {
-  return /^https:\/\/github\.com\/[A-Za-z0-9-]{1,39}\/[A-Za-z0-9._-]{1,100}\/pull\/\d{1,7}$/.test(url)
+  return /^https:\/\/github\.com\/[A-Za-z0-9-]{1,39}\/[A-Za-z0-9._-]{1,100}\/pull\/\d{1,7}$/.test(
+    url
+  )
 }
 
 export function sessionPrs(opts: {

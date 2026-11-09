@@ -1,6 +1,12 @@
 // Display helpers for git links (Changes tab, badges, phone).
 
-import { LEVEL_LABEL, type CommitView, type LinkLevel, type LinkReason, type PrLink } from '@shared/git/types'
+import {
+  LEVEL_LABEL,
+  type CommitView,
+  type LinkLevel,
+  type LinkReason,
+  type PrLink
+} from '@shared/git/types'
 
 export function shortSha(sha: string): string {
   return sha.slice(0, 7)
@@ -51,7 +57,8 @@ export const PR_STATE: Record<NonNullable<PrLink['state']>, { label: string; cls
 /** The highlight.js language for a file, by its extension (undefined: plain text). */
 export function langFor(path: string): string | undefined {
   const name = path.split('/').pop()?.toLowerCase() ?? ''
-  if (name === 'dockerfile' || name === 'makefile') return name === 'makefile' ? 'makefile' : undefined
+  if (name === 'dockerfile' || name === 'makefile')
+    return name === 'makefile' ? 'makefile' : undefined
   const ext = name.includes('.') ? name.slice(name.lastIndexOf('.') + 1) : ''
   const map: Record<string, string> = {
     ts: 'typescript',

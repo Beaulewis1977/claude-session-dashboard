@@ -5,7 +5,12 @@ import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { RefreshCw } from 'lucide-react'
 import { formatRelative } from '@shared/format'
-import { DEFAULT_GIT_SETTINGS, type GhState, type GitLinkSettings, type GitStatus } from '@shared/git/types'
+import {
+  DEFAULT_GIT_SETTINGS,
+  type GhState,
+  type GitLinkSettings,
+  type GitStatus
+} from '@shared/git/types'
 import { api } from '@/lib/api'
 import { useApp } from '@/lib/store'
 import { cn } from '@/lib/utils'
@@ -73,9 +78,9 @@ export function GitSettings() {
         label="Look up pull requests with the GitHub CLI"
         hint={
           <>
-            Runs <span className="font-mono">gh pr list</span> (read-only) for the branches of sessions in GitHub
-            repos. gh talks to GitHub with your own sign-in; nothing else leaves your PC.{' '}
-            {status ? GH_TEXT[status.gh] : ''}
+            Runs <span className="font-mono">gh pr list</span> (read-only) for the branches of
+            sessions in GitHub repos. gh talks to GitHub with your own sign-in; nothing else leaves
+            your PC. {status ? GH_TEXT[status.gh] : ''}
           </>
         }
       >
@@ -99,8 +104,8 @@ export function GitSettings() {
           <div className="flex gap-2">
             <span className="w-28 shrink-0 text-muted-foreground">Linked</span>
             <span>
-              {status.linkedSessions} session{status.linkedSessions === 1 ? '' : 's'} with commits, in{' '}
-              {status.repos} repo{status.repos === 1 ? '' : 's'}
+              {status.linkedSessions} session{status.linkedSessions === 1 ? '' : 's'} with commits,
+              in {status.repos} repo{status.repos === 1 ? '' : 's'}
               {status.checkedAt ? ` · checked ${formatRelative(status.checkedAt)}` : ''}
             </span>
           </div>

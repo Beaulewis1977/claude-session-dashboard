@@ -31,7 +31,12 @@ export function registerGitIpc(deps: GitIpcDeps): void {
   })
   handle('git:session', (_e, k) => git.view(key(k)))
   handle('git:diff', (_e, k, s, path, all) =>
-    git.diff(key(k), sha(s), typeof path === 'string' && path.length <= 4096 ? path : undefined, all === true)
+    git.diff(
+      key(k),
+      sha(s),
+      typeof path === 'string' && path.length <= 4096 ? path : undefined,
+      all === true
+    )
   )
   handle('git:unlink', (_e, k, s) => git.unlink(key(k), sha(s)))
   handle('git:relink', (_e, k, s) => git.relink(key(k), sha(s)))

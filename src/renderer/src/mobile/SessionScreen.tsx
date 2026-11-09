@@ -214,7 +214,11 @@ export function SessionScreen({ session }: { session: SessionSummary }) {
             onClick={() => setChangesOpen(true)}
           >
             <GitCommitHorizontal className="size-5" />
-            {session.git ? <span className="tabular-nums">{badgeText(session.git)}</span> : 'Changes'}
+            {session.git ? (
+              <span className="tabular-nums">{badgeText(session.git)}</span>
+            ) : (
+              'Changes'
+            )}
           </Button>
         )}
         {showTerminal && (

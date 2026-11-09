@@ -99,6 +99,12 @@ export interface GitInput {
   title?: string
   /** A Codex subagent: its parent thread's id. */
   parentId?: string
+  /**
+   * A fork or branch with its parent's history copied in: the parent's id, and
+   * when they split (its lines before then are the parent's work).
+   */
+  forkOf?: string
+  forkAt?: number
   signals?: SessionGitSignals
   /** Changes when the session does (size, last activity, availability). */
   rev: string
@@ -234,6 +240,10 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
       if (!this.isOn(e) || e.base.availability === 'imported') continue
       const b = e.base
       const src = this.source(b.sourceId)
+      // Continue fresh starts empty; every other kind of child carries a copy of its parent.
+      const lin = this.lineageResolver?.(b.key)
+      const fork = lin && lin.via !== 'continue' ? lin : undefined
+      const forkAt = fork?.atTime ? Date.parse(fork.atTime) : NaN
       out.push({
         key: b.key,
         sessionId: b.sessionId,
@@ -244,8 +254,11 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
         cwd: b.cwd,
         title: this.metaOf(b).name ?? b.claudeName ?? b.summary ?? b.firstPrompt?.slice(0, 80),
         parentId: b.subagent?.parentId,
+        ...(fork ? { forkOf: fork.parentSessionId } : {}),
+        ...(Number.isFinite(forkAt) ? { forkAt } : {}),
         signals: e.git,
-        rev: `${e.size}|${b.lastActivityAt ?? ''}|${b.availability}`
+        // Its fork point counts too: lineage is worked out after the scan.
+        rev: `${e.size}|${b.lastActivityAt ?? ''}|${b.availability}|${fork?.parentSessionId ?? ''}|${fork?.atTime ?? ''}`
       })
     }
     return out
@@ -266,7 +279,10 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
     const e = this.entries.get(key)
     if (!e || !this.isOn(e)) return false
     const mk = this.metaKeyOf(e.base)
-    const clean = [...new Set(shas.filter((x) => /^[0-9a-f]{40}(?:[0-9a-f]{24})?$/.test(x)))].slice(0, 5000)
+    const clean = [...new Set(shas.filter((x) => /^[0-9a-f]{40}(?:[0-9a-f]{24})?$/.test(x)))].slice(
+      0,
+      5000
+    )
     this.metadata.update((d) => {
       const next: SessionMeta = { ...(d.sessions[mk] ?? {}), updatedAt: new Date().toISOString() }
       if (clean.length) next.gitUnlinked = clean

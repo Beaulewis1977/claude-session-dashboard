@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.12.0 (November 8, 2026)
+
+**Codex support (part 4, complete).**
+
+### Codex summaries, Continue fresh, agent messages & trends (PR #35)
+
+- **Summaries for Codex sessions** (written by Claude; a `codex exec` option waits for a real
+  no-tools switch in Codex).
+- **Continue fresh for Codex** with its own handoff folder and automatic "continued from" linking.
+- **Agent-to-agent messages** shown as collapsible steps in the Codex viewer.
+- **Codex Trends tab:** output / reasoning tokens, latency, tool errors, aborts, cache ratio and
+  context use.
+- **Handoff folder size and cleanup** in Settings.
+- **Continue fresh for Codex from the phone.**
+
 ## 1.11.0 (November 8, 2026)
 
 **Codex support (part 3): Codex sessions in Running now, with alerts.**

@@ -192,6 +192,8 @@ export interface CodexAppPreview {
   inside?: { id: string; name: string; root: string }
   /** Shown after opening (Fork). */
   note?: string
+  /** The project accepted for a subfolder isn't the one it would open now: ask again. */
+  consentChanged?: boolean
 }
 
 /** What the decision needs to know (gathered by the main process). */
@@ -279,11 +281,22 @@ export function codexAppPreview(
     folder: f.folder,
     folderReason: f.folderReason
   })
-  if (m.kind === 'assigned' || m.kind === 'exact')
-    return { available: true, project: { ...m.project } }
+  // A consent ("Use that project anyway?") names one project: whatever the match is
+  // now (the app may have assigned the thread, or the list changed), it must still be
+  // exactly that project, or nothing opens and the user is asked again.
+  const now = m.kind === 'none' ? undefined : { ...m.project }
+  if (accepted && !(now && now.id === accepted.id && now.root === accepted.root))
+    return {
+      available: false,
+      consentChanged: true,
+      ...(m.kind === 'inside' ? { inside: now } : now ? { project: now } : {}),
+      reason:
+        'The Codex project for this folder changed since you chose it. Check where it opens now, then try again.'
+    }
+  if (m.kind === 'assigned' || m.kind === 'exact') return { available: true, project: now! }
   if (m.kind === 'inside') {
-    const inside = { ...m.project }
-    return accepted && accepted.id === inside.id && accepted.root === inside.root
+    const inside = now!
+    return accepted
       ? { available: true, project: inside, inside }
       : {
           available: false,

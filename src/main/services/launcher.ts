@@ -719,8 +719,10 @@ export class Launcher {
       return { ...base, installed: false, unsupportedPlatform: true }
     const snap = await app.service.snapshot()
     // Continue fresh matches the folder to a project, unless the app assigned the thread itself.
+    // (An assignment to a project that's gone doesn't count: then the folder is matched.)
     const assigned = snap.state?.assignments[s.sessionId.toLowerCase()]
-    const where = kind === 'continue' && snap.state && !assigned ? await this.appFolder(s) : {}
+    const live = !!assigned && !!snap.state?.projects.some((p) => p.id === assigned)
+    const where = kind === 'continue' && snap.state && !live ? await this.appFolder(s) : {}
     return {
       installed: snap.installed,
       ...(snap.wslMode !== undefined ? { wslMode: snap.wslMode } : {}),

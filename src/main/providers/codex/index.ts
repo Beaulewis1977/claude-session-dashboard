@@ -115,7 +115,7 @@ export function createCodexProvider(opts: { textCache?: CompactTextCache } = {})
         ...(a.contentBytes !== undefined ? { contentBytes: a.contentBytes } : {}),
         ...(a.context ? { context: a.context } : {})
       }
-      return { base, searchText: a.searchText }
+      return { base, searchText: a.searchText, git: a.git }
     },
     buildMessages: (text) => buildCodexMessages(text),
     searchText: (text) => analyzeCodex(text).searchText,

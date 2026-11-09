@@ -23,6 +23,8 @@ import type { SessionContext } from '@shared/context'
 import type { ChatMessage, ContentBlock, ToolResult } from '@shared/types'
 import { READ_NOTE_TYPE, type ReadNote } from './read'
 import { isContextItem, isInjected, whoWrote } from './provenance'
+import { GitSignalBuilder } from '@shared/git/signals'
+import type { SessionGitSignals } from '@shared/git/types'
 
 /**
  * Search text is cut to this many characters per session (prompts and
@@ -68,9 +70,11 @@ export interface CodexAnalysis {
   contentBytes?: number
   /** Context size at the end (from the last token_count), see codexContext. */
   context?: SessionContext
+  /** What the thread's own lines say about its git work. */
+  git: SessionGitSignals
 }
 
-interface Line {
+export interface Line {
   timestamp?: string
   ordinal?: number
   type?: string
@@ -229,7 +233,8 @@ export function analyzeCodex(text: string, fileSessionId?: string): CodexAnalysi
     assistantMessageCount: 0,
     toolCallCount: 0,
     malformedLines: malformed,
-    searchText: ''
+    searchText: '',
+    git: codexGitSignals(lines, fileSessionId)
   }
   const models = new Set<string>()
   // Search text: the prompts and answers first, then reasoning and tool calls
@@ -826,4 +831,79 @@ const ROLLOUT_RE =
 
 export function rolloutIdOf(fileName: string): string | undefined {
   return ROLLOUT_RE.exec(fileName)?.[1]?.toLowerCase()
+}
+
+// ------------------------------------------------------------- git signals
+
+/** Codex's shell tools (their names differ between versions). */
+const SHELL_TOOLS = new Set(['shell', 'shell_command', 'exec_command', 'local_shell', 'container.exec'])
+
+/**
+ * The lines a fork (or a subagent started with its parent's history) copied
+ * from its parent: from the parent's meta (the second session_meta, with
+ * another id) up to the first line written more than a second after the
+ * thread's own start. Codex writes the copy in one go, stamped with the
+ * fork's start time, so its tool calls look new; they're the parent's.
+ */
+function copiedRange(lines: Line[], sessionId?: string): [number, number] | undefined {
+  const own = lines.findIndex(
+    (l) => l.type === 'session_meta' && (!sessionId || l.payload.id === sessionId)
+  )
+  if (own < 0) return undefined
+  const ownId = lines[own].payload.id
+  const start = lines.findIndex(
+    (l, i) => i > own && l.type === 'session_meta' && l.payload.id !== ownId
+  )
+  if (start < 0) return undefined
+  const t0 = Date.parse(lines[own].timestamp ?? str(lines[own].payload.timestamp) ?? '')
+  if (!Number.isFinite(t0)) return [start, lines.length]
+  let end = start + 1
+  while (end < lines.length) {
+    const t = Date.parse(lines[end].timestamp ?? '')
+    if (Number.isFinite(t) && t > t0 + 1000) break
+    end++
+  }
+  return [start, end]
+}
+
+/** What the thread's own lines say about its git work (see @shared/git/signals). */
+export function codexGitSignals(lines: Line[], fileSessionId?: string): SessionGitSignals {
+  const b = new GitSignalBuilder()
+  const meta = ownMeta(lines, fileSessionId) ?? {}
+  const git = (meta.git ?? {}) as Record<string, unknown>
+  b.head = str(git.commit_hash)?.toLowerCase()
+  b.remote = str(git.repository_url)
+  b.branch(git.branch)
+  const copied = copiedRange(lines, fileSessionId)
+  lines.forEach((l, i) => {
+    if (copied && i >= copied[0] && i < copied[1]) return
+    const t = l.timestamp ? Date.parse(l.timestamp) : NaN
+    const at = Number.isFinite(t) ? t : undefined
+    b.time(at)
+    if (l.type !== 'response_item') return
+    const p = l.payload
+    const out = toolOutputOf(p)
+    if (out) {
+      b.result(out.callId, out.result.text, at)
+      return
+    }
+    const call = toolCallOf(p)
+    if (!call) return
+    if (call.name === 'apply_patch') {
+      const patch =
+        typeof call.input === 'string'
+          ? call.input
+          : String((call.input as { input?: unknown } | undefined)?.input ?? '')
+      for (const f of patchFiles(patch)) b.file(f)
+      return
+    }
+    if (SHELL_TOOLS.has(call.name)) {
+      const cmd = commandText(call.input)
+      if (!cmd) return
+      // `apply_patch <<'EOF' … EOF` run through the shell.
+      if (cmd.includes('*** Begin Patch')) for (const f of patchFiles(cmd)) b.file(f)
+      b.command(call.callId, cmd, at)
+    }
+  })
+  return b.build()
 }

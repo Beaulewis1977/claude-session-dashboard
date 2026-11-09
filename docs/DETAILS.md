@@ -921,6 +921,7 @@ records of sessions whose files are gone are kept as they were.
 | `archive\claude-ai\`                                    | Conversations imported from a claude.ai data export                                                              |
 | `accounts.json`                                         | API keys (encrypted), credit grants, cached Admin reports                                                        |
 | `bridge.json`, `backups\settings\`                      | What the installer changed, and the `settings.json` backups                                                      |
+| `logs\notifications.jsonl`                              | Each desktop notification: when it was sent and what Windows did (shown, failed and why, clicked). No text       |
 
 **Recalculate usage** (Usage view or Settings → Usage) re-reads every session from scratch.
 
@@ -1425,6 +1426,15 @@ These are choices I made where the spec left room, or had to deviate:
   only runs on status line updates), and check that the environment says "Receiving data" in
   Settings → Live limits. `rate_limits` only exists for Pro/Max subscriptions. In WSL, check
   `sh ~/.claude-session-dashboard/bin/statusline.sh < ~/.claude-session-dashboard/live/latest.json`.
+- **A notification didn't show up (Windows).** `logs\notifications.jsonl` in the data folder has one
+  line per notification event: `sent`, then `shown`, `failed` (with Windows' error; it's tried once
+  more) or nothing more (Windows dropped it). The first line of each run records the app's
+  AppUserModelID: the installed and portable app use `com.beaulewis.claude-session-dashboard`,
+  `npm run dev` the same with `.dev`. Also check Windows Settings → System → Notifications for the
+  app, and Do not disturb.
+- **Slow right after starting.** Start it with `CSD_TIMING=1` set to print the startup steps, each
+  Resume preview step, and any time the main process was busy for more than 100 ms;
+  `CSD_CPU_PROFILE=<file>` also writes a CPU profile of the first 30 seconds.
 - **Nothing shows up.** Open Settings and check the scan sources. Add your `.claude` folder with
   **Add folder…** if it lives somewhere unusual.
 

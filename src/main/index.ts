@@ -91,6 +91,7 @@ import { BillingService } from './services/billing'
 import { createFixturesPlatform, createRealPlatform, type Platform } from './platform'
 import { mark, profileStartup, timed, watchEventLoop } from './timing'
 import { HIDDEN_ARG, setStartWithWindows, startWithWindows } from './login-item'
+import { createNotifier } from './notify'
 import { CodexAppService, codexProtocolRegistered } from './providers/codex/app'
 import { BridgeInstaller, cleanupSettingsLeftovers, createBridgeStore } from './services/bridge'
 import { Launcher } from './services/launcher'
@@ -137,6 +138,27 @@ const CHROME = {
 }
 
 let mainWindow: BrowserWindow | undefined
+/**
+ * Windows identifies a desktop app's notifications by its AppUserModelID and
+ * the Toast Activator CLSID Electron registers for it (Electron also writes
+ * both into the app's Start Menu shortcut). The installed and portable app
+ * use the installer's appId; `npm run dev` its own id, so development
+ * notifications never mix with the installed app's. Without them Electron used
+ * its default id and a new random CLSID on every start, so Windows had to take
+ * in a changed registration at the first notification of each run.
+ */
+const APP_ID = 'com.beaulewis.claude-session-dashboard'
+const APP_USER_MODEL_ID = app.isPackaged ? APP_ID : `${APP_ID}.dev`
+const TOAST_ACTIVATOR_CLSID = app.isPackaged
+  ? '{6D3F2B8A-5C41-4E7B-9A0D-2F8E1C7B4A63}'
+  : '{B1E94C27-3A6F-4D85-8C12-7E5A9F0D3B48}'
+
+function setAppIdentity(): void {
+  if (process.platform !== 'win32') return
+  app.setAppUserModelId(APP_USER_MODEL_ID)
+  app.setToastActivatorCLSID(TOAST_ACTIVATOR_CLSID)
+}
+
 /** Started at login (Settings → Start with Windows): only the tray icon until it's opened. */
 const START_HIDDEN = process.argv.includes(HIDDEN_ARG)
 /** The window was maximized when last closed, and a hidden start hasn't shown it yet. */
@@ -245,6 +267,8 @@ function lockNavigation(win: BrowserWindow): void {
 const RENDERER_INDEX = join(__dirname, '../renderer/index.html')
 
 async function main(): Promise<void> {
+  // Windows: the app's identity for its notifications, set before any is shown.
+  setAppIdentity()
   if (!app.requestSingleInstanceLock()) {
     app.quit()
     return
@@ -270,6 +294,20 @@ async function main(): Promise<void> {
   }
 
   const paths = appPaths(dataDir)
+  // Every desktop notification, and what Windows did with it, is logged
+  // (logs/notifications.jsonl; no titles or text).
+  const notify = createNotifier({
+    isSupported: () => Notification.isSupported(),
+    create: ({ title, body }) =>
+      new Notification({ title, body, icon: join(appRoot, 'resources', 'icon.png') }),
+    logFile: join(paths.dataDir, 'logs', 'notifications.jsonl'),
+    identity: () => ({
+      appUserModelId: APP_USER_MODEL_ID,
+      toastActivatorCLSID: process.platform === 'win32' ? app.toastActivatorCLSID : undefined,
+      packaged: app.isPackaged,
+      version: app.getVersion()
+    })
+  })
   // A restore staged before the restart (Settings → Backup) is finished first,
   // before any of the app's data is loaded.
   const restored = await applyPendingRestore(paths.dataDir, {
@@ -490,10 +528,7 @@ async function main(): Promise<void> {
       if (!Notification.isSupported()) return
       // Paired phones get the same alert as a toast.
       mobile.toast(title, body)
-      if (!Notification.isSupported()) return
-      const n = new Notification({ title, body, icon: join(appRoot, 'resources', 'icon.png') })
-      n.on('click', () => showUsage())
-      n.show()
+      notify({ kind: 'limits', title, body, onClick: () => showUsage() })
     },
     undefined,
     sourceOf
@@ -517,10 +552,7 @@ async function main(): Promise<void> {
     },
     (title, body) => {
       mobile.toast(title, body)
-      if (!Notification.isSupported()) return
-      const n = new Notification({ title, body, icon: join(appRoot, 'resources', 'icon.png') })
-      n.on('click', () => showUsage())
-      n.show()
+      notify({ kind: 'codex-limits', title, body, onClick: () => showUsage() })
     },
     sourceOf
   )
@@ -612,12 +644,7 @@ async function main(): Promise<void> {
     appVersion: app.getVersion(),
     encryptor,
     // A backup missed while the app was closed has run (done or failed).
-    notify: (title, body) => {
-      if (!Notification.isSupported()) return
-      const n = new Notification({ title, body, icon: join(appRoot, 'resources', 'icon.png') })
-      n.on('click', () => showBackup())
-      n.show()
-    },
+    notify: (title, body) => notify({ kind: 'backup', title, body, onClick: () => showBackup() }),
     beforeBackup: async () => {
       await Promise.all([
         metadata.flush(),
@@ -773,15 +800,8 @@ async function main(): Promise<void> {
     settings: () => sanitizeLiveAlerts(settings.value.liveAlerts),
     distroRoot: (id) => sessions.source(id)?.distroRoot,
     notify: (alert, title) => {
-      if (!Notification.isSupported()) return
       const t = desktopText(alert, title)
-      const n = new Notification({
-        title: t.title,
-        body: t.body,
-        icon: join(appRoot, 'resources', 'icon.png')
-      })
-      n.on('click', () => showLive(alert.key))
-      n.show()
+      notify({ kind: 'session-alert', ...t, onClick: () => showLive(alert.key) })
     },
     push: (kind, refFor) => mobile.webPush({ kind, ref: refFor })
   })

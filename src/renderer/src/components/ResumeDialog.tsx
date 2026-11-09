@@ -244,6 +244,9 @@ function ResumeDialogBody({ resume }: { resume: ResumeRequest }) {
         if (p.branch) branchId.current = p.branch.newSessionId
         if (p.continueFresh) continueId.current = p.continueFresh.newSessionId
         setPreview(p)
+        // A consent for a project the folder no longer opens in is dropped: the dialog
+        // previews again and shows where it opens now (asking again for a subfolder).
+        if (p.codexApp?.consentChanged) setAcceptedProject(undefined)
       })
       .catch((err: Error) =>
         toast.error('Could not prepare the command', { description: err.message })
@@ -363,6 +366,9 @@ function ResumeDialogBody({ resume }: { resume: ResumeRequest }) {
       showNewSession(res.branch)
     }
     if (!res.ok) {
+      // The Codex app's projects may have changed since the preview: check again
+      // (a stale consent is then dropped, see above), instead of failing the same way.
+      if (appMode) setExpired((n) => n + 1)
       toast.error(
         appMode
           ? "Couldn't open the Codex app"

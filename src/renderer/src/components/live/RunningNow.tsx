@@ -4,12 +4,12 @@
 import { useState } from 'react'
 import { BellRing, ChevronRight, Monitor, Radio, SquareTerminal, Zap } from 'lucide-react'
 import { baseName } from '@shared/format'
-import { alertsWork, type LiveSession } from '@shared/live'
+import { alertsCover, type LiveSession } from '@shared/live'
 import type { SessionSummary } from '@shared/types'
 import { useLiveList, useNow, liveMuted, liveTitle, timeLine } from '@/lib/live-sessions'
 import { useApp } from '@/lib/store'
 import { useEnabledProviders, useScope } from '@/lib/scope'
-import { inProviderView, providerOf } from '@shared/provider'
+import { inProviderView } from '@shared/provider'
 import { cn } from '@/lib/utils'
 import { EnvDot } from '../EnvBadge'
 import { ProviderBadge } from '../ProviderSwitch'
@@ -277,14 +277,11 @@ export function RunningView() {
   const needs = list.filter((x) => x.live.state === 'approval' || x.live.state === 'idle')
   const working = list.filter((x) => x.live.state === 'working')
   const ended = list.filter((x) => x.live.state === 'exited')
-  // Exact alerts work somewhere for every agent in this view that has homes. A Codex
-  // hook counts only once Codex runs it: trusted in /hooks, and hooks not turned off.
-  const alertsOn = enabled
-    .filter((p) => inProviderView(view, { provider: p }))
-    .every((p) => {
-      const mine = hooks.filter((h) => providerOf(h) === p)
-      return !mine.length || mine.some((h) => alertsWork(h))
-    })
+  const alertsOn = alertsCover(
+    list.map((x) => x.live),
+    hooks,
+    enabled.filter((p) => inProviderView(view, { provider: p }))
+  )
   const who =
     view === 'codex'
       ? 'Codex threads'

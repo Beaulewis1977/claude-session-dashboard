@@ -215,9 +215,11 @@ export function UnverifiedNote({ live }: { live: LiveSession }) {
     <span
       className="inline-flex items-center gap-1 text-warning"
       title={
-        providerOf(live) === 'codex'
-          ? 'No Codex process has this thread locked (the Codex app may not lock it), so its state comes from recent activity in its session file.'
-          : "The app can't check this process (for example, a stopped WSL distro), so it may have ended."
+        providerOf(live) !== 'codex'
+          ? "The app can't check this process (for example, a stopped WSL distro), so it may have ended."
+          : live.lockUnknown
+            ? "The app can't check this thread's lock right now (for example, a WSL share that can't be read), so it may have ended. Its state is the last one known."
+            : 'No Codex process has this thread locked (the Codex app may not lock it), so its state comes from recent activity in its session file.'
       }
     >
       <TriangleAlert className="size-3" /> unconfirmed

@@ -169,6 +169,30 @@ export function handlerPosition(
   return undefined
 }
 
+/** JSON with keys sorted, to compare values whatever their key order. */
+function canonical(v: unknown): string {
+  if (Array.isArray(v)) return `[${v.map(canonical).join(',')}]`
+  if (v && typeof v === 'object')
+    return `{${Object.keys(v as object)
+      .sort()
+      .map((k) => `${JSON.stringify(k)}:${canonical((v as Record<string, unknown>)[k])}`)
+      .join(',')}}`
+  return JSON.stringify(v)
+}
+
+/**
+ * Is the group at `index` of `hooks.PermissionRequest` exactly the one the app
+ * writes (one handler running its command, no matcher, the app's options)?
+ */
+export function groupAsWritten(text: string | undefined, index: number): boolean {
+  const list = hooksOf(text)?.[CODEX_HOOK_EVENTS[0]]
+  if (!Array.isArray(list)) return false
+  const g = list[index] as Record<string, unknown> | undefined
+  const h = Array.isArray(g?.hooks) ? (g.hooks as Record<string, unknown>[]) : []
+  if (h.length !== 1 || typeof h[0]?.command !== 'string') return false
+  return canonical(g) === canonical(hookGroup(h[0].command))
+}
+
 const fileMsg = (m: string): string => m.replace(/settings\.json/g, 'hooks.json')
 
 export interface CodexHooksHost {
@@ -305,9 +329,14 @@ export class CodexHooksInstaller {
         if (env.trust === 'untrusted' && lastEventAt && installedAt && lastEventAt >= installedAt) {
           const hooksSavedAt = await this.savedAt(p.hooksPath)
           const off = clockOffset()
-          const after = (t: number | undefined): boolean => t === undefined || lastEventAt > t + off
+          // A time that can't be read never counts as "older": no upgrade then.
+          const after = (t: number | undefined): boolean => t !== undefined && lastEventAt > t + off
           if (after(configSavedAt) && after(hooksSavedAt)) env.trust = 'trusted'
         }
+        // Codex trusts a hash of the whole group: if the app's group was changed since
+        // (a matcher added, a timeout or handler edited), that trust is for another hook,
+        // and a matcher could leave approvals uncovered. Never "trusted" then.
+        if (env.trust === 'trusted' && !groupAsWritten(text, pos.group)) env.trust = 'untrusted'
         if (hooksFeatureOff(toml)) env.hooksFeatureOff = true
       }
     } catch {

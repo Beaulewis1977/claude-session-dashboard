@@ -357,12 +357,14 @@ Run typecheck, lint, tests and the build. Commit, push the branch and open a PR 
 - ✅ #5 Phase A: provider refactor (v1.8.1)
 - ✅ #5 Phase B: Codex sessions (PR #28, v1.9.0)
 - ✅ #5 Phase C: Codex usage & limits (PR #30, v1.10.0)
+- ✅ #5 Phase D1: Codex Running now & alerts (PR #33, v1.11.0)
 
-**In progress:** #5 Codex support in phases: A refactor ✅ → B Codex sessions ✅ → C Codex usage & limits ✅ → **D1 Running now & alerts for Codex** (branch `feat/codex-live`) → **next:** D2, the rest of Codex parity (incl. showing agent-to-agent messages, Codex trends)
+**In progress:** #5 Codex support in phases: A refactor ✅ → B Codex sessions ✅ → C Codex usage & limits ✅ → D1 Running now & alerts for Codex ✅ → **next:** D2, the rest of Codex parity (incl. showing agent-to-agent messages, Codex trends)
 
 **Loose ends:**
 
 - Phone companion still uses the deprecated sync safeStorage encrypt/decrypt calls; switch to the async API in a small PR.
+- Browser tests (context-warning, viewer-copy, resume-keys) occasionally time out loading their page under full-suite load. Investigate slow first page load in the test/Vite setup.
 - Codex (Phase C) edge cases left open:
   - Guessing a gone fork's parent (no saved link) matches its first rows in order, and rows with the same timestamp are ordered by their identity hash, which doesn't keep Codex's order. If several copied events share a millisecond, a real match can miss the 80% threshold, and that unavailable fork's copied history counts twice.
   - One-account mode: the plan in force now is taken from main-limit readings. If a model limit (e.g. Pro Spark) reports a new plan while the newest main reading is still the old one, the cutoff is 0 and the old plan's and new plan's Spark windows can be grouped together.

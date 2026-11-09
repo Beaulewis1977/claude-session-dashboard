@@ -129,7 +129,9 @@ export function detectAlerts(
       continue
     }
     if (!p) continue
-    if (s.state === 'idle' && p.state === 'working') {
+    // Finished: also straight from an approval (answered, and the turn ended before
+    // the next read, so Working was never seen in between).
+    if (s.state === 'idle' && (p.state === 'working' || p.state === 'approval')) {
       add(s.failed ? 'failed' : 'finished')
       continue
     }

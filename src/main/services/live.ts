@@ -19,7 +19,8 @@ import {
   type LiveSnapshot,
   type ProcInput,
   type RunningFile,
-  EXITED_KEEP_MS
+  EXITED_KEEP_MS,
+  UNVERIFIED_MAX_MS
 } from '@shared/live'
 import {
   alertVerdict,
@@ -123,7 +124,16 @@ export class LiveService extends EventEmitter<{ changed: [] }> {
   private at = 0
   private readonly mono: () => number
   /** Per Codex home: its locks and thread inputs from the last read. */
-  private codex = new Map<string, { at: number; locks: ThreadLock[]; inputs: CodexThreadInput[] }>()
+  private codex = new Map<
+    string,
+    {
+      at: number
+      locks: ThreadLock[]
+      inputs: CodexThreadInput[]
+      /** Gone from the source list (a stopped distro's home, replaced by a placeholder). */
+      missingSince?: number
+    }
+  >()
   private codexEvents = new Map<string, Cached<HookEvent>>()
   /** Codex threads seen working while nobody held their lock (the desktop app). */
   private codexSeenWorking = new Set<string>()
@@ -320,10 +330,31 @@ export class LiveService extends EventEmitter<{ changed: [] }> {
    * active, and every 10 s (15 s) while nothing runs there.
    */
   private async pollCodex(t: number, m: number, force: boolean): Promise<LiveSession[]> {
+    // Codex turned off (Settings → Providers): nothing of it shows, at once.
+    if (!catalogueProviders(this.deps.sessions).isOn('codex')) {
+      this.codex.clear()
+      return []
+    }
     const all = this.codexSources(true)
     const known = new Set(all.map((s) => s.id))
-    for (const id of this.codex.keys()) if (!known.has(id)) this.codex.delete(id)
-    if (!all.length) return []
+    // A home gone from the source list (its distro stopped, say): its threads stay a
+    // while as "can't tell", like an unreadable one, never "ended" at once.
+    const can = (v: boolean | undefined): boolean | undefined => (v === false ? false : undefined)
+    for (const [id, c] of this.codex) {
+      if (known.has(id)) {
+        c.missingSince = undefined
+        continue
+      }
+      if (c.missingSince === undefined)
+        this.codex.set(id, {
+          ...c,
+          missingSince: m,
+          locks: c.locks.map((l) => ({ ...l, held: can(l.held) })),
+          inputs: c.inputs.map((i) => ({ ...i, held: can(i.held) }))
+        })
+      else if (m - c.missingSince > UNVERIFIED_MAX_MS) this.codex.delete(id)
+    }
+    if (!all.length && !this.codex.size) return []
     // A home that can't be read right now (a stopped distro, a WSL share outage): its
     // threads stay as they were, as "can't tell" (never "ended"; see computeCodexLive).
     for (const src of all) {

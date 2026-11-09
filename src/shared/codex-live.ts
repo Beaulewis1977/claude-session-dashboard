@@ -44,6 +44,8 @@ export interface RolloutState {
   open: Record<string, number>
   /** Tool calls without output: call id → call. */
   pending: Record<string, PendingCall>
+  /** Calls answered lately (their output arrived): call id → when it was made and answered. */
+  done?: Record<string, { at: number; escalated: boolean; doneAt: number }>
   lastStartAt?: number
   lastEndAt?: number
   lastEnd?: 'complete' | 'aborted'
@@ -119,7 +121,15 @@ export function reduceRollout(state: RolloutState, lines: Iterable<string>): Rol
     const kind = m[1]
     if (kind.endsWith('_output')) {
       const id = CALL_ID_RE.exec(line.slice(0, 2048))?.[1]
-      if (id) delete state.pending[id]
+      if (id && state.pending[id]) {
+        // Kept a while as answered: which call an approval request was for is
+        // told by its output (see deriveCodex).
+        const c = state.pending[id]
+        delete state.pending[id]
+        state.done ??= {}
+        state.done[id] = { at: c.at, escalated: c.escalated, doneAt: ts ?? c.at }
+        trimTo(state.done, MAX_PENDING, (v) => v.doneAt)
+      }
       if (ts !== undefined) state.lastOutputAt = Math.max(state.lastOutputAt ?? 0, ts)
       continue
     }
@@ -358,6 +368,32 @@ function current(r: RolloutState, from: number | undefined): RolloutState {
   return { ...r, open, pending }
 }
 
+/**
+ * Is the approval a PermissionRequest hook reported (at `at`) still waiting? The
+ * request is for one of the calls made before it and still running then (an
+ * escalated one, if any is): it waits until that call's output arrives. Another
+ * tool finishing, or progress lines, don't answer it. Codex logs nothing when an
+ * approval is granted; an approved command's call returns its output within its
+ * yield time (a second or so in code mode), which is when the row goes back to
+ * Working. Without a matching call (none logged yet), any tool output or new call
+ * after the request counts as answered.
+ */
+export function hookStillWaiting(r: RolloutState | undefined, at: number): boolean {
+  const asked = [
+    ...Object.values(r?.pending ?? {})
+      .filter((c) => c.at <= at)
+      .map((c) => ({ escalated: c.escalated, open: true })),
+    ...Object.values(r?.done ?? {})
+      .filter((c) => c.at <= at && c.doneAt > at)
+      .map((c) => ({ escalated: c.escalated, open: false }))
+  ]
+  const escalated = asked.filter((c) => c.escalated)
+  const candidates = escalated.length ? escalated : asked
+  if (candidates.length) return candidates.some((c) => c.open)
+  const after = at + 1000
+  return (r?.lastOutputAt ?? 0) <= after && (r?.lastCallAt ?? 0) <= after
+}
+
 /** A thread's state from its rollout, the hook events and the lock. */
 export function deriveCodex(
   t: CodexThreadInput,
@@ -375,8 +411,7 @@ export function deriveCodex(
   // means a tool output or a new tool call after the request (or the turn ending);
   // progress lines another tool writes meanwhile (item_completed, token_count) don't.
   if (working && hook && hook.event === 'PermissionRequest' && hook.ts >= (turnStart ?? 0) - 1000) {
-    const after = hook.ts + 1000
-    if ((r?.lastOutputAt ?? 0) <= after && (r?.lastCallAt ?? 0) <= after)
+    if (hookStillWaiting(r, hook.ts))
       return {
         state: 'approval',
         since: hook.ts,

@@ -358,8 +358,14 @@ Run typecheck, lint, tests and the build. Commit, push the branch and open a PR 
 - ✅ #5 Phase B: Codex sessions (PR #28, v1.9.0)
 - ✅ #5 Phase C: Codex usage & limits (PR #30, v1.10.0)
 - ✅ #5 Phase D1: Codex Running now & alerts (PR #33, v1.11.0)
-- ✅ #5 Phase D2: Codex summaries, Continue fresh, agent-to-agent messages and trends
-- ✅ **#5 Codex support complete** (phases A → D2)
+- ✅ #5 Phase D2: Codex summaries, Continue fresh, agent-to-agent messages and trends (PR #35, v1.12.0)
+- ✅ **#5 Codex support complete** (Phases A–D2)
+
+**Next up:**
+
+1. Open in Codex app (resume / fork / continue fresh into the correct project)
+2. #6 Git links
+3. #7 Ask across all sessions
 
 **Loose ends:**
 

@@ -972,7 +972,11 @@ ancestor's (the parent in between may have none of its own, or be gone).
   next best session may get it. **Link again** undoes it.
 - Branch names come from the commit graph: the default branch's own line, the commits a merge
   brought in (its message names the branch and PR: "Merge pull request #40 from owner/branch"),
-  and branches not merged yet. A squash merge's "Subject (#14)" gives its PR.
+  and branches not merged yet. A squash merge's "Subject (#14)" gives its PR. The work is bounded
+  on any graph: each commit is brought into the default branch by one merge (stacked PRs keep
+  their own commits), a merge into another branch is followed only about as far as that branch
+  goes (within a budget), and a commit gets at most 8 names from branches not merged yet (the
+  branches sessions were on first, then the nearest).
 
 ### What runs
 

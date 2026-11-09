@@ -6,6 +6,8 @@
 //   which also gives the pull request;
 // - a branch not merged yet: the commits only its tip reaches;
 // - a squash merge on the default branch: "Subject (#14)" gives the pull request.
+// The work stays bounded whatever the graph (thousands of merges, stacked or
+// long-lived branches): see labelBranches.
 
 import { branchName, type RefTip } from './log'
 import type { CommitInfo } from './types'
@@ -36,29 +38,97 @@ export function squashPr(subject: string): number | undefined {
   return m ? Number(m[1]) : undefined
 }
 
-/** Above this many merges, a merge's range stops at the default branch's line only (cheaper). */
-export const MAX_EXACT_MERGES = 400
+/** At most this many names per commit from branches not merged yet. */
+export const MAX_BRANCH_LABELS = 8
 
-/** Every commit reachable from these (within the commits read). */
-function reachable(commits: Map<string, CommitInfo>, from: string[]): Set<string> {
-  const out = new Set<string>()
-  const todo = [...from]
-  while (todo.length) {
-    const s = todo.pop()!
-    if (out.has(s)) continue
-    const c = commits.get(s)
-    if (!c) continue
-    out.add(s)
-    todo.push(...c.parents)
+/** Commit visits for merges off the default branch, per commit read (plus a fixed part). */
+const SIDE_MERGE_BUDGET = 20
+
+/** The commits, parents before children (each once; safe on any graph). */
+function topoOrder(commits: Map<string, CommitInfo>): CommitInfo[] {
+  const out: CommitInfo[] = []
+  const seen = new Set<string>()
+  for (const first of commits.keys()) {
+    if (seen.has(first)) continue
+    seen.add(first)
+    const stack: { c: CommitInfo; next: number }[] = [{ c: commits.get(first)!, next: 0 }]
+    while (stack.length) {
+      const top = stack[stack.length - 1]
+      if (top.next < top.c.parents.length) {
+        const p = top.c.parents[top.next++]
+        const pc = commits.get(p)
+        if (pc && !seen.has(p)) {
+          seen.add(p)
+          stack.push({ c: pc, next: 0 })
+        }
+      } else {
+        stack.pop()
+        out.push(top.c)
+      }
+    }
   }
   return out
 }
 
-/** Sets `branches` and `pr` on each commit (in place). */
-export function labelBranches(commits: Map<string, CommitInfo>, refs: RefTip[]): void {
-  const add = (sha: string, name: string): void => {
-    const c = commits.get(sha)
-    if (c && !c.branches.includes(name)) c.branches.push(name)
+/** A max-heap of positions in the topological order (the newest commit first). */
+class MaxHeap {
+  private a: number[] = []
+  get size(): number {
+    return this.a.length
+  }
+  push(x: number): void {
+    const a = this.a
+    let i = a.push(x) - 1
+    while (i > 0) {
+      const p = (i - 1) >> 1
+      if (a[p] >= x) break
+      a[i] = a[p]
+      i = p
+    }
+    a[i] = x
+  }
+  pop(): number {
+    const a = this.a
+    const top = a[0]
+    const last = a.pop()!
+    if (a.length) {
+      let i = 0
+      for (;;) {
+        const l = 2 * i + 1
+        if (l >= a.length) break
+        const m = l + 1 < a.length && a[l + 1] > a[l] ? l + 1 : l
+        if (a[m] <= last) break
+        a[i] = a[m]
+        i = m
+      }
+      a[i] = last
+    }
+    return top
+  }
+}
+
+/**
+ * Sets `branches` and `pr` on each commit (in place). `prefer`: branch names
+ * sessions were on; among branches not merged yet they're named first.
+ *
+ * Bounded work:
+ * - merges on the default branch's line, oldest first: each takes what its other
+ *   parents reach that neither the line nor an earlier merge holds, so every
+ *   commit is visited once (stacked PRs keep their own commits);
+ * - other merges (into a branch, or inside one) add their branch's name to what
+ *   their other parents reach and their first parent doesn't, walking both sides
+ *   newest first only until nothing is left that just the other side reaches (about
+ *   the size of that branch), within a total budget;
+ * - branches not merged yet: at most MAX_BRANCH_LABELS names per commit, the
+ *   nearest branches first, and a branch stops where a commit is full.
+ */
+export function labelBranches(
+  commits: Map<string, CommitInfo>,
+  refs: RefTip[],
+  opts: { prefer?: Iterable<string> } = {}
+): void {
+  const add = (c: CommitInfo, name: string): void => {
+    if (!c.branches.includes(name)) c.branches.push(name)
   }
   const def = defaultBranch(refs)
   const defTips = def
@@ -85,55 +155,118 @@ export function labelBranches(commits: Map<string, CommitInfo>, refs: RefTip[]):
     }
   }
   for (const s of firstParent) {
-    add(s, def!)
     const c = commits.get(s)!
+    add(c, def!)
     if (c.parents.length <= 1) {
       const pr = squashPr(c.subject)
       if (pr !== undefined) c.pr ??= pr
     }
   }
 
-  // Merges: the commits each brought in: reached from its other parents, and not
-  // already reachable from its first parent (a stacked branch's earlier PR keeps its
-  // own commits). Oldest merge first, so a commit goes to the merge that brought it.
-  const merges = [...commits.values()]
-    .filter((c) => c.parents.length >= 2)
-    .sort((a, b) => a.ct - b.ct)
-  for (const c of merges) {
+  const order = topoOrder(commits)
+  const pos = new Map(order.map((c, i) => [c.sha, i]))
+  const n = order.length
+
+  // 1. Merges on the default branch's line, oldest first.
+  const taken = new Uint8Array(n)
+  for (const s of firstParent) taken[pos.get(s)!] = 1
+  for (let i = 0; i < n; i++) {
+    const c = order[i]
+    if (c.parents.length < 2 || !firstParent.has(c.sha)) continue
     const named = mergeSubject(c.subject)
     if (named?.pr !== undefined) c.pr ??= named.pr
-    if (!named?.branch) continue
-    // Bounded work: with very many merges, only the default branch's line is left out.
-    const before =
-      merges.length <= MAX_EXACT_MERGES ? reachable(commits, [c.parents[0]]) : firstParent
-    const seen = new Set<string>()
     const todo = c.parents.slice(1)
     while (todo.length) {
-      const s = todo.pop()!
-      if (seen.has(s) || before.has(s)) continue
-      const m = commits.get(s)
-      if (!m) continue
-      seen.add(s)
-      add(s, named.branch)
-      if (named.pr !== undefined) m.pr ??= named.pr
+      const j = pos.get(todo.pop()!)
+      if (j === undefined || taken[j]) continue
+      taken[j] = 1
+      const m = order[j]
+      if (named?.branch) {
+        add(m, named.branch)
+        if (named.pr !== undefined) m.pr ??= named.pr
+      }
       todo.push(...m.parents)
     }
   }
 
-  // Branches not merged into the default branch (yet): what only their tip reaches.
+  // 2. Other merges. Both sides stop at the default branch's line.
+  let budget = SIDE_MERGE_BUDGET * n + 100_000
+  const mark = new Int32Array(n)
+  const side = new Uint8Array(n) // 1: its first parent reaches it, 2: only another parent
+  for (let i = 0; i < n && budget > 0; i++) {
+    const c = order[i]
+    if (c.parents.length < 2 || firstParent.has(c.sha)) continue
+    const named = mergeSubject(c.subject)
+    if (named?.pr !== undefined) c.pr ??= named.pr
+    if (!named?.branch) continue
+    const heap = new MaxHeap()
+    let only = 0 // in the heap, reached by another parent only
+    const reach = (sha: string, from: 1 | 2): void => {
+      const j = pos.get(sha)
+      if (j === undefined || firstParent.has(sha)) return
+      if (mark[j] !== i + 1) {
+        mark[j] = i + 1
+        side[j] = from
+        heap.push(j)
+        if (from === 2) only++
+      } else if (from === 1 && side[j] === 2) {
+        side[j] = 1
+        only--
+      }
+    }
+    reach(c.parents[0], 1)
+    for (const p of c.parents.slice(1)) reach(p, 2)
+    while (heap.size && only > 0 && budget > 0) {
+      const j = heap.pop()
+      budget--
+      const from = side[j] as 1 | 2
+      const m = order[j]
+      if (from === 2) {
+        only--
+        add(m, named.branch)
+        if (named.pr !== undefined) m.pr ??= named.pr
+      }
+      for (const p of m.parents) reach(p, from)
+    }
+  }
+
+  // 3. Branches not merged into the default branch (yet): what only their tips
+  // reach. The ones sessions were on first, then the others, each pass nearest first.
+  const tips = new Map<string, string[]>()
   for (const r of refs) {
     const name = branchName(r.ref)
     if (!name || name === def) continue
+    const list = tips.get(name)
+    if (list) list.push(r.sha)
+    else tips.set(name, [r.sha])
+  }
+  const prefer = new Set(opts.prefer ?? [])
+  const added = new Map<string, number>()
+  const walk = (names: string[]): void => {
     const seen = new Set<string>()
-    const todo = [r.sha]
-    while (todo.length) {
-      const s = todo.pop()!
-      if (seen.has(s) || mainline.has(s)) continue
-      const m = commits.get(s)
-      if (!m) continue
-      seen.add(s)
-      add(s, name)
-      todo.push(...m.parents)
+    let front: [string, string][] = []
+    for (const name of names) for (const t of tips.get(name)!) front.push([name, t])
+    while (front.length) {
+      const next: [string, string][] = []
+      for (const [name, s] of front) {
+        if (mainline.has(s)) continue
+        const k = `${name}\n${s}`
+        if (seen.has(k)) continue
+        seen.add(k)
+        const m = commits.get(s)
+        if (!m) continue
+        if (!m.branches.includes(name)) {
+          const used = added.get(s) ?? 0
+          if (used >= MAX_BRANCH_LABELS) continue
+          m.branches.push(name)
+          added.set(s, used + 1)
+        }
+        for (const p of m.parents) next.push([name, p])
+      }
+      front = next
     }
   }
+  const names = [...tips.keys()]
+  walk(names.filter((x) => prefer.has(x)))
+  walk(names.filter((x) => !prefer.has(x)))
 }

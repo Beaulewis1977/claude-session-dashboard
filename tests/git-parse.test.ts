@@ -9,7 +9,13 @@ import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { parsePatch } from '@shared/git/diff'
-import { defaultBranch, labelBranches, mergeSubject, squashPr } from '@shared/git/graph'
+import {
+  MAX_BRANCH_LABELS,
+  defaultBranch,
+  labelBranches,
+  mergeSubject,
+  squashPr
+} from '@shared/git/graph'
 import {
   branchName,
   githubSlug,
@@ -160,6 +166,82 @@ describe('branches from the commit graph', () => {
     expect(map.get(S(2))).toMatchObject({ branches: ['a'], pr: 10 })
     expect(map.get(S(3))).toMatchObject({ branches: ['b'], pr: 20 })
     expect(map.get(S(5))).toMatchObject({ branches: ['b'], pr: 20 })
+  })
+
+  it('a long stack of PRs (4,999 commits, 1,250 merges): each commit named once, quickly', () => {
+    // PR k: 3 commits on top of PR k-1's, merged into main as merge k.
+    const all: CommitInfo[] = [c(1, [])]
+    let main = 1
+    let prev = 1
+    let n = 2
+    const prOf = new Map<number, number>()
+    for (let k = 1; n + 3 < 5000; k++) {
+      for (let j = 0; j < 3; j++) {
+        all.push(c(n, [prev]))
+        prOf.set(n, k)
+        prev = n++
+      }
+      all.push(c(n, [main, prev], `Merge pull request #${k} from beau/pr-${k}`))
+      main = n++
+    }
+    expect(all.length).toBeGreaterThanOrEqual(4996)
+    const map = new Map(all.map((x) => [x.sha, x]))
+    const t = performance.now()
+    labelBranches(map, [{ ref: 'refs/heads/main', sha: S(main) }])
+    expect(performance.now() - t).toBeLessThan(1000)
+    let labels = 0
+    for (const x of all) labels += x.branches.length
+    expect(labels).toBe(all.length)
+    for (const [sha, k] of prOf)
+      expect(map.get(S(sha))).toMatchObject({ branches: [`pr-${k}`], pr: k })
+  })
+
+  it('a branch merged into a branch: its commits get both names, the earlier ones only theirs', () => {
+    // main: 1 ----------------------- 7 (merge #30 from beau/feature)
+    // feature: \ 2 - 3 ------ 6 (merge 'sub') /
+    // sub:            \ 4 - 5 /
+    const all = [
+      c(1, []),
+      c(2, [1]),
+      c(3, [2]),
+      c(4, [3]),
+      c(5, [4]),
+      c(6, [3, 5], "Merge branch 'sub' into feature"),
+      c(7, [1, 6], 'Merge pull request #30 from beau/feature')
+    ]
+    const map = new Map(all.map((x) => [x.sha, x]))
+    labelBranches(map, [{ ref: 'refs/heads/main', sha: S(7) }])
+    const b = (k: number) => map.get(S(k))!
+    expect(b(2)).toMatchObject({ branches: ['feature'], pr: 30 })
+    expect(b(3)).toMatchObject({ branches: ['feature'], pr: 30 })
+    expect(b(4).branches.sort()).toEqual(['feature', 'sub'])
+    expect(b(5)).toMatchObject({ pr: 30 })
+    expect(b(6).branches).toEqual(['feature'])
+  })
+
+  it("many unmerged branches on one long history: a few names per commit, sessions' first", () => {
+    // develop (not merged): 1,000 commits; 300 branches started at its tip.
+    const all: CommitInfo[] = [c(1, [])]
+    for (let k = 2; k <= 1000; k++) all.push(c(k, [k - 1]))
+    const refs = [
+      { ref: 'refs/heads/main', sha: S(1) },
+      { ref: 'refs/heads/develop', sha: S(1000) }
+    ]
+    for (let k = 0; k < 300; k++) {
+      all.push(c(2000 + k, [1000]))
+      refs.push({ ref: `refs/heads/f-${k}`, sha: S(2000 + k) })
+    }
+    const map = new Map(all.map((x) => [x.sha, x]))
+    const t = performance.now()
+    labelBranches(map, refs, { prefer: ['f-299'] })
+    expect(performance.now() - t).toBeLessThan(1000)
+    const mid = map.get(S(500))!
+    expect(mid.branches).toHaveLength(MAX_BRANCH_LABELS)
+    // The branch a session was on, and the nearest one (develop's own tip).
+    expect(mid.branches).toContain('f-299')
+    expect(mid.branches).toContain('develop')
+    // Each branch's own commit has its own name.
+    expect(map.get(S(2150))!.branches).toEqual(['f-150'])
   })
 
   it('reads merge and squash subjects', () => {

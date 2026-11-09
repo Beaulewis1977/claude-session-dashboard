@@ -551,7 +551,9 @@ export class GitLinksService extends EventEmitter<{ changed: [] }> {
       c.branches = []
       delete c.pr
     }
-    labelBranches(repo.commits, refs)
+    labelBranches(repo.commits, refs, {
+      prefer: sessions.flatMap((s) => s.signals?.branches ?? [])
+    })
   }
 
   private matchSessions(repo: RepoState, list: GitInput[]): MatchSession[] {

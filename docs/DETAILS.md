@@ -421,11 +421,14 @@ so.
   time that can't be read never counts). Codex trusts a hash of the whole hook group, so if the
   app's group is edited (a matcher added, an option changed) it counts as untrusted again. An exact
   approval belongs to the call that asked (one running when the request came, an escalated one if
-  any): it lasts until that call's output or the turn's end. Another tool finishing or starting
+  any): it lasts until that call's output or the turn's end. The hook event names no call, so when
+  several calls could have asked and only some have answered, the row shows **Needs approval?** (and
+  its push says "may") until all have. Another tool finishing or starting
   doesn't end it. Codex logs nothing when you approve; an approved command's call returns within
   its yield time (about a second in code mode), so the row goes back to Working then. A tool that
   returns nothing until it's done stays shown as needing approval until then. Once Codex has
-  trusted the app's hook, the app keeps that hook's own hash (Codex hashes a hook's content, not its
+  trusted the app's hook (while hooks.json is still exactly what the app wrote, or proved by an
+  approval the hook delivered), the app keeps that hook's own hash (Codex hashes a hook's content, not its
   position): a trust entry another group left at the hook's position never counts, nor does any
   hash that was in config.toml before the hook was added. An edited hook shows as "Changed", with
   Disable and enable again as the fix. Codex keys trust by position,
@@ -445,8 +448,12 @@ WSL share, a holder whose command line can't be read) is "can't tell", never "fr
 open keeps its row, marked unconfirmed, for up to 30 minutes, and nothing is reported as ended. The
 same goes for a single lock file or rollout that can't be read, for a whole home that becomes
 unreadable (a WSL share outage), and for a home that drops out of the source list (a stopped
-distro's home replaced by a placeholder). Only turning Codex off clears its rows at once. An
-answered approval whose turn ends before the next read still alerts "Finished". Every
+distro's home replaced by a placeholder): during such an outage each thread keeps its last known
+state (an approval stays an approval, a desktop-app thread stays too), marked "can't check". Only
+turning Codex off clears its rows at once. A session in a custom Codex folder gets a note instead
+of the setup banner: the app adds its hook only to a `~/.codex` home it found. An
+answered approval whose turn ends before the next read still alerts "Finished" (with the minimum
+work time counted from the turn's start). Every
 lock file is looked at (Codex keeps old ones): on Windows each is probed and only held ones are
 `stat`ed; in WSL their inodes are cached for a minute (recently active threads are looked at
 afresh).

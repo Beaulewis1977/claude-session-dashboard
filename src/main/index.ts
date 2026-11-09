@@ -41,7 +41,7 @@ import {
 import { LiveService } from './services/live'
 import { desktopText } from '@shared/live-alerts'
 import type { MobileFile } from './mobile/devices'
-import { MobileService, webAppFile } from './mobile/service'
+import { MobileService, webAppFile, type KeyBox } from './mobile/service'
 import { fakeTailscale, TailscaleClient } from './mobile/tailscale'
 import { webAssets } from './mobile/web-assets'
 import { registerTerminalIpc } from './ipc-terminal'
@@ -321,12 +321,13 @@ async function main(): Promise<void> {
     encrypt: (t) => safeStorage.encryptStringAsync(t),
     decrypt: async (b) => (await safeStorage.decryptStringAsync(b)).result
   }
-  // The phone companion's own TLS and push keys still use the synchronous
-  // calls (its code reads them synchronously); see the PR's known issues.
-  const phoneKeys = {
+  // The phone companion's own TLS and push keys: the same asynchronous API.
+  // Keys it saved with the synchronous one are re-encrypted on first read
+  // (see mobile/secrets.ts).
+  const phoneKeys: KeyBox = {
     available: () => canEncrypt,
-    encrypt: (t: string) => safeStorage.encryptString(t),
-    decrypt: (b: Buffer) => safeStorage.decryptString(b)
+    encrypt: (t) => safeStorage.encryptStringAsync(t),
+    decrypt: (b) => safeStorage.decryptStringAsync(b)
   }
   const accountsStore = createAccountsStore(paths.dataDir)
   await accountsStore.load()

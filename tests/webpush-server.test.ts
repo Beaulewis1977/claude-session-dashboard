@@ -99,8 +99,8 @@ async function setup(
     tailscale: fakeTailscale({}),
     keys: {
       available: () => true,
-      encrypt: (s) => Buffer.from(`enc:${s}`),
-      decrypt: (b) => b.toString().replace(/^enc:/, '')
+      encrypt: async (s) => Buffer.from(`enc:${s}`),
+      decrypt: async (b) => ({ result: b.toString().replace(/^enc:/, '') })
     },
     appVersion: '1.0.0',
     fixtures: opts.fixtures ?? false,

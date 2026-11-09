@@ -269,7 +269,11 @@ function service(calls: string[][] = []) {
     web: { file: async () => undefined },
     webAppFile: join(dir, 'mobile.html'),
     tailscale: fakeTailscale({ calls }),
-    keys: { available: () => false, encrypt: (s) => Buffer.from(s), decrypt: (b) => b.toString() },
+    keys: {
+      available: () => false,
+      encrypt: async (s) => Buffer.from(s),
+      decrypt: async (b) => ({ result: b.toString() })
+    },
     appVersion: '1',
     fixtures: true,
     claudePath: async () => undefined

@@ -409,14 +409,15 @@ so.
 - **Approvals.** Codex doesn't log approval requests in its rollouts. An escalated command
   (`require_escalated`) left without output for 5 seconds shows as **Needs approval?** (a guess:
   a long command that was already approved looks the same), unless approvals are off for the turn
-  (`never`). A question for you (`request_user_input`) waits for you. For exact approvals,
+  (`never`). Its phone push says "A session may need your approval". A question for you (`request_user_input`) waits for you. For exact approvals,
   **Enable approval alerts** for that Codex home adds one PermissionRequest hook to
   `~/.codex/hooks.json` (same safety model as Claude Code's hooks: diff, backup, appended, atomic
   save with a re-check, Disable takes out exactly the app's handler). Codex runs a new hook only
   after you trust it in its `/hooks`; the app shows whether you have (read from `config.toml`'s
   `[hooks.state]`, never written) and never marks it trusted itself. An entry an older hook left at
   the same position (Codex keys trust by position) doesn't count: only one Codex saved after the app
-  added its hook, or an approval the hook actually delivered. Codex keys trust by position,
+  added its hook, or an approval the hook delivered after the last save of both config.toml and
+  hooks.json (so an older event never overrides a later change, and "turned off" always wins). Codex keys trust by position,
   so if you later add a PermissionRequest hook of your own after the app's, Disable warns that
   Codex will ask you to trust yours again. The script saves only the session id, the event and the
   tool name in `~/.claude-session-dashboard/codex-events/` and prints nothing, so Codex still asks
@@ -425,8 +426,15 @@ so.
 What shows: subagent threads never get a row (a working or waiting subagent shows on its parent);
 Claude Code's Codex plugin and `codex exec` threads show only while they work; VS Code's and the
 desktop app's idle threads (their app-server keeps them loaded) for 30 minutes after their last
-turn; a thread nobody holds a lock on (the desktop app may not lock an idle thread) while it works,
-and then as "waiting for you" for 30 minutes. Exited is a lock the app saw held and then released.
+turn; a desktop-app or VS Code thread nobody holds a lock on (their app-server may not lock an idle
+thread) while it works, and then as "waiting for you" for 30 minutes. A CLI thread always holds its
+lock, so an open turn in the rollout of an unlocked CLI thread (a crash) is not work. Exited is a
+lock the app saw held and then released. A lock that can't be checked for a moment (an unreadable
+WSL share, a holder whose command line can't be read) is "can't tell", never "free": a thread seen
+open keeps its row, marked unconfirmed, for up to 30 minutes, and nothing is reported as ended. Every
+lock file is looked at (Codex keeps old ones): on Windows each is probed and only held ones are
+`stat`ed; in WSL their inodes are cached for a minute (recently active threads are looked at
+afresh).
 Each Codex home is read every 2 seconds (5 in WSL) while one of its threads is open or recently
 active, every 10 (15) while nothing runs; an unchanged rollout costs one `stat`. Codex has no
 "still waiting" reminder, and no Remote Control: its threads offer **Open in Codex app**

@@ -85,10 +85,11 @@ Everything stays on your PC and your own private network.
   up, at the top of the viewer and as one line on each card. Written by Claude through your own
   Claude Code on your subscription, only when you ask (one session, or **Summarize selected**), or
   automatically for big idle sessions if you turn that on. Editable, regenerable, searchable, and
-  kept only in the app's data.
+  kept only in the app's data. Codex sessions get them too (also written by Claude).
 - **Continue fresh** starts a new session in the same folder from the summary instead of reloading
   the whole history, which is much lighter on your 5-hour window. It uses the same options as Resume
-  and shows in the Branches panel as "continued from".
+  and shows in the Branches panel as "continued from". For Codex it starts a new `codex` session
+  that reads the handoff file.
 - **Limits guard:** Summarize selected shows the tokens and roughly how much of your 5-hour window
   it would use first, and pauses (with a Resume button) if the live 5-hour limit goes above 80%.
   Summary runs show in Usage as "Summaries (dashboard)".
@@ -363,7 +364,8 @@ and the files it replaces are kept in `%APPDATA%\ClaudeSessionDashboard\restore-
   and Cancel stops it.
 - **Continue fresh** (on the summary, or ⋯ → **Continue fresh from summary…**) opens the launch
   dialog with the handoff it will start from. The summary is written to a file in the app's data
-  folder, and the new session's first message points Claude Code at it.
+  folder, and the new session's first message points Claude Code (or Codex) at it. Settings →
+  Summaries shows how much space handoff files use and can clean up those older than 30 days.
 - Settings → Summaries: the model (Sonnet by default), the size limit, the pause line and
   auto-summarize (off by default).
 

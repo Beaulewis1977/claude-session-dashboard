@@ -358,8 +358,8 @@ Run typecheck, lint, tests and the build. Commit, push the branch and open a PR 
 - ✅ #5 Phase B: Codex sessions (PR #28, v1.9.0)
 - ✅ #5 Phase C: Codex usage & limits (PR #30, v1.10.0)
 - ✅ #5 Phase D1: Codex Running now & alerts (PR #33, v1.11.0)
-
-**In progress:** #5 Codex support in phases: A refactor ✅ → B Codex sessions ✅ → C Codex usage & limits ✅ → D1 Running now & alerts for Codex ✅ → **next:** D2, the rest of Codex parity (incl. showing agent-to-agent messages, Codex trends)
+- ✅ #5 Phase D2: Codex summaries, Continue fresh, agent-to-agent messages and trends
+- ✅ **#5 Codex support complete** (phases A → D2)
 
 **Loose ends:**
 
@@ -368,6 +368,21 @@ Run typecheck, lint, tests and the build. Commit, push the branch and open a PR 
 - Codex (Phase C) edge cases left open:
   - Guessing a gone fork's parent (no saved link) matches its first rows in order, and rows with the same timestamp are ordered by their identity hash, which doesn't keep Codex's order. If several copied events share a millisecond, a real match can miss the 80% threshold, and that unavailable fork's copied history counts twice.
   - One-account mode: the plan in force now is taken from main-limit readings. If a model limit (e.g. Pro Spark) reports a new plan while the newest main reading is still the old one, the cutoff is 0 and the old plan's and new plan's Spark windows can be grouped together.
+- Codex (Phase D2) known issues:
+  - Summaries are written by Claude only. `codex exec` couldn't be made tool-free (0.166 still
+    offered 19 tools with every disable flag), so the "summarize with codex exec" option wasn't built.
+    Re-test if a newer Codex adds a real no-tools switch.
+  - Continue fresh for Codex: Codex picks the new session's id, so it's linked only once a session
+    whose first prompt names the handoff file appears (within a week). A session started from a
+    copied command, or whose first prompt Codex rewrites, isn't linked.
+  - Phone Continue fresh for Codex shows "Started on your PC" but can't open the new session (its id
+    isn't known yet when the phone asks).
+  - Codex trends: per-prompt metrics leave subagent threads out (their prompts are the main agent's);
+    rollouts older than Codex's turn events (no `task_started`) are split at each prompt, without
+    turn time or time to first token; tool errors before `item_completed` statuses come only from
+    exit codes in tool output (about 12% of outputs have one).
+  - The first start after updating re-reads every Codex rollout once (CODEX_USAGE_VERSION 4), in the
+    background.
 
 ---
 

@@ -1043,8 +1043,13 @@ folder plus Codex's name index, `config.toml`, `archived_sessions` or `sessions/
   older `event_msg` messages (matched to items one by one, so a history that mixes both keeps its
   older turns without doubling the newer ones). Search covers the first 1,000,000 characters
   (prompts and answers first, then reasoning and tool calls); the viewer says when a session goes
-  past it (Find in session searches all of it). Messages between agents (`agent_message` items
-  with an author and recipient) aren't shown yet. Context Codex adds as user text (environment, AGENTS.md,
+  past it (Find in session searches all of it). Messages between agents (`response_item` /
+  `agent_message` items with an `author` and a `recipient`, agent paths like `/root` and
+  `/root/<name>`) show as collapsed **Agent → Agent** steps with who sent them to whom and copy
+  buttons; they're searchable and found by Find in session. In real rollouts each is its own record
+  (a subagent's instructions or its report, never a copy of a prompt or answer of the same file),
+  so they're shown once by their item id, and one whose text a prompt or answer within 12 lines
+  already holds is skipped. Context Codex adds as user text (environment, AGENTS.md,
   instructions, plugin suggestions) is never a prompt. Who wrote each item comes from the
   rollout itself: newer Codex records it per item (`internal_chat_message_metadata_passthrough`:
   `content_item_metadata[i].provenance.type` "user" / "harness" / …, and `content_item_kinds[i]`
@@ -1089,8 +1094,8 @@ folder plus Codex's name index, `config.toml`, `archived_sessions` or `sessions/
   - Folder checks: Windows can't see a distro's drive mounts through `\\wsl.localhost`, nor
     folders only the session's own WSL user can read. Those are checked inside the distro
     (`test -r`), as the user Codex will run as.
-- **Not for Codex** (hidden): Branch from here (it would write into `~/.codex`), Continue fresh and
-  summaries (later phase), New session in this folder, Remote Control, API billing. A
+- **Not for Codex** (hidden): Branch from here (it would write into `~/.codex`), New session in
+  this folder, Remote Control, API billing. A
   Codex session whose file is gone can be read but not resumed: the app never copies files back
   into `~/.codex`.
 - **Usage** (Phase C): from each rollout's `event_msg` / `token_count` events, read in full (also
@@ -1164,6 +1169,45 @@ folder plus Codex's name index, `config.toml`, `archived_sessions` or `sessions/
   the context window") out of `info.model_context_window`; after a compaction with no response since,
   the session's first input plus the compaction summary. Resume estimates are priced cold at the
   input price: Codex logs report no cache writes and nothing about how long a cache stays warm.
+- **Summaries** (Phase D2): written by Claude through `claude -p`, exactly as for Claude Code
+  sessions (same notice, preview, masking, size limit, limits guard and usage record). The
+  transcript is my prompts, Codex's answers (labelled "Codex:"), one `[tool]` line per tool call
+  and one `[agent <from> → <to>]` line per message between agents (cut to 2,000 characters), never
+  tool output, reasoning (summaries or encrypted), images or the context Codex adds (environment,
+  AGENTS.md, instructions, subagent notices). Summarizing with `codex exec` instead was tested and
+  **not built**: codex-cli 0.166 still offered 19 tools (`exec`, `apply_patch`, `spawn_agent`,
+  MCP resource tools, goals, …) with every `--disable` flag, `-s read-only`,
+  `--ignore-user-config`, `-c web_search="disabled"` and `-c mcp_servers={}`, so it couldn't be
+  run tool-free.
+- **Continue fresh** (Phase D2): a new `codex` session (`codex [-C <dir>] [-m …] [-c
+model_reasoning_effort=…] [--dangerously-bypass-approvals-and-sandbox] "<first message>"`) in the
+  session's folder and environment, with the same options as Resume (never the bypass from a phone,
+  which uses `-a on-request -s workspace-write`). Codex has no `--session-id`, so the app picks
+  only the handoff's id: the summary goes to `%APPDATA%\ClaudeSessionDashboard\handoffs\codex\<id>.md`
+  (a new file only), and the first message is `Read the handoff file <path> first, then continue
+from it. It summarizes an earlier session.` (Codex has no @-mention that attaches a typed path;
+  its model reads the file with its own tools). No `--add-dir`: Codex's sandbox limits writes, not
+  reads (checked with `codex sandbox` on Windows: the handoff was readable in the default,
+  read-only and workspace-write modes, and a write in read-only was refused), and `--add-dir` would
+  make the folder writable. In WSL the path comes from the distro (`wslpath`) and must be readable
+  there before anything starts. The new session is linked as "continued from" once a Codex session
+  whose first prompt names that handoff file appears (a pending link in `metadata.json`, kept for a
+  week); it gets the "<title> — continued" name and the parent's model and effort. The context-size
+  warning offers it with an estimate (Codex's own first input plus the handoff).
+- **Handoff files** (Claude Code's and Codex's) are never deleted on their own. Settings → Summaries
+  shows their count and size, and **Clean up handoffs older than 30 days** (after asking) deletes only
+  `<uuid>.md` files directly in `handoffs\` and `handoffs\codex\`, never a link or another file.
+- **Trends** (Phase D2): the Usage view's Trends tab has Codex's own metrics, kept apart from
+  Claude Code's (in All, a switch picks whose). Per response, from `token_count`: output and
+  reasoning tokens and the cached share of input. Per turn (`task_started` → `task_complete` /
+  `turn_aborted`): median turn time (`duration_ms`), time to first token, the tool error rate
+  (finished tool items' `status`: CommandExecution, McpToolCall, FileChange; older rollouts without
+  them use failing exit codes in tool output) and the share of interrupted or failed turns. Per
+  prompt I wrote, in main threads only (a subagent's "prompts" are the main agent's): responses and
+  tool calls. Context use: the last reading of each session in each week. Weekly per model or Codex
+  CLI version, with markers for a new model and a new minor version, and compare mode (two date
+  ranges or two versions). The usage reader keeps only these fields, never text; a fork's copied
+  turns count once by Codex's turn id. A turn that hasn't ended isn't counted.
 - **Never**: `auth.json` or any credential file, and no OpenAI or ChatGPT endpoint. Logs only.
 - **Archive**: Settings → Archive → "Archive Codex sessions": Off (default; Codex doesn't delete
   old sessions itself), Named, pinned or tagged, or All. The size it would copy, and about what a

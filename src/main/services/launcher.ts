@@ -66,6 +66,30 @@ import type { ResumeEstimate } from '@shared/context'
 import { sessionProvider } from '../providers/registry'
 import type { SessionProvider } from '../providers/types'
 import type { SessionService } from './sessions'
+import {
+  codexAppPreview,
+  isSafeAppLink,
+  newThreadLink,
+  threadLink,
+  type CodexAppFacts,
+  type CodexAppKind,
+  type CodexAppPreview
+} from '@shared/codex-app'
+import { CODEX_APP_SOURCE_ID, type CodexAppService } from '../providers/codex/app'
+
+/** "Open in Codex app" (Windows): what the app can open, and how a link is opened (Electron's shell). */
+export interface CodexAppLauncher {
+  service: CodexAppService
+  open(link: string): Promise<void>
+}
+
+/** Which Codex app launch this is (none for a branch or a new session). */
+function appKind(
+  opts: Pick<LaunchOptions, 'fork' | 'continueFresh' | 'branch' | 'newSession'>
+): CodexAppKind | undefined {
+  if (opts.branch || opts.newSession) return undefined
+  return opts.continueFresh ? 'continue' : opts.fork ? 'fork' : 'resume'
+}
 
 /** API-credit launches (Phase 5). */
 export interface LaunchBilling {
@@ -124,6 +148,8 @@ export class Launcher {
     s: SessionSummary,
     launch: { billingAccountId?: string; modelChoice?: string }
   ) => Promise<ResumeEstimate | undefined>
+  /** "Open in Codex app" (set at startup on Windows; absent: never offered). */
+  codexApp?: CodexAppLauncher
 
   constructor(
     private readonly platform: Platform,
@@ -563,7 +589,12 @@ export class Launcher {
    * Continue fresh: the new session's id, its handoff file (where it goes and
    * what it says) and the first message pointing at it.
    */
-  private async continuePlan(s: SessionSummary, req: ContinueFreshRequest): Promise<ContinuePlan> {
+  private async continuePlan(
+    s: SessionSummary,
+    req: ContinueFreshRequest,
+    /** For the Codex app (Windows): the handoff's Windows path, whatever the session's environment. */
+    windowsPath = false
+  ): Promise<ContinuePlan> {
     const dataDir = this.dataDir
     if (!dataDir) throw new Error("Continue fresh isn't available here.")
     if (s.availability === 'imported')
@@ -579,7 +610,7 @@ export class Launcher {
     const id = await this.freeContinueId(s, dataDir, req.newSessionId)
     const path = handoffPath(dataDir, id, p.id)
     let sessionPath: string | undefined = path
-    if (s.env === 'wsl') {
+    if (s.env === 'wsl' && !windowsPath) {
       // Where this distro mounts the app's data folder (its own automount root).
       const root = s.distro
         ? await this.wslDataDir(s.distro, dataDir, this.targetOf(s)?.wslUser)
@@ -601,7 +632,7 @@ export class Launcher {
     // --add-dir would make the folder writable too: never added for Codex.
     const addDir =
       prompt.mode === 'read' && p.id !== 'codex'
-        ? s.env === 'wsl'
+        ? s.env === 'wsl' && !windowsPath
           ? sessionPath.slice(0, sessionPath.lastIndexOf('/'))
           : dirname(path)
         : undefined
@@ -680,9 +711,124 @@ export class Launcher {
     return this.billing?.label(opts.billingAccountId) ?? 'API key'
   }
 
+  /** What the "Open in Codex app" rules need about this session (see codexAppPreview). */
+  private async codexAppFacts(s: SessionSummary): Promise<CodexAppFacts> {
+    const base = { appHome: false, sourceLabel: s.sourceLabel, fileExists: false }
+    const app = this.codexApp
+    if (!app || !app.service.supported || !this.platform.canLaunch)
+      return { ...base, installed: false, unsupportedPlatform: true }
+    const snap = await app.service.snapshot()
+    return {
+      installed: snap.installed,
+      wslMode: snap.wslMode,
+      ...(snap.state ? { state: snap.state } : {}),
+      ...(snap.stateError ? { stateError: snap.stateError } : {}),
+      // The app keeps its threads in the Windows .codex (it shows no other home).
+      appHome: s.sourceId === CODEX_APP_SOURCE_ID,
+      sourceLabel: s.sourceLabel,
+      fileExists: await this.platform.pathExists(s.originalPath)
+    }
+  }
+
+  /** Codex sessions: can this launch open in the Codex app? (Undefined for other agents.) */
+  private async appPreview(
+    s: SessionSummary,
+    opts: LaunchOptions
+  ): Promise<CodexAppPreview | undefined> {
+    const kind = appKind(opts)
+    if (this.provider(s).id !== 'codex' || !kind) return undefined
+    return codexAppPreview(kind, s, await this.codexAppFacts(s), opts.codexAppInside === true)
+  }
+
+  /**
+   * Open a Codex session in the Codex desktop app: the thread itself (Resume,
+   * and Fork, which only the app's own menu can do), or a new thread with the
+   * handoff line typed in, in the session's project (Continue fresh). Never
+   * writes anything of the app's: the handoff goes to the dashboard's own data
+   * folder, and the link names a project the app already has.
+   */
+  private async openInCodexApp(
+    s: SessionSummary,
+    opts: LaunchOptions,
+    ctx: LaunchContext
+  ): Promise<LaunchResult> {
+    const fail = (error: string, commandLine = ''): LaunchResult => ({
+      ok: false,
+      restored: false,
+      commandLine,
+      error
+    })
+    const kind = appKind(opts)
+    if (this.provider(s).id !== 'codex' || !kind)
+      return fail("This can't be opened in the Codex app.")
+    if (s.availability === 'imported') return fail("This session can't be opened in the Codex app.")
+    const app = this.codexApp
+    const prev = codexAppPreview(kind, s, await this.codexAppFacts(s), opts.codexAppInside === true)
+    if (!app || !prev.available)
+      return fail(prev.reason ?? "This session can't be opened in the Codex app.")
+    let link: string
+    let cont: ContinuePlan | undefined
+    try {
+      if (kind === 'continue') {
+        if (!prev.project) return fail("This folder isn't a project in the Codex app.")
+        cont = await this.continuePlan(s, opts.continueFresh ?? {}, true)
+        link = newThreadLink(prev.project.id, cont.args.prompt)
+      } else link = threadLink(s.sessionId)
+    } catch (err) {
+      return fail((err as Error).message)
+    }
+    if (!isSafeAppLink(link)) return fail("This session can't be opened in the Codex app.")
+    const note = prev.note
+    const stop = ctx.stillAllowed?.()
+    if (stop) return fail(`Not opened: ${stop}.`, link)
+    if (cont) {
+      // A new file in the app's own data folder only; never overwrites.
+      try {
+        await writeHandoff(this.dataDir!, cont.preview.newSessionId, cont.preview.handoff, 'codex')
+      } catch (err) {
+        return fail(
+          (err as NodeJS.ErrnoException).code === 'EEXIST'
+            ? 'A handoff for this new session already exists. Try again.'
+            : `Couldn't write the handoff file: ${(err as Error).message}`,
+          link
+        )
+      }
+      const late = ctx.stillAllowed?.()
+      if (late) return fail(`Not opened: ${late}.`, link)
+      // Linked once a session whose first prompt names this handoff shows up in the
+      // Windows .codex (the app's), whatever home the parent came from.
+      this.sessions.recordPendingContinue(cont.preview.newSessionId, {
+        parentSessionId: s.sessionId,
+        parentKey: s.key,
+        sourceId: CODEX_APP_SOURCE_ID,
+        name: cont.preview.name,
+        ...(s.meta.model ? { model: s.meta.model } : {}),
+        ...(s.meta.effort ? { effort: s.meta.effort } : {}),
+        createdAt: new Date().toISOString()
+      })
+    }
+    try {
+      await app.open(link)
+    } catch (err) {
+      if (cont) this.sessions.dropPendingContinue(cont.preview.newSessionId)
+      return fail(`Couldn't open the Codex app: ${(err as Error).message}`, link)
+    }
+    return {
+      ok: true,
+      restored: false,
+      commandLine: link,
+      openedIn: 'codex-app',
+      ...(note ? { note } : {})
+    }
+  }
+
   async preview(opts: LaunchOptions): Promise<LaunchPreview> {
     const found = this.sessions.get(opts.key)
     if (!found) throw new Error('Session not found')
+    // "Open in Codex app": decided on the session as recorded (its own folder and home).
+    const codexApp = await this.appPreview(found, opts)
+    const withApp = (p: LaunchPreview): LaunchPreview => (codexApp ? { ...p, codexApp } : p)
+    const app = opts.openIn === 'codex-app'
     // Where it runs (WSL for a Codex desktop session with a Linux folder, …).
     const placed = await this.place(found, opts)
     const s = placed.s
@@ -739,7 +885,7 @@ export class Launcher {
       let plan: ContinuePlan | undefined
       let continueError: string | undefined
       try {
-        plan = await this.continuePlan(s, opts.continueFresh)
+        plan = await this.continuePlan(s, opts.continueFresh, app)
       } catch (err) {
         continueError = (err as Error).message
       }
@@ -756,7 +902,7 @@ export class Launcher {
             plan.args
           )
         : {}
-      return {
+      return withApp({
         commandLine: built.cmd?.commandLine ?? '',
         claudeCommand: built.cmd?.claudeCommand ?? '',
         ...(built.cmd?.agentNote ? { agentNote: built.cmd.agentNote } : {}),
@@ -777,7 +923,7 @@ export class Launcher {
         modelChoice: this.modelChoice(s),
         // A WSL-only folder: the same opt-in and distro choice as Resume.
         ...(placed.placement ? { placement: placed.placement } : {})
-      }
+      })
     }
     const originalExists = await this.platform.pathExists(s.originalPath)
     const record = this.sessions.archiveRecord(s.key)
@@ -792,7 +938,7 @@ export class Launcher {
             billingAccountId: opts.billingAccountId,
             modelChoice: modelChoice.model
           }).catch(() => undefined)
-    return {
+    return withApp({
       commandLine: cmd?.commandLine ?? '',
       claudeCommand: this.claudeCommand(s, opts, cmd),
       ...(cmd?.agentNote ? { agentNote: cmd.agentNote } : {}),
@@ -813,7 +959,7 @@ export class Launcher {
       modelChoice,
       ...(context ? { context } : {}),
       ...(placed.placement ? { placement: placed.placement } : {})
-    }
+    })
   }
 
   /**
@@ -873,6 +1019,8 @@ export class Launcher {
   async launch(opts: LaunchOptions, ctx: LaunchContext = DESKTOP): Promise<LaunchResult> {
     const found = this.sessions.get(opts.key)
     if (!found) return { ok: false, restored: false, commandLine: '', error: 'Session not found' }
+    // The Codex desktop app instead of a terminal: no folder, terminal or flags involved.
+    if (opts.openIn === 'codex-app') return this.openInCodexApp(found, opts, ctx)
     // Where it runs (a Codex desktop session's Linux folder, translated). Never opted in
     // to a WSL-only folder from a phone.
     const placed = await this.place(found, ctx.via === 'phone' ? { distro: opts.distro } : opts)

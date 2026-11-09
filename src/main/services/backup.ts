@@ -306,27 +306,60 @@ export class BackupService extends EventEmitter<{ changed: [] }> {
 
   /** Is a scheduled backup due now? */
   async due(): Promise<boolean> {
+    if (this.running || this.restoring || !this.scheduleDue()) return false
+    return !(await this.notReady())
+  }
+
+  /** The schedule says a backup is due: time since the last one, and the retry wait after a failure. */
+  private scheduleDue(): boolean {
     const f = this.file
-    if (f.schedule === 'off' || !f.setDir || this.running || this.restoring) return false
+    if (f.schedule === 'off' || !f.setDir) return false
     const t = this.now()
     const lastOk = Date.parse(f.lastSuccessAt ?? '') || 0
     // A quarter of an hour early is fine (the check runs every 15 minutes).
     if (t - lastOk < INTERVAL[f.schedule] - TICK_MS) return false
     const lastTry = Date.parse(f.lastAttemptAt ?? '') || 0
     if (f.last && !f.last.ok && t - lastTry < RETRY_MS) return false
-    const set = await readSet(f.setDir).catch(() => undefined)
-    if (!set || this.pauseReason(f.setDir, set)) return false
-    await this.loadRemembered(set)
-    if (set.current && !this.keys.has(set.current)) return false
     return true
   }
 
+  /** Why the backup folder can't take a backup right now (undefined: it can). */
+  private async notReady(): Promise<string | undefined> {
+    const setDir = this.file.setDir
+    if (!setDir) return 'No backup folder is set.'
+    let set: SetFile | undefined
+    try {
+      set = await readSet(setDir)
+    } catch (e) {
+      return message(e)
+    }
+    if (!set) return this.missingSetReason(setDir)
+    const paused = this.pauseReason(setDir, set)
+    if (paused) return PAUSED[paused]
+    await this.loadRemembered(set)
+    if (set.current && !this.keys.has(set.current))
+      return 'The backup password is needed: enter it in Settings → Backup.'
+    return undefined
+  }
+
   async tick(): Promise<void> {
-    if (await this.due()) {
+    if (!this.running && !this.restoring && this.scheduleDue()) {
+      const why = await this.notReady()
       const catchUp = this.catchUp
-      const r = await this.runNow('scheduled')
-      if (catchUp) {
+      if (!why) {
+        const r = await this.runNow('scheduled')
+        if (catchUp) {
+          this.catchUp = undefined
+          this.notifyCatchUp(catchUp, r)
+        }
+      } else if (catchUp) {
+        // A missed backup that can't run now (drive missing, password needed,
+        // paused): recorded as a failed scheduled backup, so it's tried again
+        // after the usual wait, and said once.
         this.catchUp = undefined
+        const r = this.failed('scheduled', this.now(), why)
+        await this.deps.store.flush()
+        this.emit('changed')
         this.notifyCatchUp(catchUp, r)
       }
     }
@@ -355,7 +388,7 @@ export class BackupService extends EventEmitter<{ changed: [] }> {
     else
       this.deps.notify?.(
         'Missed backup failed',
-        `${since} ${r.error ?? 'Unknown error'}. It's tried again in an hour (Settings → Backup).`
+        `${since} ${(r.error ?? 'Unknown error').replace(/\.$/, '')}. It's tried again in an hour (Settings → Backup).`
       )
   }
 

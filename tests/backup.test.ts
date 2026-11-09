@@ -4,6 +4,7 @@ import {
   mkdtemp,
   readdir,
   readFile,
+  rename,
   rm,
   stat,
   symlink,
@@ -742,6 +743,37 @@ describe('BackupService', () => {
     ])
     clock += 2 * 60 * 60_000
     await svc.tick()
+    expect(told).toHaveLength(1)
+  })
+
+  it('a missed backup whose folder is unavailable is recorded and said once, then tried again', async () => {
+    const first = await service()
+    await first.svc.connect(dest, { encrypt: false })
+    expect((await first.svc.runNow('scheduled')).ok).toBe(true)
+    await first.store.flush()
+    first.svc.stop()
+    clock += 2 * 24 * 60 * 60_000
+    // The external drive isn't plugged in at the next start.
+    const away = `${dest}-unplugged`
+    await rename(dest, away)
+    const told: string[][] = []
+    const { svc } = await service((t, b) => told.push([t, b]))
+    svc.start()
+    await svc.tick()
+    expect(told).toEqual([
+      ['Missed backup failed', expect.stringMatching(/tried again in an hour/)]
+    ])
+    expect(told[0][1]).not.toContain('..')
+    expect((await svc.status()).last).toMatchObject({ ok: false, reason: 'scheduled' })
+    // Still unplugged within the hour: no new attempt, no second notice.
+    clock += 30 * 60_000
+    await svc.tick()
+    expect(told).toHaveLength(1)
+    // Plugged in again after the wait: the scheduled backup runs, quietly.
+    await rename(away, dest)
+    clock += 40 * 60_000
+    await svc.tick()
+    expect((await svc.status()).last).toMatchObject({ ok: true, reason: 'scheduled' })
     expect(told).toHaveLength(1)
   })
 

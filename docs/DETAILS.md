@@ -363,7 +363,9 @@ settings backups can hold secrets from Claude's `env`), caches, and `backup.json
 - **Restore safety copies:** Settings → Backup shows the size of `restore-backups\`. **Clean up
   restore safety copies older than 30 days** lists those copies (date, files, size) and asks first.
   Only folders named with a restore's own time stamp count, aged by that name (not by file dates);
-  the newest is always kept; a link or junction is never followed or deleted; the list is checked
+  the newest is always kept; a link or junction is never followed or deleted (and a
+  `restore-backups` folder that is itself one, or leads outside the data folder, is never listed or
+  cleaned up); the list is checked
   again right before deleting, and only copies that were shown and are still old enough go. **Clean
   up automatically** (off by default) does the same at most once a day while the app is open.
 - **Restore:** pick a snapshot and see what would change, per kind of data. Files are restored only

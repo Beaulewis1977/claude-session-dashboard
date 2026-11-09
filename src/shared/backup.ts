@@ -164,6 +164,8 @@ export interface SafetySummary {
   /** Copies old enough to clean up (never the newest). */
   old: SafetyCopy[]
   oldBytes: number
+  /** restore-backups is a link or junction (or leads elsewhere): not listed, never cleaned up. */
+  refused?: string
 }
 
 /** What a cleanup of restore safety copies did. */

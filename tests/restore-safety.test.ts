@@ -127,6 +127,44 @@ describe('restore safety copies', () => {
     expect(await readdir(outside)).toEqual(['keep.txt'])
   })
 
+  it('never lists or cleans a restore-backups folder that is itself a junction', async () => {
+    // Elsewhere on the disk: two old "copies" and a newer one, under the same names a
+    // restore uses.
+    const elsewhere = join(data, '..', `${data.split(/[\\/]/).pop()}-outside`)
+    await rm(root, { recursive: true })
+    await mkdir(elsewhere, { recursive: true })
+    try {
+      for (const daysAgo of [1, 40, 50]) {
+        const name = new Date(NOW - daysAgo * DAY)
+          .toISOString()
+          .replace(/[-:]/g, '')
+          .replace(/\.\d{3}/, '')
+        await mkdir(join(elsewhere, name))
+        await writeFile(join(elsewhere, name, 'keep.json'), 'not the app’s')
+      }
+      try {
+        await symlink(elsewhere, root, 'junction')
+      } catch {
+        return // no junctions here (not Windows, or not allowed)
+      }
+      const s = await listSafetyCopies(data, NOW)
+      expect(s).toMatchObject({
+        copies: [],
+        old: [],
+        bytes: 0,
+        refused: expect.stringMatching(/junction/)
+      })
+      const names = (await readdir(elsewhere)).sort()
+      const r = await deleteSafetyCopies(data, names, NOW)
+      expect(r.deleted).toEqual([])
+      expect(r.errors).toEqual([expect.stringMatching(/junction/)])
+      expect((await readdir(elsewhere)).sort()).toEqual(names)
+    } finally {
+      await rm(root, { force: true }).catch(() => undefined)
+      await rm(elsewhere, { recursive: true, force: true })
+    }
+  })
+
   it('has nothing to do without a restore-backups folder', async () => {
     await rm(root, { recursive: true })
     expect(await listSafetyCopies(data, NOW)).toMatchObject({ copies: [], old: [], bytes: 0 })

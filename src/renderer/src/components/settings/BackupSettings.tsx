@@ -897,6 +897,7 @@ function SafetyCopies({ status }: { status: BackupStatus }) {
   }, [])
   // Again after a restore or a cleanup (both change the status).
   useEffect(load, [load, status.lastRestore?.at, status.lastSafetyCleanup?.at])
+  if (summary?.refused) return <Warning>{summary.refused}</Warning>
   if (!summary?.copies.length) return null
   const n = summary.copies.length
   const old = summary.old.length

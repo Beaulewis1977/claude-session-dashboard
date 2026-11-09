@@ -28,6 +28,7 @@ import { MAIN_LIMIT_ID } from '@shared/usage/codex'
 import { parseResetsAt } from '@shared/usage/bridge'
 import type { UsageContext } from '@shared/usage/parse'
 import type { CodexTurnSample, UsageAnalysis, UsageRecord } from '@shared/usage/types'
+import { isContextItem } from './provenance'
 
 export type CodexUsageContext = UsageContext
 
@@ -180,6 +181,20 @@ function lines(text: string): Line[] {
     }
   }
   return out
+}
+
+/**
+ * A user message I wrote (not only context Codex added). The usage reader
+ * marks it (`prompt`); a plain rollout is checked here the same way.
+ */
+function isPrompt(p: Record<string, unknown>): boolean {
+  if (p.role !== 'user') return false
+  if (typeof p.prompt === 'boolean') return p.prompt
+  const content = Array.isArray(p.content) ? p.content : []
+  return content.some((c: unknown, i) => {
+    const t = (c as { text?: unknown } | null)?.text
+    return typeof t === 'string' && t.trim() !== '' && !isContextItem(p, i, t)
+  })
 }
 
 const TOOL_CALL_TYPES = new Set([
@@ -366,7 +381,7 @@ export function analyzeCodexUsage(text: string, ctx: CodexUsageContext): UsageAn
     const at = l.timestamp ? Date.parse(l.timestamp) : Number.NaN
     if (l.type === 'response_item') {
       if (p.type === 'message') {
-        if (p.prompt === true && Number.isFinite(at)) turns.prompt(at, model)
+        if (isPrompt(p) && Number.isFinite(at)) turns.prompt(at, model)
       } else if (p.type === 'function_call_output' || p.type === 'custom_tool_call_output')
         turns.toolOutput(typeof p.exit === 'number' ? p.exit : undefined)
       else if (TOOL_CALL_TYPES.has(String(p.type))) turns.toolCall()

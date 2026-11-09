@@ -49,9 +49,10 @@ export function pathDirs(pathVar: string | undefined): string[] {
 
 /**
  * The first `<dir>\<name><ext>` that exists, searching PATH's absolute folders
- * only, in PATH order. Every candidate is checked at once: one at a time, each
- * check waited its turn behind the app's other file work (the startup scan
- * keeps Node's few file threads busy), and a PATH of 60 folders took seconds.
+ * only, in PATH order. Every candidate is checked at once (one at a time, each
+ * check waited its turn behind the app's other file work: the startup scan
+ * keeps Node's few file threads busy, and a PATH of 60 folders took seconds),
+ * and it answers as soon as a match and every check before it are in.
  */
 export async function findOnPath(
   name: string,
@@ -62,8 +63,12 @@ export async function findOnPath(
   const candidates = pathDirs(env.PATH ?? env.Path).flatMap((dir) =>
     exts.map((ext) => win32.join(dir, name + ext))
   )
-  const found = await Promise.all(candidates.map((p) => exists(p).catch(() => false)))
-  return candidates[found.indexOf(true)]
+  const checks = candidates.map((p) => exists(p).catch(() => false))
+  // In PATH order: done as soon as a match and every check before it have
+  // answered. Later ones (e.g. an offline network folder further down PATH)
+  // aren't waited for.
+  for (let i = 0; i < checks.length; i++) if (await checks[i]) return candidates[i]
+  return undefined
 }
 
 /** Windows Terminal: its app execution alias, else wt.exe on PATH. */

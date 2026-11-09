@@ -120,6 +120,31 @@ describe('finding programs (SEC-01)', () => {
     expect(await findOnPath('tool', ['.exe', '.cmd'], env, throws)).toBe('C:\\a\\tool.exe')
   })
 
+  it("doesn't wait for a later, offline network folder once an earlier one has it", async () => {
+    const env = { PATH: 'C:\\local\\bin;\\\\offline-nas\\tools' }
+    let hang: (() => void) | undefined
+    const exists = (p: string) =>
+      p.startsWith('\\\\offline-nas')
+        ? // Never answers (until the test lets it go).
+          new Promise<boolean>((r) => (hang = () => r(false)))
+        : Promise.resolve(p === 'C:\\local\\bin\\claude.exe')
+    const found = await Promise.race([
+      findOnPath('claude', ['.exe', '.cmd'], env, exists),
+      new Promise((r) => setTimeout(() => r('waited'), 500))
+    ])
+    expect(found).toBe('C:\\local\\bin\\claude.exe')
+    hang?.()
+    // Not found locally: then it does wait for the network folder, in PATH order.
+    const later = findOnPath('codex', ['.exe'], env, exists)
+    const first = await Promise.race([
+      later,
+      new Promise((r) => setTimeout(() => r('waiting'), 50))
+    ])
+    expect(first).toBe('waiting')
+    hang?.()
+    expect(await later).toBeUndefined()
+  })
+
   it('reports Claude Code as missing rather than guessing a bare name', async () => {
     expect(await findWindowsClaude({ PATH: '.;bin' }, exists)).toBeUndefined()
   })

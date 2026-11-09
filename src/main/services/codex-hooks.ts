@@ -124,6 +124,12 @@ export interface CodexHookInstallRecord extends HookInstallRecord {
    * It doesn't mean the app's hook is trusted.
    */
   priorTrustHash?: string | null
+  /** Every trust hash config.toml had when the app added its hook: none of them is the app's. */
+  foreignHashes?: string[]
+  /** The position (group index) the app's hook was added at. */
+  installGroup?: number
+  /** The trust hash Codex recorded for the app's own hook, once known. */
+  ourHash?: string
 }
 
 export interface CodexHooksFile {
@@ -308,35 +314,78 @@ export class CodexHooksInstaller {
         const toml = (await this.read(p.configPath).catch(() => undefined)) ?? ''
         const installedAt = rec?.installedAt ? Date.parse(rec.installedAt) : undefined
         const configSavedAt = await this.savedAt(p.configPath)
-        env.trust = trustOf(
-          parseHookTrust(toml),
-          {
-            hooksPath: p.codexHooksPath,
-            event: CODEX_HOOK_EVENTS[0],
-            group: pos.group,
-            handler: pos.handler,
-            windows: p.env === 'windows'
-          },
-          {
-            priorHash: rec?.priorTrustHash,
-            installedAt: Number.isFinite(installedAt) ? installedAt : undefined,
-            configSavedAt
-          }
+        const entries = parseHookTrust(toml)
+        const where = {
+          hooksPath: p.codexHooksPath,
+          event: CODEX_HOOK_EVENTS[0],
+          group: pos.group,
+          handler: pos.handler,
+          windows: p.env === 'windows'
+        }
+        const entry = trustEntry(
+          entries,
+          where.hooksPath,
+          where.event,
+          where.group,
+          where.handler,
+          where.windows
         )
+        const heuristic = trustOf(entries, where, {
+          priorHash: rec?.priorTrustHash,
+          installedAt: Number.isFinite(installedAt) ? installedAt : undefined,
+          configSavedAt
+        })
         // An approval the hook delivered proves it runs, but only if it came after the
         // latest save of both files: a later change (trust revoked in /hooks, the hook
-        // edited) is never overridden by an older event, and "disabled" never is.
-        if (env.trust === 'untrusted' && lastEventAt && installedAt && lastEventAt >= installedAt) {
+        // edited or moved) is never overridden by an older event. A time that can't be
+        // read never counts as older.
+        let proof = false
+        if (lastEventAt && installedAt && lastEventAt >= installedAt) {
           const hooksSavedAt = await this.savedAt(p.hooksPath)
           const off = clockOffset()
-          // A time that can't be read never counts as "older": no upgrade then.
           const after = (t: number | undefined): boolean => t !== undefined && lastEventAt > t + off
-          if (after(configSavedAt) && after(hooksSavedAt)) env.trust = 'trusted'
+          proof = after(configSavedAt) && after(hooksSavedAt)
+        }
+        // Codex trusts a hash of the hook's content (not of its position). Once the app
+        // knows its own hook's hash, only an entry with that hash counts, wherever the
+        // group sits now: an entry another group left at this position never does.
+        // Before that: no hash that was there before the install, and only at the
+        // position it was added at.
+        let trust: HookEnv['trust'] = heuristic
+        if (heuristic !== 'disabled') {
+          if (rec?.ourHash) trust = entry?.hash === rec.ourHash || proof ? 'trusted' : 'untrusted'
+          else {
+            const foreign = !!entry?.hash && (rec?.foreignHashes ?? []).includes(entry.hash)
+            const moved = rec?.installGroup !== undefined && pos.group !== rec.installGroup
+            if (trust === 'trusted' && (foreign || moved)) trust = 'untrusted'
+            if (trust === 'untrusted' && proof) trust = 'trusted'
+          }
         }
         // Codex trusts a hash of the whole group: if the app's group was changed since
         // (a matcher added, a timeout or handler edited), that trust is for another hook,
-        // and a matcher could leave approvals uncovered. Never "trusted" then.
-        if (env.trust === 'trusted' && !groupAsWritten(text, pos.group)) env.trust = 'untrusted'
+        // and a matcher could leave approvals uncovered. Never "trusted" then; Settings
+        // says to Disable and enable it again.
+        if (!groupAsWritten(text, pos.group)) {
+          env.hookModified = true
+          if (trust === 'trusted') trust = 'untrusted'
+        }
+        env.trust = trust
+        // Learn the hook's own hash once it's trusted (or again, when a delivered
+        // approval proves a new one: Codex rehashed it, say).
+        if (
+          trust === 'trusted' &&
+          rec &&
+          entry?.hash &&
+          entry.hash !== rec.ourHash &&
+          (!rec.ourHash || proof)
+        ) {
+          const hash = entry.hash
+          this.store.update((d) => {
+            const r = d.installs[src.id]
+            if (r) r.ourHash = hash
+          })
+          void this.store.flush().catch(() => undefined)
+        }
         if (hooksFeatureOff(toml)) env.hooksFeatureOff = true
       }
     } catch {
@@ -492,6 +541,10 @@ export class CodexHooksInstaller {
         const prior = this.record(src.id)
         const repair = have.length > 0
         const priorTrustHash = await this.entryAt(p, after, commands).catch(() => null)
+        const foreignHashes = parseHookTrust(
+          (await this.read(p.configPath).catch(() => undefined)) ?? ''
+        ).flatMap((e) => (e.hash ? [e.hash] : []))
+        const installGroup = handlerPosition(after, CODEX_HOOK_EVENTS[0], commands)?.group
         this.store.update((d) => {
           d.installs[src.id] = {
             installedAt: prior?.installedAt ?? new Date().toISOString(),
@@ -512,7 +565,10 @@ export class CodexHooksInstaller {
             ],
             backupPath,
             scriptSha256: sha256(script),
-            priorTrustHash: prior ? prior.priorTrustHash : priorTrustHash
+            priorTrustHash: prior ? prior.priorTrustHash : priorTrustHash,
+            foreignHashes: prior ? prior.foreignHashes : foreignHashes,
+            installGroup: prior ? prior.installGroup : installGroup,
+            ...(prior?.ourHash ? { ourHash: prior.ourHash } : {})
           }
         })
       } else {

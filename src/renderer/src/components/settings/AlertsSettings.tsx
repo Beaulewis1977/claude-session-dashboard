@@ -30,6 +30,8 @@ import { BridgeDialog } from './BridgeDialog'
 /** A Codex home's hook state: Codex runs it only once trusted in its /hooks. */
 function codexStatus(e: HookEnv, last: string | undefined): string {
   if (!e.installed) return 'Off · approvals are a guess from the session files'
+  if (e.hookModified)
+    return 'Changed in hooks.json since the app added it, so approvals are guesses again. Disable, then enable it again.'
   if (e.hooksFeatureOff) return 'Added, but hooks are turned off in config.toml ([features] hooks)'
   if (e.trust === 'disabled') return 'Added, but turned off in Codex’s /hooks'
   if (e.trust !== 'trusted')
@@ -85,7 +87,7 @@ function EnvRow({ e, onAction }: { e: HookEnv; onAction: (a: 'install' | 'uninst
       )}
       {pending && (
         <Badge variant="muted" className="text-warning">
-          <TriangleAlert /> Needs trust
+          <TriangleAlert /> {e.hookModified ? 'Changed' : 'Needs trust'}
         </Badge>
       )}
       <Button

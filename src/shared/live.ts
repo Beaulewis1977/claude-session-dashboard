@@ -596,6 +596,8 @@ export interface HookEnv {
   trust?: 'trusted' | 'untrusted' | 'disabled'
   /** Codex: hooks are turned off in config.toml (`[features] hooks = false`). */
   hooksFeatureOff?: boolean
+  /** Codex: the app's hook group was changed in hooks.json since it added it. */
+  hookModified?: boolean
 }
 
 /** What "Focus terminal" did. */
@@ -623,7 +625,7 @@ export function alertsWork(
  * listed: for each agent in the view, somewhere. (The "set up alerts" banner.)
  */
 export function alertsCover(
-  listed: readonly Pick<LiveSession, 'sourceId' | 'state'>[],
+  listed: readonly Pick<LiveSession, 'sourceId' | 'state' | 'provider'>[],
   hooks: readonly HookEnv[],
   providers: readonly ProviderId[]
 ): boolean {
@@ -632,7 +634,9 @@ export function alertsCover(
   if (running.length)
     return running.every((s) => {
       const h = hookOf.get(s.sourceId)
-      return !h || alertsWork(h)
+      // A home with no alert setup at all: Claude Code's own status files still tell
+      // approvals; a Codex home's (a custom one) are only guesses.
+      return h ? alertsWork(h) : (s.provider ?? 'claude') !== 'codex'
     })
   return providers.every((p) => {
     const mine = hooks.filter((h) => (h.provider ?? 'claude') === p)

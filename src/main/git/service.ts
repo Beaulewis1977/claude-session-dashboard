@@ -272,6 +272,15 @@ export class GitLinksService extends EventEmitter<{ changed: [] }> {
     }
   }
 
+  /**
+   * Can this environment's git be asked now? A WSL distro only while it runs
+   * (asking through wsl.exe would start it), unless Settings scans stopped distros.
+   */
+  private envUp(env: GitEnv, ctx: PlaceContext): boolean {
+    if (env.kind === 'windows' || ctx.scanStopped || !ctx.running) return true
+    return ctx.running.some((d) => d.toLowerCase() === env.distro.toLowerCase())
+  }
+
   private async pass(opts: { force: boolean; repos?: Set<string> }): Promise<void> {
     if (!this.cfg().enabled) {
       this.computed.clear()
@@ -315,7 +324,8 @@ export class GitLinksService extends EventEmitter<{ changed: [] }> {
     for (const [rk, list] of byRepo) {
       const repo = this.repos.get(rk)
       if (!repo) continue
-      if (!opts.repos || opts.repos.has(rk)) {
+      // A repo in a distro that stopped keeps what was read before.
+      if ((!opts.repos || opts.repos.has(rk)) && this.envUp(repo.env, ctx)) {
         this.busy.add(rk)
         try {
           await this.refreshRepo(repo, list, opts.force)
@@ -732,7 +742,8 @@ export class GitLinksService extends EventEmitter<{ changed: [] }> {
     const committed = new Set<string>()
     const ci = repo?.env.kind === 'windows'
     const since = sig.spans[0]?.[0] ?? 0
-    for (const v of views) for (const cf of v.files) committed.add(ci ? cf.path.toLowerCase() : cf.path)
+    for (const v of views)
+      for (const cf of v.files) committed.add(ci ? cf.path.toLowerCase() : cf.path)
     for (const c of repo?.commits.values() ?? [])
       if (c.at >= since - 5 * 60_000)
         for (const cf of c.files) committed.add(ci ? cf.path.toLowerCase() : cf.path)
@@ -832,6 +843,14 @@ export class GitLinksService extends EventEmitter<{ changed: [] }> {
         }
       paths = file.from ? [file.from, file.path] : [file.path]
     }
+    if (!this.envUp(repo.env, await this.context()))
+      return {
+        sha,
+        files: [],
+        truncated: false,
+        bytes: 0,
+        error: `${envLabel(repo.env)} isn't running, so its git isn't asked.`
+      }
     const r = await this.deps.backend.show(
       repo.env,
       repo.root,
@@ -910,10 +929,16 @@ export class GitLinksService extends EventEmitter<{ changed: [] }> {
   }
 
   async status(): Promise<GitStatus> {
-    const envs = new Map<string, GitEnv>([['windows', { kind: 'windows' }]])
-    for (const r of this.repos.values()) envs.set(envKey(r.env), r.env)
+    // One line per environment (a distro read as two users is still one git).
+    const envs = new Map<string, GitEnv>([['Windows', { kind: 'windows' }]])
+    for (const r of this.repos.values()) envs.set(envLabel(r.env), r.env)
     const git: GitStatus['git'] = []
+    const ctx = await this.context()
     for (const [k, env] of envs) {
+      if (!this.envUp(env, ctx)) {
+        git.push({ env: envLabel(env), error: "Not running (its git isn't asked)." })
+        continue
+      }
       if (!this.versions.has(k) || this.versions.get(k)?.error)
         this.versions.set(k, await this.deps.backend.version(env))
       git.push({ env: envLabel(env), ...this.versions.get(k) })

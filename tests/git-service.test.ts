@@ -401,6 +401,45 @@ describe('the git links service', () => {
     expect(f.count('ghPrs')).toBe(1)
   })
 
+  it("never asks a stopped distro's git (it would start it); keeps what was read", async () => {
+    const API: Repo = {
+      env: 'wsl:Ubuntu:beau',
+      root: '/home/beau/api',
+      commonDir: '/home/beau/api/.git',
+      folders: ['/home/beau/api'],
+      refs: [{ ref: 'refs/heads/main', sha: S(1) }],
+      commits: [commit(1)]
+    }
+    const f = fakeBackend([API])
+    const s = service(
+      [input('w', { env: 'wsl', distro: 'Ubuntu', sourceUser: 'beau', cwd: '/home/beau/api' })],
+      f.backend
+    )
+    await s.svc.start()
+    await s.svc.schedule({ force: false })
+    expect(f.count('log')).toBe(1)
+    await s.svc.flush()
+    // Ubuntu stops: a new start reads nothing from it, but still shows what it read.
+    const g = fakeBackend([API])
+    const t = service(
+      [input('w', { env: 'wsl', distro: 'Ubuntu', sourceUser: 'beau', cwd: '/home/beau/api' })],
+      g.backend,
+      {
+        running: []
+      }
+    )
+    await t.svc.start()
+    await t.svc.schedule({ force: false })
+    expect(g.calls).toEqual([])
+    expect(t.svc.view('w', { refresh: false })!.possible.map((c) => c.sha)).toEqual([S(1)])
+    expect((await t.svc.diff('w', S(1))).error).toMatch(/isn't running/)
+    expect((await t.svc.status()).git).toContainEqual({
+      env: 'WSL: Ubuntu',
+      error: "Not running (its git isn't asked)."
+    })
+    expect(g.calls.filter((c) => c.env.startsWith('wsl'))).toEqual([])
+  })
+
   it('does nothing when git links are off', async () => {
     const f = fakeBackend([ACME])
     const { svc } = service([input('a')], f.backend, { git: { enabled: false } })

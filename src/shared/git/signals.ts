@@ -21,7 +21,7 @@ export const GH_PR_CREATE = /\bgh(?:\.exe)?\s+pr\s+create\b/
 
 /** git's own line for a new commit: `[main abc1234] Subject`, `[main (root-commit) abc1234] …`. */
 const COMMIT_LINE =
-  /^\[(?:detached HEAD|([^\s\]]+))(?: \(root-commit\))? ([0-9a-f]{7,40})\] ?(.*)$/gm
+  /^\[(?:detached HEAD|([^\s\]]+))(?: \(root-commit\))? ([0-9a-fA-F]{7,40})\] ?(.*)$/gm
 /** A SHA at a line start: `git log --oneline -1` (`abc1234 Subject`) or `git rev-parse HEAD`. */
 const LINE_SHA = /^([0-9a-f]{7,40})(?:[ \t]+(.*))?$/gm
 const PR_URL = /https:\/\/github\.com\/([A-Za-z0-9-]{1,39})\/([A-Za-z0-9._-]{1,100})\/pull\/(\d{1,7})\b/g

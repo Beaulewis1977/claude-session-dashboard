@@ -5,8 +5,8 @@ import type { CommitFile, CommitInfo } from './types'
 
 /** `git log` format: one record per commit, fields split by US, records by RS. */
 export const LOG_FORMAT = '%x1e%H%x1f%P%x1f%ae%x1f%ce%x1f%at%x1f%ct%x1f%s%x1f%(trailers:unfold,only)%x1f'
-/** `git for-each-ref` format: object, peeled object (annotated tags), ref name, symbolic target. */
-export const REF_FORMAT = '%(objectname)%x1f%(*objectname)%x1f%(refname)%x1f%(symref)'
+/** `git for-each-ref` format (its hex escape is `%1f`, not `%x1f`): object, peeled object (annotated tags), ref name, symbolic target. */
+export const REF_FORMAT = '%(objectname)%1f%(*objectname)%1f%(refname)%1f%(symref)'
 
 /** Files kept per commit (a commit touching more is summed up as "N more"). */
 export const MAX_COMMIT_FILES = 500

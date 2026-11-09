@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import {
+  AppWindow,
   Archive,
   ArrowDownToLine,
   ChevronLeft,
@@ -467,6 +468,16 @@ export function SessionScreen({ session }: { session: SessionSummary }) {
               </Button>
             )}
           </div>
+          {providerOf(session) === 'codex' && (
+            <Button
+              variant="outline"
+              className="mt-2 h-10 w-full text-[14px]"
+              disabled={readOnly}
+              onClick={() => setLaunch({ kind: 'codex-app' })}
+            >
+              <AppWindow /> Open in Codex app on PC
+            </Button>
+          )}
           <div className="mt-1.5 flex items-center justify-center gap-1 text-[11.5px] text-muted-foreground">
             <Smartphone className="size-3" />
             {readOnly

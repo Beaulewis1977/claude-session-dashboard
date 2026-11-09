@@ -6,6 +6,10 @@
 // case-sensitive, and each distro has its own files, so /home/me/App and
 // /home/me/app, or the same path in two distros, are different projects.
 //
+// A Linux folder in a Windows home (a Codex desktop session that ran in WSL;
+// its distro isn't recorded) is "linux:<path>", case kept: it's neither a
+// Windows folder nor a legacy bare-path key.
+//
 // Billing defaults from before this (1.4.0 and older) were keyed by the
 // lower-cased folder alone, so a WSL project's key was a bare Linux path.
 // migrateLegacyKeys() moves those to the new form once the app knows which
@@ -19,11 +23,14 @@ export interface ProjectRef {
 }
 
 const WSL_KEY = /^wsl:([^:]+):(\/.*)$/
+const LINUX_KEY = /^linux:(\/.*)$/
 
 /** The key for a session's project, or undefined without a folder (or a WSL session without a distro). */
 export function projectDefaultKey(p: ProjectRef | undefined): string | undefined {
   if (!p?.cwd) return undefined
   if (p.env === 'wsl') return p.distro ? `wsl:${p.distro}:${p.cwd}` : undefined
+  // A Windows home with a Linux folder: case-sensitive, and never a legacy bare-path key.
+  if (p.cwd.startsWith('/')) return `linux:${p.cwd}`
   return p.cwd.toLowerCase()
 }
 
@@ -40,6 +47,7 @@ export function isLegacyWslKey(k: string): boolean {
 export function normalizeProjectKey(k: string, keepLegacy = false): string | undefined {
   if (!k || k.length >= 1000) return undefined
   if (k.startsWith('wsl:')) return WSL_KEY.test(k) ? k : undefined
+  if (k.startsWith('linux:')) return LINUX_KEY.test(k) ? k : undefined
   if (isLegacyWslKey(k)) return keepLegacy ? k : undefined
   return k.toLowerCase()
 }
@@ -47,7 +55,9 @@ export function normalizeProjectKey(k: string, keepLegacy = false): string | und
 /** "WSL: Ubuntu · /home/me/app", or the Windows folder, for Settings. */
 export function projectKeyLabel(k: string): string {
   const m = WSL_KEY.exec(k)
-  return m ? `WSL: ${m[1]} · ${m[2]}` : k
+  if (m) return `WSL: ${m[1]} · ${m[2]}`
+  const l = LINUX_KEY.exec(k)
+  return l ? `WSL · ${l[1]}` : k
 }
 
 /**

@@ -1,6 +1,7 @@
 // The app's own persistent data: user metadata, archive records and settings.
 
 import { join } from 'node:path'
+import { isOpenIn } from '@shared/codex-app'
 import {
   DEFAULT_SETTINGS,
   type AppSettings,
@@ -110,6 +111,7 @@ export function cleanMetaPatch(
   if ('muteAlerts' in patch) out.muteAlerts = patch.muteAlerts === true ? true : undefined
   if ('noContextWarning' in patch)
     out.noContextWarning = patch.noContextWarning === true ? true : undefined
+  if ('openIn' in patch) out.openIn = isOpenIn(patch.openIn) ? patch.openIn : undefined
   if ('billing' in patch) {
     const b = patch.billing as Record<string, unknown> | undefined | null
     out.billing =

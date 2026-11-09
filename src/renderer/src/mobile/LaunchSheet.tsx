@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import {
+  AppWindow,
   ArchiveRestore,
   CircleCheck,
   ExternalLink,
@@ -36,6 +37,8 @@ export type LaunchTarget =
   | { kind: 'fork' }
   | { kind: 'continue' }
   | { kind: 'branch'; at: string; mode: 'include' | 'before' }
+  /** Codex: open the existing thread in the Codex desktop app on the PC. */
+  | { kind: 'codex-app' }
 
 const TERMINAL: Record<string, string> = {
   wt: 'Windows Terminal',
@@ -47,7 +50,8 @@ const VERB = {
   resume: 'Resume',
   fork: 'Fork',
   branch: 'Branch',
-  continue: 'Continue fresh'
+  continue: 'Continue fresh',
+  'codex-app': 'Open in Codex app'
 } as const
 
 /**
@@ -150,13 +154,17 @@ export function LaunchSheet({
         ? GitFork
         : target.kind === 'continue'
           ? Zap
-          : Play
+          : target.kind === 'codex-app'
+            ? AppWindow
+            : Play
   const title =
     target.kind === 'branch'
       ? target.mode === 'before'
         ? 'Branch from before this message'
         : 'Branch from here'
-      : `${VERB[target.kind]} on your PC`
+      : target.kind === 'codex-app'
+        ? 'Open in Codex app on your PC'
+        : `${VERB[target.kind]} on your PC`
 
   return (
     <Sheet open onOpenChange={(o) => !o && onClose()}>
@@ -168,6 +176,8 @@ export function LaunchSheet({
               <div className="text-[14px] leading-relaxed">
                 {result.simulated ? (
                   <>Fixtures mode: the command was built but nothing was started.</>
+                ) : target.kind === 'codex-app' ? (
+                  <>The thread opened in the Codex app on your PC. Continue it there.</>
                 ) : codex ? (
                   <>
                     {target.kind === 'continue'
@@ -229,7 +239,23 @@ export function LaunchSheet({
                 <Loader2 className="size-4 animate-spin" /> Checking with your PC…
               </div>
             )}
-            {preview && (
+            {preview && target.kind === 'codex-app' && (
+              <ul className="space-y-2.5 text-[14px]">
+                <li className="flex items-start gap-2.5">
+                  <AppWindow className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+                  <span>
+                    Opens this thread in the <b>Codex app</b> on your PC, in its project. Nothing
+                    else is started.
+                  </span>
+                </li>
+                {preview.confirmOnPc && (
+                  <li className="rounded-lg bg-info/5 px-3 py-2 text-[13px] text-info">
+                    You’ll need to click Allow on the PC.
+                  </li>
+                )}
+              </ul>
+            )}
+            {preview && target.kind !== 'codex-app' && (
               <ul className="space-y-2.5 text-[14px]">
                 <li className="flex items-start gap-2.5">
                   <SquareTerminal className="mt-0.5 size-4 shrink-0 text-muted-foreground" />

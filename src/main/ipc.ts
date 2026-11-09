@@ -23,6 +23,7 @@ import {
 } from '@shared/model-choice'
 import { isProviderView, sanitizeProviderToggles } from '@shared/provider'
 import { normalizeProjectKey } from '@shared/project-key'
+import { isOpenIn, PROJECT_ID_RE, sanitizeProjectOpenIn } from '@shared/codex-app'
 import { sanitizeLiveAlerts } from '@shared/live-alerts'
 import { sanitizeSummarySettings } from '@shared/summary'
 import { sanitizeContextWarning } from '@shared/context'
@@ -120,6 +121,8 @@ export function providerSettings(
     | 'codexDefaultModel'
     | 'codexDefaultEffort'
     | 'codexProjectModels'
+    | 'codexOpenInDefault'
+    | 'codexProjectOpenIn'
   >
 > {
   return {
@@ -130,7 +133,9 @@ export function providerSettings(
     codexDefaultModel: cleanModelChoice(s.codexDefaultModel) ?? DEFAULT_CHOICE,
     codexDefaultEffort:
       cleanEffortChoice(s.codexDefaultEffort, CODEX_EFFORT_LEVELS) ?? DEFAULT_CHOICE,
-    codexProjectModels: sanitizeProjectModels(s.codexProjectModels, CODEX_EFFORT_LEVELS)
+    codexProjectModels: sanitizeProjectModels(s.codexProjectModels, CODEX_EFFORT_LEVELS),
+    codexOpenInDefault: isOpenIn(s.codexOpenInDefault) ? s.codexOpenInDefault : 'terminal',
+    codexProjectOpenIn: sanitizeProjectOpenIn(s.codexProjectOpenIn)
   }
 }
 
@@ -167,8 +172,23 @@ function launchOpts(v: unknown): LaunchOptions {
       : undefined,
     remoteControl: o.remoteControl === true,
     continueFresh: continueRequest(o.continueFresh),
+    ...(o.openIn === 'codex-app' ? { openIn: 'codex-app' as const } : {}),
+    ...acceptedProject(o.codexAppProject),
     ...placeOpts(o)
   }
+}
+
+/** "Use that project anyway?": the Codex app project the dialog showed (id and root). */
+function acceptedProject(v: unknown): Pick<LaunchOptions, 'codexAppProject'> {
+  if (!v || typeof v !== 'object') return {}
+  const p = v as Record<string, unknown>
+  return typeof p.id === 'string' &&
+    PROJECT_ID_RE.test(p.id) &&
+    typeof p.root === 'string' &&
+    p.root.length > 0 &&
+    p.root.length < 2000
+    ? { codexAppProject: { id: p.id, root: p.root } }
+    : {}
 }
 
 /** The opt-in for a session in a WSL-only folder, and its distro (see Launcher.place). */
@@ -258,6 +278,9 @@ export function registerIpc(deps: IpcDeps): void {
       }
       if ('codexProjectModels' in p)
         s.codexProjectModels = sanitizeProjectModels(p.codexProjectModels, CODEX_EFFORT_LEVELS)
+      if (isOpenIn(p.codexOpenInDefault)) s.codexOpenInDefault = p.codexOpenInDefault
+      if ('codexProjectOpenIn' in p)
+        s.codexProjectOpenIn = sanitizeProjectOpenIn(p.codexProjectOpenIn)
       if (typeof p.skipPermissionsDefault === 'boolean')
         s.skipPermissionsDefault = p.skipPermissionsDefault
       if (TERMINALS.includes(p.terminal as TerminalPref)) s.terminal = p.terminal as TerminalPref

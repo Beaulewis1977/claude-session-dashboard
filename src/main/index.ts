@@ -89,6 +89,7 @@ import { AccountsService, createAccountsStore, type Encryptor } from './services
 import { httpsFetcher } from './services/anthropic-api'
 import { BillingService } from './services/billing'
 import { createFixturesPlatform, createRealPlatform, type Platform } from './platform'
+import { CodexAppService, codexProtocolRegistered } from './providers/codex/app'
 import { BridgeInstaller, cleanupSettingsLeftovers, createBridgeStore } from './services/bridge'
 import { Launcher } from './services/launcher'
 import { LineageService } from './services/lineage'
@@ -514,6 +515,15 @@ async function main(): Promise<void> {
     codex: { limits: codexLimits, prices: () => codexSettings().codexPrices }
   })
   launcher.contextEstimate = (s, l) => contextCost.estimate(s, l)
+  // "Open in Codex app" (Windows): reads the app's project list, opens codex:// links.
+  launcher.codexApp = {
+    service: new CodexAppService({
+      supported: process.platform === 'win32' && !FIXTURES,
+      home: () => (process.platform === 'win32' ? join(platform.windowsHome, '.codex') : undefined),
+      protocolRegistered: codexProtocolRegistered
+    }),
+    open: (link) => shell.openExternal(link)
+  }
   registerContextIpc({ sessions, launcher, cost: contextCost })
   usage.on('changed', () => limits.emit('changed'))
   limits.on('changed', () => billing.refreshInferred())

@@ -25,6 +25,7 @@ import {
   type ResumeEstimate,
   type SessionContext
 } from './context'
+import type { AcceptedProject, CodexAppPreview, OpenIn } from './codex-app'
 
 export type EnvKind = 'windows' | 'wsl'
 
@@ -86,6 +87,8 @@ export interface SessionMeta {
   aiSummary?: AiSummary
   /** "Don't warn for this session": no large-context warning before Resume. */
   noContextWarning?: boolean
+  /** Codex: open Resume / Fork / Continue fresh in a terminal or the Codex app; unset = the project / Settings default. */
+  openIn?: OpenIn
   updatedAt?: string
 }
 
@@ -350,6 +353,10 @@ export interface AppSettings {
   codexDefaultEffort?: EffortChoice
   /** Codex per-project model / effort defaults, keyed like projectModels. */
   codexProjectModels?: Record<string, ProjectModelDefault>
+  /** Codex launches: open in a terminal or the Codex app unless a session or project has its own (absent: terminal). */
+  codexOpenInDefault?: OpenIn
+  /** Codex per-project "Open in" defaults, keyed like projectModels. */
+  codexProjectOpenIn?: Record<string, OpenIn>
   // Codex usage & limits (Phase C). Kept apart from Claude Code's plan, baseline and prices.
   /** Codex plan for limit health: detected from the logs (absent: "auto") or chosen. */
   codexPlan?: CodexPlanSetting
@@ -487,6 +494,13 @@ export interface LaunchOptions {
   wslFolder?: boolean
   /** The WSL distro that holds that folder (unset: the default distro). */
   distro?: string
+  /** Codex: open in the Codex desktop app instead of a terminal (desktop and phone; see codex-app.ts). */
+  openIn?: OpenIn
+  /**
+   * Continue fresh in the Codex app: the project whose folder holds this one, as
+   * the dialog showed it ("Use that project anyway?"). Used only if it's still that project.
+   */
+  codexAppProject?: AcceptedProject
 }
 
 /**
@@ -611,6 +625,8 @@ export interface LaunchPreview {
   context?: ResumeEstimate
   /** Runs in the other environment than its home (see LaunchPlacement). */
   placement?: LaunchPlacement
+  /** Codex: whether this launch can open in the Codex app, and where (absent: not a Codex session). */
+  codexApp?: CodexAppPreview
 }
 
 export interface LaunchResult {
@@ -623,6 +639,10 @@ export interface LaunchResult {
   branch?: SessionSummary
   /** Continue fresh: the key the new session will have once Claude Code writes it. */
   continuedKey?: string
+  /** Opened in the Codex app instead of a terminal. */
+  openedIn?: 'codex-app'
+  /** Something to tell after opening (Fork in the Codex app: use its menu). */
+  note?: string
 }
 
 export interface SessionsPayload {

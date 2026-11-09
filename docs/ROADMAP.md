@@ -360,12 +360,12 @@ Run typecheck, lint, tests and the build. Commit, push the branch and open a PR 
 - ✅ #5 Phase D1: Codex Running now & alerts (PR #33, v1.11.0)
 - ✅ #5 Phase D2: Codex summaries, Continue fresh, agent-to-agent messages and trends (PR #35, v1.12.0)
 - ✅ **#5 Codex support complete** (Phases A–D2)
+- ✅ Open in Codex app (resume / fork / continue fresh into the correct project)
 
 **Next up:**
 
-1. Open in Codex app (resume / fork / continue fresh into the correct project)
-2. #6 Git links
-3. #7 Ask across all sessions
+1. #6 Git links
+2. #7 Ask across all sessions
 
 **Loose ends:**
 
@@ -374,6 +374,18 @@ Run typecheck, lint, tests and the build. Commit, push the branch and open a PR 
 - Codex (Phase C) edge cases left open:
   - Guessing a gone fork's parent (no saved link) matches its first rows in order, and rows with the same timestamp are ordered by their identity hash, which doesn't keep Codex's order. If several copied events share a millisecond, a real match can miss the 80% threshold, and that unavailable fork's copied history counts twice.
   - One-account mode: the plan in force now is taken from main-limit readings. If a model limit (e.g. Pro Spark) reports a new plan while the newest main reading is still the old one, the cutoff is 0 and the old plan's and new plan's Spark windows can be grouped together.
+- Open in Codex app known limits:
+  - The Codex app has no fork link: Fork opens the thread and says to use Fork in the app's menu.
+  - Continue fresh types the handoff line into the new thread but doesn't send it (the app's links
+    can't); the "continued from" link forms once it's sent.
+  - Only Windows Codex homes: with the app set to run Codex in WSL
+    (`runCodexInWindowsSubsystemForLinux`), the option is off with a note. Untested.
+  - Resume / Fork in the app need the thread in the Windows `.codex`; WSL-home threads open in a
+    terminal (Continue fresh from them can still open in a WSL project of the app).
+  - Projects are matched on their first root folder only.
+  - A Windows `.codex` session that ran in WSL in a Linux-only folder doesn't record its distro:
+    Continue fresh in the app works only when the app assigned the thread to a project itself
+    (a `/mnt/<drive>` folder works when every distro maps it to the same Windows folder).
 - Codex (Phase D2) known issues:
   - The summary notice changed (compaction summaries and messages between agents are now
     described), so everyone is asked to accept it again once; auto-summarize waits until then.

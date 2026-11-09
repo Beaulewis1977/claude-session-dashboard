@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import type { OpenIn } from '@shared/codex-app'
 import type { SearchHit } from '@shared/api'
 import {
   DEFAULT_SETTINGS,
@@ -32,6 +33,8 @@ export interface LaunchCarry {
   billing: string
   rememberProject: boolean
   remoteControl: boolean
+  /** Codex: a terminal or the Codex app. */
+  openIn?: OpenIn
 }
 
 export interface ResumeRequest {

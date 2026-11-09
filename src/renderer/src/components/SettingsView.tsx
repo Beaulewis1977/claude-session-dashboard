@@ -41,6 +41,7 @@ import { TerminalAccessBlock } from './settings/TerminalAccessSettings'
 import { BackupSettings } from './settings/BackupSettings'
 import { SummariesSettings } from './settings/SummariesSettings'
 import { ContextSettings } from './settings/ContextSettings'
+import { GitSettings } from './settings/GitSettings'
 import { DefaultModelPickers } from './ModelPicker'
 import { ProviderBadge } from './ProviderSwitch'
 import {
@@ -400,6 +401,8 @@ export function SettingsView() {
         <ContextSettings update={update} />
 
         <AlertsSettings update={update} />
+
+        {!api.remote && <GitSettings />}
 
         <MobileSettingsSection />
 

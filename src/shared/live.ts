@@ -223,6 +223,8 @@ export interface LiveSession {
   lockHeld?: boolean
   /** Codex: its lock can't be checked right now (an unreadable WSL share, say). */
   lockUnknown?: boolean
+  /** When the turn waiting for approval began (for "Finished only after …"). */
+  turnStartedAt?: number
 }
 
 /** A running file with its process check. */
@@ -629,17 +631,36 @@ export function alertsCover(
   hooks: readonly HookEnv[],
   providers: readonly ProviderId[]
 ): boolean {
+  return alertsGap(listed, hooks, providers) === 'none'
+}
+
+/**
+ * What's missing for exact alerts: 'setup' (a home where they can be turned on,
+ * or turned on but not running yet), 'custom' (only sessions in custom Codex
+ * folders, where the app can't add its hook: approvals stay guesses there), or
+ * 'none'.
+ */
+export function alertsGap(
+  listed: readonly Pick<LiveSession, 'sourceId' | 'state' | 'provider'>[],
+  hooks: readonly HookEnv[],
+  providers: readonly ProviderId[]
+): 'none' | 'setup' | 'custom' {
   const hookOf = new Map(hooks.map((h) => [h.sourceId, h]))
   const running = listed.filter((s) => s.state !== 'exited')
-  if (running.length)
-    return running.every((s) => {
+  if (running.length) {
+    let custom = false
+    for (const s of running) {
       const h = hookOf.get(s.sourceId)
-      // A home with no alert setup at all: Claude Code's own status files still tell
-      // approvals; a Codex home's (a custom one) are only guesses.
-      return h ? alertsWork(h) : (s.provider ?? 'claude') !== 'codex'
-    })
-  return providers.every((p) => {
+      if (h) {
+        if (!alertsWork(h)) return 'setup'
+      } else if ((s.provider ?? 'claude') === 'codex') custom = true
+      // A home without any alert setup: Claude Code's status files still tell approvals.
+    }
+    return custom ? 'custom' : 'none'
+  }
+  const ok = providers.every((p) => {
     const mine = hooks.filter((h) => (h.provider ?? 'claude') === p)
     return !mine.length || mine.some((h) => alertsWork(h))
   })
+  return ok ? 'none' : 'setup'
 }

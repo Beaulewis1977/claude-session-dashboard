@@ -301,6 +301,12 @@ export interface CodexThreadInput {
   /** Rollout file modification time, epoch ms. */
   rolloutMtime?: number
   info: CodexThreadInfo
+  /**
+   * Its home can't be read right now, or left the source list, since then (epoch
+   * ms): the thread keeps its last known state (approval included), unconfirmed,
+   * for UNVERIFIED_MAX_MS.
+   */
+  outageSince?: number
 }
 
 export interface CodexLiveInputs {
@@ -359,6 +365,13 @@ interface Derived {
   basis: LiveSession['basis']
 }
 
+/** When the running turn began (for "Finished only after …"), if one runs. */
+function openTurnStart(t: CodexThreadInput, heldLike: boolean): number | undefined {
+  if (!t.rollout) return undefined
+  const open = Object.values(current(t.rollout, heldLike ? t.heldSince : undefined).open)
+  return open.length ? Math.min(...open) : undefined
+}
+
 /** Turns and calls from this run only (not from a run before the lock was taken). */
 function current(r: RolloutState, from: number | undefined): RolloutState {
   if (from === undefined) return r
@@ -379,6 +392,16 @@ function current(r: RolloutState, from: number | undefined): RolloutState {
  * after the request counts as answered.
  */
 export function hookStillWaiting(r: RolloutState | undefined, at: number): boolean {
+  return hookWait(r, at) !== 'no'
+}
+
+/**
+ * Like hookStillWaiting, but saying when it can't be told: the hook event names
+ * no call, so with several candidate calls of which some have answered and some
+ * still run, the request may be answered or not ('maybe'). It's never dropped
+ * while any candidate still runs.
+ */
+export function hookWait(r: RolloutState | undefined, at: number): 'yes' | 'maybe' | 'no' {
   const asked = [
     ...Object.values(r?.pending ?? {})
       .filter((c) => c.at <= at)
@@ -389,9 +412,12 @@ export function hookStillWaiting(r: RolloutState | undefined, at: number): boole
   ]
   const escalated = asked.filter((c) => c.escalated)
   const candidates = escalated.length ? escalated : asked
-  if (candidates.length) return candidates.some((c) => c.open)
+  if (candidates.length) {
+    const open = candidates.filter((c) => c.open).length
+    return open === 0 ? 'no' : open === candidates.length ? 'yes' : 'maybe'
+  }
   const after = at + 1000
-  return (r?.lastOutputAt ?? 0) <= after && (r?.lastCallAt ?? 0) <= after
+  return (r?.lastOutputAt ?? 0) <= after && (r?.lastCallAt ?? 0) <= after ? 'yes' : 'no'
 }
 
 /** A thread's state from its rollout, the hook events and the lock. */
@@ -411,11 +437,18 @@ export function deriveCodex(
   // means a tool output or a new tool call after the request (or the turn ending);
   // progress lines another tool writes meanwhile (item_completed, token_count) don't.
   if (working && hook && hook.event === 'PermissionRequest' && hook.ts >= (turnStart ?? 0) - 1000) {
-    if (hookStillWaiting(r, hook.ts))
+    const wait = hookWait(r, hook.ts)
+    if (wait !== 'no')
       return {
         state: 'approval',
         since: hook.ts,
-        detail: hook.toolName ? `Wants to use ${hook.toolName}` : 'Waiting for your approval',
+        detail:
+          wait === 'maybe'
+            ? 'May still need your approval (several commands were running; the request names none)'
+            : hook.toolName
+              ? `Wants to use ${hook.toolName}`
+              : 'Waiting for your approval',
+        guess: wait === 'maybe' || undefined,
         basis: 'hook'
       }
   }
@@ -508,6 +541,16 @@ export function computeCodexLive(inp: CodexLiveInputs): LiveSession[] {
     }
     // The lock can't be checked right now (an unreadable WSL share, say), but it was
     // held lately: the thread is still taken as open (unconfirmed), never as ended.
+    // Its home can't be looked at (an outage): the last known state stays, frozen
+    // and unconfirmed (an approval stays an approval), for a while; an ended one
+    // stays ended.
+    if (t.outageSince !== undefined && prev) {
+      if (prev.state === 'exited') {
+        if (now - prev.since <= EXITED_KEEP_MS) rows.set(key, prev)
+      } else if (now - t.outageSince <= UNVERIFIED_MAX_MS)
+        rows.set(key, { ...prev, unverified: true, lockUnknown: true })
+      continue
+    }
     const lockSeenAt = t.held === true ? now : inp.lockSeenAt?.get(key)
     const stillOpen =
       t.held === undefined &&
@@ -578,6 +621,7 @@ export function computeCodexLive(inp: CodexLiveInputs): LiveSession[] {
       basis: d.basis,
       lockHeld: heldLike || undefined,
       unverified: t.held === true ? undefined : true,
+      turnStartedAt: d.state === 'approval' ? openTurnStart(t, heldLike) : undefined,
       lockUnknown: t.held === undefined || undefined
     }
     if (prev && prev.state === s.state && prev.since <= s.since) s.since = prev.since

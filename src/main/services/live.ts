@@ -117,6 +117,8 @@ export class LiveService extends EventEmitter<{ changed: [] }> {
   private hookEnvs: HookEnv[] = []
   private hookEnvsAt: number | undefined
   private lastShown = new Map<string, number>()
+  /** When each session last started working (seen Working), for approval → finished. */
+  private workStart = new Map<string, number>()
   private refs = new Map<string, { key: string; deviceId: string; at: number }>()
   /** Sessions whose running file disappeared after the app saw them running. */
   private tombstones = new Map<string, { input: Omit<ProcInput, 'alive'>; goneAt: number }>()
@@ -293,6 +295,12 @@ export class LiveService extends EventEmitter<{ changed: [] }> {
     const next = [...claude, ...(await this.pollCodex(t, m, force))].sort(liveOrder)
 
     this.alert(this.prev, next, idlePrompts, t)
+    for (const s of next) {
+      if (s.state === 'working') this.workStart.set(s.key, s.since)
+      else if (s.state !== 'approval') this.workStart.delete(s.key)
+    }
+    for (const k of this.workStart.keys())
+      if (!next.some((s) => s.key === k)) this.workStart.delete(k)
     this.prev = new Map(next.map((s) => [s.key, s]))
     this.current = next
     this.at = t
@@ -339,7 +347,6 @@ export class LiveService extends EventEmitter<{ changed: [] }> {
     const known = new Set(all.map((s) => s.id))
     // A home gone from the source list (its distro stopped, say): its threads stay a
     // while as "can't tell", like an unreadable one, never "ended" at once.
-    const can = (v: boolean | undefined): boolean | undefined => (v === false ? false : undefined)
     for (const [id, c] of this.codex) {
       if (known.has(id)) {
         c.missingSince = undefined
@@ -349,8 +356,8 @@ export class LiveService extends EventEmitter<{ changed: [] }> {
         this.codex.set(id, {
           ...c,
           missingSince: m,
-          locks: c.locks.map((l) => ({ ...l, held: can(l.held) })),
-          inputs: c.inputs.map((i) => ({ ...i, held: can(i.held) }))
+          locks: c.locks.map((l) => ({ ...l, held: undefined })),
+          inputs: c.inputs.map((i) => ({ ...i, held: undefined, outageSince: i.outageSince ?? t }))
         })
       else if (m - c.missingSince > UNVERIFIED_MAX_MS) this.codex.delete(id)
     }
@@ -362,8 +369,8 @@ export class LiveService extends EventEmitter<{ changed: [] }> {
       if (src.status === 'ok' || !have) continue
       this.codex.set(src.id, {
         at: have.at,
-        locks: have.locks.map((l) => ({ ...l, held: l.held === false ? false : undefined })),
-        inputs: have.inputs.map((i) => ({ ...i, held: i.held === false ? false : undefined }))
+        locks: have.locks.map((l) => ({ ...l, held: undefined })),
+        inputs: have.inputs.map((i) => ({ ...i, held: undefined, outageSince: i.outageSince ?? t }))
       })
     }
     const sources = all.filter((s) => s.status === 'ok')
@@ -633,9 +640,13 @@ export class LiveService extends EventEmitter<{ changed: [] }> {
       const v = alertVerdict(a, settings, {
         now: t,
         muted: (key) => this.deps.sessions.get(key)?.meta.muteAlerts === true,
+        // When the turn began: Working's start, or (approval → finished) the start of
+        // the turn that asked, so "Finished only after …" applies there too.
         workedSince: (key) => {
           const p = prev?.get(key)
-          return p?.state === 'working' ? p.since : undefined
+          if (p?.state === 'working') return p.since
+          if (p?.state === 'approval') return p.turnStartedAt ?? this.workStart.get(key)
+          return undefined
         },
         lastShown: (key, kind) => this.lastShown.get(`${key}|${kind}`)
       })

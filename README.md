@@ -78,6 +78,10 @@ Everything stays on your PC and your own private network.
 - **Model and effort per session:** pick the model (an alias like `opus`, a model seen in your
   logs, or any model ID) and the effort level. Every launch adds `--model` / `--effort`; Default
   adds nothing, so Claude Code decides.
+- **Open in Codex app:** Codex sessions can open in the Codex desktop app instead of a terminal.
+  Resume opens the thread in its project; Fork opens it too (fork it from the app's menu, since the
+  app has no fork link); Continue fresh opens a new thread in the session's Codex project with the
+  handoff line typed in, ready for you to press Enter.
 
 ### Summaries and Continue fresh
 
@@ -276,6 +280,13 @@ top.
   default** next to the pickers), then Settings → Resume, then Claude Code's own choice. The Resume
   button shows the result ("Resume · Opus · High"). If you set `CLAUDE_CODE_EFFORT_LEVEL`, Claude
   Code uses it instead of `--effort`.
+- **Codex sessions: Open in Terminal / Codex app.** The choice appears only where the Codex desktop
+  app can open that launch: Resume and Fork for threads in the Windows `.codex` folder, Continue
+  fresh when the session's folder is a project in the Codex app. A folder that is only _inside_ a
+  Codex project asks first ("Use that project anyway?"); a folder that isn't a project says so
+  instead of opening somewhere else. The choice is saved for the session, and the menu next to it
+  makes it the project's or every Codex session's default (also in Settings → Resume). On the phone,
+  **Open in Codex app on PC** opens the thread on your PC.
 
 ### Connect your phone
 

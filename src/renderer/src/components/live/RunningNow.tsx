@@ -4,7 +4,7 @@
 import { useState } from 'react'
 import { BellRing, ChevronRight, Monitor, Radio, SquareTerminal, Zap } from 'lucide-react'
 import { baseName } from '@shared/format'
-import { alertsCover, type LiveSession } from '@shared/live'
+import { alertsGap, type LiveSession } from '@shared/live'
 import type { SessionSummary } from '@shared/types'
 import { useLiveList, useNow, liveMuted, liveTitle, timeLine } from '@/lib/live-sessions'
 import { useApp } from '@/lib/store'
@@ -277,7 +277,7 @@ export function RunningView() {
   const needs = list.filter((x) => x.live.state === 'approval' || x.live.state === 'idle')
   const working = list.filter((x) => x.live.state === 'working')
   const ended = list.filter((x) => x.live.state === 'exited')
-  const alertsOn = alertsCover(
+  const gap = alertsGap(
     list.map((x) => x.live),
     hooks,
     enabled.filter((p) => inProviderView(view, { provider: p }))
@@ -308,7 +308,17 @@ export function RunningView() {
             <BellRing /> Alert settings
           </Button>
         </div>
-        {!alertsOn && (
+        {gap === 'custom' && (
+          <div className="mt-4 flex items-start gap-3 rounded-lg border border-border bg-background px-3.5 py-2.5 text-xs">
+            <BellRing className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+            <div className="min-w-0 flex-1 text-muted-foreground">
+              A Codex session here runs from a custom Codex folder. The app adds its approval hook
+              only to a <span className="font-mono">~/.codex</span> home it found, so &ldquo;needs
+              approval&rdquo; for it is a guess (shown as &ldquo;Needs approval?&rdquo;).
+            </div>
+          </div>
+        )}
+        {gap === 'setup' && (
           <div className="mt-4 flex items-start gap-3 rounded-lg border border-info/30 bg-info/5 px-3.5 py-2.5 text-xs">
             <BellRing className="mt-0.5 size-4 shrink-0 text-info" />
             <div className="min-w-0 flex-1">

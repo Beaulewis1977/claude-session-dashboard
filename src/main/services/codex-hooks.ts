@@ -357,7 +357,12 @@ export class CodexHooksInstaller {
           else {
             const foreign = !!entry?.hash && (rec?.foreignHashes ?? []).includes(entry.hash)
             const moved = rec?.installGroup !== undefined && pos.group !== rec.installGroup
-            if (trust === 'trusted' && (foreign || moved)) trust = 'untrusted'
+            // Only while hooks.json is still exactly what the app wrote can the entry at
+            // its position be its own (nothing was moved or reused in between; this also
+            // covers records from before the app kept positions). Otherwise only a
+            // delivered approval proves it.
+            const untouched = rec?.writtenText !== undefined && text === rec.writtenText
+            if (trust === 'trusted' && (foreign || moved || !untouched)) trust = 'untrusted'
             if (trust === 'untrusted' && proof) trust = 'trusted'
           }
         }

@@ -35,7 +35,7 @@ function codexStatus(e: HookEnv, last: string | undefined): string {
   if (e.hooksFeatureOff) return 'Added, but hooks are turned off in config.toml ([features] hooks)'
   if (e.trust === 'disabled') return 'Added, but turned off in Codex’s /hooks'
   if (e.trust !== 'trusted')
-    return 'Added · not trusted yet: open Codex, type /hooks and trust “PermissionRequest”'
+    return 'Added · not trusted yet: open Codex, type /hooks and trust “PermissionRequest” (if you already did, its first approval confirms it)'
   return last ? `On · last approval ${last}` : 'On · trusted in Codex'
 }
 
@@ -189,7 +189,10 @@ export function AlertsSettings({ update }: { update: (p: Partial<AppSettings>) =
               <span className="font-mono">~/.codex/hooks.json</span>, after you review the change.
               Codex runs it only once you trust it in Codex (type{' '}
               <span className="font-mono">/hooks</span>); the app never does that for you, and never
-              changes <span className="font-mono">config.toml</span>.
+              changes <span className="font-mono">config.toml</span>. Codex folders added by hand
+              (Settings → Sources) aren&apos;t listed here: the app adds its hook only to a{' '}
+              <span className="font-mono">~/.codex</span> home it found, so approvals there stay
+              guesses.
             </p>
           </div>
           <div className="divide-y divide-border overflow-hidden rounded-lg border border-border">

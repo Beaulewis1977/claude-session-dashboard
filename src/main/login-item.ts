@@ -8,7 +8,9 @@
 // electron.exe. The portable exe runs from a temporary copy, so the file
 // that was started (PORTABLE_EXECUTABLE_FILE) is registered instead.
 
+import { execFile } from 'node:child_process'
 import type { StartWithWindows } from '@shared/types'
+import { systemExe } from './core/which'
 
 /** The Run value's name: fixed, so it never depends on the app's AppUserModelID. */
 export const LOGIN_ITEM_NAME = 'Claude Session Dashboard'
@@ -43,6 +45,45 @@ export interface LoginItemEnv {
   execPath: string
   /** process.env: PORTABLE_EXECUTABLE_FILE for the portable build. */
   env: NodeJS.ProcessEnv
+  /**
+   * The command line in the app's own Run value (undefined: none). Electron's
+   * launchItems only list entries for the path asked about, so another copy's
+   * entry (installed vs portable) is only seen here.
+   */
+  readRunValue?: (name: string) => Promise<string | undefined>
+}
+
+const RUN_KEY = 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run'
+
+/** `reg query <Run> /v <name>` (read only): the value's command line, or undefined. */
+export function regRunValue(name: string): Promise<string | undefined> {
+  return new Promise((resolve) =>
+    execFile(
+      systemExe('reg.exe'),
+      ['query', RUN_KEY, '/v', name],
+      { windowsHide: true, timeout: 8000 },
+      (err, stdout) => resolve(err ? undefined : parseRegValue(String(stdout), name))
+    )
+  )
+}
+
+/** The data of value `name` in `reg query` output (REG_SZ or REG_EXPAND_SZ). */
+export function parseRegValue(out: string, name: string): string | undefined {
+  for (const line of out.split(/\r?\n/)) {
+    const m = /^\s+(.+?)\s{4}(REG_SZ|REG_EXPAND_SZ)\s{4}(.*)$/.exec(line)
+    if (m && m[1].toLowerCase() === name.toLowerCase()) return m[3].trim()
+  }
+  return undefined
+}
+
+/** The program a Run command line starts: `"C:\…\app.exe" --hidden` → `C:\…\app.exe`. */
+export function runCommandExe(cmd: string): string | undefined {
+  const c = cmd.trim()
+  if (c.startsWith('"')) {
+    const end = c.indexOf('"', 1)
+    return end > 1 ? c.slice(1, end) : undefined
+  }
+  return /^(.+?\.exe)(?:\s|$)/i.exec(c)?.[1]
 }
 
 /** What to register (undefined: not offered here, with why). */
@@ -59,13 +100,25 @@ export function loginTarget(
 
 const samePath = (a: string, b: string): boolean => a.toLowerCase() === b.toLowerCase()
 
-export function startWithWindows(app: LoginItemApp, e: LoginItemEnv): StartWithWindows {
+export async function startWithWindows(
+  app: LoginItemApp,
+  e: LoginItemEnv
+): Promise<StartWithWindows> {
   const t = loginTarget(app, e)
   if ('reason' in t) return { supported: false, on: false, reason: t.reason }
   const s = app.getLoginItemSettings(t)
-  const ours = (s.launchItems ?? []).filter((i) => i.name === LOGIN_ITEM_NAME)
-  const mine = ours.find((i) => samePath(i.path, t.path))
+  const mine = (s.launchItems ?? []).find(
+    (i) => i.name === LOGIN_ITEM_NAME && samePath(i.path, t.path)
+  )
   const on = s.openAtLogin || !!mine
+  // The app's own Run value pointing at another copy (e.g. the portable exe).
+  const registered = on
+    ? undefined
+    : await (e.readRunValue ?? regRunValue)(LOGIN_ITEM_NAME).then(
+        (v) => (v ? runCommandExe(v) : undefined),
+        () => undefined
+      )
+  const other = registered && !samePath(registered, t.path) ? registered : undefined
   return {
     supported: true,
     on,
@@ -74,15 +127,15 @@ export function startWithWindows(app: LoginItemApp, e: LoginItemEnv): StartWithW
       ? { disabledInTaskManager: true }
       : {}),
     // Registered for another copy of the app (e.g. the portable one).
-    ...(!on && ours.length ? { otherCopy: ours[0].path } : {})
+    ...(other ? { otherCopy: other } : {})
   }
 }
 
-export function setStartWithWindows(
+export async function setStartWithWindows(
   app: LoginItemApp,
   e: LoginItemEnv,
   on: boolean
-): StartWithWindows {
+): Promise<StartWithWindows> {
   const t = loginTarget(app, e)
   if ('reason' in t) return { supported: false, on: false, reason: t.reason }
   app.setLoginItemSettings({ openAtLogin: on, ...t, name: LOGIN_ITEM_NAME, enabled: on })

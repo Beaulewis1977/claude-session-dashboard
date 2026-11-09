@@ -17,6 +17,7 @@ import type { LimitsState } from '@shared/usage/limits'
 import type { CreditsState } from '@shared/usage/credits'
 import { MOBILE_SAFE_SETTINGS } from '@shared/mobile'
 import type { LiveSnapshot } from '@shared/live'
+import type { SessionGitView } from '@shared/git/types'
 
 export type RpcKind = 'read' | 'write'
 
@@ -95,6 +96,11 @@ function phoneSource(s: SourceInfo): SourceInfo {
   return { ...s, projectsDir: '', claudeSettingsPath: undefined }
 }
 
+/** A session's git links as a phone sees them: no remote URL (it may name a private server). */
+export function phoneGitView(v: SessionGitView): SessionGitView {
+  return { ...v, ...(v.repo ? { repo: { ...v.repo, remote: undefined } } : {}) }
+}
+
 export function phoneSessions(p: SessionsPayload): SessionsPayload {
   return { ...p, sessions: p.sessions.map(phoneSession), sources: p.sources.map(phoneSource) }
 }
@@ -139,6 +145,13 @@ export const RPC: Record<string, RpcMethod> = {
     }
   },
   search: { channel: 'sessions:search', kind: 'read', args: ([q]) => [str(q, 500)] },
+  // Git links: commits, files and PR links (read-only; diffs, unlinking and the gh setting are PC-only).
+  getGitLinks: {
+    channel: 'git:session',
+    kind: 'read',
+    args: ([k]) => [str(k, 300)],
+    result: (r) => (r ? phoneGitView(r as SessionGitView) : r)
+  },
   updateMeta: {
     channel: 'sessions:updateMeta',
     kind: 'write',

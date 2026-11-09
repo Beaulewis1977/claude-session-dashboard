@@ -30,6 +30,13 @@ import { callHandler, handle, setAppPage } from './ipc-guard'
 import { JsonStore } from './core/json-store'
 import { registerMobileIpc } from './ipc-mobile'
 import { registerLiveIpc } from './ipc-live'
+import { registerGitIpc } from './ipc-git'
+import { GitLinksService } from './git/service'
+import { createRealBackend } from './git/backend'
+import { createFixturesBackend } from './git/fixtures'
+import { createProcessRunner } from './git/runner'
+import { sanitizeGitSettings } from '@shared/git/types'
+import { wslRoots } from './core/wsl'
 import { realProcChecker } from './core/procs'
 import { createHooksStore, HooksInstaller } from './services/hooks'
 import {
@@ -806,6 +813,28 @@ async function main(): Promise<void> {
     push: (kind, refFor) => mobile.webPush({ kind, ref: refFor })
   })
   registerLiveIpc({ live, hooks, codexHooks, sessions, fixtures: FIXTURES })
+
+  // Git links: commits, branches and PRs per session, read-only (see git/service.ts).
+  // Fixtures mode uses sample repos and starts no git or gh.
+  const gitLinks = new GitLinksService({
+    sessions,
+    backend: FIXTURES
+      ? await createFixturesBackend(fixturesLayout(appRoot).fixturesDir)
+      : createRealBackend(createProcessRunner({ cwd: paths.dataDir }), { exists: fileExists, wslRoots }),
+    platform,
+    dataDir: paths.dataDir,
+    settings: () => ({
+      git: sanitizeGitSettings(settings.value.gitLinks),
+      scanStoppedDistros: settings.value.scanStoppedDistros
+    })
+  })
+  sessions.gitBadgeResolver = (key) => gitLinks.badge(key)
+  sessions.gitFilter = (q) => gitLinks.filter(q)
+  registerGitIpc({
+    git: gitLinks,
+    settings,
+    onSettingsChanged: () => mobile.push('settings')
+  })
   live.on('changed', () => mobile.push('live'))
   accounts.on('changed', () => mobile.push('credits'))
 
@@ -840,6 +869,10 @@ async function main(): Promise<void> {
     .then(() => mark('first session scan done'))
     .then(() => migrateBillingKeys())
     .then(() => watcher.restart())
+    // Git links read repos in the background, after the scan (nothing waits for them).
+    .then(() => {
+      void gitLinks.start().catch((err: unknown) => console.warn('git links start failed', err))
+    })
     // An interrupted save of settings.json: the app's own leftovers go
     // (a moved-aside file is put back only where settings.json is missing).
     .then(async () => {
@@ -906,6 +939,7 @@ async function main(): Promise<void> {
       await terminalStore.flush().catch(() => undefined)
       await watcher.close().catch(() => undefined)
       await sessions.idle().catch(() => undefined)
+      await gitLinks.flush().catch(() => undefined)
       await usage.idle().catch(() => undefined)
       limits.stop()
       live.stop()

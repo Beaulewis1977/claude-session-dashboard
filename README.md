@@ -15,8 +15,10 @@ network.
   your own names, tags and full-text search, even after Claude Code deletes old sessions.
 - **Resume, fork, branch or continue fresh** in Windows Terminal, the Claude desktop app or the
   Codex app, with the right folder, model and effort.
-- **Live limits and usage:** your real 5-hour and weekly percentages for Claude and Codex, token
-  history, costs and an "is it nerfed?" check.
+- **Live limits and usage:** your real 5-hour and weekly percentages for Claude and Codex, with
+  pacing, every token you've used, and costs.
+- **A nerf detector:** checks whether each 1% of your plan still buys as much work as it used to,
+  tracks model behavior week by week, and compares any two periods or versions.
 - **Ask across all sessions:** "Where did I fix the WSL path bug?", answered with citations that
   open the exact message.
 - **Running now, alerts and your phone:** see which session needs approval, get a notification on
@@ -57,7 +59,11 @@ network.
     [token usage and costs](#token-usage-and-costs), [Codex usage and limits](#codex-usage-and-limits),
     [at a glance: title bar, tray and mini meter](#at-a-glance-title-bar-tray-and-mini-meter),
     [API credits](#api-credits), [Ask Claude about your usage](#ask-claude-about-your-usage)
-  - [Limit health and trends](#limit-health-and-trends)
+  - [Nerf detector: limit health and trends](#nerf-detector-limit-health-and-trends):
+    [the score](#the-score-dollars-per-1), [your baseline and plans](#your-baseline-and-plans),
+    [the verdict](#the-verdict), [where your limits went](#where-your-limits-went),
+    [limit history](#limit-history), [trends](#trends), [compare](#compare),
+    [keeping it honest](#keeping-it-honest)
   - [Git links](#git-links)
   - [Phone companion](#phone-companion)
   - [Terminal access from your phone](#terminal-access-from-your-phone)
@@ -323,7 +329,7 @@ and what resuming would cost next to what [Continue fresh](#summaries-and-contin
 Before resuming a **large session** (150K tokens by default, Settings → **Context size**), the
 dialog warns: "Large session: about 192K tokens. Resuming may use about 21% of your 5-hour
 window", with **Continue fresh** (or **Summarize first**), **Fork**, **Resume anyway** and **Don't
-warn for this session**. The % is an estimate from your [limit-health baseline](#limit-health-and-trends);
+warn for this session**. The % is an estimate from your [limit-health baseline](#your-baseline-and-plans);
 a still-warm prompt cache is priced cheaper. Codex sessions get the same warning. How it's worked
 out: [docs/DETAILS.md → Context size](docs/DETAILS.md#context-size).
 
@@ -560,36 +566,98 @@ I hit my limit Tuesday?" through your own Claude Code. Only aggregated numbers a
 session titles, projects or text). The exact data is shown before you send, until you tick
 **Don't show again**.
 
-### Limit health and trends
+### Nerf detector: limit health and trends
 
-**What it does.** "Is it nerfed?" Limit health checks whether each 1% of your plan still buys as
-much work as it used to. Each 5-hour and weekly window gets one score, **API-equivalent dollars per
-1%**: the tokens used in the window, priced at API rates, divided by the % the window reached.
+**"Did my limits get smaller? Is the model worse this week?"** Anthropic doesn't publish limits as
+token counts, so the app measures them from your own work: how much each 1% of your plan buys, how
+the models behave week by week, and where your usage went. Claude and Codex each get their own.
+Open it in **Usage & limits** (<kbd>Ctrl</kbd>+<kbd>U</kbd>): the **Limit health** card, then the
+**Trends** and **Limit history** tabs.
 
-**How to use it.**
+![Limit health: dollars per 1% for each window, against your baseline](docs/images/limit-health.webp)
 
-1. **Pick your normal dates** on the Limit health card: a stretch when limits felt normal. Their
-   median score is your **baseline**.
-2. Keep your **plan history** in Settings → **Limit health** (Pro, Max 5x, Max 20x or a custom
-   multiplier, each with a start date), so an upgrade doesn't read as a cut.
-3. Read the **verdict**: "Possible reduction" only when the last 2 finished windows in a row fell
-   well below the baseline (both numbers are settings). Hover a bar for its token mix.
-4. **Compare** two date ranges side by side.
+#### The score: dollars per 1%
 
-**Caveats.** It's a trend indicator, not proof. Usage elsewhere (claude.ai, the apps, another PC)
-raises the % without local tokens; the app spots clear cases, warns about the rest, and lets you
-mark times as "used Claude elsewhere". Cheaper new models are priced as their family's newest
-model, so a price cut doesn't look like a limit cut.
+Each finished 5-hour and weekly window gets one score, **API-equivalent dollars per 1%**: the tokens
+you used in that window (subagents included, each response counted once), priced at API rates for
+input, output, cache reads and cache writes, divided by the % the window reached. A higher score
+means 1% bought more work. Hover a bar to see its **token mix**, since a big shift in mix can move
+the score on its own.
 
-**Trends** (Usage → **Trends**) show weekly indicators per model and per Claude Code version
-(output per response, response time, tool errors, retries, interruptions, cache reads, context
-use), with markers for new models, updates and plan changes, and a compare mode. Codex has its own.
-The **Limit history** tab lists every "limit reached" message and recent 5-hour blocks. Method and
-caveats in full: [docs/DETAILS.md → Limit health](docs/DETAILS.md#limit-health-did-my-limits-get-smaller).
+#### Your baseline and plans
 
-![Limit health: dollars per 1% against your baseline](docs/images/limit-health.webp)
+- **Pick your normal dates** on the card: a stretch when your limits felt normal. The median score
+  of those windows is your **baseline**.
+- **Plan history** (Settings → **Limit health**): Pro, Max 5x, Max 20x or a custom multiplier, each
+  with a start date. Every window is compared with the baseline for the plan it ran on, so an upgrade
+  never reads as a cut, and plan changes are marked on the chart. Codex has its own plan (detected
+  from its logs, e.g. "Pro $100"), multipliers and baseline.
+
+#### The verdict
+
+**Normal**, or **Possible reduction** only when the last **2** finished windows in a row fell below
+the baseline ÷ **1.5** (both numbers are settings). Windows under 10% are skipped as too coarse, and
+until there are enough windows it says how many more it needs. Ask **"Have my limits dropped?"** in
+[Ask Claude](#ask-claude-about-your-usage) for a written read of the same numbers.
+
+#### Where your limits went
+
+The current 5-hour and weekly windows split by what used them (terminal on Windows or WSL, VS
+Code, Claude desktop, the SDK, and for Codex each client), plus an **Elsewhere** slice for usage
+your logs don't explain: claude.ai, the mobile apps, cloud sessions, another PC.
+
+![Where your limits went: the current windows split by product, with an Elsewhere slice](docs/images/where-limits-went.webp)
+
+#### Limit history
+
+The **Limit history** tab lists every **"usage limit reached"** message found in your sessions
+(with when it reset and how many tokens that window held), your **recent 5-hour blocks** (grouped
+like ccusage's blocks, with tokens and cost), and the times you marked as **Used Claude elsewhere**
+(**Mark a time**), so a window you spent on claude.ai doesn't read as a cut.
+
+![The Limit history tab: used-elsewhere times, limit messages and recent 5-hour blocks](docs/images/limit-history.webp)
+
+#### Trends
+
+Weekly charts, **all together, by model or by Claude Code version**, with markers for new models,
+Claude Code updates, plan changes and score changes:
+
+- **Output:** output per response and per message you sent.
+- **Speed:** median response time (gaps over 10 minutes ignored).
+- **Reliability:** tool error rate, and API errors and retries.
+- **Effort:** assistant turns and tool calls per message you sent.
+- **Your corrections:** interruptions, and messages that start with "no", "wrong" or "that's not".
+- **Caching and thinking:** cache read ratio, thinking blocks per response and their length.
+- **Context:** how much of the context window sessions use.
+
+Codex gets its own set: output and reasoning per response, turn time, time to first token, tool
+error rate, interrupted or failed turns, responses and tool calls per prompt, cached input ratio
+and context use.
 
 ![Trends per model](docs/images/trends.webp)
+
+#### Compare
+
+Put **two date ranges, or two Claude Code (or Codex) versions,** side by side: every trend metric
+with the % change, marked **better** or **worse**. The Limit health card has its own **Compare**
+for the score itself (as measured, per plan, and the token mix).
+
+![Compare two date ranges: every metric with the change, marked better or worse](docs/images/trends-compare.webp)
+
+#### Keeping it honest
+
+- **One price per model family** (on by default): every Opus model is priced like the newest Opus,
+  and so on, so moving to a cheaper model doesn't look like a smaller limit.
+- **Usage elsewhere:** when the % rose while nothing ran on this PC, that window is clearly
+  affected; above 25% (a setting) it's left out of the baseline and the verdict, and drawn dashed.
+  Smaller unexplained parts are shown as a warning, since a real cut looks the same.
+- **Older readings count too:** if you ran `/usage` in Claude Code before turning on live limits,
+  the percentages it printed are read from your transcripts.
+- **Indicators, not proof:** trends depend on what you were working on. Look for big, lasting
+  changes that line up with a new model or version.
+
+Method in full: [docs/DETAILS.md → Limit health](docs/DETAILS.md#limit-health-did-my-limits-get-smaller)
+and [What the numbers mean](docs/DETAILS.md#what-the-numbers-mean-and-their-limits).
 
 ### Git links
 

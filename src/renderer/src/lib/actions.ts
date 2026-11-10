@@ -18,7 +18,14 @@ export async function updateMeta(key: string, patch: Partial<SessionMeta>): Prom
 
 /** Imported claude.ai conversations can be read but not resumed. */
 function viewOnly(key: string): boolean {
-  if (get().sessions.find((s) => s.key === key)?.availability !== 'imported') return false
+  const s = get().sessions.find((x) => x.key === key)
+  if (s?.viewOnly === 'cowork') {
+    toast('Claude desktop (Cowork) sessions are view-only', {
+      description: 'They can be read, searched and exported, but not resumed in Claude Code.'
+    })
+    return true
+  }
+  if (s?.availability !== 'imported') return false
   toast('This conversation was imported from claude.ai', {
     description: 'It can be read, searched and exported, but not resumed in Claude Code.'
   })

@@ -5,7 +5,10 @@
 // - `entrypoint` on each event (Claude Code 2.x): "cli", "sdk-cli" (claude -p),
 //   "sdk-ts", "sdk-py", "claude-vscode", "claude-desktop", "local-agent",
 //   "remote", "remote_mobile", "remote_desktop", … for cloud sessions.
-// - A `remote_session_change` attachment (a claude.ai/code session link).
+// - A `remote_session_change` attachment with a claude.ai/code link, in a
+//   session that never had Remote Control. Claude Code writes this attachment
+//   into ordinary local sessions too (with `url: null`), and Remote Control
+//   puts its own link there: neither makes a local session a cloud one.
 // - IDE attachments (`ide_opened_file`, `ide_selection`, …) and the IDE's name
 //   in them, for the CLI running inside an IDE's terminal.
 // - How the app launched it, then the environment and cwd.
@@ -18,6 +21,7 @@ export type SourceLabel =
   | 'vscode'
   | 'jetbrains'
   | 'desktop'
+  | 'cowork'
   | 'sdk'
   | 'cloud'
   | 'unknown'
@@ -50,7 +54,8 @@ export const SOURCE_LABELS: Record<SourceLabel, string> = {
   'terminal-wsl': 'Terminal (WSL)',
   vscode: 'VS Code',
   jetbrains: 'JetBrains',
-  desktop: 'Desktop (local)',
+  desktop: 'Claude desktop',
+  cowork: 'Claude desktop (Cowork)',
   sdk: 'SDK / claude -p',
   cloud: 'Cloud (teleported)',
   unknown: 'Local · unknown',
@@ -72,6 +77,7 @@ export const MANUAL_LABELS: SourceLabel[] = [
   'vscode',
   'jetbrains',
   'desktop',
+  'cowork',
   'sdk',
   'cloud',
   'unknown'
@@ -89,8 +95,12 @@ export const SUMMARY_PROMPT_MARKER = '[claude-session-dashboard:summary]'
 export interface SourceHints {
   /** Distinct `entrypoint` values, in order of appearance (at most 6). */
   entrypoints: string[]
-  /** A cloud session link or a remote entrypoint was seen. */
+  /** A remote entrypoint was seen (the session ran in the cloud). */
   remote: boolean
+  /** A `remote_session_change` attachment carried a claude.ai/code link. */
+  cloudLink?: boolean
+  /** Remote Control was on at some point (a `bridge_status` entry): links are its own. */
+  bridge?: boolean
   /** IDE context (opened file, selection) was attached. */
   ide: boolean
   /** IDE family named in IDE context, when it says. */
@@ -117,7 +127,12 @@ export function addHints(h: SourceHints, e: Record<string, unknown>): void {
   if (e.type === 'attachment') {
     const a = e.attachment as Record<string, unknown> | undefined
     const t = typeof a?.type === 'string' ? a.type : ''
-    if (t === 'remote_session_change') h.remote = true
+    if (
+      t === 'remote_session_change' &&
+      typeof a?.url === 'string' &&
+      /^https:\/\/claude\.ai\/code\//.test(a.url)
+    )
+      h.cloudLink = true
     if (IDE_ATTACHMENT.test(t)) {
       h.ide = true
       if (!h.ideName) {
@@ -128,6 +143,7 @@ export function addHints(h: SourceHints, e: Record<string, unknown>): void {
     }
     return
   }
+  if (e.type === 'system' && e.subtype === 'bridge_status') h.bridge = true
   if (e.type === 'user' && !h.ide) {
     const m = e.message as Record<string, unknown> | undefined
     const c = m?.content
@@ -150,6 +166,23 @@ export interface SourceContext {
   /** The app started it in a terminal (Resume / Fork / New session). */
   launchedByApp?: boolean
   imported?: boolean
+  /** The Claude desktop app's Code tab lists it (its own session index names this session). */
+  desktopIndexed?: boolean
+  /** From the optional Claude desktop (Cowork) source. */
+  cowork?: boolean
+}
+
+/** Entrypoints the dashboard's own `claude -p` runs (Ask Claude, summaries) can have. */
+const OWN_RUN_ENTRYPOINTS = new Set(['sdk-cli', 'sdk-ts', 'sdk-py'])
+
+/**
+ * Could this be one of the dashboard's own runs (hidden as "Ask Claude")? Only a
+ * `claude -p` run whose first prompt starts with the app's marker, never a
+ * session the Claude desktop app or a terminal ran (those are real sessions).
+ */
+export function couldBeOwnRun(h: SourceHints | undefined, ctx: SourceContext): boolean {
+  if (ctx.desktopIndexed || ctx.cowork || ranInCloud(h) || h?.ide) return false
+  return (h?.entrypoints ?? []).every((e) => OWN_RUN_ENTRYPOINTS.has(e))
 }
 
 export interface DetectedSource {
@@ -158,16 +191,28 @@ export interface DetectedSource {
   reason: string
 }
 
+/** It ran in a cloud session (teleported here): a remote entrypoint, or a cloud link without Remote Control. */
+export function ranInCloud(h: SourceHints | undefined): boolean {
+  return !!h && (h.remote || (!!h.cloudLink && !h.bridge))
+}
+
 export function detectSource(h: SourceHints | undefined, ctx: SourceContext): DetectedSource {
   const terminal: SourceLabel = ctx.env === 'wsl' ? 'terminal-wsl' : 'terminal-windows'
   if (ctx.imported) return { label: 'claude-ai', reason: 'Imported from a claude.ai data export' }
-  if (ctx.firstPrompt?.startsWith(ASK_MARKER))
+  if (ctx.cowork)
+    return { label: 'cowork', reason: 'From the Claude desktop app’s Cowork sessions folder' }
+  const own = couldBeOwnRun(h, ctx)
+  if (own && ctx.firstPrompt?.startsWith(ASK_MARKER))
     return { label: 'ask-claude', reason: "Started by the dashboard's Ask Claude" }
   // Summaries run with --no-session-persistence; one that is saved anyway is hidden the same way.
-  if (ctx.firstPrompt?.startsWith(SUMMARY_PROMPT_MARKER))
+  if (own && ctx.firstPrompt?.startsWith(SUMMARY_PROMPT_MARKER))
     return { label: 'ask-claude', reason: "Started by the dashboard's session summaries" }
   const eps = h?.entrypoints ?? []
-  if (h?.remote)
+  // The desktop app's Code tab can run sessions through the SDK (entrypoint "sdk-cli"):
+  // its own session index says which ones are its.
+  if (ctx.desktopIndexed && !ranInCloud(h))
+    return { label: 'desktop', reason: 'Listed in the Claude desktop app’s Code tab' }
+  if (ranInCloud(h))
     return {
       label: 'cloud',
       reason: eps.some((e) => e.startsWith('remote'))
@@ -177,8 +222,10 @@ export function detectSource(h: SourceHints | undefined, ctx: SourceContext): De
   const has = (...names: string[]): string | undefined => eps.find((e) => names.includes(e))
   let ep: string | undefined
   if ((ep = has('claude-vscode'))) return { label: 'vscode', reason: `entrypoint "${ep}"` }
-  if ((ep = has('claude-desktop', 'claude-desktop-3p', 'local-agent', 'local_agent')))
+  if ((ep = has('claude-desktop', 'claude-desktop-3p')))
     return { label: 'desktop', reason: `entrypoint "${ep}"` }
+  if ((ep = has('local-agent', 'local_agent')))
+    return { label: 'cowork', reason: `entrypoint "${ep}" (Claude desktop Cowork)` }
   if ((ep = has('sdk-cli', 'sdk-ts', 'sdk-py')))
     return { label: 'sdk', reason: `entrypoint "${ep}"` }
   if (has('cli')) {

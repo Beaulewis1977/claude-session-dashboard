@@ -13,6 +13,7 @@ import {
   Play,
   Plus,
   Smartphone,
+  SquareTerminal,
   TriangleAlert
 } from 'lucide-react'
 import { ContinueFreshCard, ContinueIcon } from './summary/ContinueFreshCard'
@@ -43,6 +44,8 @@ import { projectDefault, projectDefaultKey, withProjectDefault } from '@shared/p
 import type { AcceptedProject, CodexAppKind, OpenIn } from '@shared/codex-app'
 import { CodexAppPanel, OpenInChoice } from './CodexAppOpen'
 import { appChoosable, useOpenIn } from '@/lib/open-in'
+import { RunningNotice } from './RunningNotice'
+import { ACTION_LABEL, primaryAction, runRunningAction } from '@/lib/running-actions'
 
 export const SKIP_WARNING = 'Claude will not ask before running commands or deleting files.'
 export const BYPASS_WARNING =
@@ -93,8 +96,8 @@ export function RemoteControlOption({
             <Smartphone className="size-3.5 text-info" /> Remote Control
           </span>
           <span className="block text-xs leading-relaxed text-muted-foreground">
-            Continue this session from the Claude app on your phone or at claude.ai/code. Uses your
-            Claude subscription.
+            Makes the session continuable from the Claude mobile app (and at claude.ai/code). Uses
+            your Claude subscription.
           </span>
           <span className="block truncate font-mono text-[11px] text-muted-foreground">
             --remote-control{checked && name ? ` "${name}"` : ''}
@@ -174,6 +177,10 @@ function ResumeDialogBody({ resume }: { resume: ResumeRequest }) {
   const askForced = preview?.placement?.askForced === true
   const [launching, setLaunching] = useState(false)
   const [copied, setCopied] = useState(false)
+  // Claude Code: open in a terminal or hand it to the Claude desktop app (not saved).
+  const [claudeApp, setClaudeApp] = useState(false)
+  // "Start another copy" was confirmed although it's already running.
+  const [another, setAnother] = useState(false)
   // "Don't warn for this session": saved right away, but the warning stays until the dialog closes.
   const [warnOffAtOpen] = useState(
     () => sessions.find((s) => s.key === resume.key)?.meta.noContextWarning === true
@@ -237,7 +244,8 @@ function ResumeDialogBody({ resume }: { resume: ResumeRequest }) {
         continueFresh: continueReq(),
         remoteControl,
         ...where,
-        ...appOpts
+        ...appOpts,
+        ...(claudeApp ? { openIn: 'claude-app' as const } : {})
       })
       .then((p) => {
         if (cancelled) return
@@ -269,6 +277,7 @@ function ResumeDialogBody({ resume }: { resume: ResumeRequest }) {
     wslFolder,
     distro,
     appMode,
+    claudeApp,
     acceptedProject,
     // The session's context changed (it grew, shrank or was compacted): a new estimate.
     session?.sizeBytes,
@@ -325,18 +334,31 @@ function ResumeDialogBody({ resume }: { resume: ResumeRequest }) {
   const branchBlocked = !!branchAt && (!preview?.branch || !!preview.branchError)
   const continueBlocked = continueFresh && (!preview?.continueFresh || !!preview.continueError)
   const appBlocked = !preview || !preview.codexApp?.available || continueBlocked
-  const blocked = appMode
-    ? appBlocked
-    : continueBlocked ||
-      !preview ||
-      !preview.cwd ||
-      !preview.cwdExists ||
-      !!preview.launchError ||
-      (!newSession && preview.restoreImpossible) ||
-      branchBlocked
+  const claudeMode = claudeApp && !!preview?.claudeApp
+  // Already running (it, or a fork / continuation of it): switching to it comes first.
+  const running = preview?.running && !another ? preview.running : undefined
+  const switchAction = running ? primaryAction(running) : undefined
+  const blocked = claudeMode
+    ? !preview?.claudeApp?.available || !!preview.launchError
+    : appMode
+      ? appBlocked
+      : continueBlocked ||
+        !preview ||
+        !preview.cwd ||
+        !preview.cwdExists ||
+        !!preview.launchError ||
+        (!newSession && preview.restoreImpossible) ||
+        branchBlocked
 
-  const launch = async (createOnly = false): Promise<void> => {
-    if (launching || (createOnly ? branchBlocked || !preview : blocked)) return
+  const launch = async (createOnly = false, anyway = another): Promise<void> => {
+    if (launching) return
+    // Still running and not confirmed: the main button switches to it instead (that
+    // needs no launch, so a missing folder or other launch problem doesn't stop it).
+    if (!createOnly && preview?.running && !anyway) {
+      if (switchAction && (await runRunningAction(preview.running, switchAction))) close()
+      return
+    }
+    if (createOnly ? branchBlocked || !preview : blocked) return
     setLaunching(true)
     const res = await api.launch({
       key: resume.key,
@@ -350,7 +372,9 @@ function ResumeDialogBody({ resume }: { resume: ResumeRequest }) {
       continueFresh: continueReq(),
       remoteControl,
       ...where,
-      ...appOpts
+      ...appOpts,
+      ...(claudeMode ? { openIn: 'claude-app' as const } : {}),
+      ...(anyway ? { allowDuplicate: true } : {})
     })
     // Per-project default ("always use API credits for this project").
     const current = projectDefault(settings.projectBilling, session)
@@ -364,6 +388,12 @@ function ResumeDialogBody({ resume }: { resume: ResumeRequest }) {
       // The branch exists now (even if opening the terminal failed): show it, ready to rename.
       close()
       showNewSession(res.branch)
+    }
+    if (!res.ok && res.running) {
+      // It started running since the dialog opened: show what to do instead.
+      setAnother(false)
+      setPreview((p) => (p ? { ...p, running: res.running } : p))
+      return
     }
     if (!res.ok) {
       // The Codex app's projects may have changed since the preview: check again
@@ -396,6 +426,17 @@ function ResumeDialogBody({ resume }: { resume: ResumeRequest }) {
       return
     }
     close()
+    if (res.openedIn === 'claude-app') {
+      toast.success(
+        res.simulated ? 'Fixtures mode: not opened' : 'Opened in the Claude desktop app',
+        {
+          description: res.simulated
+            ? res.commandLine
+            : 'It continues the same session there (claude --resume still finds it).'
+        }
+      )
+      return
+    }
     if (res.openedIn === 'codex-app') {
       toast.success(
         continueFresh ? 'New thread opened in the Codex app' : 'Opened in the Codex app',
@@ -490,6 +531,16 @@ function ResumeDialogBody({ resume }: { resume: ResumeRequest }) {
         />
 
         <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 pt-3 pb-5">
+          {running && (
+            <RunningNotice
+              running={running}
+              onDone={close}
+              onAnother={() => {
+                setAnother(true)
+                void launch(false, true)
+              }}
+            />
+          )}
           {newSession && (
             <p className="text-xs leading-relaxed text-muted-foreground">
               Starts a fresh Claude Code session in this session&apos;s folder.
@@ -541,6 +592,34 @@ function ResumeDialogBody({ resume }: { resume: ResumeRequest }) {
             </>
           )}
 
+          {preview?.claudeApp && (
+            <div>
+              <div className="mb-1.5 text-xs font-medium">Open in</div>
+              <Segmented<'terminal' | 'claude-app'>
+                ariaLabel="Open in"
+                value={claudeMode ? 'claude-app' : 'terminal'}
+                onChange={(v) => setClaudeApp(v === 'claude-app')}
+                options={[
+                  { value: 'terminal', label: 'Terminal', icon: <SquareTerminal /> },
+                  { value: 'claude-app', label: 'Claude desktop app', icon: <AppWindow /> }
+                ]}
+              />
+              {claudeMode && (
+                <div className="mt-1.5 flex items-start gap-1.5 text-xs text-muted-foreground">
+                  <Info className="mt-px size-3.5 shrink-0" />
+                  {preview.claudeApp.available ? (
+                    <span>
+                      Claude Code hands this same session to the desktop app&apos;s Code tab (
+                      <span className="font-mono">{preview.claudeApp.commandLine}</span>). No
+                      terminal opens.
+                    </span>
+                  ) : (
+                    preview.claudeApp.reason
+                  )}
+                </div>
+              )}
+            </div>
+          )}
           {appKind && appChoosable(preview?.codexApp) && (
             <div>
               <div className="mb-1.5 text-xs font-medium">Open in</div>
@@ -566,7 +645,7 @@ function ResumeDialogBody({ resume }: { resume: ResumeRequest }) {
               </div>
             )}
 
-          {!appMode && (
+          {!appMode && !claudeMode && (
             <>
               {preview?.willRestore && (
                 <div className="flex items-start gap-2.5 rounded-lg border border-info/25 bg-info/5 px-3 py-2.5 text-xs">
@@ -842,12 +921,12 @@ function ResumeDialogBody({ resume }: { resume: ResumeRequest }) {
           <Button
             variant="primary"
             onClick={() => void launch()}
-            disabled={blocked || launching}
+            disabled={(switchAction ? false : blocked || !!running) || launching}
             autoFocus
           >
             {launching ? (
               <Loader2 className="animate-spin" />
-            ) : appMode ? (
+            ) : switchAction ? null : appMode || claudeMode ? (
               <AppWindow />
             ) : branchAt ? (
               <GitBranchPlus />
@@ -860,20 +939,26 @@ function ResumeDialogBody({ resume }: { resume: ResumeRequest }) {
             ) : (
               <Play className="fill-current" />
             )}
-            {appMode
-              ? 'Open in Codex app'
-              : branchAt
-                ? 'Branch'
-                : continueFresh
-                  ? 'Continue fresh'
-                  : newSession
-                    ? 'Start'
-                    : fork
-                      ? 'Fork'
-                      : warn
-                        ? 'Resume anyway'
-                        : 'Resume'}
-            {choice && !appMode && <span className="font-normal opacity-85">· {choice}</span>}
+            {switchAction
+              ? ACTION_LABEL[switchAction]
+              : claudeMode
+                ? 'Open in Claude desktop app'
+                : appMode
+                  ? 'Open in Codex app'
+                  : branchAt
+                    ? 'Branch'
+                    : continueFresh
+                      ? 'Continue fresh'
+                      : newSession
+                        ? 'Start'
+                        : fork
+                          ? 'Fork'
+                          : warn
+                            ? 'Resume anyway'
+                            : 'Resume'}
+            {choice && !appMode && !claudeMode && !switchAction && (
+              <span className="font-normal opacity-85">· {choice}</span>
+            )}
             <Kbd className="ml-1 border-white/25 bg-white/15 text-primary-foreground">↵</Kbd>
           </Button>
         </DialogFooter>

@@ -77,6 +77,17 @@ import {
 } from '@shared/codex-app'
 import { CODEX_APP_SOURCE_ID, type CodexAppService } from '../providers/codex/app'
 import { timed } from '../timing'
+import type { LiveSession } from '@shared/live'
+import {
+  runningError,
+  runningKindOf,
+  startedRun,
+  type RunningCopy,
+  type RunningKind
+} from '@shared/running'
+import { CLAUDE_APP_FORK, claudeAppPreview, type ClaudeAppPreview } from '@shared/claude-app'
+import { isViewOnly, VIEW_ONLY_ERROR } from '@shared/view-only'
+import type { ClaudeAppLauncher } from './claude-app'
 
 /** "Open in Codex app" (Windows): what the app can open, and how a link is opened (Electron's shell). */
 export interface CodexAppLauncher {
@@ -118,6 +129,19 @@ export interface LaunchContext {
 
 const DESKTOP: LaunchContext = { via: 'desktop' }
 
+/**
+ * A started launch blocks a second one until Running now shows its run (seconds,
+ * normally), at most this long.
+ */
+const RESERVE_MS = 60_000
+
+/** One launch on its way. Each launch has its own; a second one never replaces it. */
+interface Reservation {
+  k: string
+  until: number
+  copy: RunningCopy & { pending: true; pendingSince: number }
+}
+
 export const NO_SUMMARY =
   'Summarize this session first: Continue fresh starts the new session from its summary.'
 
@@ -151,6 +175,123 @@ export class Launcher {
   ) => Promise<ResumeEstimate | undefined>
   /** "Open in Codex app" (set at startup on Windows; absent: never offered). */
   codexApp?: CodexAppLauncher
+  /** "Open in: Claude desktop app" (set at startup on Windows; absent: never offered). */
+  claudeApp?: ClaudeAppLauncher
+  /**
+   * What of this launch is already running on the PC (Running now; set at
+   * startup). Absent: no check (tests that don't need it).
+   */
+  running?: (s: SessionSummary, kind: RunningKind) => RunningCopy | undefined
+
+  /** The copy already running for this launch (or one on its way), if any. */
+  runningCopy(s: SessionSummary, opts: LaunchOptions): RunningCopy | undefined {
+    const kind = runningKindOf(opts)
+    if (!kind) return undefined
+    this.observeLive()
+    return this.running?.(s, kind) ?? this.reservedCopy(s, kind)
+  }
+
+  /** Running now, for retiring reservations (set at startup). */
+  liveSessions?: () => readonly LiveSession[]
+
+  /**
+   * Retire every reservation whose run Running now shows (called on each change of
+   * Running now and before each check): from then on the real run is what counts,
+   * and once it exits nothing is "on its way" any more.
+   */
+  observeLive(live: readonly LiveSession[] | undefined = this.liveSessions?.()): void {
+    if (!live?.length || !this.reserved.size) return
+    for (const [k, list] of this.reserved) {
+      const keep = list.filter((r) => !startedRun(r.copy, live))
+      if (keep.length) this.reserved.set(k, keep)
+      else this.reserved.delete(k)
+    }
+  }
+
+  /** Whether (and how) this launch can open in the Claude desktop app; undefined: not offered. */
+  private async claudeAppFor(
+    s: SessionSummary,
+    opts: LaunchOptions
+  ): Promise<ClaudeAppPreview | undefined> {
+    if (!this.claudeApp || this.provider(s).id !== 'claude') return undefined
+    const base = {
+      env: s.env,
+      provider: this.provider(s).id,
+      viewOnly: isViewOnly(s),
+      fork: opts.fork,
+      other: !!(opts.branch || opts.continueFresh || opts.newSession),
+      installed: false,
+      cliFound: false
+    }
+    // Not offered at all: don't ask Windows anything.
+    if (
+      !claudeAppPreview(
+        { ...base, installed: true, cliFound: true, version: '999.0.0' },
+        s.sessionId
+      )
+    )
+      return undefined
+    if (s.env !== 'windows') return claudeAppPreview(base, s.sessionId)
+    const tools = await this.platform.launchTools()
+    const facts = await this.claudeApp.facts(tools.claude)
+    return claudeAppPreview(
+      { ...base, installed: facts.installed, version: facts.version, cliFound: !!tools.claude },
+      s.sessionId
+    )
+  }
+
+  /**
+   * Hand the session to the Claude desktop app: `claude --desktop --resume <id>`
+   * in its folder (desktop only; restored from the archive first, like Resume).
+   */
+  private async openInClaudeApp(
+    s: SessionSummary,
+    opts: LaunchOptions,
+    ctx: LaunchContext
+  ): Promise<LaunchResult> {
+    const fail = (error: string, restored = false): LaunchResult => ({
+      ok: false,
+      restored,
+      commandLine: '',
+      error
+    })
+    if (ctx.via === 'phone') return fail('The Claude desktop app is opened from the PC only.')
+    if (opts.fork && !CLAUDE_APP_FORK) return fail("Fork can't open in the Claude desktop app.")
+    const app = await this.claudeAppFor(s, opts)
+    if (!app?.available || !this.claudeApp)
+      return fail(app?.reason ?? "This session can't be opened in the Claude desktop app.")
+    const cwd = opts.cwdOverride ?? s.cwd
+    if (!cwd) return fail('No working directory is recorded for this session.')
+    if ((await this.cwdState(s, cwd)) !== 'exists')
+      return fail(`The folder no longer exists: ${cwd}`)
+    const tools = await this.platform.launchTools()
+    if (!tools.claude) return fail(CLAUDE_NOT_FOUND)
+    let restored = false
+    if (!(await this.platform.pathExists(s.originalPath))) {
+      const rec = this.sessions.archiveRecord(s.key)
+      if (!rec) return fail('The session file is missing and there is no archive copy.')
+      const outcome = await restoreIfMissing(rec.archivePath, rec.originalPath)
+      restored = outcome === 'restored'
+      if (outcome === 'archive-missing')
+        return fail('The archive copy of this session is missing.', restored)
+      if (restored) void this.sessions.fileChanged(s.sourceId, rec.originalPath)
+    }
+    const commandLine = app.commandLine ?? ''
+    if (!this.platform.canLaunch)
+      return { ok: true, restored, commandLine, simulated: true, openedIn: 'claude-app' }
+    const r = await this.claudeApp.open(tools.claude, cwd, s.sessionId, opts.fork)
+    if (!r.ok) {
+      const said = r.output.split(/\r?\n/).filter(Boolean).slice(-2).join(' ')
+      return {
+        ...fail(
+          `Claude Code couldn't open it in the desktop app${said ? `: ${said}` : '.'}`,
+          restored
+        ),
+        commandLine
+      }
+    }
+    return { ok: true, restored, commandLine, openedIn: 'claude-app' }
+  }
 
   constructor(
     private readonly platform: Platform,
@@ -867,6 +1008,21 @@ export class Launcher {
   async preview(opts: LaunchOptions): Promise<LaunchPreview> {
     const found = this.sessions.get(opts.key)
     if (!found) throw new Error('Session not found')
+    const [p, claudeApp] = await Promise.all([
+      this.previewInner(found, opts),
+      this.claudeAppFor(found, opts).catch(() => undefined)
+    ])
+    const running = this.runningCopy(found, opts)
+    const viewOnly = isViewOnly(found) && found.availability !== 'imported'
+    return {
+      ...p,
+      ...(claudeApp ? { claudeApp } : {}),
+      ...(running ? { running } : {}),
+      ...(viewOnly ? { launchError: VIEW_ONLY_ERROR } : {})
+    }
+  }
+
+  private async previewInner(found: SessionSummary, opts: LaunchOptions): Promise<LaunchPreview> {
     // "Open in Codex app": decided on the session as recorded (its own folder and home).
     const codexApp = await timed('preview: Codex app check', this.appPreview(found, opts))
     const withApp = (p: LaunchPreview): LaunchPreview => (codexApp ? { ...p, codexApp } : p)
@@ -1030,6 +1186,7 @@ export class Launcher {
     if (!found) return fail('Session not found')
     if (found.availability === 'imported')
       return fail('Conversations imported from claude.ai have no folder on this PC.')
+    if (isViewOnly(found)) return fail(VIEW_ONLY_ERROR)
     // A plain shell in the folder where the session ran: WSL for a Codex desktop
     // session with a Linux folder, Windows for a Windows folder in a WSL home.
     const s = await this.shellPlace(found)
@@ -1072,6 +1229,95 @@ export class Launcher {
   async launch(opts: LaunchOptions, ctx: LaunchContext = DESKTOP): Promise<LaunchResult> {
     const found = this.sessions.get(opts.key)
     if (!found) return { ok: false, restored: false, commandLine: '', error: 'Session not found' }
+    if (isViewOnly(found) && found.availability !== 'imported')
+      return { ok: false, restored: false, commandLine: '', error: VIEW_ONLY_ERROR }
+    // Already running on the PC (it, or a fork / continuation of it), or a launch of
+    // it is still on its way: refused unless "Start another copy anyway" was confirmed.
+    if (!opts.allowDuplicate) {
+      const running = this.runningCopy(found, opts)
+      if (running)
+        return {
+          ok: false,
+          restored: false,
+          commandLine: '',
+          error: runningError(running),
+          running
+        }
+    }
+    // Reserved from here (synchronously, before any await) until Running now has caught up,
+    // so two requests at once can't both start it.
+    const kind = runningKindOf(opts)
+    const slot = kind ? this.reserve(found, kind, opts.cwdOverride ?? found.cwd) : undefined
+    try {
+      const res = await this.launchNow(found, opts, ctx)
+      if (slot) {
+        // Started: kept a while (Running now sees it within seconds). Nothing started: free.
+        if (res.ok && !res.simulated) slot.until = Date.now() + RESERVE_MS
+        else this.release(slot)
+      }
+      return res
+    } catch (err) {
+      if (slot) this.release(slot)
+      throw err
+    }
+  }
+
+  /** Launches started but not in Running now yet, by what they would duplicate (each its own). */
+  private reserved = new Map<string, Reservation[]>()
+
+  private reservationKey(s: SessionSummary, kind: RunningKind): string {
+    return kind === 'fork' || kind === 'continue' ? `${s.key}#children` : `${s.key}#self`
+  }
+
+  /** A launch on its way for this (its reservation as a running copy), if any. */
+  private reservedCopy(s: SessionSummary, kind: RunningKind): RunningCopy | undefined {
+    const k = this.reservationKey(s, kind)
+    const t = Date.now()
+    const list = (this.reserved.get(k) ?? []).filter((r) => r.until >= t)
+    if (list.length) this.reserved.set(k, list)
+    else this.reserved.delete(k)
+    // Opening a thread in the Codex app again while the app opens it is the same
+    // thread, not a second copy (as with a running one: see findRunningCopy).
+    return list.find((r) => kind !== 'codex-app' || r.copy.where !== 'codex-app')?.copy
+  }
+
+  private reserve(s: SessionSummary, kind: RunningKind, cwd: string | undefined): Reservation {
+    const k = this.reservationKey(s, kind)
+    const r: Reservation = {
+      k,
+      // Held while the launch runs (a phone launch can wait for the PC's confirm).
+      until: Number.POSITIVE_INFINITY,
+      copy: {
+        key: s.key,
+        pendingSince: Date.now(),
+        ...(cwd ? { cwd } : {}),
+        relation: kind === 'fork' ? 'fork' : kind === 'continue' ? 'continue' : 'self',
+        state: 'working',
+        provider: this.provider(s).id,
+        env: s.env,
+        ...(s.distro ? { distro: s.distro } : {}),
+        where:
+          kind === 'codex-app' ? 'codex-app' : kind === 'claude-app' ? 'claude-app' : 'terminal',
+        pending: true
+      }
+    }
+    this.reserved.set(k, [...(this.reserved.get(k) ?? []), r])
+    return r
+  }
+
+  /** Free only this launch's reservation (another launch's stays). */
+  private release(r: Reservation): void {
+    const list = (this.reserved.get(r.k) ?? []).filter((x) => x !== r)
+    if (list.length) this.reserved.set(r.k, list)
+    else this.reserved.delete(r.k)
+  }
+
+  private async launchNow(
+    found: SessionSummary,
+    opts: LaunchOptions,
+    ctx: LaunchContext
+  ): Promise<LaunchResult> {
+    if (opts.openIn === 'claude-app') return this.openInClaudeApp(found, opts, ctx)
     // The Codex desktop app instead of a terminal: no folder, terminal or flags involved.
     if (opts.openIn === 'codex-app') return this.openInCodexApp(found, opts, ctx)
     // Where it runs (a Codex desktop session's Linux folder, translated). Never opted in

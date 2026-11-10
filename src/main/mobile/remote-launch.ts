@@ -3,7 +3,12 @@
 // A phone can only ask for Resume, Fork, Branch or Continue fresh of a
 // session the app knows (Codex sessions: Resume, Fork and Continue fresh; no Branch),
 // or for "Open in Codex app on PC": the existing Codex thread opened in the Codex
-// desktop app (a fixed `codex://threads/<id>` link, nothing else).
+// desktop app (a fixed `codex://threads/<id>` link, nothing else), or for "Focus
+// terminal on PC" of a running session (nothing is started or typed).
+// A session that is already running on the PC (or, for Fork / Continue fresh, a
+// fork or continuation of it the app launched) isn't started again unless the
+// phone sends `force` ("Start another copy anyway", confirmed on the phone);
+// every other option stays the same then.
 // The options are fixed here, whatever the phone sends: Remote Control on
 // (Claude Code; Codex has none, and asks before acting, in its workspace sandbox),
 // the Claude subscription (never an API key), permission prompts kept
@@ -11,6 +16,9 @@
 // terminal chosen in Settings. Nothing else can be run.
 
 import type { RemoteLaunchPreview, RemoteLaunchRequest, RemoteLaunchResult } from '@shared/mobile'
+import type { FocusResult } from '@shared/live'
+import { runningError, type RunningCopy } from '@shared/running'
+import { VIEW_ONLY_ERROR } from '@shared/view-only'
 import type {
   LaunchOptions,
   LaunchPreview,
@@ -37,18 +45,23 @@ export interface RemoteLaunchDeps {
   confirm(device: StoredDevice, what: string): Promise<boolean>
   /** The phone is still paired (not revoked or expired since the request began). */
   deviceActive(id: string): boolean
+  /** "Focus terminal" of a running session (the desktop's own; absent: not offered). */
+  focus?(key: string): Promise<FocusResult>
+  /** What of this launch already runs on the PC (checked before the rate limit and the PC confirm). */
+  running?(opts: LaunchOptions): RunningCopy | undefined
   log(entry: { device: StoredDevice; action: string; detail?: string; ok: boolean }): void
   now?: () => number
 }
 
-const KINDS = ['resume', 'fork', 'branch', 'continue', 'codex-app'] as const
+const KINDS = ['resume', 'fork', 'branch', 'continue', 'codex-app', 'focus'] as const
 
 const VERB: Record<RemoteLaunchRequest['kind'], string> = {
   resume: 'Resume',
   fork: 'Fork',
   branch: 'Branch',
   continue: 'Continue fresh',
-  'codex-app': 'Open in Codex app'
+  'codex-app': 'Open in Codex app',
+  focus: 'Focus terminal'
 }
 
 /** Validate what the phone sent; anything unexpected is refused, not fixed up. */
@@ -58,7 +71,10 @@ export function parseLaunchRequest(v: unknown): RemoteLaunchRequest | { error: s
   if (typeof o.key !== 'string' || !o.key || o.key.length > 300) return { error: 'Bad session' }
   if (!KINDS.includes(o.kind as (typeof KINDS)[number])) return { error: 'Bad launch kind' }
   const kind = o.kind as RemoteLaunchRequest['kind']
-  if (kind !== 'branch') return { key: o.key, kind }
+  if (o.force !== undefined && o.force !== true) return { error: 'Bad request' }
+  const force =
+    o.force === true && kind !== 'focus' && kind !== 'branch' ? { force: true as const } : {}
+  if (kind !== 'branch') return { key: o.key, kind, ...force }
   const b = o.branch as Record<string, unknown> | undefined
   if (!b || typeof b.at !== 'string' || !b.at || b.at.length > 200)
     return { error: 'Bad branch point' }
@@ -72,6 +88,8 @@ export function remoteLaunchOptions(
   terminal: TerminalPref,
   provider: ProviderId = 'claude'
 ): LaunchOptions {
+  // Only after a confirm on the phone; nothing else changes.
+  const dup = req.force === true ? { allowDuplicate: true } : {}
   // Only the thread itself, in the Codex app: no folder, terminal or flags.
   if (req.kind === 'codex-app')
     return {
@@ -80,7 +98,8 @@ export function remoteLaunchOptions(
       skipPermissions: false,
       askPermissions: true,
       terminal,
-      openIn: 'codex-app'
+      openIn: 'codex-app',
+      ...dup
     }
   return {
     key: req.key,
@@ -94,12 +113,14 @@ export function remoteLaunchOptions(
     terminal,
     ...(req.kind === 'branch' && req.branch ? { branch: { ...req.branch } } : {}),
     // A new id is picked on the PC; the phone can't choose one.
-    ...(req.kind === 'continue' ? { continueFresh: {} } : {})
+    ...(req.kind === 'continue' ? { continueFresh: {} } : {}),
+    ...dup
   }
 }
 
 export class RemoteLauncher {
   private readonly limiter: RateLimiter
+  private readonly focusLimiter: RateLimiter
 
   constructor(private readonly deps: RemoteLaunchDeps) {
     // One launch per 10 seconds and 12 an hour, per phone.
@@ -110,6 +131,14 @@ export class RemoteLauncher {
       ],
       deps.now
     )
+    // Focus terminal starts nothing: one per 3 seconds, 60 an hour.
+    this.focusLimiter = new RateLimiter(
+      [
+        { max: 1, windowMs: 3000 },
+        { max: 60, windowMs: 3600_000 }
+      ],
+      deps.now
+    )
   }
 
   private check(req: RemoteLaunchRequest): { s?: SessionSummary; error?: string } {
@@ -117,6 +146,7 @@ export class RemoteLauncher {
     if (!s) return { error: "That session isn't on this PC." }
     if (s.availability === 'imported')
       return { error: 'Conversations imported from claude.ai can be read, not resumed.' }
+    if (s.viewOnly) return { error: VIEW_ONLY_ERROR }
     const provider = providerOf(s)
     if (req.kind === 'codex-app' && provider !== 'codex')
       return { error: 'Only Codex sessions open in the Codex app.' }
@@ -148,6 +178,17 @@ export class RemoteLauncher {
       willRestore: false
     })
     if ('error' in req) return fail(req.error)
+    if (req.kind === 'focus')
+      return {
+        ok: !st.readOnly && !!this.deps.focus,
+        error: st.readOnly
+          ? 'Read-only mode is on: launches from the phone are turned off.'
+          : undefined,
+        title: this.deps.session(req.key)?.title ?? '',
+        terminal: st.terminal,
+        confirmOnPc: false,
+        willRestore: false
+      }
     const { s, error } = this.check(req)
     if (!s) return fail(error ?? 'Unknown session')
     let p: LaunchPreview
@@ -187,8 +228,50 @@ export class RemoteLauncher {
       willRestore: p.willRestore,
       modelChoice: p.modelChoice,
       ...(p.continueFresh ? { newSinceSummary: p.continueFresh.newSince } : {}),
-      ...(p.context ? { context: p.context } : {})
+      ...(p.context ? { context: p.context } : {}),
+      ...(p.running ? { running: this.titled(p.running) } : {})
     }
+  }
+
+  /** The running copy, with its title as the PC shows it. */
+  private titled<T extends { key: string; title?: string; name?: string }>(r: T): T {
+    const t = this.deps.session(r.key)?.title ?? r.name
+    return t ? { ...r, title: t } : r
+  }
+
+  /**
+   * Focus terminal on PC: brings the running session's terminal forward.
+   * Nothing is started or typed. Refused in read-only mode, rate-limited, logged.
+   */
+  private async focus(device: StoredDevice, req: RemoteLaunchRequest): Promise<RemoteLaunchResult> {
+    const title = this.deps.session(req.key)?.title ?? 'a running session'
+    const log = (ok: boolean, why?: string): void =>
+      this.deps.log({
+        device,
+        action: 'focus',
+        detail: `Focus terminal “${title}”${why ? `: ${why}` : ''}`,
+        ok
+      })
+    if (this.deps.settings().readOnly) {
+      log(false, 'read-only mode')
+      return { ok: false, error: 'Read-only mode is on: launches from the phone are turned off.' }
+    }
+    if (!this.deps.focus) return { ok: false, error: "Focus terminal isn't available on this PC." }
+    // The request body was read after the phone was checked: it may have been revoked meanwhile.
+    if (!this.deps.deviceActive(device.id)) {
+      log(false, 'the phone was revoked')
+      return { ok: false, error: 'Not done: the phone was revoked.' }
+    }
+    if (!this.focusLimiter.take(device.id)) {
+      log(false, 'rate limited')
+      const wait = this.focusLimiter.retryAfter(device.id)
+      return { ok: false, error: `Too many requests. Try again in ${wait} s.` }
+    }
+    const r = await this.deps.focus(req.key)
+    log(r.ok, r.ok ? undefined : r.error)
+    return r.ok
+      ? { ok: true, key: req.key, focused: r.how, simulated: r.simulated }
+      : { ok: false, error: r.error ?? "Couldn't find its terminal window." }
   }
 
   async launch(device: StoredDevice, raw: unknown): Promise<RemoteLaunchResult> {
@@ -198,6 +281,7 @@ export class RemoteLauncher {
       this.deps.log({ device, action: 'launch', detail: req.error, ok: false })
       return { ok: false, error: req.error }
     }
+    if (req.kind === 'focus') return this.focus(device, req)
     const what = VERB[req.kind]
     if (st.readOnly) {
       this.deps.log({
@@ -212,6 +296,19 @@ export class RemoteLauncher {
     if (!s) {
       this.deps.log({ device, action: 'launch', detail: `${what} refused: ${error}`, ok: false })
       return { ok: false, error }
+    }
+    // Already running on the PC: say so before asking on the PC or counting a launch.
+    if (!req.force) {
+      const running = this.deps.running?.(remoteLaunchOptions(req, st.terminal, providerOf(s)))
+      if (running) {
+        this.deps.log({
+          device,
+          action: 'launch',
+          detail: `${what} “${s.title}”: already running on the PC`,
+          ok: false
+        })
+        return { ok: false, error: runningError(running), running: this.titled(running) }
+      }
     }
     if (!this.limiter.take(device.id)) {
       const wait = this.limiter.retryAfter(device.id)
@@ -256,9 +353,10 @@ export class RemoteLauncher {
     this.deps.log({
       device,
       action: 'launch',
-      detail: `${what} “${s.title}”${req.kind === 'codex-app' ? '' : providerOf(s) === 'claude' ? ' with Remote Control' : ` (${PROVIDER_LABEL[providerOf(s)]})`}${res.ok ? '' : `: ${res.error ?? 'failed'}`}`,
+      detail: `${what} “${s.title}”${req.kind === 'codex-app' ? '' : providerOf(s) === 'claude' ? ' with Remote Control' : ` (${PROVIDER_LABEL[providerOf(s)]})`}${req.force ? ' (another copy, confirmed on the phone)' : ''}${res.ok ? '' : res.running ? ': already running on the PC' : `: ${res.error ?? 'failed'}`}`,
       ok: res.ok
     })
+    if (res.running) return { ok: false, error: res.error, running: this.titled(res.running) }
     return {
       ok: res.ok,
       error: res.error,

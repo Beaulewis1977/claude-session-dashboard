@@ -1,6 +1,8 @@
 import { SourcePicker } from '../SourceBadge'
+import { isViewOnly } from '@shared/view-only'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
+  BriefcaseBusiness,
   Archive,
   ArrowDownToLine,
   ArrowUpToLine,
@@ -177,6 +179,10 @@ function Header({
               <Badge variant="muted" className="h-8 px-2.5 text-xs">
                 <MessagesSquare /> View only · imported from claude.ai
               </Badge>
+            ) : session.viewOnly ? (
+              <Badge variant="muted" className="h-8 px-2.5 text-xs">
+                <BriefcaseBusiness /> View only · Claude desktop (Cowork)
+              </Badge>
             ) : (
               <>
                 <Tooltip
@@ -229,19 +235,19 @@ function Header({
                 )}
                 {caps.continueFresh && (
                   <DropdownMenuItem
-                    disabled={session.availability === 'imported'}
+                    disabled={isViewOnly(session)}
                     onSelect={() => openContinueFresh(session.key)}
                   >
                     <Zap /> Continue fresh from summary…
                   </DropdownMenuItem>
                 )}
-                {caps.summaries && (
+                {caps.summaries && !session.viewOnly && (
                   <DropdownMenuItem onSelect={() => summarize([session.key])}>
                     <Sparkles /> {session.meta.aiSummary ? 'Regenerate summary' : 'Summarize'}
                   </DropdownMenuItem>
                 )}
                 <DropdownMenuItem
-                  disabled={session.availability === 'imported' || !session.cwd}
+                  disabled={isViewOnly(session) || !session.cwd}
                   onSelect={() => void openTerminalHere(session.key)}
                 >
                   <Terminal /> Open terminal here
@@ -388,7 +394,7 @@ function Header({
           </span>
         </div>
 
-        {session.availability !== 'imported' && (
+        {!isViewOnly(session) && (
           <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1.5">
             <span className="text-xs font-medium text-muted-foreground">Launch with</span>
             <SessionModelControls session={session} />
@@ -437,6 +443,12 @@ function Header({
               <Notice tone="info" icon={MessagesSquare}>
                 Imported from a claude.ai data export into the app&apos;s archive. You can read,
                 search and export it; it has no token stats and can&apos;t be resumed.
+              </Notice>
+            )}
+            {session.viewOnly === 'cowork' && (
+              <Notice tone="info" icon={BriefcaseBusiness}>
+                A Claude desktop Cowork task, shown view-only: read, search, usage and git links. It
+                ran in the desktop app&apos;s own sandbox, so it can&apos;t be resumed from here.
               </Notice>
             )}
             {session.availability === 'archived-only' && !caps.restore && (
@@ -651,11 +663,7 @@ export function SessionViewer({
               cwd={session.cwd}
               findQuery={effectiveQuery}
               // Imported claude.ai conversations are view only, and Codex has no Branch from here.
-              onBranch={
-                session.availability === 'imported' || !capsOf(session).branch
-                  ? undefined
-                  : onBranch
-              }
+              onBranch={isViewOnly(session) || !capsOf(session).branch ? undefined : onBranch}
               marks={marks}
               agent={providerOf(session)}
             />

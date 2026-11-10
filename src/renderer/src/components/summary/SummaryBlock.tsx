@@ -3,6 +3,7 @@
 // starting point of Continue fresh.
 
 import { useState } from 'react'
+import { isViewOnly } from '@shared/view-only'
 import {
   ChevronDown,
   ChevronRight,
@@ -174,7 +175,7 @@ export function SummaryBlock({
   )
   const running = job?.status === 'running'
   const lastFailed = q.jobs.find((j) => j.key === session.key && j.status === 'failed')
-  const canContinue = session.availability !== 'imported'
+  const canContinue = !isViewOnly(session)
 
   const progress = job && (
     <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
@@ -193,6 +194,9 @@ export function SummaryBlock({
       </button>
     </span>
   )
+
+  // Claude desktop (Cowork) sessions are view-only: no summaries.
+  if (session.viewOnly) return null
 
   if (!summary) {
     return (

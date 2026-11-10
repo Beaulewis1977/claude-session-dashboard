@@ -249,12 +249,19 @@ export function Sidebar() {
                   title={
                     src.key === 'ask-claude'
                       ? "Runs started by the dashboard's Ask Claude. Hidden from the list unless picked here."
-                      : undefined
+                      : src.key === 'desktop'
+                        ? "Local sessions from the Claude desktop app's Code tab. Cloud sessions (claude.ai/code) and claude.ai chats aren't stored on this PC."
+                        : src.key === 'cowork'
+                          ? 'Claude desktop Cowork tasks (view-only). Turn the source off in Settings → Sources.'
+                          : undefined
                   }
                   onClick={() => toggle('source', src.key)}
                 />
               )
             })}
+            <p className="px-2 pt-1 pl-8 text-2xs leading-snug text-subtle-foreground">
+              Cloud sessions (claude.ai/code) and claude.ai chats aren&apos;t stored on this PC.
+            </p>
           </Section>
         )}
 

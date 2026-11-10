@@ -29,7 +29,10 @@ import { NO_CWD_SEARCH } from './core/launch'
 import { callHandler, handle, setAppPage } from './ipc-guard'
 import { JsonStore } from './core/json-store'
 import { registerMobileIpc } from './ipc-mobile'
-import { registerLiveIpc } from './ipc-live'
+import { focusLive, registerLiveIpc } from './ipc-live'
+import { findRunningCopy } from '@shared/running'
+import { claudeAppLauncher } from './services/claude-app'
+import { claudeDesktopDir, COWORK_SOURCE_ID } from './providers/claude/desktop'
 import { registerGitIpc } from './ipc-git'
 import { GitLinksService } from './git/service'
 import { createRealBackend } from './git/backend'
@@ -368,6 +371,8 @@ async function main(): Promise<void> {
   ])
   providers.setEnabled(providerSettings(settings.value).providers)
   const sessions = new SessionService(platform, paths, metadata, settings, providers)
+  // The Claude desktop app's Code-tab index (read only: just its cliSessionId fields).
+  sessions.desktopDir = claudeDesktopDir(platform)
   const watcher = new SourceWatcher(sessions)
   const lineage = new LineageService(sessions)
 
@@ -582,6 +587,14 @@ async function main(): Promise<void> {
     }),
     open: (link) => shell.openExternal(link)
   }
+  // "Open in: Claude desktop app" (Windows): `claude --desktop --resume <id>`. Fixtures
+  // mode shows the choice and simulates it (nothing is run).
+  if (process.platform === 'win32' && !FIXTURES) launcher.claudeApp = claudeAppLauncher()
+  else if (FIXTURES)
+    launcher.claudeApp = {
+      facts: async () => ({ installed: true, version: '2.1.321' }),
+      open: async () => ({ ok: true, output: '' })
+    }
   registerContextIpc({ sessions, launcher, cost: contextCost })
   usage.on('changed', () => limits.emit('changed'))
   limits.on('changed', () => billing.refreshInferred())
@@ -652,6 +665,8 @@ async function main(): Promise<void> {
     encryptor,
     // A backup missed while the app was closed has run (done or failed).
     notify: (title, body) => notify({ kind: 'backup', title, body, onClick: () => showBackup() }),
+    // Claude desktop (Cowork) archive copies only while that source is on.
+    skipArchiveSources: () => (sessions.coworkOn() ? [] : [COWORK_SOURCE_ID]),
     beforeBackup: async () => {
       await Promise.all([
         metadata.flush(),
@@ -715,7 +730,13 @@ async function main(): Promise<void> {
         terminal: settings.value.terminal,
         branchConfirmed: settings.value.branchConfirmed === true
       }),
-      confirm: (device, what) => confirmOnPc(device.name, what)
+      confirm: (device, what) => confirmOnPc(device.name, what),
+      // "Focus terminal on PC" and the "Already running" check (Running now, below).
+      focus: (key) => focusLive({ live, sessions, fixtures: FIXTURES }, key),
+      running: (opts) => {
+        const s = sessions.get(opts.key)
+        return s ? launcher.runningCopy(s, opts) : undefined
+      }
     },
     web: webAssets(rendererDir, (size) => {
       if (appIcon.isEmpty()) return undefined
@@ -813,6 +834,19 @@ async function main(): Promise<void> {
     push: (kind, refFor) => mobile.webPush({ kind, ref: refFor })
   })
   registerLiveIpc({ live, hooks, codexHooks, sessions, fixtures: FIXTURES })
+  // "Already running on your PC": Resume / Fork / Continue fresh check Running now first.
+  // Reservations of launches on their way retire as soon as Running now shows their run.
+  launcher.liveSessions = () => live.snapshot().sessions
+  live.on('changed', () => launcher.observeLive())
+  launcher.running = (s, kind) =>
+    findRunningCopy({
+      kind,
+      key: s.key,
+      live: live.snapshot().sessions,
+      origin: (k) => sessions.originOf(k),
+      // The desktop app's Code tab lists it (it may run it through the SDK).
+      desktopApp: (k) => sessions.get(k)?.source === 'desktop'
+    })
 
   // Git links: commits, branches and PRs per session, read-only (see git/service.ts).
   // Fixtures mode uses sample repos and starts no git or gh.

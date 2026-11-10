@@ -1,6 +1,7 @@
 // "Branch from here": plan a cut at a message and create the new session file.
 
 import { randomUUID } from 'node:crypto'
+import { VIEW_ONLY_ERROR } from '@shared/view-only'
 import { branchName } from '@shared/branch'
 import { isUuid } from '@shared/jsonl'
 import type { BranchPreview, BranchRequest, SessionSummary } from '@shared/types'
@@ -47,6 +48,7 @@ export class BranchService {
       throw new BranchError(
         'Conversations imported from claude.ai can be read and searched, but not resumed or branched.'
       )
+    if (s.viewOnly) throw new BranchError(VIEW_ONLY_ERROR)
     const src = this.sessions.source(s.sourceId)
     if (!src || src.status !== 'ok')
       throw new BranchError(

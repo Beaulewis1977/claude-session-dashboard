@@ -21,6 +21,7 @@ import { envPaths } from '../../services/bridge'
 import { detectSources } from '../../services/sources'
 import type { SessionProvider } from '../types'
 import { liveDirs } from './live'
+import { isCoworkSessionFile, listCoworkFiles } from './desktop'
 import {
   listSessionFiles,
   parseSessionText,
@@ -39,13 +40,19 @@ export const claudeProvider: SessionProvider = {
   async detectSources(platform, opts) {
     return (await detectSources(platform, opts)).map((s) => ({ ...s, provider: 'claude' }))
   },
-  listSessionFiles: (src) => listSessionFiles(src.projectsDir),
+  // Cowork: only each task home's `.claude/projects` (never its sign-in or other files).
+  listSessionFiles: (src) =>
+    src.cowork ? listCoworkFiles(src.projectsDir) : listSessionFiles(src.projectsDir),
   sessionFileOf,
-  watchSpec: (src) => ({
-    root: src.projectsDir,
-    depth: 1,
-    isSessionFile: (path) => path.endsWith('.jsonl')
-  }),
+  watchSpec: (src) =>
+    src.cowork
+      ? // Polled (no file watcher over the task homes' other files).
+        { root: src.projectsDir, depth: 0, isSessionFile: isCoworkSessionFile, poll: true }
+      : {
+          root: src.projectsDir,
+          depth: 1,
+          isSessionFile: (path) => path.endsWith('.jsonl')
+        },
 
   readText: (path) => readFile(path, 'utf8'),
   parseSession: parseSessionText,

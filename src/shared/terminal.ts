@@ -302,9 +302,15 @@ export function remoteCommand(
  */
 export function canOpenTerminal(
   info: TerminalAccessInfo | null | undefined,
-  target: { cwd?: string; availability?: string } | undefined
+  target: { cwd?: string; availability?: string; viewOnly?: string } | undefined
 ): info is TerminalAccessInfo & { ready: true } {
-  return !!info?.ready && !!info.host && !!target?.cwd && target.availability !== 'imported'
+  return (
+    !!info?.ready &&
+    !!info.host &&
+    !!target?.cwd &&
+    target.availability !== 'imported' &&
+    !target.viewOnly
+  )
 }
 
 function userAtHost(info: Pick<TerminalAccessInfo, 'user' | 'host'>): string {

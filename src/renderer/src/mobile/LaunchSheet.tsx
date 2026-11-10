@@ -22,7 +22,10 @@ import { providerOf } from '@shared/provider'
 import type { SessionSummary, TerminalPref } from '@shared/types'
 import { now } from '@shared/clock'
 import { effortLabel, modelLabel } from '@shared/model-choice'
-import { freshRemoteUrl } from '@/lib/remote'
+import { freshRemoteUrl, runningNow } from '@/lib/remote'
+import type { RunningCopy } from '@shared/running'
+import { RunningBlock } from './RunningBlock'
+import { useMobile } from './state'
 import { DEFAULT_CONTEXT_WARNING, shouldWarn } from '@shared/context'
 import { updateMeta } from '@/lib/actions'
 import { ContextLine, ContextWarning } from '@/components/context/ContextSize'
@@ -62,7 +65,9 @@ type Launched = RemoteLaunchResult & { at: number; existing: ReadonlySet<string>
 
 function useFreshRemoteUrl(result: Launched | null, since: number): string | undefined {
   const sessions = useApp((st) => st.sessions)
-  return freshRemoteUrl(sessions, result, since, result?.existing)
+  // Running now has the link first (Claude Code's running-session file, read every few seconds).
+  const live = useApp((st) => st.live?.sessions)
+  return freshRemoteUrl(sessions, result, since, result?.existing, live)
 }
 
 export function LaunchSheet({
@@ -91,6 +96,13 @@ export function LaunchSheet({
   const [busy, setBusy] = useState(false)
   const [result, setResult] = useState<Launched | null>(null)
   const [error, setError] = useState<string>()
+  // Refused at launch because it's already running (it started since the preview).
+  const [runningRes, setRunningRes] = useState<RunningCopy>()
+  const liveSessions = useApp((st) => st.live?.sessions)
+  const readOnly = useMobile((st) => st.me?.readOnly) ?? false
+  // As Running now says it is now: the link shows as soon as Remote Control is on
+  // (/rc typed later included), and goes when the session restarts without it.
+  const running: RunningCopy | undefined = runningNow(runningRes ?? preview?.running, liveSessions)
   const fresh = useFreshRemoteUrl(result?.ok && !codex ? result : null, result?.at ?? 0)
   const [waitedLong, setWaitedLong] = useState(false)
 
@@ -117,15 +129,20 @@ export function LaunchSheet({
     return () => window.clearTimeout(t)
   }, [result, fresh, codex])
 
-  const go = async (): Promise<void> => {
+  const go = async (force = false): Promise<void> => {
     if (busy) return
     setBusy(true)
     setError(undefined)
     try {
       // Sessions that exist now can't be the fork Claude Code is about to create.
-      const existing = new Set(useApp.getState().sessions.map((x) => x.key))
-      const r = await phone.launch(req)
+      const existing = new Set([
+        ...useApp.getState().sessions.map((x) => x.key),
+        ...(useApp.getState().live?.sessions ?? []).map((x) => x.key)
+      ])
+      // "Start another copy anyway" (confirmed in the block above) adds `force`; nothing else changes.
+      const r = await phone.launch(force ? { ...req, force: true } : req)
       if (r.ok) setResult({ ...r, at: now(), existing })
+      else if (r.running) setRunningRes(r.running)
       else setError(r.error ?? 'It could not be launched.')
     } catch (err) {
       setError((err as Error).message)
@@ -239,7 +256,19 @@ export function LaunchSheet({
                 <Loader2 className="size-4 animate-spin" /> Checking with your PC…
               </div>
             )}
-            {preview && target.kind === 'codex-app' && (
+            {preview && running && (
+              <RunningBlock
+                running={running}
+                readOnly={readOnly}
+                onDone={onClose}
+                onRefresh={() => {
+                  setRunningRes(undefined)
+                  setExpired((n) => n + 1)
+                }}
+                onAnother={() => void go(true)}
+              />
+            )}
+            {preview && !running && target.kind === 'codex-app' && (
               <ul className="space-y-2.5 text-[14px]">
                 <li className="flex items-start gap-2.5">
                   <AppWindow className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
@@ -255,7 +284,7 @@ export function LaunchSheet({
                 )}
               </ul>
             )}
-            {preview && target.kind !== 'codex-app' && (
+            {preview && !running && target.kind !== 'codex-app' && (
               <ul className="space-y-2.5 text-[14px]">
                 <li className="flex items-start gap-2.5">
                   <SquareTerminal className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
@@ -393,23 +422,25 @@ export function LaunchSheet({
               <Button variant="ghost" className="h-12 flex-1" onClick={onClose}>
                 Cancel
               </Button>
-              <Button
-                variant="primary"
-                className="h-12 flex-[2] text-[15px]"
-                disabled={!preview?.ok || busy}
-                onClick={() => void go()}
-              >
-                {busy ? (
-                  <Loader2 className="animate-spin" />
-                ) : (
-                  <Icon className={target.kind === 'resume' ? 'fill-current' : ''} />
-                )}
-                {busy && preview?.confirmOnPc
-                  ? 'Waiting for the PC…'
-                  : warn
-                    ? 'Resume anyway'
-                    : VERB[target.kind]}
-              </Button>
+              {!running && (
+                <Button
+                  variant="primary"
+                  className="h-12 flex-[2] text-[15px]"
+                  disabled={!preview?.ok || busy}
+                  onClick={() => void go()}
+                >
+                  {busy ? (
+                    <Loader2 className="animate-spin" />
+                  ) : (
+                    <Icon className={target.kind === 'resume' ? 'fill-current' : ''} />
+                  )}
+                  {busy && preview?.confirmOnPc
+                    ? 'Waiting for the PC…'
+                    : warn
+                      ? 'Resume anyway'
+                      : VERB[target.kind]}
+                </Button>
+              )}
             </div>
           </div>
         )}

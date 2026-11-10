@@ -27,6 +27,8 @@ import {
 } from './context'
 import type { AcceptedProject, CodexAppPreview, OpenIn } from './codex-app'
 import type { GitBadge, GitLinkSettings } from './git/types'
+import type { RunningCopy } from './running'
+import type { ClaudeAppPreview } from './claude-app'
 
 export type EnvKind = 'windows' | 'wsl'
 
@@ -53,6 +55,11 @@ export interface SourceInfo {
   claudeSettingsPath?: string
   /** `cleanupPeriodDays` from Claude's settings. `null` = not set (Claude's default applies). */
   cleanupPeriodDays?: number | null
+  /**
+   * The optional "Claude desktop (Cowork)" source: the Claude desktop app's
+   * Cowork task homes. View-only; only their `.claude/projects` is read.
+   */
+  cowork?: boolean
 }
 
 /** User-editable metadata. Lives only in the app's own metadata file. */
@@ -240,6 +247,11 @@ export interface SessionSummary {
   contentBytes?: number
   /** Git links: linked commits and pull requests, for the card badge ("3 commits · PR #14"). */
   git?: GitBadge
+  /**
+   * Read, search, usage and git links only; never launched or summarized
+   * ('cowork': a Claude desktop Cowork session, from the optional Cowork source).
+   */
+  viewOnly?: 'cowork'
 }
 
 export interface ToolResult {
@@ -384,6 +396,12 @@ export interface AppSettings {
   usageSplit?: UsageSplit
   /** Git links: on/off, and whether the GitHub CLI may look up pull requests (absent: on, ask). */
   gitLinks?: GitLinkSettings
+  /**
+   * Settings → Sources: also show the Claude desktop app's Cowork sessions
+   * (view-only; absent: off). Only their `.claude/projects` is read; never a
+   * sign-in file. Their archive copies are backed up only while this is on.
+   */
+  coworkSource?: boolean
 }
 
 export type MeterProvider = 'claude' | 'codex' | 'both'
@@ -501,8 +519,17 @@ export interface LaunchOptions {
   wslFolder?: boolean
   /** The WSL distro that holds that folder (unset: the default distro). */
   distro?: string
-  /** Codex: open in the Codex desktop app instead of a terminal (desktop and phone; see codex-app.ts). */
-  openIn?: OpenIn
+  /**
+   * Codex: open in the Codex desktop app instead of a terminal (desktop and phone; see codex-app.ts).
+   * Claude Code: 'claude-app' hands a Windows session to the Claude desktop app
+   * (`claude --desktop --resume <id>`; desktop only, see claude-app.ts).
+   */
+  openIn?: OpenIn | 'claude-app'
+  /**
+   * Start it even though it (or a fork / continuation of it) is already running
+   * on the PC ("Start another copy anyway", after a confirm). Unset: refused.
+   */
+  allowDuplicate?: boolean
   /**
    * Continue fresh in the Codex app: the project whose folder holds this one, as
    * the dialog showed it ("Use that project anyway?"). Used only if it's still that project.
@@ -634,6 +661,10 @@ export interface LaunchPreview {
   placement?: LaunchPlacement
   /** Codex: whether this launch can open in the Codex app, and where (absent: not a Codex session). */
   codexApp?: CodexAppPreview
+  /** Claude Code: whether it can open in the Claude desktop app (absent: not offered at all). */
+  claudeApp?: ClaudeAppPreview
+  /** It (or a fork / continuation of it) is already running on the PC. */
+  running?: RunningCopy
 }
 
 export interface LaunchResult {
@@ -646,8 +677,10 @@ export interface LaunchResult {
   branch?: SessionSummary
   /** Continue fresh: the key the new session will have once Claude Code writes it. */
   continuedKey?: string
-  /** Opened in the Codex app instead of a terminal. */
-  openedIn?: 'codex-app'
+  /** Opened in the Codex app (or the Claude desktop app) instead of a terminal. */
+  openedIn?: 'codex-app' | 'claude-app'
+  /** Refused: it's already running on the PC (see LaunchOptions.allowDuplicate). */
+  running?: RunningCopy
   /** Something to tell after opening (Fork in the Codex app: use its menu). */
   note?: string
 }

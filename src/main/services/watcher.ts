@@ -49,7 +49,7 @@ export class SourceWatcher {
       const provider = this.sessions.providers.find(src)
       if (src.status !== 'ok' || !provider) continue
       const spec = provider.watchSpec(src)
-      if (isUnc(spec.root)) {
+      if (isUnc(spec.root) || spec.poll) {
         this.timers.push(setInterval(() => void this.sessions.pollSource(src.id), POLL_UNC_MS))
         continue
       }
@@ -70,8 +70,8 @@ export class SourceWatcher {
         for (const src of this.sessions.sources) {
           // Looked up each time: its provider may have been turned off since.
           const provider = this.sessions.providers.find(src)
-          if (provider && !isUnc(provider.watchSpec(src).root))
-            void this.sessions.pollSource(src.id)
+          const spec = provider?.watchSpec(src)
+          if (spec && !isUnc(spec.root) && !spec.poll) void this.sessions.pollSource(src.id)
         }
       }, POLL_ALL_MS)
     )

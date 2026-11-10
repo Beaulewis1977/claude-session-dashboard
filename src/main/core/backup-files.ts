@@ -135,6 +135,38 @@ const realIo: CollectIo = {
   lstat: (p) => lstat(p)
 }
 
+export interface CollectOptions {
+  /**
+   * Archive sub-folders (source ids) left out, with their records in
+   * metadata.json: the Claude desktop (Cowork) source while it's off.
+   */
+  skipArchiveSources?: readonly string[]
+}
+
+/** A file a backup never holds, whatever folder it is in (sign-in files). */
+export function isCredentialFile(name: string): boolean {
+  return /^\.?credentials(\.json)?$/i.test(name) || /^auth\.json$/i.test(name)
+}
+
+/** metadata.json without the archive records of the sources left out. */
+export function stripArchiveSources(data: Buffer, sources: readonly string[]): Buffer {
+  let v: unknown
+  try {
+    v = JSON.parse(data.toString('utf8'))
+  } catch {
+    return data
+  }
+  const archive = obj(obj(v).archive)
+  const kept: Json = {}
+  let dropped = false
+  for (const [k, r] of Object.entries(archive)) {
+    if (sources.includes(String(obj(r).sourceId))) dropped = true
+    else kept[k] = r
+  }
+  if (!dropped) return data
+  return Buffer.from(JSON.stringify({ ...obj(v), archive: kept }, null, 2), 'utf8')
+}
+
 export interface Collected {
   files: SourceFile[]
   /** Files in the backed-up folders that a backup can't hold (odd names, too deep). */
@@ -156,7 +188,9 @@ async function walk(
   rel: string,
   out: Collected,
   depth: number,
-  io: CollectIo
+  io: CollectIo,
+  /** Relative folders left out (e.g. `archive/claude-desktop-cowork`). */
+  skip?: readonly string[]
 ): Promise<void> {
   let entries: Dirent[]
   try {
@@ -168,13 +202,19 @@ async function walk(
   for (const e of entries) {
     const childAbs = join(abs, e.name)
     const childRel = `${rel}/${e.name}`
+    if (skip?.includes(childRel)) continue
+    // Never a sign-in file (none should be in the app's folders; this makes sure).
+    if (isCredentialFile(e.name)) {
+      out.skipped.push(childRel)
+      continue
+    }
     // Links and junctions are never followed (they could lead out of the folder).
     if (e.isSymbolicLink()) {
       out.skipped.push(childRel)
       continue
     }
     if (e.isDirectory()) {
-      if (depth < 5) await walk(childAbs, childRel, out, depth + 1, io)
+      if (depth < 5) await walk(childAbs, childRel, out, depth + 1, io, skip)
       else out.skipped.push(childRel)
     } else if (e.isFile()) {
       if (TEMP_RE.test(e.name)) continue
@@ -201,8 +241,14 @@ async function walk(
  * for an incomplete snapshot (which retention could later keep in place of
  * complete ones).
  */
-export async function collectFiles(dataDir: string, io: CollectIo = realIo): Promise<Collected> {
+export async function collectFiles(
+  dataDir: string,
+  io: CollectIo = realIo,
+  opts: CollectOptions = {}
+): Promise<Collected> {
   const out: Collected = { files: [], skipped: [] }
+  const skipSources = opts.skipArchiveSources ?? []
+  const skipDirs = skipSources.map((id) => `archive/${id}`)
   for (const name of TOP_FILES) {
     const abs = join(dataDir, name)
     let st: Stats
@@ -219,7 +265,12 @@ export async function collectFiles(dataDir: string, io: CollectIo = realIo): Pro
       abs,
       size: st.size,
       mtimeMs: st.mtimeMs,
-      transform: name === 'accounts.json' ? stripAccountKeys : undefined
+      transform:
+        name === 'accounts.json'
+          ? stripAccountKeys
+          : name === 'metadata.json' && skipSources.length
+            ? (data) => stripArchiveSources(data, skipSources)
+            : undefined
     })
   }
   for (const d of TOP_DIRS) {
@@ -232,7 +283,7 @@ export async function collectFiles(dataDir: string, io: CollectIo = realIo): Pro
       throw readError(d, err)
     }
     if (!st.isDirectory()) throw new Error(`${d} in the app's data folder isn't a folder`)
-    await walk(abs, d, out, 1, io)
+    await walk(abs, d, out, 1, io, skipDirs)
   }
   out.files.sort((a, b) => (a.rel < b.rel ? -1 : a.rel > b.rel ? 1 : 0))
   return out

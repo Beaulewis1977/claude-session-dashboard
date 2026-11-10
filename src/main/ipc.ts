@@ -80,6 +80,7 @@ function publicSettings(s: SettingsFile): AppSettings {
     theme: s.theme,
     extraFolders: [...s.extraFolders],
     scanStoppedDistros: s.scanStoppedDistros,
+    ...(s.coworkSource === true ? { coworkSource: true } : {}),
     weekStart: s.weekStart === 'sunday' ? 'sunday' : 'monday',
     prices: s.prices.map((p) => ({ ...p })),
     plan: s.plan,
@@ -175,7 +176,8 @@ function launchOpts(v: unknown): LaunchOptions {
       : undefined,
     remoteControl: o.remoteControl === true,
     continueFresh: continueRequest(o.continueFresh),
-    ...(o.openIn === 'codex-app' ? { openIn: 'codex-app' as const } : {}),
+    ...(o.openIn === 'codex-app' || o.openIn === 'claude-app' ? { openIn: o.openIn } : {}),
+    ...(o.allowDuplicate === true ? { allowDuplicate: true } : {}),
     ...acceptedProject(o.codexAppProject),
     ...placeOpts(o)
   }
@@ -260,7 +262,8 @@ export function registerIpc(deps: IpcDeps): void {
     const p = patch ?? {}
     const before = settings.value
     const rescanNeeded =
-      'scanStoppedDistros' in p && p.scanStoppedDistros !== before.scanStoppedDistros
+      ('scanStoppedDistros' in p && p.scanStoppedDistros !== before.scanStoppedDistros) ||
+      (typeof p.coworkSource === 'boolean' && p.coworkSource !== (before.coworkSource === true))
     const archiveBefore = providerSettings(before).codexArchive
     settings.update((s) => {
       if ('providers' in p)
@@ -289,6 +292,7 @@ export function registerIpc(deps: IpcDeps): void {
       if (TERMINALS.includes(p.terminal as TerminalPref)) s.terminal = p.terminal as TerminalPref
       if (THEMES.includes(p.theme as ThemePref)) s.theme = p.theme as ThemePref
       if (typeof p.scanStoppedDistros === 'boolean') s.scanStoppedDistros = p.scanStoppedDistros
+      if (typeof p.coworkSource === 'boolean') s.coworkSource = p.coworkSource
       if (p.weekStart === 'monday' || p.weekStart === 'sunday') s.weekStart = p.weekStart
       if ('prices' in p) {
         const prices = sanitizePrices(p.prices)

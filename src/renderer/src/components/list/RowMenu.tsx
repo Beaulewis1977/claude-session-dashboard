@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { isViewOnly } from '@shared/view-only'
 import {
   Eye,
   EyeOff,
@@ -57,7 +58,7 @@ export function RowMenu({
 }
 
 function SingleItems({ session: s }: { session: SessionSummary }) {
-  const viewOnly = s.availability === 'imported'
+  const viewOnly = isViewOnly(s)
   const rename = (): void => {
     const st = useApp.getState()
     st.select(s.key)
@@ -75,7 +76,7 @@ function SingleItems({ session: s }: { session: SessionSummary }) {
       <ContextMenuItem disabled={viewOnly} onSelect={() => openContinueFresh(s.key)}>
         <Zap /> Continue fresh…
       </ContextMenuItem>
-      <ContextMenuItem onSelect={() => summarize([s.key])}>
+      <ContextMenuItem disabled={!!s.viewOnly} onSelect={() => summarize([s.key])}>
         <Sparkles /> {s.meta.aiSummary ? 'Regenerate summary' : 'Summarize'}
       </ContextMenuItem>
       <ContextMenuSeparator />

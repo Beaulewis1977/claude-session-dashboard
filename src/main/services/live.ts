@@ -281,10 +281,12 @@ export class LiveService extends EventEmitter<{ changed: [] }> {
         const s = this.deps.sessions.get(key)
         if (!s) return undefined
         const at = s.lastActivityAt ? Date.parse(s.lastActivityAt) : NaN
+        const rAt = s.remoteUrlAt ? Date.parse(s.remoteUrlAt) : NaN
         return {
           lastActivityAt: Number.isFinite(at) ? at : undefined,
           cwd: s.cwd,
-          remoteUrl: s.remoteUrl
+          remoteUrl: s.remoteUrl,
+          remoteUrlAt: Number.isFinite(rAt) ? rAt : undefined
         }
       },
       sourceEnv: (id) => {

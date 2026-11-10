@@ -332,9 +332,10 @@ export function SettingsView() {
             hint={
               <>
                 Adds <span className="font-mono">--remote-control "&lt;session name&gt;"</span> to
-                Resume, Fork and Branch, for Windows and WSL sessions, so you can continue them from
-                the Claude app or claude.ai/code. Needs Claude Code 2.1.51 or later and your Claude
-                subscription (not an API key).
+                Resume, Fork, Continue fresh and Branch, for Windows and WSL sessions. It makes the
+                session continuable from the Claude mobile app (and at claude.ai/code). Needs Claude
+                Code 2.1.51 or later and your Claude subscription (not an API key). Launches from a
+                paired phone always have it on.
               </>
             }
           >
@@ -471,6 +472,21 @@ export function SettingsView() {
               aria-label="Scan stopped WSL distros"
             />
           </Row>
+          <Row
+            label="Claude desktop (Cowork) sessions"
+            hint="Also show the Claude desktop app's Cowork tasks, view-only (read, search, usage and git links; no Resume). Only their transcripts are read, never the sign-in files kept next to them; their archive copies are backed up only while this is on. The desktop app's Code tab sessions are already included: they live in the same folder as the terminal's."
+          >
+            <Switch
+              checked={settings.coworkSource === true}
+              onCheckedChange={(v) => void update({ coworkSource: v })}
+              aria-label="Claude desktop (Cowork) sessions"
+            />
+          </Row>
+          <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
+            Cloud sessions (claude.ai/code, Claude Code on the web) and normal claude.ai chats
+            aren't stored on this PC, so they aren't listed. claude.ai chats can be imported from a
+            claude.ai data export.
+          </p>
         </Section>
 
         <Section

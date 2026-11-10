@@ -978,7 +978,11 @@ that ancestor's (the parent in between may have none of its own, or be gone).
   on any graph: each commit is brought into the default branch by one merge (stacked PRs keep
   their own commits), a merge into another branch is followed only about as far as that branch
   goes (within a budget), and a commit gets at most 8 names from branches not merged yet (the
-  branches sessions were on first, then the nearest).
+  branches sessions were on first, then the nearest). A merge into another branch names only what
+  its first parent doesn't already reach, also through the default branch (a commit merged there
+  earlier keeps its own branch). A merge's own message gives its PR, and a commit gets the PR of
+  the first merge that brought it in (a PR merged into a branch keeps its number when a later PR
+  merges that branch).
 
 ### What runs
 

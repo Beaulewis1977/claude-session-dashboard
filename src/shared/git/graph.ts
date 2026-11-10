@@ -111,14 +111,14 @@ class MaxHeap {
  * Sets `branches` and `pr` on each commit (in place). `prefer`: branch names
  * sessions were on; among branches not merged yet they're named first.
  *
- * Bounded work:
+ * A merge's own PR comes from its message. Then, with bounded work:
+ * - merges off the default branch's line (into a branch, or inside one), oldest
+ *   first: each names what its other parents reach and its first parent doesn't,
+ *   walking both sides together only until nothing is left that just the other
+ *   side reaches (about the size of that branch), within a total budget;
  * - merges on the default branch's line, oldest first: each takes what its other
  *   parents reach that neither the line nor an earlier merge holds, so every
  *   commit is visited once (stacked PRs keep their own commits);
- * - other merges (into a branch, or inside one) add their branch's name to what
- *   their other parents reach and their first parent doesn't, walking both sides
- *   newest first only until nothing is left that just the other side reaches (about
- *   the size of that branch), within a total budget;
  * - branches not merged yet: at most MAX_BRANCH_LABELS names per commit, the
  *   nearest branches first, and a branch stops where a commit is full.
  */
@@ -167,14 +167,77 @@ export function labelBranches(
   const pos = new Map(order.map((c, i) => [c.sha, i]))
   const n = order.length
 
-  // 1. Merges on the default branch's line, oldest first.
+  // A merge's own message names its PR before anything else does: a PR merged
+  // into a branch keeps its number when that branch is merged by another PR.
+  for (const c of order) {
+    if (c.parents.length < 2) continue
+    const pr = mergeSubject(c.subject)?.pr
+    if (pr !== undefined) c.pr = pr
+  }
+
+  // 1. Merges off the default branch's line (into a branch, or inside one), oldest
+  // first, so a commit's PR is the first one it was merged by. Each names what its
+  // other parents reach and its first parent doesn't: both sides are walked
+  // together, the highest generation first, until nothing is left that only the
+  // other parents reach. The first-parent side goes on through the default
+  // branch's line (what an earlier merge there brought in is reached too); the
+  // other side stops at that line. Within a total budget.
+  const gen = new Int32Array(n)
+  for (let i = 0; i < n; i++) {
+    let g = 0
+    for (const p of order[i].parents) {
+      const j = pos.get(p)
+      if (j !== undefined && gen[j] > g) g = gen[j]
+    }
+    gen[i] = g + 1
+  }
+  const key = (j: number): number => gen[j] * (n + 1) + j
+  let budget = SIDE_MERGE_BUDGET * n + 100_000
+  const mark = new Int32Array(n)
+  const side = new Uint8Array(n) // 1: its first parent reaches it, 2: only another parent
+  for (let i = 0; i < n && budget > 0; i++) {
+    const c = order[i]
+    if (c.parents.length < 2 || firstParent.has(c.sha)) continue
+    const named = mergeSubject(c.subject)
+    if (!named?.branch) continue
+    const heap = new MaxHeap()
+    let only = 0 // in the heap, reached by another parent only
+    const reach = (sha: string, from: 1 | 2): void => {
+      const j = pos.get(sha)
+      if (j === undefined || (from === 2 && firstParent.has(sha))) return
+      if (mark[j] !== i + 1) {
+        mark[j] = i + 1
+        side[j] = from
+        heap.push(key(j))
+        if (from === 2) only++
+      } else if (from === 1 && side[j] === 2) {
+        side[j] = 1
+        only--
+      }
+    }
+    reach(c.parents[0], 1)
+    for (const p of c.parents.slice(1)) reach(p, 2)
+    while (heap.size && only > 0 && budget > 0) {
+      const j = heap.pop() % (n + 1)
+      budget--
+      const from = side[j] as 1 | 2
+      const m = order[j]
+      if (from === 2) {
+        only--
+        add(m, named.branch)
+        if (named.pr !== undefined) m.pr ??= named.pr
+      }
+      for (const p of m.parents) reach(p, from)
+    }
+  }
+
+  // 2. Merges on the default branch's line, oldest first.
   const taken = new Uint8Array(n)
   for (const s of firstParent) taken[pos.get(s)!] = 1
   for (let i = 0; i < n; i++) {
     const c = order[i]
     if (c.parents.length < 2 || !firstParent.has(c.sha)) continue
     const named = mergeSubject(c.subject)
-    if (named?.pr !== undefined) c.pr ??= named.pr
     const todo = c.parents.slice(1)
     while (todo.length) {
       const j = pos.get(todo.pop()!)
@@ -186,47 +249,6 @@ export function labelBranches(
         if (named.pr !== undefined) m.pr ??= named.pr
       }
       todo.push(...m.parents)
-    }
-  }
-
-  // 2. Other merges. Both sides stop at the default branch's line.
-  let budget = SIDE_MERGE_BUDGET * n + 100_000
-  const mark = new Int32Array(n)
-  const side = new Uint8Array(n) // 1: its first parent reaches it, 2: only another parent
-  for (let i = 0; i < n && budget > 0; i++) {
-    const c = order[i]
-    if (c.parents.length < 2 || firstParent.has(c.sha)) continue
-    const named = mergeSubject(c.subject)
-    if (named?.pr !== undefined) c.pr ??= named.pr
-    if (!named?.branch) continue
-    const heap = new MaxHeap()
-    let only = 0 // in the heap, reached by another parent only
-    const reach = (sha: string, from: 1 | 2): void => {
-      const j = pos.get(sha)
-      if (j === undefined || firstParent.has(sha)) return
-      if (mark[j] !== i + 1) {
-        mark[j] = i + 1
-        side[j] = from
-        heap.push(j)
-        if (from === 2) only++
-      } else if (from === 1 && side[j] === 2) {
-        side[j] = 1
-        only--
-      }
-    }
-    reach(c.parents[0], 1)
-    for (const p of c.parents.slice(1)) reach(p, 2)
-    while (heap.size && only > 0 && budget > 0) {
-      const j = heap.pop()
-      budget--
-      const from = side[j] as 1 | 2
-      const m = order[j]
-      if (from === 2) {
-        only--
-        add(m, named.branch)
-        if (named.pr !== undefined) m.pr ??= named.pr
-      }
-      for (const p of m.parents) reach(p, from)
     }
   }
 

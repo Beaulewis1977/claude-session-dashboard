@@ -220,6 +220,73 @@ describe('branches from the commit graph', () => {
     expect(b(6).branches).toEqual(['feature'])
   })
 
+  it("a merge into another branch doesn't take what the default branch already merged", () => {
+    // main: 1 -------- 4 (merge #10 from beau/f)
+    // f:     \ 2 - 3 /   \
+    // g:                  5 ----- 7 (merge 'x' into g)
+    // x:       \ 6 (from f's first commit) /
+    const all = [
+      c(1, []),
+      c(2, [1]),
+      c(3, [2]),
+      c(4, [1, 3], 'Merge pull request #10 from beau/f'),
+      c(5, [4]),
+      c(6, [2]),
+      c(7, [5, 6], "Merge branch 'x' into g")
+    ]
+    const map = new Map(all.map((x) => [x.sha, x]))
+    labelBranches(map, [
+      { ref: 'refs/heads/main', sha: S(4) },
+      { ref: 'refs/heads/g', sha: S(7) }
+    ])
+    // 2 was merged by #10 before g took x in: it's f's, not x's.
+    expect(map.get(S(2))).toMatchObject({ branches: ['f'], pr: 10 })
+    expect(map.get(S(6))!.branches).toContain('x')
+  })
+
+  it('a PR merged into a branch keeps its own number when a later PR merges that branch', () => {
+    // main: 1 ---------------- 5 (merge #30 from beau/feature)
+    // feature: \ 2 ---- 4 (merge #10 from beau/sub) /
+    // sub:          \ 3 /
+    const all = [
+      c(1, []),
+      c(2, [1]),
+      c(3, [2]),
+      c(4, [2, 3], 'Merge pull request #10 from beau/sub'),
+      c(5, [1, 4], 'Merge pull request #30 from beau/feature')
+    ]
+    const map = new Map(all.map((x) => [x.sha, x]))
+    labelBranches(map, [{ ref: 'refs/heads/main', sha: S(5) }])
+    expect(map.get(S(4))).toMatchObject({ branches: ['feature'], pr: 10 })
+    expect(map.get(S(3))!.pr).toBe(10)
+    expect(map.get(S(3))!.branches.sort()).toEqual(['feature', 'sub'])
+    expect(map.get(S(2))).toMatchObject({ branches: ['feature'], pr: 30 })
+  })
+
+  it('1,200 branches from one old commit merged into a branch: still quick and bounded', () => {
+    // develop (not the default branch) gets 1,200 merges; every branch started at commit 2.
+    const all: CommitInfo[] = [c(1, []), c(2, [1])]
+    let dev = 2
+    let n = 3
+    for (let k = 0; k < 1200; k++) {
+      all.push(c(n, [2]))
+      const tip = n++
+      all.push(c(n, [dev, tip], `Merge branch 'b-${k}' into develop`))
+      dev = n++
+    }
+    const map = new Map(all.map((x) => [x.sha, x]))
+    const t = performance.now()
+    labelBranches(map, [
+      { ref: 'refs/heads/main', sha: S(1) },
+      { ref: 'refs/heads/develop', sha: S(dev) }
+    ])
+    expect(performance.now() - t).toBeLessThan(1500)
+    let labels = 0
+    for (const x of all) labels += x.branches.length
+    expect(labels).toBeLessThan(all.length * 4)
+    expect(map.get(S(3))!.branches).toContain('b-0')
+  })
+
   it("many unmerged branches on one long history: a few names per commit, sessions' first", () => {
     // develop (not merged): 1,000 commits; 300 branches started at its tip.
     const all: CommitInfo[] = [c(1, [])]

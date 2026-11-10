@@ -1,16 +1,21 @@
 # Claude Session Dashboard: details
 
-The [README](../README.md) covers what the app does, how to install it and how to use it. This page
-has everything else: the full safety rules, how Resume builds its commands, branching, the phone
-companion's limits, what every usage number means, where the data lives, how the code is organised,
-and the decisions behind it.
+The [README](../README.md) covers every feature: what it does, how to use it and where to find it.
+This page has the depth behind it: the full safety rules, how launch commands are built, branching,
+how context size is estimated, the phone companion's limits, what every usage number means, how Ask
+and git links work, where the data lives, how the code is organised, and the decisions behind it.
 
 ## Contents
 
 - [Safety in full](#safety-in-full)
 - [Using it: more detail](#using-it-more-detail)
+- [Claude desktop and Cowork sessions](#claude-desktop-and-cowork-sessions)
 - [Branching](#branching)
+- [Context size](#context-size)
+- [Already running: no duplicate terminals](#already-running-no-duplicate-terminals)
+- [Open in Codex app](#open-in-codex-app)
 - [Summaries and Continue fresh](#summaries-and-continue-fresh)
+- [Ask across sessions](#ask-across-sessions)
 - [Keeping sessions longer in Claude Code itself](#keeping-sessions-longer-in-claude-code-itself)
 - [Backups](#backups)
 - [Running now and session alerts](#running-now-and-session-alerts)
@@ -18,6 +23,7 @@ and the decisions behind it.
 - [Terminal access (SSH)](#terminal-access-ssh)
 - [Usage, limits and API credits](#usage-limits-and-api-credits)
 - [Git links](#git-links)
+- [Back and Forward](#back-and-forward)
 - [Scripts](#scripts)
 - [How it works](#how-it-works)
 - [Decisions and notes](#decisions-and-notes)
@@ -48,9 +54,8 @@ The app is built around these rules (see [`CLAUDE.md`](../CLAUDE.md)):
    Electron's `RunAsNode`, `NODE_OPTIONS` and inspector switches turned off and only runs its own,
    integrity-checked `app.asar`.
 
-Phase 5 ([`PHASE-5-USAGE-TRACKING.md`](PHASE-5-USAGE-TRACKING.md)) adds exactly two
-exceptions, and each one only happens after you approve it in the app (the later additions below
-add none):
+Every exception below happens only after you approve it in the app. Phase 5
+([`PHASE-5-USAGE-TRACKING.md`](PHASE-5-USAGE-TRACKING.md)) added the first two:
 
 - **Live limits** changes the `statusLine` key in a `~/.claude/settings.json`, and nothing else in
   `.claude`. You see the exact diff first, the file is backed up to the app's data folder, and
@@ -92,10 +97,32 @@ rollouts (read only). Two opt-in additions, each only after you approve it:
   Microsoft). The message holds only the kind of alert and a random reference (one per phone, usable once,
   for a day); no session names, folders or text. Tapping it makes the phone ask the PC, over Tailscale, which session it means.
 
-Two later features stay inside the rules: **Import claude.ai data export** only reads the zip you
-pick (it is never written) and stores the conversations in the app's archive, and **Ask Claude**
-makes no network call itself: it starts your own `claude` CLI, which talks to Anthropic as it always
-does, with no tools, and only after you've seen what will be sent.
+**Terminal access over SSH** (opt-in system changes) sets up Windows' own OpenSSH Server, reachable
+over Tailscale only; every change shows its exact script first and has an Undo. See
+[Terminal access (SSH)](#terminal-access-ssh).
+
+**Git links** read git only, through one guarded runner that allows a fixed list of read-only
+commands (never `status`, fetch, checkout or anything that writes). The one network-capable part is
+optional: once you say yes, your own **GitHub CLI** runs `gh auth status` and `gh pr list` for
+github.com repos, with your own sign-in. See [Git links](#git-links).
+
+Several later features stay inside the rules:
+
+- **Import claude.ai data export** only reads the zip you pick (it is never written) and stores the
+  conversations in the app's archive.
+- **Ask Claude**, **summaries** and **Ask across sessions** make no network call themselves: they
+  start your own `claude` CLI (`claude -p`, no tools, none of your settings, subscription only),
+  which talks to Anthropic as it always does. How much you see first differs: every Ask across
+  sessions question is previewed and sent only on **Send**; Ask Claude shows its data until you
+  tick "Don't show again"; summaries show a one-time notice, after which the exact text is optional
+  (**Show exactly what is sent**), and opt-in auto-summarize sends with no per-session preview. See
+  [Ask Claude](#ask-claude), [Summaries](#summaries-and-continue-fresh) and
+  [Ask across sessions](#ask-across-sessions).
+- **Open in Codex app** only reads the Codex app's project list and `config.toml`, and opens two
+  fixed local `codex://` links. See [Open in Codex app](#open-in-codex-app).
+- **Open in Claude desktop app** runs `claude --desktop --resume <id>`; the desktop app's own session
+  list is only read. See [Claude desktop and Cowork sessions](#claude-desktop-and-cowork-sessions).
+- **Start with Windows** (off by default) adds or removes only the app's own `Run` entry.
 
 ## Using it: more detail
 
@@ -157,6 +184,30 @@ or cmd as your preferred terminal; they open in a new console window of their ow
   WSL folder is checked through `\\wsl.localhost\<distro>` before launching (for a stopped distro,
   opening the Resume dialog starts it); if the distro can't be reached, nothing is launched.
 
+## Claude desktop and Cowork sessions
+
+- **Code tab sessions.** The Claude desktop app's Code tab writes ordinary Claude Code transcripts
+  into `~/.claude/projects`, so they're already in the Windows source. The desktop app keeps its
+  own list of them in `%APPDATA%\Claude\claude-code-sessions\<account>\<org>\local_<id>.json`; only
+  the `cliSessionId` field of those files is read, to give the sessions a **Claude desktop** label
+  and sidebar entry (the desktop app can run them through the SDK, so their entrypoint alone can
+  say `sdk-cli`).
+- **Open in Claude desktop app.** For Windows sessions, the Resume dialog's **Open in → Claude
+  desktop app** runs `claude --desktop --resume <id>` (Claude Code 2.1.285 or newer), which hands
+  the session to the desktop app's Code tab; `claude --resume` still finds it afterwards. The
+  desktop app has no link that opens an existing session, so this is the only way in. It refuses a
+  redirected console, so it's started in a hidden PowerShell window and its error text can't be
+  shown. **Resume only:** with `--fork-session` it failed on a real session, so Fork isn't offered
+  there. WSL sessions aren't in the desktop app's list, so they don't get the choice.
+- **Cowork (optional, off by default).** Settings → **Scan sources** → **Claude desktop (Cowork)
+  sessions**. Each Cowork task runs in its own Claude home under
+  `%APPDATA%\Claude\local-agent-mode-sessions\<account>\<org>\…\local_*\.claude\`. Only
+  `.claude\projects\<project>\<session>.jsonl` there is listed or read. Those homes also hold sign-in
+  files (`.credentials.json`) and the task's uploads and outputs: none of it is opened, copied,
+  archived or backed up. Cowork sessions are **view only**: read, search, usage and git links; no
+  Resume, Fork, Branch, summaries or Continue fresh. Their archive copies are backed up only while
+  the source is on.
+
 ## Branching
 
 ![Branch dialog](branch-dialog.png)
@@ -184,7 +235,113 @@ or cmd as your preferred terminal; they open in a new console window of their ow
   transcript, a marker shows where a branch starts, and where other branches split off. In the list,
   branches sit under their parent (turn this off in the sort menu: **Group branches under parent**).
 
-![Branches panel and branch point](branches.png)
+![Branches panel and branch point](images/branches.webp)
+
+## Context size
+
+**The size** of a session is the last reply's context (input + cache tokens), or the status line's
+reading when it's newer. Right after a compaction, with no reply since, it's estimated from the
+compaction summary. Sessions without usage data show no size.
+
+- **On every card:** an S / M / L / XL badge (exact tokens on hover), and a **Context size** sort.
+- **In the viewer:** the tokens, the % of the model's context window ("9% of 1M · Opus 5.5", with
+  where the number comes from on hover), compactions, and what resuming would use next to what
+  Continue fresh would use.
+- **Context window per model:** the launch's model decides it. `[1m]` variants and models with a
+  native 1M window (Opus 4.7+, Sonnet 5+, Haiku 5.5+, Fable 5+) count 1M, others 200K; a session's
+  own status line reading is used for the model it was taken for.
+
+**The warning** shows before resuming a session above the threshold (150K tokens by default,
+Settings → **Context size**): "Large session: about 180K tokens. Resuming may use about 12% of your
+5-hour window", with **Continue fresh** (or **Summarize first** when there's no summary yet),
+**Fork · same size** (keeps the original), **Resume anyway** (one click) and **Don't warn for this
+session**. Switching to Fork or Continue fresh keeps the choices made in the dialog. The phone shows
+the same warning. Open dialogs and the viewer follow the session as its context and your limits
+change.
+
+**The estimate** prices the context at the launch's model as a prompt-cache write, then turns it
+into a share of the 5-hour window with your [limit-health](#limit-health-did-my-limits-get-smaller)
+baseline (dollars per 1% at your plan), or, without a baseline, with this window's own subscription
+use so far (which needs the window's start; otherwise it's unknown). Without either it shows tokens
+only; on API credits it shows dollars.
+
+- **Warm cache.** When the last reply was recent enough, the part of the prompt cache that may still
+  be alive (5-minute and 1-hour parts counted separately) is priced as a cheaper cache read: "Cache
+  may still be warm, cheaper if you resume now". Only for the same model and the same billing
+  account (caches aren't shared between accounts), and the estimate updates by itself when the
+  cache runs out.
+- **Continue fresh** is priced at the model chosen for the launch. With no model chosen the new
+  session gets Claude Code's own default, which the app can't see, so both sides are compared in
+  tokens.
+- **Codex sessions** get the same badge, stats and warning: the size is the last response's tokens
+  from Codex's own log, out of the window Codex logged (`model_context_window`). The % uses Codex's
+  own limit-health baseline (its weekly limit on plans without a 5-hour window). Codex's logs don't
+  say how long its prompt cache stays warm, so a Codex resume is always priced cold.
+- The summaries' limits guard and this estimate share one baseline and one "this window's rate"
+  helper.
+
+## Already running: no duplicate terminals
+
+Two copies of one session would both write into the same session file. So before **Resume**,
+**Fork** or **Continue fresh** (desktop and phone), the app checks [Running now](#running-now-and-session-alerts):
+
+- **Resume** (and Open in Codex app / Claude desktop app): is the session itself running?
+- **Fork / Continue fresh:** is a fork or continuation of it that the app launched earlier (recorded
+  in its metadata) still running? Forking a running session itself stays allowed.
+
+What happens then:
+
+- **Desktop:** the dialog offers **Focus terminal** first, and **Start another copy…** behind a
+  confirm.
+- **Phone, Remote Control on:** "Already running on your PC" with **Open in Claude app** (the
+  session's Remote Control link). Remote Control links are picked up within seconds of `/rc`; a link
+  from an earlier run doesn't count.
+- **Phone, Remote Control off:** it tells you to type `/rc` in that terminal, then refresh. Nothing
+  is launched.
+- **Focus terminal on PC** from the phone starts nothing; it's rate-limited, logged and refused in
+  read-only mode. **Start another copy anyway** is always there behind a confirm (still
+  rate-limited and logged, with Remote Control on and never skip-permissions).
+- **Codex:** the same check, Focus terminal on PC, and **Open in Codex app** (with a confirm while
+  a terminal still runs the thread). Codex Remote (in the ChatGPT app) reaches Codex app threads
+  only, so to continue a Codex session on the phone, open it in the Codex desktop app.
+
+## Open in Codex app
+
+Codex sessions can open in the Codex desktop app (Windows) instead of a terminal: **Open in:
+Terminal / Codex app** in the Resume, Fork and Continue fresh dialogs. The choice is remembered per
+session; the menu next to it makes it the project's or every Codex session's default (also in
+Settings → **Resume**).
+
+- **What is read (never written):** the Codex app's `~/.codex/.codex-global-state.json` (only
+  `local-projects`, `project-order` and `thread-project-assignments`), `config.toml` (parsed as TOML,
+  only `windows.runCodexInWindowsSubsystemForLinux`; unreadable or invalid means unknown, and then
+  nothing is offered), and the `codex:` link handler (`reg query`).
+- **What is opened:** only two fixed local links, with Electron's `shell.openExternal`:
+  `codex://threads/<uuid>` (Resume and Fork) and
+  `codex://threads/new?projectId=<id>&prompt=<the handoff line>` (Continue fresh). Never `?path=`:
+  for a folder that isn't a project, the Codex app would create one. The project id is always one
+  just read from the app's list.
+- **Matching a folder to a project:** a Windows folder by its path; a Linux folder only as its
+  distro maps it (`wslpath -w`), never by assuming `/mnt/c` is `C:\`. A folder _inside_ a project is
+  used only after an explicit "Use that project anyway?", and that consent names the project (id and
+  root): it's checked again at launch and never applies to another project. A folder that isn't a
+  project is reported, not opened.
+- **Fork:** the app has no fork link, so Fork opens the thread and points you to Fork in the app's
+  menu.
+- **Continue fresh:** the handoff is written to `%APPDATA%\ClaudeSessionDashboard\handoffs\codex\`
+  (a new file only), and its first line is typed into the new thread, not sent: press Enter in the
+  app. A long handoff line falls back to the clipboard. The "continued from" link forms once it's
+  sent.
+- **From the phone:** **Open in Codex app on PC** opens an existing thread on the PC
+  (rate-limited, refused in read-only mode, logged). Nothing is written into the Codex app's data or
+  `.codex`.
+
+Known limits: only Windows Codex homes (with the app set to run Codex in WSL, the option is off with
+a note); Resume / Fork in the app need the thread in the Windows `.codex` (WSL-home threads open in a
+terminal; Continue fresh from them can still open in a WSL project of the app); projects are matched
+on their first root folder only; a Windows `.codex` session that ran in a Linux-only folder doesn't
+record its distro, so Continue fresh in the app works only when the app assigned the thread to a
+project itself.
 
 ## Summaries and Continue fresh
 
@@ -275,6 +432,79 @@ earlier session.` Claude Code attaches the file itself (it works with no tools).
   and is linked to it in the [Branches](#branching) panel ("Continued fresh from a summary").
   Nothing is written to `.claude`: Claude Code creates the new session file itself.
 
+## Ask across sessions
+
+![Ask: the preview before anything is sent](images/ask-preview.webp)
+
+Questions about your whole history (Claude Code, Codex, and Claude desktop / Cowork when that source
+is on), from the **Ask** screen (sidebar, <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>K</kbd> or the
+command palette). A question is either answered locally or, if content questions are on, from
+snippets you approve.
+
+**Local questions** (counts, dates, models, usage, spend, limits, plans, commits, PRs, files
+touched) are worked out on your PC from the app's own data: the session list, usage records, limit
+readings, plan settings and git links. Each answer has **How this was answered**. Nothing is sent,
+and they work even while content questions are off.
+
+- The router is rule-based (no AI): it recognises the kind of fact and the filters (model, provider,
+  project, environment, tag, file, commit, PR, dates), using words from your own data (project, model
+  and tag names). A question is answered locally only when every word in it is understood;
+  otherwise it becomes a content question, and the unambiguous filters it found become that
+  question's scope. **Ask Claude instead** on a local answer sends a misread one down the content
+  path.
+
+**Content questions** are off until you turn them on (the Ask screen, or Settings → **Ask**, after a
+one-time notice).
+
+- **The index** is built only then, in a worker thread (heap capped at 512 MB), and saved in
+  `%APPDATA%\ClaudeSessionDashboard\cache\ask\` (`index-v1.json`; rebuildable, never backed up). A
+  size budget (300 MB of text by default, Settings → **Ask**) leaves the oldest sessions out. It opens
+  only session files the session list names (`*.jsonl` / `*.jsonl.zst`), refuses credential-shaped
+  paths, and writes nothing outside its folder. A session that keeps growing is indexed again at
+  most every 30 seconds. For scale: about 40 MB for a history of ~2,500 sessions.
+- **What is indexed:** your prompts and the agents' answers; messages between agents (Codex
+  `agent_message`; Claude Code's Task / Agent prompt and the subagent's final report, 2,000
+  characters each); one line per tool call (its name and file path or command); plan-mode plans;
+  compaction summaries; AI summaries; names, descriptions and tags; and linked commits' subjects and
+  files. **Never** other tool output, thinking or images. A passage starts at each prompt and runs
+  about 1,600 characters, so a question and its answer usually land together; one huge message keeps
+  only its start and end.
+- **Search** is keyword search (BM25 with stemming, file names and identifiers), with scope filters
+  for agents, sources, environment, dates, projects, subagents and hidden sessions. No embeddings:
+  the pure-JS options need native modules or ship hundreds of MB.
+
+**The preview.** Every content question first shows "N snippets from M sessions will be sent", with
+the estimated tokens and share of your 5-hour window. Every snippet can be read and left out (one by
+one, or a whole session), common secret shapes are masked, and **Exact text** shows exactly what
+**Send** sends. Limits per question (Settings → **Ask**): 24 snippets, 40,000 characters and 4
+snippets per session by default. The preview warns when the 5-hour limit is above the summaries'
+pause line.
+
+**Sending.** Only **Send** runs your own `claude -p`, with the same isolation as
+[summaries](#summaries-and-continue-fresh): the text on stdin, fixed flags (`--tools ""`,
+`--strict-mcp-config`, `--safe-mode`, `--setting-sources ""`, `--no-session-persistence`), a
+validated `--model` alias and `--effort` level (pickers next to Send; defaults in Settings → **Ask**,
+the last choice remembered), the allowlisted environment, the subscription check, a timeout and
+**Cancel**. It sends exactly what the preview showed. Usage is recorded as **Ask (dashboard)** and
+counted by the 5-hour guard.
+
+**Citations.** Every statement of the answer must cite a sent snippet (`[S3]`, `[S3, S7]`,
+`[S3-S5]`). Ids that weren't sent are taken out, and a statement left without a valid id is dropped
+and listed under the answer. `NOT_FOUND`, or nothing left, shows **Not found in your sessions**.
+Each citation opens the session at that message (or its Changes tab at that commit). **Copy** puts
+the answer on the clipboard with numbered sources.
+
+**History** is kept in `ask-sessions-history.json` (part of backups, like Ask Claude's history):
+searchable, and deletable one item at a time.
+
+**On the phone:** the **Ask** tab reads the history and gets local answers (worked out on the PC,
+not saved). A content question goes to the PC (blocked in read-only mode, rate-limited, logged) and
+only waits there: the PC window comes forward, and nothing is sent until you review the preview on
+the PC and click **Send**. Unanswered after 15 minutes, it expires.
+
+**Claude only.** `codex exec` isn't offered as an answerer: it can't run without tools (0.166 still
+offered tools under every disable flag), so it could read more than the approved snippets.
+
 ## Keeping sessions longer in Claude Code itself
 
 Claude Code deletes sessions older than `cleanupPeriodDays` (30 by default). The archive keeps them
@@ -296,7 +526,11 @@ usage and limit history, Ask Claude and Ask histories, the app's settings, and `
 keys taken out (nicknames, credit grants and Admin reports stay). **Never in a backup:** API keys,
 paired phones and push keys (`mobile.json`), the status line / session alert / terminal access
 records and their backups of Claude's or OpenSSH's settings (they belong to this PC, and the
-settings backups can hold secrets from Claude's `env`), caches, and `backup.json` itself.
+settings backups can hold secrets from Claude's `env`), caches, Continue fresh handoff files
+(`handoffs\` and `handoffs\codex\`), logs, and `backup.json` itself. Because handoffs aren't backed
+up, a restored or moved backup keeps each continued session's "continued from" link (in
+`metadata.json`) and the original session's summary, but not the handoff file the continued
+session's first message points to.
 
 **The backup folder** (`<folder you picked>\ClaudeSessionDashboard Backup\`):
 
@@ -573,7 +807,7 @@ Advanced), or (home Wi-Fi) Windows treats the network as Public.
 ## Terminal access (SSH)
 
 A real terminal on this PC from your phone, through **Windows' own OpenSSH Server**, reachable only
-over Tailscale. Settings → Phone → **Terminal access** sets it up; the dashboard never runs commands
+over Tailscale. Settings → **Terminal access (SSH)** sets it up; the dashboard never runs commands
 for the phone.
 
 ### How a change is made
@@ -631,7 +865,7 @@ The wizard's **Troubleshooting** panel lists common fixes, re-runs the checks, c
 
 ## Usage, limits and API credits
 
-![Usage & limits](usage.png)
+![Usage & limits](images/usage-dark.webp)
 
 Open it from the sidebar (**Usage & limits**), with <kbd>Ctrl</kbd>+<kbd>U</kbd>, by clicking the
 gauges in the title bar, or from the tray icon.
@@ -755,7 +989,7 @@ make it that project's default; the overall default is in Settings.
 
 ### Limit health ("did my limits get smaller?")
 
-![Limit health](limit-health.png)
+![Limit health](images/limit-health.webp)
 
 Each 5-hour (and weekly) window gets one score: **API-equivalent dollars per 1%**. The app prices
 the tokens you used in the window (from your logs, subagents included, each response counted once)
@@ -918,9 +1152,16 @@ records of sessions whose files are gone are kept as they were.
 | `limits-history.ndjson`                                 | Every status line reading                                                                                        |
 | `usage\usage-readings.ndjson`                           | Limit readings found in `/usage` output in transcripts (backfill)                                                |
 | `mobile.json`                                           | Paired phones (token hashes only), the activity log, the app's own serve / firewall rule, home Wi-Fi certificate |
+| `metadata.json`, `settings.json`                        | Your names, descriptions, tags, pins, summaries, launch choices, git unlinks and archive records; the settings   |
+| `archive\<source>\`                                     | The archived copy of every session file                                                                          |
 | `ask-history.json`                                      | Ask Claude questions and answers                                                                                 |
-| `usage\dashboard-runs.ndjson`                           | Token usage of summary runs ("Summaries (dashboard)"), from Claude Code's answers                                |
-| `handoffs\<id>.md`                                      | Continue fresh: the summary each new session started from                                                        |
+| `ask-sessions-history.json`                             | Ask across sessions: questions, answers and their cited snippets                                                 |
+| `cache\ask\`, `cache\git-links-v1.json`, `cache\codex\` | The Ask index, git links and big Codex rollouts' compact text (rebuildable, never backed up)                     |
+| `usage\dashboard-runs.ndjson`                           | Token usage of the app's own `claude -p` runs ("Summaries (dashboard)", "Ask (dashboard)")                       |
+| `usage\codex-records-YYYY-MM.ndjson` and friends        | Codex usage, limit readings (`codex-limits-…`) and fork links (`codex-index.json`), apart from Claude Code's     |
+| `handoffs\<id>.md`, `handoffs\codex\<id>.md`            | Continue fresh: the summary each new session started from                                                        |
+| `backup.json`, `restore-backups\`                       | Backup settings (and a remembered, DPAPI-protected key); copies of files a restore replaced                      |
+| `terminal.json`, `terminal-backups\`                    | What the terminal access wizard changed, and the `sshd_config` backup                                            |
 | `archive\claude-ai\`                                    | Conversations imported from a claude.ai data export                                                              |
 | `accounts.json`                                         | API keys (encrypted), credit grants, cached Admin reports                                                        |
 | `bridge.json`, `backups\settings\`                      | What the installer changed, and the `settings.json` backups                                                      |
@@ -1025,7 +1266,7 @@ starts (see `src/shared/git/guard.ts` and its tests).
   commits), and later only from the last branch tips. At most two git processes at once, below
   normal priority, with timeouts and output caps. Diffs over 1 MB are cut ("Load the whole diff"
   reads up to 8 MB); a file shows 400 lines until **Show all**.
-- **Cache:** `%APPDATA%ClaudeSessionDashboardcachegit-links-v1.json` (not backed up). gh
+- **Cache:** `%APPDATA%\ClaudeSessionDashboard\cache\git-links-v1.json` (not backed up). gh
   answers are kept an hour (a week once every PR found is merged or closed).
 
 ### Known limits
@@ -1037,6 +1278,16 @@ starts (see `src/shared/git/guard.ts` and its tests).
 - Commits on a detached HEAD that no branch or tag reaches aren't read.
 - PRs only for github.com remotes. A Codex rollout's very long patches are cut at 64 KB when read,
   so files late in a huge patch may be missing.
+
+## Back and Forward
+
+The title-bar arrows (with tooltips), <kbd>Alt</kbd>+<kbd>←</kbd> / <kbd>Alt</kbd>+<kbd>→</kbd>,
+<kbd>Backspace</kbd> outside text fields, and the mouse's side buttons move through the screens you
+visited in this window. Each step restores the screen (sessions, Ask, Usage, Running now, Settings),
+the filters, the selected session, its Conversation / Changes tab, the Usage sub-tab, the
+All / Claude / Codex view, the Settings section, and the scroll position. Quick repeats (holding
+<kbd>J</kbd>) count as one step, a session that's gone is skipped, and the history starts fresh when the app restarts. On the phone, the system back gesture
+follows tabs and sessions the same way.
 
 ## Scripts
 
@@ -1555,8 +1806,32 @@ These are choices I made where the spec left room, or had to deviate:
 
 ## Screenshots
 
-Regenerate the desktop ones with `npm run screenshots`, and the phone ones with
-`node scripts/mobile-screenshots.mjs` after `npm run build`.
+The README's screenshots are in [`images/`](images/): WebP files taken in fixtures mode
+(`npm run dev -- --fixtures`, the sample sessions in `fixtures/`), never from real data. The sample
+user name is shown as "alex", and QR codes are blurred.
+
+|                                                           |                                                       |
+| --------------------------------------------------------- | ----------------------------------------------------- |
+| ![Main screen (dark)](images/main-dark.webp)              | ![Main screen (light)](images/main-light.webp)        |
+| ![Search](images/search.webp)                             | ![Codex session](images/codex-session.webp)           |
+| ![Resume dialog](images/resume-dialog.webp)               | ![Already running](images/already-running.webp)       |
+| ![Context size warning](images/context-warning.webp)      | ![Branches](images/branches.webp)                     |
+| ![Summarize notice](images/summarize-notice.webp)         | ![Continue fresh](images/continue-fresh.webp)         |
+| ![Ask: local answer](images/ask-local.webp)               | ![Ask: cited answer](images/ask-answer.webp)          |
+| ![Running now (dark)](images/running-now-dark.webp)       | ![Running now (light)](images/running-now-light.webp) |
+| ![Limit gauges](images/limits.webp)                       | ![Compare two date ranges](images/limit-compare.webp) |
+| ![Settings → Session alerts](images/settings-alerts.webp) | ![Enable live limits](images/enable-live-limits.webp) |
+| ![Command palette](images/command-palette.webp)           | ![Keyboard shortcuts](images/shortcuts.webp)          |
+
+|                                           |                                                      |                                                            |                                      |
+| ----------------------------------------- | ---------------------------------------------------- | ---------------------------------------------------------- | ------------------------------------ |
+| ![Phone: pairing](images/phone-pair.webp) | ![Phone: sessions](images/phone-sessions-light.webp) | ![Phone: Running (light)](images/phone-running-light.webp) | ![Phone: Ask](images/phone-ask.webp) |
+
+### Older screenshots
+
+Made by the scripts in `scripts/` (PNG, in `docs/`, `docs/mobile/` and `docs/terminal/`): desktop
+ones with `npm run screenshots`, phone ones with `node scripts/mobile-screenshots.mjs` after
+`npm run build`.
 
 Desktop:
 

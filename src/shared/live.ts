@@ -206,6 +206,12 @@ export interface LiveSession {
   cwd?: string
   /** claude.ai/code link, when Remote Control is on. */
   remoteUrl?: string
+  /**
+   * Remote Control is known to be on in this run: the running file names its
+   * bridge, or the transcript recorded the link after this process started
+   * (`/rc` typed later included). A link from an earlier run doesn't count.
+   */
+  remoteActive?: boolean
   version?: string
   entrypoint?: string
   /**
@@ -248,6 +254,23 @@ export interface TranscriptInfo {
   lastActivityAt?: number
   cwd?: string
   remoteUrl?: string
+  /** When the transcript recorded that link, epoch ms. */
+  remoteUrlAt?: number
+}
+
+/**
+ * Is Remote Control on in the run that started at `startedAt`? The running
+ * file's bridge says so at once; a transcript link only counts when it was
+ * recorded in this run (a resumed session keeps the link of an earlier one).
+ */
+export function remoteActiveOf(
+  bridgeSessionId: string | undefined,
+  t: TranscriptInfo | undefined,
+  startedAt: number | undefined
+): boolean {
+  if (bridgeSessionId) return true
+  if (!t?.remoteUrl || t.remoteUrlAt === undefined || startedAt === undefined) return false
+  return t.remoteUrlAt >= startedAt - RUN_SLACK_MS
 }
 
 export interface LiveInputs {
@@ -440,6 +463,7 @@ export function computeLive(inp: LiveInputs): LiveSession[] {
       name: f.name,
       cwd: f.cwd ?? t?.cwd ?? h?.cwd,
       remoteUrl: remoteUrlOf(f.bridgeSessionId) ?? t?.remoteUrl,
+      remoteActive: remoteActiveOf(f.bridgeSessionId, t, f.startedAt) || undefined,
       version: f.version,
       entrypoint: f.entrypoint
     }

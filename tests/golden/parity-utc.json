@@ -774,7 +774,7 @@
      "abs": "<ROOT>/.fixtures-data/appdata/settings.json",
      "mtimeMs": "<file-time>",
      "rel": "settings.json",
-     "size": 6685
+     "size": 7113
     },
     {
      "abs": "<ROOT>/.fixtures-data/appdata/usage/index.json",
@@ -792,25 +792,25 @@
      "abs": "<ROOT>/.fixtures-data/appdata/usage/records-2026-07.ndjson",
      "mtimeMs": "<file-time>",
      "rel": "usage/records-2026-07.ndjson",
-     "size": 207955
+     "size": 214318
     },
     {
      "abs": "<ROOT>/.fixtures-data/appdata/usage/records-2026-08.ndjson",
      "mtimeMs": "<file-time>",
      "rel": "usage/records-2026-08.ndjson",
-     "size": 411902
+     "size": 424546
     },
     {
      "abs": "<ROOT>/.fixtures-data/appdata/usage/records-2026-09.ndjson",
      "mtimeMs": "<file-time>",
      "rel": "usage/records-2026-09.ndjson",
-     "size": 385189
+     "size": 397044
     },
     {
      "abs": "<ROOT>/.fixtures-data/appdata/usage/records-2026-10.ndjson",
      "mtimeMs": "<file-time>",
      "rel": "usage/records-2026-10.ndjson",
-     "size": 329632
+     "size": 339285
     },
     {
      "abs": "<ROOT>/.fixtures-data/appdata/usage/turns-2026-07.ndjson",
@@ -982,13 +982,13 @@
    "hooks.json": "d609fb7530b497a9",
    "limits-history.ndjson": "de42daad517e2271",
    "metadata.json": "fdd54053fefa4ef4",
-   "settings.json": "04fc91bce895cf0b",
-   "usage/index.json": "a28eabee82b0eb8c",
+   "settings.json": "0041b0049aeb49c1",
+   "usage/index.json": "7d7a32cf9e9e66df",
    "usage/limit-hits.ndjson": "68ac78f76abe281a",
-   "usage/records-2026-07.ndjson": "c8fd3be4bb3ea51c",
-   "usage/records-2026-08.ndjson": "864920cdf0a82b16",
-   "usage/records-2026-09.ndjson": "0b4831ca72d5e11a",
-   "usage/records-2026-10.ndjson": "64526611ad8d1d64",
+   "usage/records-2026-07.ndjson": "7fd633480c62ef13",
+   "usage/records-2026-08.ndjson": "ebde7921c00ff503",
+   "usage/records-2026-09.ndjson": "fedfcda44eedc611",
+   "usage/records-2026-10.ndjson": "3206d926150a481e",
    "usage/turns-2026-07.ndjson": "19c1b50228e2c142",
    "usage/turns-2026-08.ndjson": "774a97ec6ed83e85",
    "usage/turns-2026-09.ndjson": "c78803b904820a0c",
@@ -10782,6 +10782,26 @@
     "planHistory": [],
     "prices": [
      {
+      "cacheRead": 0.2,
+      "cacheWrite1h": 16,
+      "cacheWrite5m": 10,
+      "fast": 2,
+      "input": 8,
+      "label": "Claude Fable 5.2",
+      "model": "claude-fable-5-2",
+      "output": 40
+     },
+     {
+      "cacheRead": 0.2,
+      "cacheWrite1h": 16,
+      "cacheWrite5m": 10,
+      "fast": 2,
+      "input": 8,
+      "label": "Claude Mythos 5.2",
+      "model": "claude-mythos-5-2",
+      "output": 40
+     },
+     {
       "cacheRead": 0.25,
       "cacheWrite1h": 20,
       "cacheWrite5m": 12.5,
@@ -16513,11 +16533,11 @@
   "readings": 605,
   "records": {
    "count": 3032,
-   "sha": "778dd2eac4fca306"
+   "sha": "86e904c0d9c9caee"
   },
   "reports": {
-   "all-day": "7dfcf50721d503a7",
-   "all-hour": "8d0568ef1f96a286",
+   "all-day": "96da68755d732cc7",
+   "all-hour": "cdd6fd5a95e86135",
    "all-month": {
     "blocks": [
      {
@@ -16682,7 +16702,9 @@
       "output": 717237,
       "responses": 808,
       "share": 0.2798273282037394,
-      "total": 77010104
+      "total": 77010104,
+      "tps": 41.89295187566366,
+      "tpsSamples": 804
      },
      {
       "cacheRead": 57016081,
@@ -16695,7 +16717,9 @@
       "output": 468567,
       "responses": 627,
       "share": 0.220865202619766,
-      "total": 60783385
+      "total": 60783385,
+      "tps": 34.38171517874585,
+      "tpsSamples": 621
      },
      {
       "cacheRead": 47526561,
@@ -16708,7 +16732,9 @@
       "output": 514879,
       "responses": 585,
       "share": 0.18525267205395862,
-      "total": 50982610
+      "total": 50982610,
+      "tps": 39.843088993154375,
+      "tpsSamples": 581
      },
      {
       "cacheRead": 35047293,
@@ -16721,7 +16747,9 @@
       "output": 294507,
       "responses": 395,
       "share": 0.13569310263194634,
-      "total": 37343529
+      "total": 37343529,
+      "tps": 34.68573573099046,
+      "tpsSamples": 390
      },
      {
       "cacheRead": 32981742,
@@ -16734,7 +16762,9 @@
       "output": 329804,
       "responses": 413,
       "share": 0.12968043504286453,
-      "total": 35688808
+      "total": 35688808,
+      "tps": 36.218618700168115,
+      "tpsSamples": 410
      },
      {
       "cacheRead": 12351421,
@@ -16747,7 +16777,9 @@
       "output": 113298,
       "responses": 161,
       "share": 0.04844476007248118,
-      "total": 13332279
+      "total": 13332279,
+      "tps": 34.87827715355805,
+      "tpsSamples": 161
      },
      {
       "cacheRead": 0,
@@ -16775,7 +16807,9 @@
       "output": 717237,
       "responses": 808,
       "share": 0.2798273282037394,
-      "total": 77010104
+      "total": 77010104,
+      "tps": 41.89295187566366,
+      "tpsSamples": 804
      },
      {
       "cacheRead": 57016081,
@@ -16788,7 +16822,9 @@
       "output": 468567,
       "responses": 627,
       "share": 0.220865202619766,
-      "total": 60783385
+      "total": 60783385,
+      "tps": 34.38171517874585,
+      "tpsSamples": 621
      },
      {
       "cacheRead": 47526561,
@@ -16801,7 +16837,9 @@
       "output": 514879,
       "responses": 585,
       "share": 0.18525267205395862,
-      "total": 50982610
+      "total": 50982610,
+      "tps": 39.843088993154375,
+      "tpsSamples": 581
      },
      {
       "cacheRead": 35047293,
@@ -16814,7 +16852,9 @@
       "output": 294507,
       "responses": 395,
       "share": 0.13569310263194634,
-      "total": 37343529
+      "total": 37343529,
+      "tps": 34.68573573099046,
+      "tpsSamples": 390
      },
      {
       "cacheRead": 32981742,
@@ -16827,7 +16867,9 @@
       "output": 329804,
       "responses": 413,
       "share": 0.12968043504286453,
-      "total": 35688808
+      "total": 35688808,
+      "tps": 36.218618700168115,
+      "tpsSamples": 410
      },
      {
       "cacheRead": 12351421,
@@ -16840,7 +16882,9 @@
       "output": 113298,
       "responses": 161,
       "share": 0.04844476007248118,
-      "total": 13332279
+      "total": 13332279,
+      "tps": 34.87827715355805,
+      "tpsSamples": 161
      },
      {
       "cacheRead": 0,
@@ -16883,7 +16927,8 @@
        714828
       ],
       "to": 1792683600000,
-      "total": 4639145
+      "total": 4639145,
+      "tps": 26.25540722618161
      },
      {
       "cost": 13.945356899999995,
@@ -16902,7 +16947,8 @@
        0
       ],
       "to": 1792683600000,
-      "total": 16370098
+      "total": 16370098,
+      "tps": 26.14526823387583
      },
      {
       "cost": 47.89123509999997,
@@ -16937,7 +16983,8 @@
        0
       ],
       "to": 1792683600000,
-      "total": 66865707
+      "total": 66865707,
+      "tps": 33.751992516264366
      },
      {
       "cost": 264.127927,
@@ -16959,7 +17006,8 @@
        16370098
       ],
       "to": 1792683600000,
-      "total": 275205801
+      "total": 275205801,
+      "tps": 37.72441481705931
      }
     ],
     "extraFields": [
@@ -16979,7 +17027,7 @@
      "claude-sonnet-5",
      "claude-sonnet-5-5"
     ],
-    "raw": "673e311eaa682d51",
+    "raw": "851658f73e1297bf",
     "series": [
      {
       "bucket": "2026-07",
@@ -17060,7 +17108,9 @@
       "output": 29731,
       "responses": 41,
       "share": 0.01927561839439569,
-      "total": 5304762
+      "total": 5304762,
+      "tps": 39.128151260504204,
+      "tpsSamples": 41
      },
      {
       "cacheRead": 4847822,
@@ -17073,7 +17123,9 @@
       "output": 31610,
       "responses": 44,
       "share": 0.01849637246563709,
-      "total": 5090309
+      "total": 5090309,
+      "tps": 24.240832132661712,
+      "tpsSamples": 44
      },
      {
       "cacheRead": 4727417,
@@ -17086,7 +17138,9 @@
       "output": 19506,
       "responses": 39,
       "share": 0.018066210748224745,
-      "total": 4971926
+      "total": 4971926,
+      "tps": 31.64682934596553,
+      "tpsSamples": 39
      },
      {
       "cacheRead": 4677184,
@@ -17099,7 +17153,9 @@
       "output": 25355,
       "responses": 38,
       "share": 0.017607165191986632,
-      "total": 4845594
+      "total": 4845594,
+      "tps": 54.453506141567516,
+      "tpsSamples": 38
      },
      {
       "cacheRead": 4493270,
@@ -17112,7 +17168,9 @@
       "output": 30249,
       "responses": 37,
       "share": 0.017224909441498293,
-      "total": 4740395
+      "total": 4740395,
+      "tps": 34.40486767656875,
+      "tpsSamples": 36
      },
      {
       "cacheRead": 4369184,
@@ -17125,7 +17183,9 @@
       "output": 37125,
       "responses": 37,
       "share": 0.016988733460600272,
-      "total": 4675398
+      "total": 4675398,
+      "tps": 48.18889532265329,
+      "tpsSamples": 37
      },
      {
       "cacheRead": 4212026,
@@ -17138,7 +17198,9 @@
       "output": 40729,
       "responses": 37,
       "share": 0.016179655311844243,
-      "total": 4452735
+      "total": 4452735,
+      "tps": 43.35865325395196,
+      "tpsSamples": 37
      },
      {
       "cacheRead": 4122467,
@@ -17151,7 +17213,9 @@
       "output": 30907,
       "responses": 37,
       "share": 0.01607807315079089,
-      "total": 4424779
+      "total": 4424779,
+      "tps": 36.491437972033204,
+      "tpsSamples": 37
      },
      {
       "cacheRead": 4103107,
@@ -17164,7 +17228,9 @@
       "output": 30411,
       "responses": 38,
       "share": 0.01579403117305656,
-      "total": 4346609
+      "total": 4346609,
+      "tps": 37.180083759888326,
+      "tpsSamples": 37
      },
      {
       "cacheRead": 3954333,
@@ -17177,7 +17243,9 @@
       "output": 29064,
       "responses": 36,
       "share": 0.015266749409835296,
-      "total": 4201498
+      "total": 4201498,
+      "tps": 32.143102503171455,
+      "tpsSamples": 36
      },
      {
       "cacheRead": 3910913,
@@ -17190,7 +17258,9 @@
       "output": 27135,
       "responses": 33,
       "share": 0.014915474110954514,
-      "total": 4104825
+      "total": 4104825,
+      "tps": 33.94587486016907,
+      "tpsSamples": 32
      },
      {
       "cacheRead": 3903481,
@@ -17203,7 +17273,9 @@
       "output": 35559,
       "responses": 34,
       "share": 0.014764863186877373,
-      "total": 4063376
+      "total": 4063376,
+      "tps": 38.75631139670888,
+      "tpsSamples": 34
      }
     ],
     "totals": {
@@ -17217,9 +17289,9 @@
     },
     "weekStart": "monday"
    },
-   "all-week": "fc12443ee54d1ec7",
-   "week-billing": "bf028753d4ac3ad3",
-   "week-env": "3401e2a906d4b5a3",
+   "all-week": "31c143c20dd5e22b",
+   "week-billing": "4b2224408d54472a",
+   "week-env": "171db9409995d291",
    "week-model": {
     "blocks": [
      {
@@ -17384,7 +17456,9 @@
       "output": 143858,
       "responses": 204,
       "share": 0.7510536548371721,
-      "total": 18495587
+      "total": 18495587,
+      "tps": 29.244798463607093,
+      "tpsSamples": 200
      },
      {
       "cacheRead": 5726729,
@@ -17397,7 +17471,9 @@
       "output": 37304,
       "responses": 59,
       "share": 0.24675453194416708,
-      "total": 6076623
+      "total": 6076623,
+      "tps": 24.547483263079595,
+      "tpsSamples": 59
      },
      {
       "cacheRead": 0,
@@ -17425,7 +17501,9 @@
       "output": 143858,
       "responses": 204,
       "share": 0.7510536548371721,
-      "total": 18495587
+      "total": 18495587,
+      "tps": 29.244798463607093,
+      "tpsSamples": 200
      },
      {
       "cacheRead": 5726729,
@@ -17438,7 +17516,9 @@
       "output": 37304,
       "responses": 59,
       "share": 0.24675453194416708,
-      "total": 6076623
+      "total": 6076623,
+      "tps": 24.547483263079595,
+      "tpsSamples": 59
      },
      {
       "cacheRead": 0,
@@ -17481,7 +17561,8 @@
        714828
       ],
       "to": 1792683600000,
-      "total": 4639145
+      "total": 4639145,
+      "tps": 26.25540722618161
      },
      {
       "cost": 13.945356899999995,
@@ -17500,7 +17581,8 @@
        0
       ],
       "to": 1792683600000,
-      "total": 16370098
+      "total": 16370098,
+      "tps": 26.14526823387583
      },
      {
       "cost": 47.89123509999997,
@@ -17535,7 +17617,8 @@
        0
       ],
       "to": 1792683600000,
-      "total": 66865707
+      "total": 66865707,
+      "tps": 33.751992516264366
      },
      {
       "cost": 264.127927,
@@ -17557,7 +17640,8 @@
        16370098
       ],
       "to": 1792683600000,
-      "total": 275205801
+      "total": 275205801,
+      "tps": 37.72441481705931
      }
     ],
     "extraFields": [
@@ -17577,7 +17661,7 @@
      "claude-sonnet-5",
      "claude-sonnet-5-5"
     ],
-    "raw": "150eee1a9fdedd26",
+    "raw": "2130768ea1041264",
     "series": [
      {
       "bucket": "2026-10-15",
@@ -17706,7 +17790,9 @@
       "output": 31610,
       "responses": 44,
       "share": 0.20670310051260068,
-      "total": 5090309
+      "total": 5090309,
+      "tps": 24.240832132661712,
+      "tpsSamples": 44
      },
      {
       "cacheRead": 3519543,
@@ -17719,7 +17805,9 @@
       "output": 14860,
       "responses": 31,
       "share": 0.14999752702265792,
-      "total": 3693867
+      "total": 3693867,
+      "tps": 26.72561174211857,
+      "tpsSamples": 30
      },
      {
       "cacheRead": 2899930,
@@ -17732,7 +17820,9 @@
       "output": 25639,
       "responses": 36,
       "share": 0.12835511759717888,
-      "total": 3160897
+      "total": 3160897,
+      "tps": 36.57920081031491,
+      "tpsSamples": 36
      },
      {
       "cacheRead": 2820800,
@@ -17745,7 +17835,9 @@
       "output": 20084,
       "responses": 30,
       "share": 0.1231767274071592,
-      "total": 3033373
+      "total": 3033373,
+      "tps": 29.034629677901172,
+      "tpsSamples": 30
      },
      {
       "cacheRead": 2293746,
@@ -17758,7 +17850,9 @@
       "output": 17452,
       "responses": 25,
       "share": 0.1014467282915836,
-      "total": 2498246
+      "total": 2498246,
+      "tps": 29.18287937743191,
+      "tpsSamples": 25
      },
      {
       "cacheRead": 2313318,
@@ -17771,7 +17865,9 @@
       "output": 19064,
       "responses": 27,
       "share": 0.09972149158623264,
-      "total": 2455760
+      "total": 2455760,
+      "tps": 23.05353004401822,
+      "tpsSamples": 26
      },
      {
       "cacheRead": 1609736,
@@ -17784,7 +17880,9 @@
       "output": 14707,
       "responses": 25,
       "share": 0.07366248269220414,
-      "total": 1814026
+      "total": 1814026,
+      "tps": 24.31505862694823,
+      "tpsSamples": 25
      },
      {
       "cacheRead": 878907,
@@ -17797,7 +17895,9 @@
       "output": 5694,
       "responses": 15,
       "share": 0.040051431431566385,
-      "total": 986314
+      "total": 986314,
+      "tps": 25.38190364277321,
+      "tpsSamples": 15
      },
      {
       "cacheRead": 835668,
@@ -17810,7 +17910,9 @@
       "output": 10473,
       "responses": 15,
       "share": 0.03776776476877093,
-      "total": 930076
+      "total": 930076,
+      "tps": 26.25540722618161,
+      "tpsSamples": 14
      },
      {
       "cacheRead": 823910,
@@ -17823,7 +17925,9 @@
       "output": 21579,
       "responses": 15,
       "share": 0.03692581547138481,
-      "total": 909342
+      "total": 909342,
+      "tps": 68.52030259661927,
+      "tpsSamples": 14
      },
      {
       "cacheRead": 0,
@@ -17863,7 +17967,7 @@
     },
     "weekStart": "monday"
    },
-   "week-project": "dadec037a3bb3cf6",
+   "week-project": "f2dfb54792dbb72f",
    "week-session": {
     "blocks": [
      {
@@ -18028,7 +18132,9 @@
       "output": 31610,
       "responses": 44,
       "share": 0.20670310051260068,
-      "total": 5090309
+      "total": 5090309,
+      "tps": 24.240832132661712,
+      "tpsSamples": 44
      },
      {
       "cacheRead": 3519543,
@@ -18041,7 +18147,9 @@
       "output": 14860,
       "responses": 31,
       "share": 0.14999752702265792,
-      "total": 3693867
+      "total": 3693867,
+      "tps": 26.72561174211857,
+      "tpsSamples": 30
      },
      {
       "cacheRead": 2899930,
@@ -18054,7 +18162,9 @@
       "output": 25639,
       "responses": 36,
       "share": 0.12835511759717888,
-      "total": 3160897
+      "total": 3160897,
+      "tps": 36.57920081031491,
+      "tpsSamples": 36
      },
      {
       "cacheRead": 2820800,
@@ -18067,7 +18177,9 @@
       "output": 20084,
       "responses": 30,
       "share": 0.1231767274071592,
-      "total": 3033373
+      "total": 3033373,
+      "tps": 29.034629677901172,
+      "tpsSamples": 30
      },
      {
       "cacheRead": 2293746,
@@ -18080,7 +18192,9 @@
       "output": 17452,
       "responses": 25,
       "share": 0.1014467282915836,
-      "total": 2498246
+      "total": 2498246,
+      "tps": 29.18287937743191,
+      "tpsSamples": 25
      },
      {
       "cacheRead": 2313318,
@@ -18093,7 +18207,9 @@
       "output": 19064,
       "responses": 27,
       "share": 0.09972149158623264,
-      "total": 2455760
+      "total": 2455760,
+      "tps": 23.05353004401822,
+      "tpsSamples": 26
      },
      {
       "cacheRead": 1609736,
@@ -18106,7 +18222,9 @@
       "output": 14707,
       "responses": 25,
       "share": 0.07366248269220414,
-      "total": 1814026
+      "total": 1814026,
+      "tps": 24.31505862694823,
+      "tpsSamples": 25
      },
      {
       "cacheRead": 878907,
@@ -18119,7 +18237,9 @@
       "output": 5694,
       "responses": 15,
       "share": 0.040051431431566385,
-      "total": 986314
+      "total": 986314,
+      "tps": 25.38190364277321,
+      "tpsSamples": 15
      },
      {
       "cacheRead": 835668,
@@ -18132,7 +18252,9 @@
       "output": 10473,
       "responses": 15,
       "share": 0.03776776476877093,
-      "total": 930076
+      "total": 930076,
+      "tps": 26.25540722618161,
+      "tpsSamples": 14
      },
      {
       "cacheRead": 823910,
@@ -18145,7 +18267,9 @@
       "output": 21579,
       "responses": 15,
       "share": 0.03692581547138481,
-      "total": 909342
+      "total": 909342,
+      "tps": 68.52030259661927,
+      "tpsSamples": 14
      },
      {
       "cacheRead": 0,
@@ -18238,7 +18362,9 @@
       "output": 143858,
       "responses": 204,
       "share": 0.7510536548371721,
-      "total": 18495587
+      "total": 18495587,
+      "tps": 29.244798463607093,
+      "tpsSamples": 200
      },
      {
       "cacheRead": 5726729,
@@ -18251,7 +18377,9 @@
       "output": 37304,
       "responses": 59,
       "share": 0.24675453194416708,
-      "total": 6076623
+      "total": 6076623,
+      "tps": 24.547483263079595,
+      "tpsSamples": 59
      },
      {
       "cacheRead": 0,
@@ -18294,7 +18422,8 @@
        714828
       ],
       "to": 1792683600000,
-      "total": 4639145
+      "total": 4639145,
+      "tps": 26.25540722618161
      },
      {
       "cost": 13.945356899999995,
@@ -18313,7 +18442,8 @@
        0
       ],
       "to": 1792683600000,
-      "total": 16370098
+      "total": 16370098,
+      "tps": 26.14526823387583
      },
      {
       "cost": 47.89123509999997,
@@ -18348,7 +18478,8 @@
        0
       ],
       "to": 1792683600000,
-      "total": 66865707
+      "total": 66865707,
+      "tps": 33.751992516264366
      },
      {
       "cost": 264.127927,
@@ -18370,7 +18501,8 @@
        16370098
       ],
       "to": 1792683600000,
-      "total": 275205801
+      "total": 275205801,
+      "tps": 37.72441481705931
      }
     ],
     "extraFields": [
@@ -18390,7 +18522,7 @@
      "claude-sonnet-5",
      "claude-sonnet-5-5"
     ],
-    "raw": "150eee1a9fdedd26",
+    "raw": "2130768ea1041264",
     "series": [
      {
       "bucket": "2026-10-15",
@@ -18519,7 +18651,9 @@
       "output": 31610,
       "responses": 44,
       "share": 0.20670310051260068,
-      "total": 5090309
+      "total": 5090309,
+      "tps": 24.240832132661712,
+      "tpsSamples": 44
      },
      {
       "cacheRead": 3519543,
@@ -18532,7 +18666,9 @@
       "output": 14860,
       "responses": 31,
       "share": 0.14999752702265792,
-      "total": 3693867
+      "total": 3693867,
+      "tps": 26.72561174211857,
+      "tpsSamples": 30
      },
      {
       "cacheRead": 2899930,
@@ -18545,7 +18681,9 @@
       "output": 25639,
       "responses": 36,
       "share": 0.12835511759717888,
-      "total": 3160897
+      "total": 3160897,
+      "tps": 36.57920081031491,
+      "tpsSamples": 36
      },
      {
       "cacheRead": 2820800,
@@ -18558,7 +18696,9 @@
       "output": 20084,
       "responses": 30,
       "share": 0.1231767274071592,
-      "total": 3033373
+      "total": 3033373,
+      "tps": 29.034629677901172,
+      "tpsSamples": 30
      },
      {
       "cacheRead": 2293746,
@@ -18571,7 +18711,9 @@
       "output": 17452,
       "responses": 25,
       "share": 0.1014467282915836,
-      "total": 2498246
+      "total": 2498246,
+      "tps": 29.18287937743191,
+      "tpsSamples": 25
      },
      {
       "cacheRead": 2313318,
@@ -18584,7 +18726,9 @@
       "output": 19064,
       "responses": 27,
       "share": 0.09972149158623264,
-      "total": 2455760
+      "total": 2455760,
+      "tps": 23.05353004401822,
+      "tpsSamples": 26
      },
      {
       "cacheRead": 1609736,
@@ -18597,7 +18741,9 @@
       "output": 14707,
       "responses": 25,
       "share": 0.07366248269220414,
-      "total": 1814026
+      "total": 1814026,
+      "tps": 24.31505862694823,
+      "tpsSamples": 25
      },
      {
       "cacheRead": 878907,
@@ -18610,7 +18756,9 @@
       "output": 5694,
       "responses": 15,
       "share": 0.040051431431566385,
-      "total": 986314
+      "total": 986314,
+      "tps": 25.38190364277321,
+      "tpsSamples": 15
      },
      {
       "cacheRead": 835668,
@@ -18623,7 +18771,9 @@
       "output": 10473,
       "responses": 15,
       "share": 0.03776776476877093,
-      "total": 930076
+      "total": 930076,
+      "tps": 26.25540722618161,
+      "tpsSamples": 14
      },
      {
       "cacheRead": 823910,
@@ -18636,7 +18786,9 @@
       "output": 21579,
       "responses": 15,
       "share": 0.03692581547138481,
-      "total": 909342
+      "total": 909342,
+      "tps": 68.52030259661927,
+      "tpsSamples": 14
      },
      {
       "cacheRead": 0,
@@ -18676,8 +18828,8 @@
     },
     "weekStart": "monday"
    },
-   "week-source": "c05a1377cf36248e",
-   "week-version": "0477ac3efea40195"
+   "week-source": "cfc551b5df8c68f6",
+   "week-version": "682551000b54cd64"
   },
   "scan": {
    "done": 124,
@@ -19813,7 +19965,9 @@
       "output": 11642,
       "responses": 17,
       "share": 1,
-      "total": 959159
+      "total": 959159,
+      "tps": 42.437035958654825,
+      "tpsSamples": 17
      }
     ],
     "cacheRead": 862705,
@@ -19825,6 +19979,13 @@
     "lastAt": 1785854765254,
     "output": 11642,
     "responses": 17,
+    "speed": {
+     "samples": 17,
+     "tps": 42.437035958654825,
+     "ttftCoverage": 0,
+     "ttftEstimated": true,
+     "ttftSamples": 0
+    },
     "total": 959159
    },
    "windows:2b6d8e4f-1a3c-4e5f-8a7b-9c0d1e2f3a4b": {
@@ -19852,6 +20013,12 @@
     "lastAt": 1792658828000,
     "output": 721,
     "responses": 5,
+    "speed": {
+     "samples": 0,
+     "ttftCoverage": 0,
+     "ttftEstimated": true,
+     "ttftSamples": 0
+    },
     "total": 7042
    },
    "windows:493b6bbe-63df-48b0-a695-2c75ab17f4eb": {
@@ -19867,7 +20034,9 @@
       "output": 29292,
       "responses": 24,
       "share": 1,
-      "total": 1987798
+      "total": 1987798,
+      "tps": 52.47146336233789,
+      "tpsSamples": 24
      }
     ],
     "cacheRead": 1901788,
@@ -19879,6 +20048,13 @@
     "lastAt": 1785937052215,
     "output": 29292,
     "responses": 24,
+    "speed": {
+     "samples": 24,
+     "tps": 52.47146336233789,
+     "ttftCoverage": 0,
+     "ttftEstimated": true,
+     "ttftSamples": 0
+    },
     "total": 1987798
    },
    "windows:6c8c2efe-bb26-433d-ade6-0f367144a591": {
@@ -19894,7 +20070,9 @@
       "output": 10473,
       "responses": 15,
       "share": 1,
-      "total": 930076
+      "total": 930076,
+      "tps": 26.25540722618161,
+      "tpsSamples": 14
      }
     ],
     "cacheRead": 835668,
@@ -19906,6 +20084,13 @@
     "lastAt": 1792681793404,
     "output": 10473,
     "responses": 15,
+    "speed": {
+     "samples": 14,
+     "tps": 26.25540722618161,
+     "ttftCoverage": 0,
+     "ttftEstimated": true,
+     "ttftSamples": 0
+    },
     "total": 930076
    },
    "windows:7f3c9a12-4b8e-4d21-9c6a-1e2f3a4b5c6d": {
@@ -19933,6 +20118,12 @@
     "lastAt": 1792587936000,
     "output": 1277,
     "responses": 12,
+    "speed": {
+     "samples": 0,
+     "ttftCoverage": 0,
+     "ttftEstimated": true,
+     "ttftSamples": 0
+    },
     "total": 15994
    },
    "windows:9e8d7c6b-5a4f-4e3d-8c2b-1a0f9e8d7c6b": {
@@ -19960,6 +20151,12 @@
     "lastAt": 1785751228000,
     "output": 262,
     "responses": 1,
+    "speed": {
+     "samples": 0,
+     "ttftCoverage": 0,
+     "ttftEstimated": true,
+     "ttftSamples": 0
+    },
     "total": 1644
    },
    "windows:b7a1c2d3-e4f5-4a6b-8c7d-9e0f1a2b3c4d": {
@@ -19987,6 +20184,12 @@
     "lastAt": 1792665038000,
     "output": 240,
     "responses": 1,
+    "speed": {
+     "samples": 0,
+     "ttftCoverage": 0,
+     "ttftEstimated": true,
+     "ttftSamples": 0
+    },
     "total": 2040
    },
    "windows:c41e2d7a-9b0f-4c3e-b5a6-7d8e9f0a1b2c": {
@@ -19998,6 +20201,10 @@
     "key": "windows:c41e2d7a-9b0f-4c3e-b5a6-7d8e9f0a1b2c",
     "output": 0,
     "responses": 0,
+    "speed": {
+     "samples": 0,
+     "ttftSamples": 0
+    },
     "total": 0
    },
    "windows:e3330a9b-1e91-45f1-af0d-00847ec49cc8": {
@@ -20013,7 +20220,9 @@
       "output": 32177,
       "responses": 30,
       "share": 1,
-      "total": 2669612
+      "total": 2669612,
+      "tps": 54.543504148647415,
+      "tpsSamples": 30
      }
     ],
     "cacheRead": 2530655,
@@ -20025,6 +20234,13 @@
     "lastAt": 1785338078761,
     "output": 32177,
     "responses": 30,
+    "speed": {
+     "samples": 30,
+     "tps": 54.543504148647415,
+     "ttftCoverage": 0,
+     "ttftEstimated": true,
+     "ttftSamples": 0
+    },
     "total": 2669612
    },
    "windows:f07c1a2b-3c4d-4e5f-8a6b-7c8d9e0f1a2b": {
@@ -20052,6 +20268,12 @@
     "lastAt": 1792658448000,
     "output": 720,
     "responses": 3,
+    "speed": {
+     "samples": 0,
+     "ttftCoverage": 0,
+     "ttftEstimated": true,
+     "ttftSamples": 0
+    },
     "total": 6120
    },
    "wsl-Ubuntu-alex:1ae904ea-e262-45f3-aab7-1e36a78e530d": {
@@ -20067,7 +20289,9 @@
       "output": 30097,
       "responses": 28,
       "share": 1,
-      "total": 1833741
+      "total": 1833741,
+      "tps": 40.618237280334846,
+      "tpsSamples": 28
      }
     ],
     "cacheRead": 1711035,
@@ -20079,6 +20303,13 @@
     "lastAt": 1787067136432,
     "output": 30097,
     "responses": 28,
+    "speed": {
+     "samples": 28,
+     "tps": 40.618237280334846,
+     "ttftCoverage": 0,
+     "ttftEstimated": true,
+     "ttftSamples": 0
+    },
     "total": 1833741
    },
    "wsl-Ubuntu-alex:4ab5f631-fe26-41c2-a47a-868c58e80b0b": {
@@ -20094,7 +20325,9 @@
       "output": 15339,
       "responses": 22,
       "share": 1,
-      "total": 1208329
+      "total": 1208329,
+      "tps": 39.33555409952219,
+      "tpsSamples": 22
      }
     ],
     "cacheRead": 1073388,
@@ -20106,6 +20339,13 @@
     "lastAt": 1786892682337,
     "output": 15339,
     "responses": 22,
+    "speed": {
+     "samples": 22,
+     "tps": 39.33555409952219,
+     "ttftCoverage": 0,
+     "ttftEstimated": true,
+     "ttftSamples": 0
+    },
     "total": 1208329
    },
    "wsl-Ubuntu-alex:5d4c3b2a-1f0e-4d9c-8b7a-6f5e4d3c2b1a": {
@@ -20133,6 +20373,12 @@
     "lastAt": 1792012155000,
     "output": 1373,
     "responses": 6,
+    "speed": {
+     "samples": 0,
+     "ttftCoverage": 0,
+     "ttftEstimated": true,
+     "ttftSamples": 0
+    },
     "total": 9466
    },
    "wsl-Ubuntu-alex:6c8975d4-3fe2-4f41-a325-705f41c8dda5": {
@@ -20148,7 +20394,9 @@
       "output": 17452,
       "responses": 25,
       "share": 1,
-      "total": 2498246
+      "total": 2498246,
+      "tps": 29.18287937743191,
+      "tpsSamples": 25
      }
     ],
     "cacheRead": 2293746,
@@ -20160,6 +20408,13 @@
     "lastAt": 1792596655445,
     "output": 17452,
     "responses": 25,
+    "speed": {
+     "samples": 25,
+     "tps": 29.18287937743191,
+     "ttftCoverage": 0,
+     "ttftEstimated": true,
+     "ttftSamples": 0
+    },
     "total": 2498246
    },
    "wsl-Ubuntu-alex:aba00d23-2075-43c3-a680-dbf96a91ead6": {
@@ -20175,7 +20430,9 @@
       "output": 35485,
       "responses": 35,
       "share": 1,
-      "total": 3981224
+      "total": 3981224,
+      "tps": 30.282015718908927,
+      "tpsSamples": 35
      }
     ],
     "cacheRead": 3810745,
@@ -20187,6 +20444,13 @@
     "lastAt": 1790007226310,
     "output": 35485,
     "responses": 35,
+    "speed": {
+     "samples": 35,
+     "tps": 30.282015718908927,
+     "ttftCoverage": 0,
+     "ttftEstimated": true,
+     "ttftSamples": 0
+    },
     "total": 3981224
    },
    "wsl-Ubuntu-alex:ca248ab6-637e-40fe-a6d8-3f42af2f5ea2": {
@@ -20202,7 +20466,9 @@
       "output": 11860,
       "responses": 19,
       "share": 1,
-      "total": 1519195
+      "total": 1519195,
+      "tps": 39.085468137211926,
+      "tpsSamples": 18
      }
     ],
     "cacheRead": 1368064,
@@ -20214,6 +20480,13 @@
     "lastAt": 1787235261410,
     "output": 11860,
     "responses": 19,
+    "speed": {
+     "samples": 18,
+     "tps": 39.085468137211926,
+     "ttftCoverage": 0,
+     "ttftEstimated": true,
+     "ttftSamples": 0
+    },
     "total": 1519195
    },
    "wsl-Ubuntu-alex:e9a1b2c3-d4e5-4f60-8172-839405a6b7c8": {
@@ -20241,6 +20514,12 @@
     "lastAt": 1792510319000,
     "output": 2229,
     "responses": 12,
+    "speed": {
+     "samples": 0,
+     "ttftCoverage": 0,
+     "ttftEstimated": true,
+     "ttftSamples": 0
+    },
     "total": 17898
    },
    "wsl-Ubuntu-alex:efddb615-d639-4df1-aedd-e247b69096c3": {
@@ -20256,7 +20535,9 @@
       "output": 23125,
       "responses": 30,
       "share": 1,
-      "total": 3547290
+      "total": 3547290,
+      "tps": 44.85686970817805,
+      "tpsSamples": 30
      }
     ],
     "cacheRead": 3334943,
@@ -20268,6 +20549,13 @@
     "lastAt": 1784815311638,
     "output": 23125,
     "responses": 30,
+    "speed": {
+     "samples": 30,
+     "tps": 44.85686970817805,
+     "ttftCoverage": 0,
+     "ttftEstimated": true,
+     "ttftSamples": 0
+    },
     "total": 3547290
    },
    "wsl-Ubuntu-root:a0b1c2d3-e4f5-4a6b-9c8d-7e6f5a4b3c2d": {
@@ -20295,6 +20583,12 @@
     "lastAt": 1792217566000,
     "output": 761,
     "responses": 3,
+    "speed": {
+     "samples": 0,
+     "ttftCoverage": 0,
+     "ttftEstimated": true,
+     "ttftSamples": 0
+    },
     "total": 4882
    }
   },

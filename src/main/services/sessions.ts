@@ -64,7 +64,9 @@ import {
 // tool calls printed, active stretches) for the git links.
 // v12: when each file was edited, and a Codex copy found by where its own history starts.
 // v13: when each claude.ai/code link was seen, and older Codex copies found more closely.
-const CACHE_VERSION = 13
+// v14: cloud-link hints only for a real link outside Remote Control (local sessions were
+// labelled "Cloud" for an empty `remote_session_change` attachment).
+const CACHE_VERSION = 14
 
 interface CacheFile {
   version: number

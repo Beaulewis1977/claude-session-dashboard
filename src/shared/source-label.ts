@@ -5,7 +5,10 @@
 // - `entrypoint` on each event (Claude Code 2.x): "cli", "sdk-cli" (claude -p),
 //   "sdk-ts", "sdk-py", "claude-vscode", "claude-desktop", "local-agent",
 //   "remote", "remote_mobile", "remote_desktop", … for cloud sessions.
-// - A `remote_session_change` attachment (a claude.ai/code session link).
+// - A `remote_session_change` attachment with a claude.ai/code link, in a
+//   session that never had Remote Control. Claude Code writes this attachment
+//   into ordinary local sessions too (with `url: null`), and Remote Control
+//   puts its own link there: neither makes a local session a cloud one.
 // - IDE attachments (`ide_opened_file`, `ide_selection`, …) and the IDE's name
 //   in them, for the CLI running inside an IDE's terminal.
 // - How the app launched it, then the environment and cwd.
@@ -92,8 +95,12 @@ export const SUMMARY_PROMPT_MARKER = '[claude-session-dashboard:summary]'
 export interface SourceHints {
   /** Distinct `entrypoint` values, in order of appearance (at most 6). */
   entrypoints: string[]
-  /** A cloud session link or a remote entrypoint was seen. */
+  /** A remote entrypoint was seen (the session ran in the cloud). */
   remote: boolean
+  /** A `remote_session_change` attachment carried a claude.ai/code link. */
+  cloudLink?: boolean
+  /** Remote Control was on at some point (a `bridge_status` entry): links are its own. */
+  bridge?: boolean
   /** IDE context (opened file, selection) was attached. */
   ide: boolean
   /** IDE family named in IDE context, when it says. */
@@ -120,7 +127,12 @@ export function addHints(h: SourceHints, e: Record<string, unknown>): void {
   if (e.type === 'attachment') {
     const a = e.attachment as Record<string, unknown> | undefined
     const t = typeof a?.type === 'string' ? a.type : ''
-    if (t === 'remote_session_change') h.remote = true
+    if (
+      t === 'remote_session_change' &&
+      typeof a?.url === 'string' &&
+      /^https:\/\/claude\.ai\/code\//.test(a.url)
+    )
+      h.cloudLink = true
     if (IDE_ATTACHMENT.test(t)) {
       h.ide = true
       if (!h.ideName) {
@@ -131,6 +143,7 @@ export function addHints(h: SourceHints, e: Record<string, unknown>): void {
     }
     return
   }
+  if (e.type === 'system' && e.subtype === 'bridge_status') h.bridge = true
   if (e.type === 'user' && !h.ide) {
     const m = e.message as Record<string, unknown> | undefined
     const c = m?.content
@@ -168,7 +181,7 @@ const OWN_RUN_ENTRYPOINTS = new Set(['sdk-cli', 'sdk-ts', 'sdk-py'])
  * session the Claude desktop app or a terminal ran (those are real sessions).
  */
 export function couldBeOwnRun(h: SourceHints | undefined, ctx: SourceContext): boolean {
-  if (ctx.desktopIndexed || ctx.cowork || h?.remote || h?.ide) return false
+  if (ctx.desktopIndexed || ctx.cowork || ranInCloud(h) || h?.ide) return false
   return (h?.entrypoints ?? []).every((e) => OWN_RUN_ENTRYPOINTS.has(e))
 }
 
@@ -176,6 +189,11 @@ export interface DetectedSource {
   label: SourceLabel
   /** Plain-English reason, shown in a tooltip. */
   reason: string
+}
+
+/** It ran in a cloud session (teleported here): a remote entrypoint, or a cloud link without Remote Control. */
+export function ranInCloud(h: SourceHints | undefined): boolean {
+  return !!h && (h.remote || (!!h.cloudLink && !h.bridge))
 }
 
 export function detectSource(h: SourceHints | undefined, ctx: SourceContext): DetectedSource {
@@ -192,9 +210,9 @@ export function detectSource(h: SourceHints | undefined, ctx: SourceContext): De
   const eps = h?.entrypoints ?? []
   // The desktop app's Code tab can run sessions through the SDK (entrypoint "sdk-cli"):
   // its own session index says which ones are its.
-  if (ctx.desktopIndexed && !h?.remote)
+  if (ctx.desktopIndexed && !ranInCloud(h))
     return { label: 'desktop', reason: 'Listed in the Claude desktop app’s Code tab' }
-  if (h?.remote)
+  if (ranInCloud(h))
     return {
       label: 'cloud',
       reason: eps.some((e) => e.startsWith('remote'))

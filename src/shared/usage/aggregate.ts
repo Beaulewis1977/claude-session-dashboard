@@ -1,6 +1,7 @@
 // Turning usage records into the numbers the Usage view shows: time series,
 // breakdowns, period cards and 5-hour blocks.
 
+import { isFast, medianSpeed, notFast, outputSpeed, speedMedian, thinkingTokens } from './speed'
 import { modelLabel, recordCost, type ModelPrice } from './pricing'
 import { totalTokens } from './parse'
 import {
@@ -111,6 +112,7 @@ export function breakdown(
   costs?: Map<UsageRecord, number>
 ): BreakdownRow[] {
   const groups = new Map<string, Totals>()
+  const speeds = new Map<string, number[]>()
   let grand = 0
   for (const r of records) {
     const k = dimensionKey(r, d, ctx)
@@ -118,14 +120,26 @@ export function breakdown(
     if (!t) groups.set(k, (t = emptyTotals()))
     addRecord(t, r, costs?.get(r) ?? recordCost(r, ctx.prices))
     grand += totalTokens(r)
+    // Speed: by model, a fast-mode model is a row of its own; other rows show normal mode only.
+    const v = d === 'model' || !isFast(r) ? outputSpeed(r) : undefined
+    if (v !== undefined) {
+      let xs = speeds.get(k)
+      if (!xs) speeds.set(k, (xs = []))
+      xs.push(v)
+    }
   }
   return [...groups.entries()]
-    .map(([key, t]) => ({
-      key,
-      ...dimensionLabel(key, d, ctx),
-      ...t,
-      share: grand ? t.total / grand : 0
-    }))
+    .map(([key, t]) => {
+      const xs = speeds.get(key) ?? []
+      const tps = speedMedian(xs)
+      return {
+        key,
+        ...dimensionLabel(key, d, ctx),
+        ...t,
+        share: grand ? t.total / grand : 0,
+        ...(tps !== undefined ? { tps, tpsSamples: xs.length } : {})
+      }
+    })
     .sort((a, b) => b.total - a.total)
 }
 
@@ -144,6 +158,12 @@ function sumRange(
     }
   }
   return { total, cost }
+}
+
+/** Median normal-mode output speed in a range (fast mode never moves it), when there's enough data. */
+function rangeSpeed(records: UsageRecord[], from: number, to: number): { tps?: number } {
+  const { tps } = medianSpeed(records, (r) => r.ts >= from && r.ts < to && notFast(r))
+  return tps !== undefined ? { tps } : {}
 }
 
 /** Daily totals for a range of day keys (for sparklines). */
@@ -204,7 +224,8 @@ export function periodCards(
     ...t,
     prevTotal: tPrev.total,
     deltaPct: deltaPct(t.total, tPrev.total),
-    spark: hourlySpark(records, todayStart, now)
+    spark: hourlySpark(records, todayStart, now),
+    ...rangeSpeed(records, todayStart, now + 1)
   })
 
   const w = sumRange(records, weekStartTs, now + 1, costs)
@@ -217,7 +238,8 @@ export function periodCards(
     ...w,
     prevTotal: wPrev.total,
     deltaPct: deltaPct(w.total, wPrev.total),
-    spark: dailySpark(records, week, 7, tz)
+    spark: dailySpark(records, week, 7, tz),
+    ...rangeSpeed(records, weekStartTs, now + 1)
   })
 
   const m = sumRange(records, monthStart, now + 1, costs)
@@ -232,7 +254,8 @@ export function periodCards(
     ...m,
     prevTotal: mPrev.total,
     deltaPct: deltaPct(m.total, mPrev.total),
-    spark: dailySpark(records, `${month}-01`, Math.max(1, monthDays), tz)
+    spark: dailySpark(records, `${month}-01`, Math.max(1, monthDays), tz),
+    ...rangeSpeed(records, monthStart, now + 1)
   })
 
   let allTotal = 0
@@ -250,7 +273,8 @@ export function periodCards(
     to: now,
     total: allTotal,
     cost: allCost,
-    spark: weeklySpark(records, now, tz, weekStart, 12)
+    spark: weeklySpark(records, now, tz, weekStart, 12),
+    ...rangeSpeed(records, -Infinity, Infinity)
   })
   return cards
 }
@@ -443,6 +467,10 @@ export function buildReport(
 }
 
 /** CSV with one row per day and model (or per record when `perRecord`). */
+/** A speed for the CSV: one decimal, empty when unknown. */
+const speedText = (v: number | undefined): string | undefined =>
+  v === undefined ? undefined : v.toFixed(1)
+
 export function toCsv(
   records: UsageRecord[],
   ctx: Pick<ReportContext, 'timeZone' | 'prices'>,
@@ -468,7 +496,12 @@ export function toCsv(
       'total',
       'est_cost_usd',
       'reasoning',
-      'provider'
+      'provider',
+      'thinking_tokens',
+      'gen_ms',
+      'ttft_ms',
+      'tokens_per_sec',
+      'fast_mode'
     ]
     const lines = [header.join(',')]
     for (const r of [...records].sort((a, b) => a.ts - b.ts)) {
@@ -488,7 +521,12 @@ export function toCsv(
           totalTokens(r),
           recordCost(r, ctx.prices).toFixed(6),
           r.reasoning ?? 0,
-          providerOfRecord(r)
+          providerOfRecord(r),
+          thinkingTokens(r),
+          r.genMs === undefined ? undefined : Math.round(r.genMs),
+          r.ttftMs === undefined ? undefined : Math.round(r.ttftMs),
+          speedText(outputSpeed(r)),
+          isFast(r) ? 'yes' : 'no'
         ]
           .map(esc)
           .join(',')
@@ -496,17 +534,22 @@ export function toCsv(
     }
     return lines.join('\r\n') + '\r\n'
   }
-  const rows = new Map<string, Totals & { date: string; model: string; provider: string }>()
+  const rows = new Map<
+    string,
+    Totals & { date: string; model: string; provider: string; speeds: number[] }
+  >()
   for (const r of records) {
     const date = dayKey(r.ts, ctx.timeZone)
     const provider = providerOfRecord(r)
     const k = `${date}|${provider}|${r.model}`
     let t = rows.get(k)
-    if (!t) rows.set(k, (t = { date, model: r.model, provider, ...emptyTotals() }))
+    if (!t) rows.set(k, (t = { date, model: r.model, provider, speeds: [], ...emptyTotals() }))
     addRecord(t, r, recordCost(r, ctx.prices))
+    const v = outputSpeed(r)
+    if (v !== undefined) t.speeds.push(v)
   }
   const lines = [
-    'date,model,responses,input,output,cache_write,cache_read,total,est_cost_usd,reasoning,provider'
+    'date,model,responses,input,output,cache_write,cache_read,total,est_cost_usd,reasoning,provider,median_tokens_per_sec,speed_samples'
   ]
   for (const t of [...rows.values()].sort((a, b) =>
     a.date !== b.date
@@ -527,7 +570,9 @@ export function toCsv(
         t.total,
         t.cost.toFixed(4),
         t.reasoning ?? 0,
-        t.provider
+        t.provider,
+        speedText(speedMedian(t.speeds)),
+        t.speeds.length
       ]
         .map(esc)
         .join(',')

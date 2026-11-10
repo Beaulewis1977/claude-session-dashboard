@@ -12,6 +12,13 @@ import { buildReport, breakdown, emptyTotals, addRecord, toCsv } from '@shared/u
 import { UsageDeduper } from '@shared/usage/dedupe'
 import { estimateCost, type ModelPrice } from '@shared/usage/pricing'
 import { localTimeZone } from '@shared/usage/time'
+import {
+  buildSpeedTrends,
+  speedSignal,
+  speedStats,
+  type SpeedSignal,
+  type SpeedTrendsReport
+} from '@shared/usage/speed'
 import type { UsageCommandReading } from '@shared/usage/usage-command'
 import type {
   LimitHit,
@@ -39,7 +46,8 @@ import type { SessionProvider } from '../providers/types'
 
 // 2: dedupe follows ccusage (session-scoped requestless ids, sidechain replays).
 // 3: /usage output is read as limit readings (backfill).
-const INDEX_VERSION = 3
+// 4: each response's generation time and time to first token (token speed).
+const INDEX_VERSION = 4
 
 /** Usage of the app's own runs (session summaries), see addDashboardRecords. */
 const DASHBOARD_FILE = 'dashboard-runs.ndjson'
@@ -298,8 +306,26 @@ export class UsageService extends EventEmitter<{ changed: []; 'codex-progress': 
         now: now()
       }),
       firstAt: recs[0]?.ts,
-      lastAt: recs[recs.length - 1]?.ts
+      lastAt: recs[recs.length - 1]?.ts,
+      speed: speedStats(
+        recs,
+        view === 'codex' ? this.codexTurns().filter((t) => t.key === key) : undefined
+      )
     }
+  }
+
+  /** Weekly output speed per model, Claude Code's and Codex's together. */
+  speedTrends(): SpeedTrendsReport {
+    return buildSpeedTrends({
+      records: this.recordsOf('all'),
+      timeZone: localTimeZone(),
+      weekStart: this.settings().weekStart
+    })
+  }
+
+  /** Recent output speed against the weeks before (limit health's extra signal). */
+  speedSignal(view: ProviderView): SpeedSignal {
+    return speedSignal(this.recordsOf(view), now())
   }
 
   csv(query: UsageQuery, perRecord: boolean): string {

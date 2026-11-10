@@ -21,6 +21,7 @@ import {
   type TrendsReport
 } from '@shared/usage/trends'
 import { CODEX_METRICS } from '@shared/usage/codex-trends'
+import { SPEED_CAVEAT } from '@shared/usage/speed'
 import type { ProviderId } from '@shared/provider'
 import { api } from '@/lib/api'
 import { formatMetric } from '@/lib/usage-format'
@@ -68,7 +69,13 @@ const PROVIDER_TRENDS = {
   }
 } as const
 
+/** A fast-mode line ("…-fast" model, or a "|fast" group): drawn dashed, in its normal line's colour. */
+const isFastGroup = (key: string): boolean => key.endsWith('-fast') || key.endsWith('|fast')
+const baseGroup = (key: string): string =>
+  key.endsWith('|fast') ? key.slice(0, -5) : key.endsWith('-fast') ? key.slice(0, -5) : key
+
 function groupColor(report: AnyReport, key: string, i: number): string {
+  if (isFastGroup(key)) return groupColor(report, baseGroup(key), i)
   if (report.groupBy === 'model') return modelColor(key, report.models)
   if (report.groupBy === 'version') {
     const order = [...report.groups]
@@ -92,16 +99,36 @@ function markerStyle(k: TrendMarker['kind']): { stroke: string; opacity: number 
   return { stroke: 'var(--chart-axis)', opacity: 0.5 }
 }
 
+/** A short line sample for a legend: solid, or dashed for fast mode. */
+function LegendLine({ color, dashed }: { color: string; dashed: boolean }) {
+  return (
+    <svg width="14" height="3" aria-hidden className="shrink-0">
+      <line
+        x1="0"
+        y1="1.5"
+        x2="14"
+        y2="1.5"
+        stroke={color}
+        strokeWidth="3"
+        strokeDasharray={dashed ? '3 2' : undefined}
+      />
+    </svg>
+  )
+}
+
 function MetricChart({
   report,
   metric,
-  product
+  product,
+  height = 150
 }: {
   report: AnyReport
   metric: AnyMetric
   /** Whose version the version markers are ("Claude Code", "Codex"). */
   product: string
+  height?: number
 }) {
+  const note = report.notes?.[metric.id]
   const data = useMemo(() => {
     const rows = report.weeks.map(
       (w) => ({ start: w.start, week: w.week }) as Record<string, number | string | undefined>
@@ -119,8 +146,19 @@ function MetricChart({
   )
   return (
     <Card className="p-4">
-      <CardHeader title={metric.title} subtitle={metric.subtitle} info={metric.info} />
-      <div className="mt-3 h-[150px]">
+      <CardHeader
+        title={metric.title}
+        subtitle={metric.subtitle}
+        info={
+          metric.info || note ? (
+            <>
+              {metric.info}
+              {note && <span className="mt-1 block font-medium">{note}</span>}
+            </>
+          ) : undefined
+        }
+      />
+      <div className="mt-3" style={{ height }}>
         {!hasData ? (
           <div className="flex h-full items-center justify-center text-xs text-muted-foreground">
             Not enough data yet
@@ -142,7 +180,9 @@ function MetricChart({
                 tickMargin={6}
               />
               <YAxis
-                tickFormatter={(v: number) => formatMetric(metric, v)}
+                tickFormatter={(v: number) =>
+                  metric.unit === 'tps' ? String(Math.round(v)) : formatMetric(metric, v)
+                }
                 tick={tick}
                 tickLine={false}
                 axisLine={false}
@@ -211,6 +251,7 @@ function MetricChart({
                   dataKey={g.key}
                   stroke={groupColor(report, g.key, i)}
                   strokeWidth={2}
+                  strokeDasharray={isFastGroup(g.key) ? '5 3' : undefined}
                   dot={false}
                   activeDot={{ r: 4, stroke: 'var(--card)', strokeWidth: 2 }}
                   connectNulls
@@ -388,6 +429,8 @@ function Compare({ versions, provider }: { versions: string[]; provider: Provide
           <tbody>
             {p.metrics.map((m) => {
               const row = res?.rows.find((r) => r.metric === m.id)
+              // Fast-mode rows only when there's fast-mode data.
+              if (m.compareOnly && !row) return null
               const c = row?.changePct
               const meaningful = c !== undefined && Math.abs(c) >= 5
               const better =
@@ -487,10 +530,7 @@ export function TrendsTab({ provider = 'claude' }: { provider?: ProviderId }) {
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 px-1 text-xs text-muted-foreground">
           {report.groups.map((g, i) => (
             <span key={g.key} className="inline-flex items-center gap-1.5">
-              <span
-                className="h-[3px] w-3.5 rounded-full"
-                style={{ background: groupColor(report, g.key, i) }}
-              />
+              <LegendLine color={groupColor(report, g.key, i)} dashed={isFastGroup(g.key)} />
               {g.label}
             </span>
           ))}
@@ -518,9 +558,9 @@ export function TrendsTab({ provider = 'claude' }: { provider?: ProviderId }) {
 
       <div className="grid grid-cols-[repeat(auto-fit,minmax(330px,1fr))] gap-4">
         {report
-          ? p.metrics.map((m) => (
-              <MetricChart key={m.id} report={report} metric={m} product={p.product} />
-            ))
+          ? p.metrics
+              .filter((m) => !m.compareOnly)
+              .map((m) => <MetricChart key={m.id} report={report} metric={m} product={p.product} />)
           : [0, 1, 2, 3].map((i) => (
               <Card key={i} className="p-4">
                 <Skeleton className="h-4 w-32" />
@@ -530,6 +570,57 @@ export function TrendsTab({ provider = 'claude' }: { provider?: ProviderId }) {
       </div>
 
       {report && <Compare key={provider} versions={report.versions} provider={provider} />}
+    </div>
+  )
+}
+
+// ------------------------------------------------- both agents' speeds
+
+const SPEED_BY_MODEL: AnyMetric = {
+  id: 'outputSpeed',
+  title: 'Output speed by model',
+  subtitle:
+    'Claude Code and Codex models together: median output tokens per second of each response, by week',
+  unit: 'tps',
+  better: 'higher',
+  info: `Each model’s own line, whichever agent ran it, so speeds can be compared across providers. Fast mode is its own (dashed) line. ${SPEED_CAVEAT}`
+}
+
+/** One chart of every model's output speed, Claude Code's and Codex's together (the "All" view). */
+export function SpeedByModelChart() {
+  const [report, setReport] = useState<AnyReport | null>(null)
+  const [version, setVersion] = useState(0)
+  useEffect(() => api.onUsageChanged(() => setVersion((v) => v + 1)), [])
+  useEffect(() => {
+    let cancelled = false
+    void api.getSpeedTrends().then((r) => !cancelled && setReport(r))
+    return () => {
+      cancelled = true
+    }
+  }, [version])
+  if (!report)
+    return (
+      <Card className="p-4">
+        <Skeleton className="h-4 w-40" />
+        <Skeleton className="mt-4 h-[180px] w-full" />
+      </Card>
+    )
+  return (
+    <div className="space-y-2">
+      <MetricChart report={report} metric={SPEED_BY_MODEL} product="" height={190} />
+      {report.groups.length > 0 && (
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 px-1 text-xs text-muted-foreground">
+          {report.groups.map((g, i) => (
+            <span key={g.key} className="inline-flex items-center gap-1.5">
+              <LegendLine color={groupColor(report, g.key, i)} dashed={isFastGroup(g.key)} />
+              {g.label}
+              <span className="rounded border border-border px-1 text-[10px] leading-4 text-subtle-foreground">
+                {g.provider === 'codex' ? 'Codex' : 'Claude Code'}
+              </span>
+            </span>
+          ))}
+        </div>
+      )}
     </div>
   )
 }

@@ -42,7 +42,7 @@ import { MainChart, ModelShare, SummaryCards, TopSessions } from './Overview'
 import { CreditsTab, LimitHistoryTab, RawTableTab } from './Tabs'
 import { LimitHealthCard, WhereItWent } from './LimitHealth'
 import { PaceAdviceLine } from './Hero'
-import { TrendsTab } from './Trends'
+import { SpeedByModelChart, TrendsTab } from './Trends'
 import { CodexLimitCards, CodexPlanChip } from './CodexLimits'
 import { AskClaudePanel } from './AskClaude'
 import type { UsageTab } from '@/lib/nav-history'
@@ -732,6 +732,11 @@ export function UsageView() {
           </div>
           {shownTab === 'trends' && (
             <>
+              {view === 'all' && (
+                <div className="mb-5">
+                  <SpeedByModelChart />
+                </div>
+              )}
               {view === 'all' && (
                 <div className="mb-3 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
                   <Segmented

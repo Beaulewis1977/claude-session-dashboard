@@ -11,10 +11,17 @@
 //   "prompts" are the main agent's instructions) but counts per response;
 // - context use: the last reading of each session in each week.
 
-import { modelLabel } from './pricing'
+import { isFastModel, modelLabel } from './pricing'
+import { codexFirstTokenMs, speedMedian } from './speed'
 import { bucketRange, weekKey } from './time'
 import {
+  addSpeedToAcc,
+  compareRows,
   compareVersions,
+  FAST_SPEED_DEF,
+  OUTPUT_SPEED_DEF,
+  pickGroups,
+  speedGroup,
   type CompareResult,
   type CompareSide,
   type MetricDef,
@@ -29,6 +36,10 @@ export type CodexMetricId =
   | 'reasoningPerResponse'
   | 'turnDuration'
   | 'firstToken'
+  | 'outputSpeed'
+  | 'visibleSpeed'
+  | 'outputSpeedFast'
+  | 'firstTokenFast'
   | 'toolErrorRate'
   | 'abortRate'
   | 'responsesPerPrompt'
@@ -66,7 +77,26 @@ export const CODEX_METRICS: MetricDef<CodexMetricId>[] = [
     title: 'Time to first token',
     subtitle: 'Median time until the first output of a turn',
     unit: 'seconds',
-    better: 'lower'
+    better: 'lower',
+    info: 'Codex’s own time_to_first_token_ms, per turn. Fast mode is its own line.'
+  },
+  { id: 'outputSpeed', ...OUTPUT_SPEED_DEF },
+  {
+    id: 'visibleSpeed',
+    title: 'Output speed without reasoning',
+    subtitle: 'Median tokens per second of each response, reasoning tokens left out',
+    unit: 'tps',
+    better: 'higher',
+    info: `The same responses and time as Output speed, counting only the tokens that aren’t reasoning. ${OUTPUT_SPEED_DEF.info}`
+  },
+  { id: 'outputSpeedFast', ...FAST_SPEED_DEF },
+  {
+    id: 'firstTokenFast',
+    title: 'Time to first token · fast mode',
+    subtitle: 'Median time until the first output of a fast-mode turn',
+    unit: 'seconds',
+    better: 'lower',
+    compareOnly: true
   },
   {
     id: 'toolErrorRate',
@@ -132,6 +162,11 @@ export interface CodexAcc {
   promptResponses: number
   promptToolCalls: number
   contexts: number[]
+  /** Per response (see speed.ts); fast mode apart in the compare table. */
+  speeds: number[]
+  visibleSpeeds: number[]
+  fastSpeeds: number[]
+  fastFirstTokens: number[]
 }
 
 export function emptyCodexAcc(): CodexAcc {
@@ -150,7 +185,11 @@ export function emptyCodexAcc(): CodexAcc {
     prompts: 0,
     promptResponses: 0,
     promptToolCalls: 0,
-    contexts: []
+    contexts: [],
+    speeds: [],
+    visibleSpeeds: [],
+    fastSpeeds: [],
+    fastFirstTokens: []
   }
 }
 
@@ -165,11 +204,18 @@ export function addCodexRecord(a: CodexAcc, r: UsageRecord): void {
   a.cached += r.cacheRead
 }
 
-export function addCodexTurn(a: CodexAcc, t: CodexTurnSample): void {
+/**
+ * Add a turn. A fast-mode turn's time to first token goes to the fast list
+ * when `apart` (the compare table); by week it's in a fast group of its own.
+ */
+export function addCodexTurn(a: CodexAcc, t: CodexTurnSample, apart = false): void {
   a.turns++
   if (t.durationMs !== undefined && t.durationMs < MAX_TURN_MS && !t.aborted)
     a.durations.push(t.durationMs)
-  if (t.firstTokenMs !== undefined && t.firstTokenMs < MAX_TURN_MS)
+  if (apart && t.model && isFastModel(t.model)) {
+    const v = codexFirstTokenMs(t)
+    if (v !== undefined) a.fastFirstTokens.push(v)
+  } else if (t.firstTokenMs !== undefined && t.firstTokenMs < MAX_TURN_MS)
     a.firstTokens.push(t.firstTokenMs)
   a.toolResults += t.toolResults
   a.toolErrors += t.toolErrors
@@ -217,6 +263,16 @@ export function codexMetricValue(a: CodexAcc, id: CodexMetricId): number | undef
       return pct(div(a.cached, a.inputAll, 1))
     case 'contextUsage':
       return median(a.contexts)
+    case 'outputSpeed':
+      return speedMedian(a.speeds)
+    case 'visibleSpeed':
+      return speedMedian(a.visibleSpeeds)
+    case 'outputSpeedFast':
+      return speedMedian(a.fastSpeeds)
+    case 'firstTokenFast': {
+      const m = a.fastFirstTokens.length >= 2 ? median(a.fastFirstTokens) : undefined
+      return m === undefined ? undefined : m / 1000
+    }
   }
 }
 
@@ -288,6 +344,9 @@ export function buildCodexTrends(input: CodexTrendsInput): CodexTrendsReport {
     const g = groupOf(groupBy, r.model, r.version)
     addCodexRecord(acc(g, w), r)
     volume.set(g, (volume.get(g) ?? 0) + 1)
+    const sg = speedGroup(groupBy, g, r.model)
+    addSpeedToAcc(acc(sg, w), r, false)
+    if (sg !== g) volume.set(sg, (volume.get(sg) ?? 0) + 1)
     models.add(r.model)
     if (r.version) versions.add(r.version)
     const fm = firstModel.get(r.model)
@@ -298,25 +357,24 @@ export function buildCodexTrends(input: CodexTrendsInput): CodexTrendsReport {
       vw.set(r.version, (vw.get(r.version) ?? 0) + 1)
     }
   }
-  for (const t of input.turns)
-    addCodexTurn(acc(groupOf(groupBy, t.model, t.version), week(t.ts)), t)
+  for (const t of input.turns) {
+    const g = groupOf(groupBy, t.model, t.version)
+    const sg = speedGroup(groupBy, g, t.model)
+    if (sg === g) addCodexTurn(acc(g, week(t.ts)), t)
+    else {
+      // Fast mode: the turn counts in its group, its time to first token on the fast line.
+      addCodexTurn(acc(g, week(t.ts)), { ...t, firstTokenMs: undefined })
+      const v = codexFirstTokenMs(t)
+      if (v !== undefined) acc(sg, week(t.ts)).firstTokens.push(v)
+    }
+  }
   for (const t of lastContexts(input.turns, (x) => week(x.ts)))
     acc(groupOf(groupBy, t.model, t.version), week(t.ts)).contexts.push(t.contextPct!)
 
   const weeks = [...weekSet]
     .sort()
     .map((w) => ({ week: w, start: bucketRange(w, 'week', tz).start }))
-  const groups = [...volume.entries()]
-    .filter(([k]) => accs.has(k))
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, groupBy === 'all' ? 1 : (input.maxGroups ?? 5))
-    .map(([key, v]) => ({
-      key,
-      label: groupBy === 'model' ? modelLabel(key) : groupBy === 'version' ? `v${key}` : 'All',
-      volume: v
-    }))
-  if (groupBy === 'all' && !groups.length && accs.has('all'))
-    groups.push({ key: 'all', label: 'All', volume: 0 })
+  const groups = pickGroups(groupBy, volume, accs, input.maxGroups)
 
   const series: CodexTrendsReport['series'] = []
   for (const m of CODEX_METRICS)
@@ -343,7 +401,8 @@ export function buildCodexTrends(input: CodexTrendsInput): CodexTrendsReport {
   for (const r of input.records) perModel.set(r.model, (perModel.get(r.model) ?? 0) + 1)
   const minShare = input.records.length * MARKER_MIN_SHARE
   for (const [model, w] of firstModel) {
-    if (w === firstWeek || (perModel.get(model) ?? 0) < minShare) continue
+    // Fast mode isn't a new model.
+    if (w === firstWeek || isFastModel(model) || (perModel.get(model) ?? 0) < minShare) continue
     markers.push({
       week: w,
       start: bucketRange(w, 'week', tz).start,
@@ -394,28 +453,20 @@ export function compareCodexTrends(
 ): CompareResult<CodexMetricId> {
   const side = (s: CompareSide): CodexAcc => {
     const acc = emptyCodexAcc()
-    for (const r of input.records) if (inSide(s, r.ts, r.model, r.version)) addCodexRecord(acc, r)
+    for (const r of input.records)
+      if (inSide(s, r.ts, r.model, r.version)) {
+        addCodexRecord(acc, r)
+        addSpeedToAcc(acc, r, true)
+      }
     const turns = input.turns.filter((t) => inSide(s, t.ts, t.model, t.version))
-    for (const t of turns) addCodexTurn(acc, t)
+    for (const t of turns) addCodexTurn(acc, t, true)
     for (const t of lastContexts(turns, () => '')) acc.contexts.push(t.contextPct!)
     return acc
   }
   const A = side(a)
   const B = side(b)
   return {
-    rows: CODEX_METRICS.map((m) => {
-      const va = codexMetricValue(A, m.id)
-      const vb = codexMetricValue(B, m.id)
-      return {
-        metric: m.id,
-        a: va,
-        b: vb,
-        changePct:
-          va !== undefined && vb !== undefined && va !== 0
-            ? ((vb - va) / Math.abs(va)) * 100
-            : undefined
-      }
-    }),
+    rows: compareRows(CODEX_METRICS, (id) => [codexMetricValue(A, id), codexMetricValue(B, id)]),
     samples: {
       a: { responses: A.records, requests: A.prompts },
       b: { responses: B.records, requests: B.prompts }

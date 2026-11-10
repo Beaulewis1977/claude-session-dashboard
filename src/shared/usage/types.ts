@@ -4,6 +4,7 @@ import type { EnvKind } from '../types'
 import type { ProviderView } from '../provider'
 import type { UsageCommandReading } from './usage-command'
 import type { CodexLimitReading } from './codex'
+import type { SpeedStats } from './speed'
 
 export const TOKEN_TYPES = ['input', 'output', 'cacheWrite', 'cacheRead'] as const
 export type TokenType = (typeof TOKEN_TYPES)[number]
@@ -59,6 +60,17 @@ export interface UsageRecord extends TokenCounts {
    * the logs tell: two sign-ins on different plans can share one Codex home).
    */
   plan?: string
+  /**
+   * Generation time (see speed.ts): from when the request was sent to when the
+   * response's last part was written, in ms. Tool time is left out (the next
+   * request starts after the tool result). Absent when the logs don't tell.
+   */
+  genMs?: number
+  /**
+   * Claude Code only: estimated time to first token, in ms (request sent →
+   * start of the thinking block the response opens with). Absent otherwise.
+   */
+  ttftMs?: number
 }
 
 /** One user turn: a prompt and everything Claude did until the next prompt. */
@@ -188,6 +200,10 @@ export interface BreakdownRow extends Totals {
   label: string
   detail?: string
   share: number
+  /** Median output speed of the group, tokens per second (enough samples only). */
+  tps?: number
+  /** Responses the speed was worked out from. */
+  tpsSamples?: number
 }
 
 export interface PeriodCard {
@@ -201,6 +217,8 @@ export interface PeriodCard {
   /** Change vs. the previous period, in %. Undefined when there is no previous data. */
   deltaPct?: number
   spark: number[]
+  /** Median output speed in the period, tokens per second (enough samples only). */
+  tps?: number
 }
 
 export interface UsageBlock extends Totals {
@@ -235,6 +253,8 @@ export interface UsageReport {
 export interface SessionUsage extends Totals {
   key: string
   byModel: BreakdownRow[]
+  /** Output speed and time to first token of the session's responses. */
+  speed?: SpeedStats
   firstAt?: number
   lastAt?: number
 }

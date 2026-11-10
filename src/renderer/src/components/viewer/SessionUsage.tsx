@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
-import { BarChart3 } from 'lucide-react'
+import { BarChart3, Gauge, Zap } from 'lucide-react'
 import type { SessionUsage } from '@shared/usage/types'
+import { CLAUDE_TTFT_CAVEAT, SPEED_CAVEAT, ttftCoverageText } from '@shared/usage/speed'
+import { formatTps, formatTtft } from '@/lib/usage-format'
 import { formatInt, formatTokens, formatUsd } from '@shared/format'
 import { api } from '@/lib/api'
 import { useApp } from '@/lib/store'
@@ -66,6 +68,7 @@ export function SessionUsageStrip({
       <Tooltip content="Estimated at API prices from the price table in Settings">
         <span className="text-xs text-muted-foreground tabular-nums">≈ {formatUsd(u.cost)}</span>
       </Tooltip>
+      <SpeedChip u={u} />
       <div className="flex flex-wrap items-center gap-2.5">
         {u.byModel.slice(0, 3).map((m) => (
           <span
@@ -88,5 +91,61 @@ export function SessionUsageStrip({
         Usage →
       </button>
     </div>
+  )
+}
+
+/** The session's median output speed and time to first token, and a "Fast" badge. */
+export function SpeedChip({ u }: { u: SessionUsage }) {
+  const sp = u.speed
+  if (!sp || (sp.tps === undefined && !sp.fast)) return null
+  const coverage = ttftCoverageText(sp.ttftCoverage)
+  const ttft =
+    sp.ttftMs === undefined ? 'n/a' : `${formatTtft(sp.ttftMs)}${sp.ttftEstimated ? ' est.' : ''}`
+  return (
+    <Tooltip
+      content={
+        <span className="block max-w-[300px] space-y-1 leading-relaxed">
+          <span className="block">
+            Output speed: {formatTps(sp.tps)}
+            {sp.samples
+              ? ` (median of ${formatInt(sp.samples)} responses${sp.fast ? ', normal mode' : ''})`
+              : ''}
+          </span>
+          {sp.fast && (
+            <span className="block">
+              Fast mode: {formatTps(sp.fastTps)}
+              {sp.fastSamples ? ` (${formatInt(sp.fastSamples)} responses)` : ''}
+            </span>
+          )}
+          <span className="block">
+            Time to first token: {ttft}
+            {sp.ttftEstimated
+              ? coverage
+                ? ` (${coverage})`
+                : ''
+              : sp.ttftSamples
+                ? ` (Codex's own, ${formatInt(sp.ttftSamples)} turns)`
+                : ''}
+          </span>
+          <span className="block text-muted-foreground">
+            {SPEED_CAVEAT}
+            {sp.ttftEstimated ? ` ${CLAUDE_TTFT_CAVEAT}` : ''}
+          </span>
+        </span>
+      }
+    >
+      <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground tabular-nums">
+        <Gauge className="size-3.5 text-subtle-foreground" />
+        {sp.tps !== undefined && <span>{formatTps(sp.tps)}</span>}
+        {sp.tps !== undefined && sp.ttftMs !== undefined && (
+          <span className="text-subtle-foreground">· TTFT {ttft}</span>
+        )}
+        {sp.fast && (
+          <span className="inline-flex items-center gap-0.5 rounded bg-primary/12 px-1 text-[10px] font-medium text-primary">
+            <Zap className="size-2.5" /> Fast
+          </span>
+        )}
+      </span>
+    </Tooltip>
   )
 }

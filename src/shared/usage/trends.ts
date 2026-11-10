@@ -4,7 +4,17 @@
 import type { BridgeReading } from './bridge'
 import type { CapacityPoint } from './limits'
 import { planLabel, type PlanSpan } from './health'
-import { modelLabel } from './pricing'
+import { isFastModel, modelLabel } from './pricing'
+import {
+  CLAUDE_TTFT_CAVEAT,
+  firstTokenMs,
+  outputSpeed,
+  SPEED_CAVEAT,
+  speedMedian,
+  ttftCoverage,
+  ttftCoverageText,
+  visibleSpeed
+} from './speed'
 import { bucketRange, weekKey } from './time'
 import type { TurnSample, UsageRecord, WeekStart } from './types'
 
@@ -14,6 +24,11 @@ export type MetricId =
   | 'outputPerResponse'
   | 'outputPerTurn'
   | 'latency'
+  | 'outputSpeed'
+  | 'visibleSpeed'
+  | 'firstToken'
+  | 'outputSpeedFast'
+  | 'firstTokenFast'
   | 'toolErrorRate'
   | 'apiErrorShare'
   | 'responsesPerTurn'
@@ -29,10 +44,41 @@ export interface MetricDef<M extends string = MetricId> {
   id: M
   title: string
   subtitle: string
-  unit: 'tokens' | 'seconds' | 'percent' | 'count' | 'chars'
+  unit: 'tokens' | 'seconds' | 'percent' | 'count' | 'chars' | 'tps'
   /** Which direction is "better", for the compare table. */
   better: 'higher' | 'lower' | 'neutral'
   info?: string
+  /** Only a row of the compare table (shown when it has data), never a chart. */
+  compareOnly?: true
+}
+
+/** Speed metrics, shared by Claude Code's and Codex's trends (see speed.ts). */
+export const OUTPUT_SPEED_DEF = {
+  title: 'Output speed',
+  subtitle: 'Median output tokens per second of each response (fast mode is its own line)',
+  unit: 'tps',
+  better: 'higher',
+  info: SPEED_CAVEAT
+} as const
+export const FAST_SPEED_DEF = {
+  title: 'Output speed · fast mode',
+  subtitle: 'Median output tokens per second of fast-mode responses',
+  unit: 'tps',
+  better: 'higher',
+  info: SPEED_CAVEAT,
+  compareOnly: true
+} as const
+
+/** Which group a fast-mode response's speed goes to: its own line, never the normal baseline. */
+export function speedGroup(by: TrendGroupBy, group: string, model: string | undefined): string {
+  // By model, a fast-mode model ("…-fast") is a group of its own already.
+  return by !== 'model' && model && isFastModel(model) ? `${group}|fast` : group
+}
+
+/** "Opus 5.5", "v2.1.30", "All", and "… · fast" for a fast-mode line. */
+export function groupLabel(by: TrendGroupBy, key: string): string {
+  if (key.endsWith('|fast')) return `${groupLabel(by, key.slice(0, -5))} · fast`
+  return by === 'model' ? modelLabel(key) : by === 'version' ? `v${key}` : 'All'
 }
 
 export const METRICS: MetricDef[] = [
@@ -57,6 +103,33 @@ export const METRICS: MetricDef[] = [
     subtitle: 'Median time from your message to the first reply',
     unit: 'seconds',
     better: 'lower'
+  },
+  { id: 'outputSpeed', ...OUTPUT_SPEED_DEF },
+  {
+    id: 'visibleSpeed',
+    title: 'Output speed without thinking',
+    subtitle: 'Median tokens per second of each response, thinking tokens left out',
+    unit: 'tps',
+    better: 'higher',
+    info: `The same responses and time as Output speed, counting only the tokens that aren’t thinking (Claude Code logs them apart). ${SPEED_CAVEAT}`
+  },
+  {
+    id: 'firstToken',
+    title: 'Time to first token (est.)',
+    subtitle: 'Median time from sending a request to the start of its thinking',
+    unit: 'seconds',
+    better: 'lower',
+    info: CLAUDE_TTFT_CAVEAT
+  },
+  { id: 'outputSpeedFast', ...FAST_SPEED_DEF },
+  {
+    id: 'firstTokenFast',
+    title: 'Time to first token (est.) · fast mode',
+    subtitle: 'Median estimated time to first token of fast-mode responses',
+    unit: 'seconds',
+    better: 'lower',
+    info: CLAUDE_TTFT_CAVEAT,
+    compareOnly: true
   },
   {
     id: 'toolErrorRate',
@@ -144,6 +217,13 @@ export interface MetricAcc {
   thinkingBlocks: number
   thinkingChars: number
   contexts: number[]
+  /** Per response (normal mode, or a fast group's own), see speed.ts. */
+  speeds: number[]
+  visibleSpeeds: number[]
+  ttfts: number[]
+  /** Fast mode, for the compare table. */
+  fastSpeeds: number[]
+  fastTtfts: number[]
 }
 
 export function emptyAcc(): MetricAcc {
@@ -163,8 +243,43 @@ export function emptyAcc(): MetricAcc {
     corrections: 0,
     thinkingBlocks: 0,
     thinkingChars: 0,
-    contexts: []
+    contexts: [],
+    speeds: [],
+    visibleSpeeds: [],
+    ttfts: [],
+    fastSpeeds: [],
+    fastTtfts: []
   }
+}
+
+/** The speed lists of a metric accumulator (Claude Code's or Codex's). */
+export interface SpeedLists {
+  speeds: number[]
+  visibleSpeeds: number[]
+  ttfts?: number[]
+  fastSpeeds: number[]
+  fastTtfts?: number[]
+}
+
+/**
+ * A response's speed and (Claude Code) estimated time to first token. A
+ * fast-mode one goes to the fast lists when `apart` (the compare table),
+ * else to the normal ones (it's then in a fast group of its own, see
+ * speedGroup), so it never moves a normal-mode median.
+ */
+export function addSpeedToAcc(a: SpeedLists, r: UsageRecord, apart: boolean): void {
+  const v = outputSpeed(r)
+  const t = firstTokenMs(r)
+  if (apart && isFastModel(r.model)) {
+    if (v !== undefined) a.fastSpeeds.push(v)
+    if (t !== undefined) a.fastTtfts?.push(t)
+    return
+  }
+  if (v !== undefined) {
+    a.speeds.push(v)
+    a.visibleSpeeds.push(visibleSpeed(r)!)
+  }
+  if (t !== undefined) a.ttfts?.push(t)
 }
 
 function median(xs: number[]): number | undefined {
@@ -234,6 +349,17 @@ export function metricValue(a: MetricAcc, id: MetricId): number | undefined {
       return div(a.thinkingChars, a.thinkingBlocks, 1)
     case 'contextUsage':
       return median(a.contexts)
+    case 'outputSpeed':
+      return speedMedian(a.speeds)
+    case 'visibleSpeed':
+      return speedMedian(a.visibleSpeeds)
+    case 'outputSpeedFast':
+      return speedMedian(a.fastSpeeds)
+    case 'firstToken':
+    case 'firstTokenFast': {
+      const m = speedMedian(id === 'firstToken' ? a.ttfts : a.fastTtfts)
+      return m === undefined ? undefined : m / 1000
+    }
   }
 }
 
@@ -263,11 +389,13 @@ export interface TrendMarker {
 export interface TrendsReport<M extends string = MetricId> {
   groupBy: TrendGroupBy
   weeks: { week: string; start: number }[]
-  groups: { key: string; label: string; volume: number }[]
+  groups: { key: string; label: string; volume: number; provider?: 'claude' | 'codex' }[]
   series: TrendSeries<M>[]
   markers: TrendMarker[]
   versions: string[]
   models: string[]
+  /** A note per metric, shown with its chart (e.g. how much of the data an estimate covers). */
+  notes?: Partial<Record<M, string>>
 }
 
 export interface TrendsInput {
@@ -322,6 +450,9 @@ export function buildTrends(input: TrendsInput): TrendsReport {
     const g = groupOf(groupBy, r.model, r.version)
     addRecordToAcc(acc(g, w), r)
     volume.set(g, (volume.get(g) ?? 0) + 1)
+    const sg = speedGroup(groupBy, g, r.model)
+    addSpeedToAcc(acc(sg, w), r, false)
+    if (sg !== g) volume.set(sg, (volume.get(sg) ?? 0) + 1)
     models.add(r.model)
     if (r.version) versions.add(r.version)
     const fm = firstModel.get(r.model)
@@ -353,17 +484,7 @@ export function buildTrends(input: TrendsInput): TrendsReport {
   const weeks = [...weekSet]
     .sort()
     .map((week) => ({ week, start: bucketRange(week, 'week', tz).start }))
-  const groups = [...volume.entries()]
-    .filter(([k]) => accs.has(k))
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, groupBy === 'all' ? 1 : (input.maxGroups ?? 5))
-    .map(([key, v]) => ({
-      key,
-      label: groupBy === 'model' ? modelLabel(key) : groupBy === 'version' ? `v${key}` : 'All',
-      volume: v
-    }))
-  if (groupBy === 'all' && !groups.length && accs.has('all'))
-    groups.push({ key: 'all', label: 'All', volume: 0 })
+  const groups = pickGroups(groupBy, volume, accs, input.maxGroups)
 
   const series: TrendSeries[] = []
   for (const m of METRICS) {
@@ -384,7 +505,8 @@ export function buildTrends(input: TrendsInput): TrendsReport {
   const markers: TrendMarker[] = []
   const firstWeek = weeks[0]?.week
   for (const [model, w] of firstModel) {
-    if (w === firstWeek) continue
+    // Fast mode isn't a new model.
+    if (w === firstWeek || isFastModel(model)) continue
     markers.push({
       week: w,
       start: bucketRange(w, 'week', tz).start,
@@ -440,6 +562,7 @@ export function buildTrends(input: TrendsInput): TrendsReport {
   }
   markers.sort((a, b) => a.start - b.start)
 
+  const coverage = ttftCoverageText(ttftCoverage(input.records))
   return {
     groupBy,
     weeks,
@@ -447,8 +570,30 @@ export function buildTrends(input: TrendsInput): TrendsReport {
     series,
     markers,
     versions: [...versions].sort(compareVersions),
-    models: [...models].sort()
+    models: [...models].sort(),
+    ...(coverage ? { notes: { firstToken: coverage } } : {})
   }
+}
+
+/**
+ * The groups that get a line: the busiest ones (by responses). "All" keeps
+ * its one line, plus its fast-mode line when there is one.
+ */
+export function pickGroups<A>(
+  groupBy: TrendGroupBy,
+  volume: Map<string, number>,
+  accs: Map<string, A>,
+  maxGroups = 5
+): { key: string; label: string; volume: number }[] {
+  const sorted = [...volume.entries()].filter(([k]) => accs.has(k)).sort((a, b) => b[1] - a[1])
+  const picked =
+    groupBy === 'all'
+      ? sorted.filter(([k]) => k === 'all' || k === 'all|fast')
+      : sorted.slice(0, maxGroups)
+  const groups = picked.map(([key, v]) => ({ key, label: groupLabel(groupBy, key), volume: v }))
+  if (groupBy === 'all' && !groups.some((g) => g.key === 'all') && accs.has('all'))
+    groups.unshift({ key: 'all', label: 'All', volume: 0 })
+  return groups
 }
 
 // -------------------------------------------------------------- compare
@@ -489,7 +634,11 @@ export function compareTrends(
 ): CompareResult {
   const side = (s: CompareSide): MetricAcc => {
     const acc = emptyAcc()
-    for (const r of input.records) if (inSide(s, r.ts, r.model, r.version)) addRecordToAcc(acc, r)
+    for (const r of input.records)
+      if (inSide(s, r.ts, r.model, r.version)) {
+        addRecordToAcc(acc, r)
+        addSpeedToAcc(acc, r, true)
+      }
     for (const t of input.turns) if (inSide(s, t.ts, t.model, t.version)) addTurnToAcc(acc, t)
     const last = new Map<string, BridgeReading>()
     for (const r of input.readings) {
@@ -504,22 +653,32 @@ export function compareTrends(
   const A = side(a)
   const B = side(b)
   return {
-    rows: METRICS.map((m) => {
-      const va = metricValue(A, m.id)
-      const vb = metricValue(B, m.id)
-      return {
-        metric: m.id,
-        a: va,
-        b: vb,
-        changePct:
-          va !== undefined && vb !== undefined && va !== 0
-            ? ((vb - va) / Math.abs(va)) * 100
-            : undefined
-      }
-    }),
+    rows: compareRows(METRICS, (id) => [metricValue(A, id), metricValue(B, id)]),
     samples: {
       a: { responses: A.records, requests: A.turns },
       b: { responses: B.records, requests: B.turns }
     }
   }
+}
+
+/** Compare rows for some metrics; a compare-only row is left out when neither side has data. */
+export function compareRows<M extends string>(
+  metrics: MetricDef<M>[],
+  value: (id: M) => [number | undefined, number | undefined]
+): CompareRow<M>[] {
+  const rows: CompareRow<M>[] = []
+  for (const m of metrics) {
+    const [va, vb] = value(m.id)
+    if (m.compareOnly && va === undefined && vb === undefined) continue
+    rows.push({
+      metric: m.id,
+      a: va,
+      b: vb,
+      changePct:
+        va !== undefined && vb !== undefined && va !== 0
+          ? ((vb - va) / Math.abs(va)) * 100
+          : undefined
+    })
+  }
+  return rows
 }

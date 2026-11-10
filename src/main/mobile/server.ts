@@ -59,6 +59,11 @@ export interface ServerDeps {
     /** Does the PC hold this phone's subscription, for this endpoint? */
     state(deviceId: string, endpoint: unknown): { on: boolean; matches: boolean }
   }
+  /**
+   * Ask across sessions: a phone's content question. It only waits on the PC,
+   * which comes forward; nothing is sent until I review it there and click Send.
+   */
+  askRequest?(device: StoredDevice, body: unknown): Promise<unknown>
   /** The session a tapped push alert means: only for the phone it was sent to, once. */
   resolveLiveRef?(deviceId: string, ref: unknown): string | null
   now?: () => number
@@ -547,6 +552,40 @@ export class MobileServer {
       }
       case '/api/launch': {
         const r = await this.deps.launcher.launch(d, await readJson(req))
+        this.deps.changed()
+        this.json(req, res, 200, r)
+        return
+      }
+      case '/api/ask': {
+        const body = await readJson(req)
+        if (!this.deps.registry.isActive(d.id))
+          throw new HttpError(401, 'This phone is not paired (or was revoked). Pair it again.')
+        if (this.deps.flags().readOnly)
+          throw new HttpError(403, 'Read-only mode is on. Change it on the PC.')
+        if (!this.deps.askRequest) throw new HttpError(404, 'Not available from a phone')
+        if (!this.writeLimiter.take(d.id))
+          throw new HttpError(429, 'Too many changes. Wait a minute.')
+        let r: unknown
+        try {
+          r = await this.deps.askRequest(d, body)
+        } catch (err) {
+          this.deps.registry.log({
+            action: 'ask',
+            deviceId: d.id,
+            device: d.name,
+            detail: (err as Error).message,
+            ok: false
+          })
+          this.deps.changed()
+          throw new HttpError(400, (err as Error).message)
+        }
+        this.deps.registry.log({
+          action: 'ask',
+          deviceId: d.id,
+          device: d.name,
+          detail: 'Sent a question to the PC for review (nothing is sent to Claude until it is approved there)',
+          ok: true
+        })
         this.deps.changed()
         this.json(req, res, 200, r)
         return

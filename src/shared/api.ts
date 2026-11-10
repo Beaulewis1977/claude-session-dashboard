@@ -26,6 +26,22 @@ import type { BridgeApplyResult, BridgePlan, LimitsState } from './usage/limits'
 import type { CodexLimitsState } from './usage/codex'
 import type { CompareRange, HealthCompare } from './usage/health'
 import type { AskHistoryItem } from './ask'
+import type {
+  AskEffort,
+  AskEstimate,
+  AskIndexStatus,
+  AskModel,
+  AskPhoneRequest,
+  AskResult,
+  AskScope,
+  AskSessionsItem,
+  LocalAnswer
+} from './ask-sessions/types'
+
+/** A phone's local question: answered on the PC (nothing sent), or a content one. */
+export type PhoneLocalAnswer =
+  | { mode: 'local'; answer: LocalAnswer; chips: string[] }
+  | { mode: 'content'; enabled: boolean }
 import type { AiSummary, SummaryEstimate } from './summary'
 import type { ResumeEstimate } from './context'
 import type { SummaryBatchEstimate, SummaryPreview, SummaryQueueState } from './summary-queue'
@@ -195,6 +211,36 @@ export interface CsdApi {
   askRun(previewId: string): Promise<AskHistoryItem>
   askCancel(previewId: string): Promise<void>
   askHistory(): Promise<AskHistoryItem[]>
+
+  // Ask across sessions: local answers, and content questions (claude -p with
+  // snippets I reviewed; off until turned on). A phone asks local ones itself
+  // and sends content ones to the PC for approval.
+  askSessionsStatus(): Promise<AskIndexStatus>
+  askSessions(
+    question: string,
+    opts?: { scope?: AskScope; content?: boolean; phoneRequest?: string }
+  ): Promise<AskResult>
+  askSessionsPrompt(previewId: string, keep: string[]): Promise<{ prompt: string; chars: number }>
+  askSessionsEstimate(previewId: string, keep: string[], model: AskModel): Promise<AskEstimate>
+  askSessionsSend(
+    previewId: string,
+    opts: { keep: string[]; model: AskModel; effort: AskEffort }
+  ): Promise<AskSessionsItem>
+  askSessionsCancel(previewId: string): Promise<void>
+  askSessionsHistory(): Promise<AskSessionsItem[]>
+  askSessionsDelete(id: string): Promise<boolean>
+  askSessionsRebuild(): Promise<void>
+  askSessionsDeleteIndex(): Promise<void>
+  askSessionsPending(): Promise<AskPhoneRequest[]>
+  askSessionsDecline(id: string): Promise<void>
+  askSessionsLocal(question: string): Promise<PhoneLocalAnswer>
+  /** Phone: send a content question to the PC for approval. */
+  askSessionsRequest(question: string, scope?: AskScope): Promise<AskPhoneRequest>
+  askSessionsRequestStatus(id: string): Promise<AskPhoneRequest | null>
+  onAskSessionsChanged(cb: () => void): () => void
+  onAskSessionsStatus(cb: (s: AskIndexStatus) => void): () => void
+  /** A phone's question came in (the PC window came forward). */
+  onAskSessionsPhoneRequest(cb: () => void): () => void
 
   // Session summaries (claude -p on the subscription; desktop only, except reading and editing)
   summaryState(): Promise<SummaryQueueState>

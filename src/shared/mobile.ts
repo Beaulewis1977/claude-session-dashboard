@@ -223,7 +223,7 @@ export type MobileEvent =
   | { type: 'ready' }
   | {
       type: 'event'
-      channel: 'sessions' | 'usage' | 'limits' | 'credits' | 'settings' | 'policy' | 'live'
+      channel: 'sessions' | 'usage' | 'limits' | 'credits' | 'settings' | 'policy' | 'live' | 'ask'
     }
   | { type: 'toast'; title: string; body?: string }
   | { type: 'revoked' }

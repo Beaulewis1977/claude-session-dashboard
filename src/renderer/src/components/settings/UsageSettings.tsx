@@ -238,7 +238,9 @@ export function UsageSettings({ update }: { update: (p: Partial<AppSettings>) =>
             day: 'numeric',
             year: 'numeric'
           })}
-          . Prices are never downloaded. Edit any value; models match by id prefix.
+          ; Claude Fable 5.2 and Mythos 5.2 from Anthropic&apos;s pricing page. Prices are never
+          downloaded. Edit any value; models match by id prefix (a newer version never takes an
+          older one&apos;s prices).
         </p>
         <div className="overflow-x-auto rounded-lg border border-border">
           <table className="w-full min-w-[620px] text-xs">

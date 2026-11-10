@@ -16,7 +16,14 @@ import {
   Undo2
 } from 'lucide-react'
 import type { ChatMessage, ContentBlock } from '@shared/types'
-import { blockId, blocksMatching, dayLabel, groupTurns, turnTime } from '@/lib/transcript'
+import {
+  blockId,
+  blocksMatching,
+  blocksOfMessages,
+  dayLabel,
+  groupTurns,
+  turnTime
+} from '@/lib/transcript'
 import { formatTime } from '@shared/format'
 import { cn } from '@/lib/utils'
 import { copyText } from '@/lib/actions'
@@ -472,7 +479,11 @@ function AssistantTurn({
                   blocks={groupBlocks}
                   onBranch={onBranch}
                 >
-                  <div className="group/msg relative w-fit max-w-full rounded-2xl rounded-tl-md border border-assistant-bubble-border bg-assistant-bubble px-4 py-2.5 shadow-xs touch:min-w-40">
+                  <div
+                    // Its message: a citation from Ask scrolls to this bubble, not the whole turn.
+                    data-msg-id={head.m.id}
+                    className="group/msg relative w-fit max-w-full rounded-2xl rounded-tl-md border border-assistant-bubble-border bg-assistant-bubble px-4 py-2.5 shadow-xs touch:min-w-40"
+                  >
                     <Markdown text={head.b.text} />
                     <MessageActions
                       id={at.id}
@@ -495,7 +506,11 @@ function AssistantTurn({
                 blocks={groupBlocks}
                 onBranch={onBranch}
               >
-                <div className="max-w-full overflow-clip rounded-xl border border-border bg-background/50 p-1">
+                <div
+                  // The messages its tool calls came from (a citation scrolls here).
+                  data-msg-id={[...new Set(g.map((x) => x.m.id))].join(' ')}
+                  className="max-w-full overflow-clip rounded-xl border border-border bg-background/50 p-1"
+                >
                   <MessageActions
                     id={at.id}
                     blocks={groupBlocks}
@@ -640,7 +655,8 @@ export const Transcript = memo(function Transcript({
   onBranch,
   marks,
   className,
-  agent = 'claude'
+  agent = 'claude',
+  openMessages
 }: {
   messages: ChatMessage[]
   cwd?: string
@@ -652,6 +668,8 @@ export const Transcript = memo(function Transcript({
   marks?: Map<string, BranchMark[]>
   /** Overrides for the outer padding (narrower on a phone). */
   className?: string
+  /** Messages an Ask citation opened: their tool calls and agent messages are shown open. */
+  openMessages?: readonly string[]
 }) {
   const turns = useMemo(() => groupTurns(messages), [messages])
   // Markers go after the turn that holds their message.
@@ -665,7 +683,11 @@ export const Transcript = memo(function Transcript({
     }
     return out
   }, [turns, marks])
-  const open = useMemo(() => blocksMatching(messages, findQuery), [messages, findQuery])
+  const open = useMemo(() => {
+    const found = blocksMatching(messages, findQuery)
+    if (!openMessages?.length) return found
+    return new Set([...found, ...blocksOfMessages(messages, openMessages)])
+  }, [messages, findQuery, openMessages])
   // Show a date separator before the first turn of each day.
   const dayStarts = useMemo(() => {
     const out = new Set<string>()

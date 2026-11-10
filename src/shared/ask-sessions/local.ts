@@ -284,9 +284,22 @@ export function routeQuestion(
     if (m) scopeSpans.push([m.index, m.index + m[0].length])
     return m
   }
-  if (at(grab(q, used, /\bclaude(?: code)? desktop(?: app)?\b|\bdesktop app\b/)))
-    lq.sources = ['desktop']
-  if (at(grab(q, used, /\bcowork\b/))) lq.sources = [...(lq.sources ?? []), 'cowork']
+  // Claude desktop / Cowork: named as a place ("in Cowork", "Claude desktop
+  // sessions") they're a filter either way; a bare mention ("the desktop app
+  // crashes") is a filter only for a local question, and a word to search for otherwise.
+  const placeSources: SourceLabel[] = []
+  const addSource = (m: RegExpExecArray, place: boolean): void => {
+    const name = m.slice(1).find(Boolean) ?? m[0]
+    const src: SourceLabel = /cowork/.test(name) ? 'cowork' : 'desktop'
+    if (!lq.sources?.includes(src)) lq.sources = [...(lq.sources ?? []), src]
+    if (place && !placeSources.includes(src)) placeSources.push(src)
+  }
+  const SOURCE_PLACE =
+    /\b(?:in|from|on|with|using)\s+(?:the\s+|my\s+)?(claude(?: code)? desktop(?: app)?|desktop app|cowork)\b|\b(claude(?: code)? desktop|cowork)\s+(?:sessions?|conversations?|chats?|tasks?)\b/
+  for (let m = at(grab(q, used, SOURCE_PLACE)); m; m = at(grab(q, used, SOURCE_PLACE)))
+    addSource(m, true)
+  const SOURCE_BARE = /\b(claude(?: code)? desktop(?: app)?|desktop app|cowork)\b/
+  for (let m = grab(q, used, SOURCE_BARE); m; m = grab(q, used, SOURCE_BARE)) addSource(m, false)
   if (grab(q, used, /\bvs ?code\b/)) lq.sources = [...(lq.sources ?? []), 'vscode', 'codex-vscode']
   if (grab(q, used, /\bjetbrains\b/)) lq.sources = [...(lq.sources ?? []), 'jetbrains']
   const prov = new Set<ProviderId>()
@@ -459,8 +472,7 @@ export function routeQuestion(
   }
   if (providerExplicit && prov.size) scope.providers = [...prov]
   if (projects.length) scope.projects = projects
-  if (lq.sources?.some((s) => s === 'desktop' || s === 'cowork'))
-    scope.sources = lq.sources.filter((s) => s === 'desktop' || s === 'cowork')
+  if (placeSources.length) scope.sources = placeSources
   // What the index looks for: the question without its scope's words (a
   // filter that stayed out of the scope, like a bare "WSL", stays a search word).
   let searchText = q
@@ -543,24 +555,30 @@ interface Ctx {
   byKey: Map<string, LocalSession>
 }
 
-/** The sessions the filters allow (before dates and models). */
-function sessionPool(c: Ctx): { pool: LocalSession[]; notes: string[] } {
+/**
+ * The sessions the filters allow (before dates and models). `all`: for usage
+ * totals, which count every session's use, so hidden sessions and subagent
+ * threads stay in unless the question asks for them.
+ */
+function sessionPool(c: Ctx, all = false): { pool: LocalSession[]; notes: string[] } {
   const { q, d } = c
   const notes: string[] = []
   let left = d.sessions.filter((s) => s.source !== 'ask-claude')
   const subs = left.filter((s) => s.subagent).length
-  if (!q.subagents) {
+  if (q.subagents) left = left.filter((s) => s.subagent)
+  else if (!all) {
     left = left.filter((s) => !s.subagent)
     if (subs)
       notes.push(
         `${plural(subs, 'Codex subagent thread')} not counted (ask about subagents to include them).`
       )
-  } else left = left.filter((s) => s.subagent)
+  }
   const hid = left.filter((s) => s.hidden).length
-  if (!q.hidden) {
+  if (q.hidden) left = left.filter((s) => s.hidden)
+  else if (!all) {
     left = left.filter((s) => !s.hidden)
     if (hid) notes.push(`${plural(hid, 'hidden session')} not counted.`)
-  } else left = left.filter((s) => s.hidden)
+  }
   if (q.archived) left = left.filter((s) => s.availability === 'archived-only')
   if (q.providers?.length) left = left.filter((s) => q.providers!.includes(s.provider))
   if (q.sources?.length) left = left.filter((s) => q.sources!.includes(s.source))
@@ -598,6 +616,59 @@ function sessionPool(c: Ctx): { pool: LocalSession[]; notes: string[] } {
     left = left.filter((s) => keys.has(s.key))
   }
   return { pool: left, notes }
+}
+
+/** The question names sessions (a file, commit, PR, tag, flag, source, environment or project). */
+function sessionFiltered(q: LocalQuery): boolean {
+  return !!(
+    q.files?.length ||
+    q.commits?.length ||
+    q.pr !== undefined ||
+    q.tags?.length ||
+    q.named ||
+    q.pinned ||
+    q.hidden ||
+    q.archived ||
+    q.subagents ||
+    q.sources?.length ||
+    q.envs?.length ||
+    q.distro ||
+    q.projects?.length
+  )
+}
+
+/** The session filters in words ("touched bridge.ts, hidden"). */
+function sessionFilterWords(q: LocalQuery): string {
+  return [
+    filterWords({ ...q, providers: undefined }),
+    q.files?.length ? `touched ${q.files.join(', ')}` : '',
+    q.commits?.length ? `linked to commit ${q.commits.join(', ')}` : '',
+    q.pr !== undefined ? `linked to PR #${q.pr}` : '',
+    q.named ? 'named' : '',
+    q.pinned ? 'pinned' : '',
+    q.hidden ? 'hidden' : '',
+    q.archived ? 'archived only' : '',
+    q.subagents ? 'subagent threads' : ''
+  ]
+    .filter(Boolean)
+    .join(', ')
+}
+
+/**
+ * Usage totals for a question that names sessions: only those sessions' use
+ * counts. Undefined keys: no session filter, everything counts.
+ */
+function usageKeys(c: Ctx, hits = false): { keys?: Set<string>; steps: string[] } {
+  if (!sessionFiltered(c.q)) return { steps: [] }
+  const { pool } = sessionPool(c, true)
+  return {
+    keys: new Set(pool.map((s) => s.key)),
+    steps: [
+      hits
+        ? `Kept only the hits in the ${plural(pool.length, 'session')} matching the filters (${sessionFilterWords(c.q)}).`
+        : `Kept only the use of the ${plural(pool.length, 'session')} matching the filters (${sessionFilterWords(c.q)}); the app's own summary and Ask runs aren't sessions, so they're left out.`
+    ]
+  }
 }
 
 function inRange(ts: number, r?: DateRange): boolean {
@@ -707,21 +778,14 @@ function sessionsAnswer(c: Ctx): LocalAnswer {
 
 function costAnswer(c: Ctx, tokensOnly: boolean): LocalAnswer {
   const { q, d } = c
-  const recs = d.records.filter((r) => {
-    if (!inRange(r.ts, q.range) || !recordMatches(r, q)) return false
-    if (q.providers?.length && !q.providers.includes(providerOfRecord(r))) return false
-    const s = c.byKey.get(r.key)
-    if (q.projects?.length && !q.projects.some((p) => p.toLowerCase() === s?.project.toLowerCase()))
-      return false
-    if (q.envs?.length && !q.envs.includes(r.env)) return false
-    if (q.sources?.length && (!s || !q.sources.includes(s.source))) return false
-    if (
-      q.tags?.length &&
-      (!s || !s.tags.some((t) => q.tags!.some((x) => x.toLowerCase() === t.toLowerCase())))
-    )
-      return false
-    return true
-  })
+  const only = usageKeys(c)
+  const recs = d.records.filter(
+    (r) =>
+      inRange(r.ts, q.range) &&
+      recordMatches(r, q) &&
+      (!q.providers?.length || q.providers.includes(providerOfRecord(r))) &&
+      (!only.keys || only.keys.has(r.key))
+  )
   const group = q.groupBy ?? 'model'
   const rows = new Map<string, { responses: number; tokens: number; cost: number }>()
   let total = { responses: 0, tokens: 0, cost: 0 }
@@ -762,6 +826,7 @@ function costAnswer(c: Ctx, tokensOnly: boolean): LocalAnswer {
   const steps = [
     `Added up the usage records on this PC${q.range ? ` from ${rangeLabel(q.range.fromKey, q.range.toKey)}` : ''}: one per response, deduplicated like ccusage, ${plural(recs.length, 'record')}${q.models?.length ? ` from models containing ${q.models.map((m) => `“${m}”`).join(' or ')}` : ''}.`,
     `Priced each response with ${providers.includes('codex') && providers.includes('claude') ? 'Settings → Prices (Claude) and Settings → Codex prices' : providers.includes('codex') ? 'Settings → Codex prices' : 'Settings → Prices'} (API list prices).`,
+    ...only.steps,
     ...(providers.includes('codex')
       ? [
           "Your ChatGPT plan isn't billed per token: this is what the same use would cost at API prices."
@@ -793,9 +858,11 @@ function costAnswer(c: Ctx, tokensOnly: boolean): LocalAnswer {
 
 function limitHitsAnswer(c: Ctx): LocalAnswer {
   const { q, d } = c
+  const only = usageKeys(c, true)
   const want = (h: LimitHit): boolean =>
     inRange(h.ts, q.range) &&
-    (!q.window || (q.window === '5h' ? h.kind === 'five_hour' : h.kind === 'weekly'))
+    (!q.window || (q.window === '5h' ? h.kind === 'five_hour' : h.kind === 'weekly')) &&
+    (!only.keys || only.keys.has(h.key))
   const providers = q.providers?.length ? q.providers : (['claude', 'codex'] as ProviderId[])
   const hits = [
     ...(providers.includes('claude')
@@ -809,10 +876,11 @@ function limitHitsAnswer(c: Ctx): LocalAnswer {
   const when = q.range ? ` ${q.range.label.replace(/ \(.*\)$/, '')}` : ''
   return {
     headline: `You hit a ${kind}limit **${plural(hits.length, 'time')}**${when}${hits[0] ? `, last on ${dt(hits[0].h.ts)}` : ''}.`,
-    interpretation: `${kind ? `${kind[0].toUpperCase()}${kind.slice(1)}` : ''}limit hits${q.providers?.length ? ` (${q.providers.map((p) => PROVIDER_NAME[p]).join(', ')})` : ''}${q.range ? `, ${q.range.label}` : ''}`,
+    interpretation: `${kind ? `${kind[0].toUpperCase()}${kind.slice(1)}` : ''}limit hits${q.providers?.length ? ` (${q.providers.map((p) => PROVIDER_NAME[p]).join(', ')})` : ''}${only.keys ? ` in sessions ${sessionFilterWords(q)}` : ''}${q.range ? `, ${q.range.label}` : ''}`,
     steps: [
       'Claude Code: each "limit reached" message in the session files is one hit.',
       'Codex: each rate-limit reading where Codex said a limit was reached.',
+      ...only.steps,
       'Only what this PC saw: a limit reached on claude.ai or another computer is not in here.'
     ],
     table: {
@@ -870,43 +938,100 @@ function limitsNowAnswer(c: Ctx): LocalAnswer {
 function plansAnswer(c: Ctx): LocalAnswer {
   const { q, d } = c
   const providers = q.providers?.length ? q.providers : (['claude', 'codex'] as ProviderId[])
+  const r = q.range
   const rows: string[][] = []
   const bits: string[] = []
+  const steps: string[] = []
+  /** "Pro → Max 5x": the plan in force at the start, then each change during the range. */
+  const sequence = (start: string | undefined, during: string[]): string => {
+    const seq: string[] = []
+    for (const p of [start ?? 'not recorded', ...during]) if (seq.at(-1) !== p) seq.push(p)
+    return seq.join(' → ')
+  }
   if (providers.includes('claude')) {
-    bits.push(`Claude: **${d.plans.claude.current}**`)
-    for (const h of d.plans.claude.history)
-      rows.push(['Claude', h.from === '2000-01-01' ? 'before' : dayLabel(h.from), h.plan])
+    const history = [...d.plans.claude.history].sort((a, b) => a.from.localeCompare(b.from))
+    const when = (from: string): string => (from === '2000-01-01' ? 'before' : dayLabel(from))
+    if (!r) {
+      bits.push(`Claude: **${d.plans.claude.current}**`)
+      for (const h of history) rows.push(['Claude', when(h.from), h.plan])
+    } else {
+      // No recorded change at all: the plan has always been the current one.
+      const start = history.length
+        ? history.filter((h) => h.from <= r.fromKey).at(-1)
+        : { from: '2000-01-01', plan: d.plans.claude.current }
+      const during = history.filter((h) => h.from > r.fromKey && h.from < r.toKey)
+      bits.push(
+        `Claude: **${sequence(
+          start?.plan,
+          during.map((h) => h.plan)
+        )}**`
+      )
+      if (start)
+        rows.push([
+          'Claude',
+          `${when(start.from)} (in force on ${dayLabel(r.fromKey)})`,
+          start.plan
+        ])
+      for (const h of during) rows.push(['Claude', when(h.from), h.plan])
+    }
   }
   if (providers.includes('codex') && d.plans.codex) {
-    bits.push(`ChatGPT (Codex): **${d.plans.codex.current}**`)
-    for (const ch of d.plans.codex.changes) rows.push(['ChatGPT', dt(ch.at), ch.plan])
+    const changes = [...d.plans.codex.changes].sort((a, b) => a.at - b.at)
+    if (!r) {
+      bits.push(`ChatGPT (Codex): **${d.plans.codex.current}**`)
+      for (const ch of changes) rows.push(['ChatGPT', dt(ch.at), ch.plan])
+    } else {
+      const start = changes.length
+        ? changes.filter((ch) => ch.at <= r.from).at(-1)
+        : { at: 0, plan: d.plans.codex.current }
+      const during = changes.filter((ch) => ch.at > r.from && ch.at < r.to)
+      bits.push(
+        `ChatGPT (Codex): **${sequence(
+          start?.plan,
+          during.map((ch) => ch.plan)
+        )}**`
+      )
+      if (start)
+        rows.push([
+          'ChatGPT',
+          `${start.at ? dt(start.at) : 'before'} (in force on ${dayLabel(r.fromKey)})`,
+          start.plan
+        ])
+      for (const ch of during) rows.push(['ChatGPT', dt(ch.at), ch.plan])
+    }
   }
-  const inRangeRows = q.range
-    ? rows.filter((r) => {
-        const t = Date.parse(r[1])
-        return Number.isNaN(t) || inRange(t, q.range)
-      })
-    : rows
+  if (r) {
+    steps.push(
+      `For ${rangeLabel(r.fromKey, r.toKey)}: the plan in force on its first day (the latest change on or before it), then every change during those dates.`
+    )
+    if (bits.some((b) => b.includes('not recorded')))
+      steps.push('“Not recorded”: no plan change was recorded before those dates.')
+  }
   return {
-    headline: bits.length ? `${bits.join(' · ')}.` : 'No plan is set.',
-    interpretation: 'Subscription plans and when they changed',
+    headline: bits.length
+      ? `${r ? `${rangeLabel(r.fromKey, r.toKey)}: ` : ''}${bits.join(' · ')}.`
+      : 'No plan is set.',
+    interpretation: r
+      ? `Subscription plans in force, ${r.label}`
+      : 'Subscription plans and when they changed',
     steps: [
       'Claude: the plan in Settings → Usage, and the changes recorded when it was changed there.',
-      "ChatGPT (Codex): the plan Settings shows for Codex, and the plan_type changes in Codex's rate-limit readings."
+      "ChatGPT (Codex): the plan Settings shows for Codex, and the plan_type changes in Codex's rate-limit readings.",
+      ...steps
     ],
-    table: { columns: ['Account', 'From', 'Plan'], rows: inRangeRows }
+    table: { columns: ['Account', 'From', 'Plan'], rows }
   }
 }
 
 function modelsAnswer(c: Ctx, first: boolean): LocalAnswer {
   const { q, d } = c
+  const only = usageKeys(c)
   const recs = d.records.filter(
     (r) =>
       (first || inRange(r.ts, q.range)) &&
       recordMatches(r, q) &&
       (!q.providers?.length || q.providers.includes(providerOfRecord(r))) &&
-      (!q.projects?.length ||
-        q.projects.some((p) => p.toLowerCase() === c.byKey.get(r.key)?.project.toLowerCase()))
+      (!only.keys || only.keys.has(r.key))
   )
   const by = new Map<
     string,
@@ -946,7 +1071,10 @@ function modelsAnswer(c: Ctx, first: boolean): LocalAnswer {
         ? `You ${q.which === 'last' ? 'last' : 'first'} used ${q.models?.join(' or ') ?? 'it'} on **${dt(ts)}**${s ? ` (in “${s.title}”)` : ''}.`
         : `No response from ${q.models?.join(' or ') ?? 'that model'} is in your usage records.`,
       interpretation: `The ${q.which === 'last' ? 'latest' : 'earliest'} response from a model containing ${q.models?.map((m) => `“${m}”`).join(' or ')}`,
-      steps: ['Looked through every usage record on this PC (one per response) for that model.'],
+      steps: [
+        'Looked through every usage record on this PC (one per response) for that model.',
+        ...only.steps
+      ],
       table: {
         columns: ['Model', 'First', 'Last', 'Responses'],
         rows: sorted.map(([m, v]) => [modelLabel(m), dt(v.first), dt(v.last), formatInt(v.n)])
@@ -958,7 +1086,8 @@ function modelsAnswer(c: Ctx, first: boolean): LocalAnswer {
     headline: `**${plural(sorted.length, 'model')}**${q.range ? ` ${q.range.label.replace(/ \(.*\)$/, '')}` : ''}${sorted[0] ? `, mostly ${modelLabel(sorted[0][0])}` : ''}.`,
     interpretation: `Models that answered${filterWords(q) ? ` ${filterWords(q)}` : ''}${q.range ? `, ${q.range.label}` : ''}`,
     steps: [
-      'Counted the usage records on this PC (one per response) by the model that wrote them.'
+      'Counted the usage records on this PC (one per response) by the model that wrote them.',
+      ...only.steps
     ],
     table: {
       columns: ['Model', 'Responses', 'Tokens', 'First', 'Last'],
@@ -1023,7 +1152,8 @@ function prsAnswer(c: Ctx): LocalAnswer {
   for (const p of d.git.prs()) {
     const s = allowed.get(p.key)
     if (!s) continue
-    const t = p.at ?? s.lastActivityAt ?? 0
+    // Without a time of its own: when the session started (it doesn't move as the session goes on).
+    const t = p.at ?? s.startedAt ?? s.lastActivityAt ?? 0
     if (!inRange(t, q.range)) continue
     const k = `${p.url}`
     if (!byNum.has(k)) byNum.set(k, p)
@@ -1034,7 +1164,7 @@ function prsAnswer(c: Ctx): LocalAnswer {
     interpretation: `Pull requests linked to your sessions${q.range ? `, ${q.range.label}` : ''}`,
     steps: [
       'Git links: PRs a session opened (its own `gh pr create` output), PRs named in merge or squash commits, and GitHub CLI lookups if you turned them on.',
-      'Dated by when the session showed the PR, else by its last activity.'
+      "Dated by when the session showed the PR, else by its merge commit's time, else by when the session started."
     ],
     table: {
       columns: ['PR', 'Title', 'State', 'Session'],
@@ -1096,13 +1226,11 @@ function projectDatesAnswer(c: Ctx): LocalAnswer {
     steps: [
       'The session list on this PC, by first message (start) or last message (last activity).'
     ],
-    sessions: sorted
-      .slice(0, 5)
-      .map((x) => ({
-        key: x.key,
-        title: x.title,
-        detail: `${dt(x.startedAt)} – ${dt(x.lastActivityAt)}`
-      }))
+    sessions: sorted.slice(0, 5).map((x) => ({
+      key: x.key,
+      title: x.title,
+      detail: `${dt(x.startedAt)} – ${dt(x.lastActivityAt)}`
+    }))
   }
 }
 

@@ -42,14 +42,16 @@ const ABBREV = /\b(?:e\.g|i\.e|etc|vs|approx|incl|cf|no|fig|ca)\.$/i
 function sentences(line: string): string[] {
   const out: string[] = []
   let start = 0
-  const re = /([.!?])(\s+)(?=[A-Z0-9"'`*_([])/g
+  // A full stop, ! or ? and a space, whatever comes next ("Done. npm passed"
+  // is two sentences); a CJK, Arabic or Devanagari sentence end needs no space.
+  const re = /([.!?])(\s+)|([。！？؟।])(\s*)/g
   for (let m = re.exec(line); m; m = re.exec(line)) {
     const end = m.index + 1
     const piece = line.slice(start, end)
-    // "e.g. Foo" or "v1. Next": not a sentence end.
-    if (ABBREV.test(piece) || /\b[A-Z]\.$/.test(piece)) continue
+    // "e.g. foo" or "J. Smith": not a sentence end.
+    if (m[1] && (ABBREV.test(piece) || /(?:^|[^\p{L}])\p{Lu}\.$/u.test(piece))) continue
     out.push(piece)
-    start = end + m[2].length
+    start = end + (m[2] ?? m[4] ?? '').length
   }
   out.push(line.slice(start))
   // Citations written after the full stop ("Done. [S2] Next…") belong to the sentence before.
@@ -72,6 +74,11 @@ function strip(text: string): string {
     .replace(/\s+([.,;:!?])/g, '$1')
     .replace(/\s{2,}/g, ' ')
     .trim()
+}
+
+/** A table's |---|---| line. */
+function isTableSep(line: string): boolean {
+  return /^\s*\|?\s*:?-{3,}:?\s*(?:\|\s*:?-{3,}:?\s*)*\|?\s*$/.test(line)
 }
 
 interface Line {
@@ -97,7 +104,9 @@ export function checkCitations(raw: string, valid: ReadonlySet<string>): Checked
   }
   const lines: Line[] = []
   let inCode = false
-  for (const rawLine of text.split('\n')) {
+  const rawLines = text.split('\n')
+  for (let i = 0; i < rawLines.length; i++) {
+    const rawLine = rawLines[i]
     if (/^\s*```/.test(rawLine)) {
       inCode = !inCode
       lines.push({ raw: rawLine, structural: 'code' })
@@ -114,7 +123,7 @@ export function checkCitations(raw: string, valid: ReadonlySet<string>): Checked
     // A bare NOT_FOUND line among other text says nothing.
     if (notFoundOnly.test(rawLine)) continue
     const heading = /^\s*#{1,6}\s/.test(rawLine)
-    const tableSep = /^\s*\|?\s*:?-{3,}:?\s*(?:\|\s*:?-{3,}:?\s*)*\|?\s*$/.test(rawLine)
+    const tableSep = isTableSep(rawLine)
     const hasCite = /\[S\d+\]/i.test(rawLine)
     if (tableSep) {
       lines.push({ raw: rawLine, structural: 'table-head' })
@@ -136,8 +145,8 @@ export function checkCitations(raw: string, valid: ReadonlySet<string>): Checked
       if (ok.length) {
         ok.forEach(cite)
         kept.push(body.replace(MARK, (all, id: string) => (valid.has(id.toUpperCase()) ? all : '')))
-      } else if (!lines.some((l) => l.kept && l.raw.trim().startsWith('|'))) {
-        // The header row (before any kept row): structural.
+      } else if (i + 1 < rawLines.length && isTableSep(rawLines[i + 1])) {
+        // The header row (the one right above the |---| line): structural.
         lines.push({ raw: rawLine, structural: 'table-head' })
         continue
       } else dropped.push(strip(body))

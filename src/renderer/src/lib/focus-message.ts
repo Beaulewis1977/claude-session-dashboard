@@ -2,7 +2,7 @@
 // its commit): once that part of the session is on screen, scroll to it and
 // flash it. Desktop viewer and phone session screen alike.
 
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { useApp } from './store'
 
@@ -11,11 +11,32 @@ const MAX_FRAMES = 300
 
 function target(ids: string[], sha?: string): Element | null {
   if (sha) return document.querySelector(`[data-sha="${CSS.escape(sha)}"]`)
-  for (const id of ids) {
-    const el = document.querySelector(`[data-msg-ids~="${CSS.escape(id)}"]`)
-    if (el) return el
-  }
+  // The message's own bubble or tool group first, else the turn that holds it.
+  for (const attr of ['data-msg-id', 'data-msg-ids'])
+    for (const id of ids) {
+      const el = document.querySelector(`[${attr}~="${CSS.escape(id)}"]`)
+      if (el) return el
+    }
   return null
+}
+
+/**
+ * The messages the latest Ask citation into this session pointed at, kept
+ * after the scroll (so their tool calls stay open). Adjusted during render
+ * when a new citation arrives; another session's citation doesn't count.
+ */
+export function useCitedMessages(key: string): readonly string[] | undefined {
+  const focus = useApp((s) => s.focusMessage)
+  const [cited, setCited] = useState<{ key: string; nonce: number; ids: string[] } | null>(null)
+  if (
+    focus &&
+    focus.key === key &&
+    !focus.sha &&
+    focus.ids.length &&
+    (cited?.key !== key || cited.nonce !== focus.nonce)
+  )
+    setCited({ key, nonce: focus.nonce, ids: focus.ids })
+  return cited?.key === key ? cited.ids : undefined
 }
 
 export function useFocusMessage(

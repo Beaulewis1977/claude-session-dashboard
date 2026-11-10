@@ -39,7 +39,8 @@ export interface PrintRequest {
 }
 
 export type PrintOutcome =
-  | { kind: 'cancelled'; where: string }
+  /** `started`: the prompt process was already running (the prompt may have reached Claude). */
+  | { kind: 'cancelled'; where: string; started?: boolean }
   /** Nothing was sent: no CLI, or not the subscription. */
   | { kind: 'refused'; where: string; error: string; noCli?: boolean }
   | { kind: 'done'; where: string; cli: AskCli; result: RunResult }
@@ -146,7 +147,7 @@ export class PrintRunner {
     })
     req.handle = handle
     const done = await this.until(req, handle.done)
-    if (done === 'cancelled') return { kind: 'cancelled', where: cli.label }
+    if (done === 'cancelled') return { kind: 'cancelled', where: cli.label, started: true }
     return { kind: 'done', where: cli.label, cli, result: done }
   }
 }

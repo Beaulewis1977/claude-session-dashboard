@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { buildMessages, parseJsonl } from '@shared/jsonl'
-import { blocksMatching, groupTurns, truncateText } from '@/lib/transcript'
+import { blocksMatching, blocksOfMessages, groupTurns, truncateText } from '@/lib/transcript'
+import type { ChatMessage } from '@shared/types'
 import { SESSIONS, read } from './helpers'
 
 describe('transcript helpers', () => {
@@ -25,5 +26,40 @@ describe('transcript helpers', () => {
     expect(t.text.split('\n')).toHaveLength(24)
     expect(truncateText('x'.repeat(10_000)).text).toHaveLength(4000)
     expect(truncateText('short').truncated).toBe(false)
+  })
+})
+
+describe('opening what an Ask citation points at (review fix)', () => {
+  const msgs: ChatMessage[] = [
+    {
+      id: 'a1',
+      role: 'assistant',
+      kind: 'response',
+      blocks: [
+        { type: 'thinking', text: 'secret thoughts' },
+        { type: 'text', text: 'Running it' },
+        {
+          type: 'tool_use',
+          id: 'tu1',
+          name: 'Bash',
+          label: 'npm test',
+          input: { command: 'npm test' }
+        }
+      ]
+    },
+    {
+      id: 'a2',
+      role: 'assistant',
+      kind: 'response',
+      blocks: [
+        { type: 'tool_use', id: 'tu2', name: 'Read', label: 'a.ts', input: { file_path: 'a.ts' } }
+      ]
+    }
+  ]
+
+  it("opens only the cited messages' tool calls, never thinking", () => {
+    expect([...blocksOfMessages(msgs, ['a1'])]).toEqual(['tu1'])
+    expect([...blocksOfMessages(msgs, ['a1', 'a2'])].sort()).toEqual(['tu1', 'tu2'])
+    expect(blocksOfMessages(msgs, []).size).toBe(0)
   })
 })

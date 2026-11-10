@@ -349,6 +349,13 @@ describe('only session files are opened', () => {
         '\\\\wsl.localhost\\Ubuntu\\home\\beau\\.codex\\sessions\\2026\\10\\01\\rollout-2026-10-01T10-00-00-01a0.jsonl.zst'
       )
     ).not.toThrow()
+    // Any case, as the session scan accepts it on Windows; credential shapes still refused.
+    expect(() => assertSessionFile('C:\\Users\\beau\\.claude\\projects\\p\\S.JSONL')).not.toThrow()
+    expect(() =>
+      assertSessionFile('C:\\Users\\beau\\.codex\\sessions\\rollout-2026-x.Jsonl.ZST')
+    ).not.toThrow()
+    expect(() => assertSessionFile('C:\\Users\\beau\\.claude\\TOKENS.JSONL')).toThrow()
+    expect(() => assertSessionFile('C:\\Users\\beau\\.codex\\AUTH.JSON')).toThrow()
     const msgs = await readSessionMessages(
       { path: 'C:\\p\\s.jsonl', provider: 'claude' },
       { readText: async () => session([['hello', 'world']]) }

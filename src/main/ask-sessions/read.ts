@@ -11,8 +11,11 @@ import type { ChatMessage } from '@shared/types'
 import { buildCodexMessages } from '../providers/codex/parse'
 import { isCredentialPath, readCodexText } from '../providers/codex/read'
 
-/** A session file's name: Claude Code `<uuid>.jsonl`, Codex `rollout-….jsonl[.zst]`, an archive copy. */
-const SESSION_FILE = /^[A-Za-z0-9][A-Za-z0-9_.-]*\.jsonl(?:\.zst)?$/
+/**
+ * A session file's name: Claude Code `<uuid>.jsonl`, Codex `rollout-….jsonl[.zst]`, an archive copy.
+ * Any case (`.JSONL`), as the session scan accepts it on Windows.
+ */
+const SESSION_FILE = /^[A-Za-z0-9][A-Za-z0-9_.-]*\.jsonl(?:\.zst)?$/i
 
 export class NotASessionFile extends Error {
   constructor() {

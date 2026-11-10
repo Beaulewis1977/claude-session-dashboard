@@ -380,3 +380,91 @@ describe('local answers', () => {
       expect(answer(q).steps.length).toBeGreaterThan(0)
   })
 })
+
+describe('review fixes (PR #50)', () => {
+  it('usage totals count only the sessions the question names', () => {
+    // bridge.ts was touched by w:a (1 response) and x:cx (2 responses).
+    const t = answer('how many tokens in sessions that touched bridge.ts')
+    expect(t.table?.rows.at(-1)?.slice(0, 2)).toEqual(['Total', '3'])
+    expect(t.steps.join(' ')).toMatch(/Kept only the use of the 2 sessions/)
+    // Hidden sessions (only those), though usage totals otherwise count them.
+    const h = answer('how many tokens in hidden sessions')
+    expect(h.table?.rows.at(-1)?.slice(0, 2)).toEqual(['Total', '1'])
+    expect(answer('how many tokens').table?.rows.at(-1)?.[1]).toBe('7')
+    // Models on Windows: not the WSL Codex session's.
+    const m = answer('which models did I use on windows')
+    expect(m.table?.rows.map((r) => r[0])).not.toContain('GPT-5.5 Codex')
+    expect(m.table?.rows.map((r) => r[0])).toEqual(
+      expect.arrayContaining(['Opus 5.5', 'Sonnet 5.5'])
+    )
+    // A project's limit hits: not another project's.
+    const d = data({
+      codexLimitHits: [
+        { id: 'c1', ts: day('2026-11-02'), key: 'x:cx', text: 'limit', kind: 'five_hour' }
+      ]
+    })
+    expect(answer('how often did I hit my limit', d).headline).toContain('**3 times**')
+    const p = answer('how often did I hit my limit in orders-api', d)
+    expect(p.headline).toContain('**1 time**')
+    expect(p.steps.join(' ')).toMatch(/Kept only the hits in the 1 session/)
+  })
+
+  it('a past range reports the plan in force then, and the changes during it', () => {
+    const d = data({
+      plans: {
+        claude: {
+          current: 'Max 5x',
+          history: [
+            { from: '2026-10-15', plan: 'Max 5x' },
+            { from: '2000-01-01', plan: 'Pro' }
+          ]
+        },
+        codex: { current: 'Pro', changes: [{ at: day('2026-09-01'), plan: 'Plus' }] }
+      }
+    })
+    const oct = answer('what plan was I on in October', d)
+    expect(oct.headline).toBe(
+      'Oct 1 – Oct 31, 2026: Claude: **Pro → Max 5x** · ChatGPT (Codex): **Plus**.'
+    )
+    expect(oct.interpretation).toBe(
+      'Subscription plans in force, October 2026 (Oct 1 – Oct 31, 2026)'
+    )
+    const sep = answer('what plan was I on in September', d)
+    expect(sep.headline).toContain('Claude: **Pro**')
+    // No range: today's plans.
+    expect(answer('what plan am I on', d).headline).toBe(
+      'Claude: **Max 5x** · ChatGPT (Codex): **Pro**.'
+    )
+  })
+
+  it('a PR without a time of its own stays with the day its session started', () => {
+    const resumed = SESSIONS.map((s) =>
+      s.key === 'w:c' ? { ...s, lastActivityAt: day('2026-11-04') } : s
+    )
+    const d = data({
+      sessions: resumed,
+      git: {
+        ...data().git,
+        prs: () => [{ key: 'w:c', number: 20, url: 'https://github.com/o/r/pull/20' }]
+      }
+    })
+    expect(answer('which pull requests did I open in October', d).table?.rows[0]?.[0]).toBe('#20')
+    expect(answer('which pull requests did I open last week', d).table?.rows).toEqual([])
+  })
+
+  it('a bare "desktop app" or "Cowork" in a content question is a word to search for', () => {
+    const a = route('why does the desktop app crash on startup')
+    expect(a.mode).toBe('content')
+    if (a.mode !== 'content') return
+    expect(a.scope.sources).toBeUndefined()
+    expect(a.searchText).toContain('desktop app')
+    const b = route('what did I fix in Cowork about the login page')
+    expect(b.mode === 'content' && b.scope.sources).toEqual(['cowork'])
+    expect(b.mode === 'content' && b.searchText).not.toContain('cowork')
+    const c = route('which Claude desktop sessions mention the redirect loop')
+    expect(c.mode === 'content' && c.scope.sources).toEqual(['desktop'])
+    // A local question still takes a bare mention as its filter.
+    const l = route('how many cowork sessions last week')
+    expect(l.mode === 'local' && l.query.sources).toEqual(['cowork'])
+  })
+})

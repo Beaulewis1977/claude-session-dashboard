@@ -18,7 +18,11 @@ import { DEFAULT_PRICES } from '@shared/usage/pricing'
 import type { LimitsState } from '@shared/usage/limits'
 import type { UsageRecord } from '@shared/usage/types'
 import { InProcessHost } from '../src/main/ask-sessions/host'
-import { AskSessionsService, createAskSessionsStore } from '../src/main/ask-sessions/service'
+import {
+  AskSessionsService,
+  createAskSessionsStore,
+  type AskGit
+} from '../src/main/ask-sessions/service'
 import { JsonStore } from '../src/main/core/json-store'
 import { fixturesLayout, prepareFixtures, seedFixtureData } from '../src/main/fixtures'
 import { DeviceRegistry, type MobileFile } from '../src/main/mobile/devices'
@@ -79,7 +83,15 @@ function fakeRunner(answer: () => string) {
 }
 
 async function setup(
-  over: { settings?: Partial<AskSessionsSettings>; answer?: () => string } = {}
+  over: {
+    settings?: Partial<AskSessionsSettings>
+    answer?: () => string
+    /** No Claude Code found, or the subscription check refused. */
+    cli?: 'missing' | 'refused'
+    git?: AskGit
+    /** Each new index host (n counts from 1), e.g. to make the first one fail. */
+    onHost?: (h: InProcessHost, n: number) => void
+  } = {}
 ) {
   await cp(FIXTURES, join(root, 'fixtures'), { recursive: true })
   await prepareFixtures(root)
@@ -105,8 +117,14 @@ async function setup(
         'It was the cookie path [S1]. Also a guess with no source. And a wrong id [S99].\n- Moved the cookie [S1]')
   )
   const runner = new PrintRunner({
-    findCli: async () => ({ kind: 'native', path: 'C:\\claude\\claude.exe', label: 'Windows' }),
-    checkAuth: async () => ({ ok: true, method: 'claude.ai' }),
+    findCli: async () =>
+      over.cli === 'missing'
+        ? undefined
+        : { kind: 'native', path: 'C:\\claude\\claude.exe', label: 'Windows' },
+    checkAuth: async () =>
+      over.cli === 'refused'
+        ? { ok: false, reason: 'Not signed in with a Claude subscription.' }
+        : { ok: true, method: 'claude.ai' },
     runner: fake.runner
   })
   let ask: AskSessionsSettings = {
@@ -119,12 +137,14 @@ async function setup(
   let remembered: unknown
   let revealed = 0
   let host: InProcessHost | undefined
+  let hosts = 0
   const store = createAskSessionsStore(paths.dataDir)
   await store.load()
   const service = new AskSessionsService({
     dataDir: paths.dataDir,
     store,
     sessions,
+    ...(over.git ? { git: over.git } : {}),
     usage: {
       recordsOf: () => [],
       limitHits: () => [],
@@ -145,12 +165,15 @@ async function setup(
     remember: (c) => (remembered = c),
     fiveHourPct: async () => ({ pct: 12 }),
     runner,
-    createHost: () =>
-      (host = new InProcessHost({
+    createHost: () => {
+      host = new InProcessHost({
         dir: join(paths.dataDir, 'cache', 'ask'),
         dataDir: paths.dataDir,
         minReindexMs: 0
-      })),
+      })
+      over.onHost?.(host, ++hosts)
+      return host
+    },
     reveal: () => revealed++,
     timeZone: () => 'UTC'
   })
@@ -166,6 +189,8 @@ async function setup(
     recorded,
     remembered: () => remembered,
     revealed: () => revealed,
+    hosts: () => hosts,
+    host: () => host,
     setAsk: (p: Partial<AskSessionsSettings>) => {
       ask = { ...ask, ...p }
       service.settingsChanged()
@@ -451,3 +476,116 @@ describe('/api/ask on the companion server', () => {
     }
   })
 })
+
+describe('review fixes (PR #50)', () => {
+  it('an attempt that never reached Claude does not say snippets were sent', async () => {
+    for (const cli of ['missing', 'refused'] as const) {
+      const { service, fake } = await setup({ cli })
+      const r = await service.ask('why did Safari users get stuck in a redirect loop?')
+      if (r.mode !== 'content' || !r.preview) throw new Error('no preview')
+      const item = await service.send(r.preview.id, {
+        keep: ['S1'],
+        model: 'sonnet',
+        effort: 'default'
+      })
+      expect(item.ok).toBe(false)
+      expect(item.sent).toBeUndefined()
+      expect(fake.calls).toEqual([])
+    }
+    // One that ran: sent is recorded.
+    const { service } = await setup()
+    const r = await service.ask('why did Safari users get stuck in a redirect loop?')
+    if (r.mode !== 'content' || !r.preview) throw new Error('no preview')
+    const ok = await service.send(r.preview.id, {
+      keep: ['S1'],
+      model: 'sonnet',
+      effort: 'default'
+    })
+    expect(ok.sent).toMatchObject({ snippets: 1, sessions: 1 })
+  })
+
+  it('a Cancel says whether the prompt process had already started', async () => {
+    const runner = new PrintRunner({
+      findCli: async () => ({ kind: 'native', path: 'C:\\claude\\claude.exe', label: 'Windows' }),
+      checkAuth: async () => ({ ok: true, method: 'claude.ai' }),
+      runner: () => ({ done: new Promise<RunResult>(() => undefined), cancel: () => undefined })
+    })
+    const opts = {
+      cwd: join(root, 'ask'),
+      timeoutMs: 5000,
+      command: (): AskCommand => ({ command: 'claude', args: ['-p'], shell: false })
+    }
+    const early = runner.newRequest()
+    runner.cancel(early)
+    const before = await runner.run(early, 'question', opts)
+    expect(before.kind).toBe('cancelled')
+    expect(before.kind === 'cancelled' && before.started).toBeFalsy()
+    const late = runner.newRequest()
+    const out = runner.run(late, 'question', opts)
+    await new Promise((r) => setTimeout(r, 30))
+    expect(late.handle).toBeDefined()
+    runner.cancel(late)
+    expect(await out).toEqual({ kind: 'cancelled', where: 'Windows', started: true })
+  })
+
+  it('Rebuild replaces an index worker that failed', async () => {
+    const { service, hosts } = await setup({
+      onHost: (h, n) => {
+        if (n !== 1) return
+        // The first worker crashed: it reports an error and rejects every call.
+        const s = h.status.bind(h)
+        h.status = () => ({ ...(s() ?? EMPTY_STATUS), phase: 'error', error: 'worker gone' })
+        h.clear = () => Promise.reject(new Error('worker gone'))
+      }
+    })
+    expect(service.status().phase).toBe('error')
+    expect(hosts()).toBe(1)
+    await service.rebuild()
+    expect(hosts()).toBe(2)
+    expect(service.status().phase).not.toBe('error')
+    // A healthy host is kept.
+    await service.rebuild()
+    expect(hosts()).toBe(2)
+  })
+
+  it('PRs keep the time the session showed them (or their merge commit), not its last activity', async () => {
+    const shown = Date.parse('2025-03-10T12:00:00Z')
+    const merged = Date.parse('2025-03-20T12:00:00Z')
+    const git: AskGit = {
+      enabled: () => true,
+      linkedCommits: (key) =>
+        key === SAFARI
+          ? [{ sha: 'abc1234def', subject: 'Merge pull request #8', at: merged, files: [], pr: 8 }]
+          : [],
+      prsOf: (key) =>
+        key === SAFARI
+          ? [
+              { number: 7, url: 'https://github.com/o/r/pull/7', via: 'session' },
+              { number: 8, url: 'https://github.com/o/r/pull/8', via: 'merge' }
+            ]
+          : [],
+      seenPrs: (key) =>
+        key === SAFARI ? [{ number: 7, url: 'https://github.com/o/r/pull/7', at: shown }] : [],
+      editedFiles: () => [],
+      filter: () => new Set()
+    }
+    const { service } = await setup({ git })
+    const r = await service.ask('which pull requests did I open in March 2025')
+    if (r.mode !== 'local') throw new Error('not local')
+    expect(r.item.local?.table?.rows.map((x) => x[0]).sort()).toEqual(['#7', '#8'])
+    const apr = await service.ask('which pull requests did I open in April 2025')
+    if (apr.mode !== 'local') throw new Error('not local')
+    expect(apr.item.local?.table?.rows).toEqual([])
+  })
+})
+
+const EMPTY_STATUS = {
+  phase: 'ready' as const,
+  sessions: 0,
+  passages: 0,
+  chars: 0,
+  bytes: 0,
+  done: 0,
+  total: 0,
+  skipped: 0
+}

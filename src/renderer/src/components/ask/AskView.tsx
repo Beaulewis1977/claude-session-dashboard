@@ -416,7 +416,8 @@ export function AskView() {
   const [scope, setScope] = useState<AskScope | null>(null)
   const [busy, setBusy] = useState(false)
   const [preview, setPreview] = useState<AskPreview | null>(null)
-  const [running, setRunning] = useState(false)
+  // The question being answered (kept apart from the preview: opening history while it runs keeps Cancel).
+  const [running, setRunning] = useState<{ id: string; question: string } | null>(null)
   const [blocked, setBlocked] = useState<string | null>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const shown = items.find((i) => i.id === askItem)
@@ -430,7 +431,7 @@ export function AskView() {
     opts: { content?: boolean; phoneRequest?: string; scope?: AskScope | null } = {}
   ): Promise<void> => {
     const text = q.trim()
-    if (!text || busy || running) return
+    if (!text || busy || !!running) return
     setBusy(true)
     setBlocked(null)
     try {
@@ -460,21 +461,22 @@ export function AskView() {
   }
 
   const send = async (keep: string[], model: AskModel, effort: AskEffort): Promise<void> => {
-    if (!preview) return
-    setRunning(true)
+    if (!preview || running) return
+    const id = preview.id
+    setRunning({ id, question: preview.question })
     try {
-      const item = await api.askSessionsSend(preview.id, { keep, model, effort })
+      const item = await api.askSessionsSend(id, { keep, model, effort })
       useAsk.setState((s) => ({ items: [item, ...s.items.filter((x) => x.id !== item.id)] }))
       set({
         askItem: item.id,
         settings: { ...settings, askSessions: { ...ask, lastModel: model, lastEffort: effort } }
       })
-      setPreview(null)
+      setPreview((p) => (p?.id === id ? null : p))
       if (item.ok && !preview.phone) setQuestion('')
     } catch (err) {
       toast.error("Couldn't ask Claude", { description: (err as Error).message })
     } finally {
-      setRunning(false)
+      setRunning(null)
     }
   }
 
@@ -515,7 +517,7 @@ export function AskView() {
               <Button
                 variant="primary"
                 size="sm"
-                disabled={busy || running}
+                disabled={busy || !!running}
                 onClick={() => {
                   setQuestion(p.question)
                   setScope(Object.keys(p.scope).length ? p.scope : null)
@@ -554,13 +556,13 @@ export function AskView() {
               className="block w-full resize-none bg-transparent px-4 pt-3 text-[14px] outline-none placeholder:text-subtle-foreground"
             />
             <div className="flex items-center gap-2 px-3 pt-1 pb-2.5">
-              <ScopeBar scope={scope} onChange={setScope} disabled={busy || running} />
+              <ScopeBar scope={scope} onChange={setScope} disabled={busy || !!running} />
               <span className="ml-auto text-[11px] text-subtle-foreground">Enter to ask</span>
               <Button
                 type="submit"
                 variant="primary"
                 size="sm"
-                disabled={!question.trim() || busy || running}
+                disabled={!question.trim() || busy || !!running}
               >
                 {busy ? <LoaderCircle className="animate-spin" /> : <ArrowUp />} Ask
               </Button>
@@ -575,11 +577,31 @@ export function AskView() {
             </div>
           )}
 
+          {running && preview?.id !== running.id && (
+            <div
+              role="status"
+              className="flex items-center gap-2 rounded-xl border border-primary/30 bg-accent-soft px-4 py-2.5 text-[13px]"
+            >
+              <LoaderCircle className="size-4 shrink-0 animate-spin text-primary" />
+              <span className="min-w-0 flex-1 truncate">
+                <span className="font-medium">Sending to Claude…</span>{' '}
+                <span className="text-muted-foreground">“{running.question}”</span>
+              </span>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => void api.askSessionsCancel(running.id)}
+              >
+                Cancel
+              </Button>
+            </div>
+          )}
+
           {preview ? (
             <AskPreviewCard
               key={preview.id}
               preview={preview}
-              running={running}
+              running={running?.id === preview.id}
               onSend={(keep, m, e) => void send(keep, m, e)}
               onCancel={() => void api.askSessionsCancel(preview.id)}
               onClose={() => setPreview(null)}

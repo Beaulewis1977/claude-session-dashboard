@@ -63,7 +63,7 @@ import { canUseClaudeName } from '@shared/title'
 import { capsOf, PROVIDER_LABEL, providerOf } from '@shared/provider'
 import { ProviderBadge } from '@/components/ProviderSwitch'
 import { ChangesSheet } from './ChangesSheet'
-import { useFocusMessage } from '@/lib/focus-message'
+import { useCitedMessages, useFocusMessage } from '@/lib/focus-message'
 import { badgeText } from '@shared/git/prs'
 import { FindBar } from '@/components/viewer/FindBar'
 import { SessionUsageStrip } from '@/components/viewer/SessionUsage'
@@ -178,6 +178,7 @@ export function SessionScreen({ session }: { session: SessionSummary }) {
     setChangesOpen(true)
   }
   useFocusMessage(session.key, changesOpen || !!detail, changesOpen ? 'changes' : 'conversation')
+  const citedIds = useCitedMessages(session.key)
   const viewOnly = isViewOnly(session)
   // What this session's agent can do (Codex: Resume and Fork, no Remote Control).
   const caps = capsOf(session)
@@ -436,6 +437,7 @@ export function SessionScreen({ session }: { session: SessionSummary }) {
               findQuery={findOpen ? findQuery : ''}
               onBranch={viewOnly || readOnly || !caps.branch ? undefined : onBranch}
               agent={providerOf(session)}
+              openMessages={citedIds}
               className="px-3 pt-4 pb-28"
             />
           ) : error ? (

@@ -73,7 +73,7 @@ import { answeringModel, redactSecrets, runUsageRecords, type GuardReading } fro
 import type { SessionSummary } from '@shared/types'
 import { PLAN_LABEL, type LimitsState } from '@shared/usage/limits'
 import type { PlanChange } from '@shared/usage/health'
-import type { CodexLimitsState } from '@shared/usage/codex'
+import { CODEX_PLAN_LABEL, planOfCode, type CodexLimitsState } from '@shared/usage/codex'
 import type { ModelPrice } from '@shared/usage/pricing'
 import { dayKey, localParts, localTimeZone } from '@shared/usage/time'
 import type { LimitHit, UsageRecord, WeekStart } from '@shared/usage/types'
@@ -124,6 +124,8 @@ export interface AskGit {
     key: string
   ): { sha: string; subject: string; at: number; files: string[]; pr?: number }[]
   prsOf(key: string): PrLink[]
+  /** PRs the session's own `gh pr create` printed, with when. */
+  seenPrs(key: string): { number: number; url: string; at: number }[]
   editedFiles(key: string): { path: string; at: number }[]
   /** Sessions a `touched:` / `commit:` filter matches. */
   filter(q: { text: string; touched: string[]; commits: string[] }): Set<string>
@@ -221,8 +223,7 @@ export class AskSessionsService extends EventEmitter<{ changed: []; status: [Ask
   settingsChanged(): void {
     const on = this.settings().enabled
     if (on && this.ready && !this.host) {
-      this.host = this.deps.createHost()
-      this.host.onStatus(() => this.emit('status', this.status()))
+      this.startHost()
       this.syncSoon(0)
     } else if (!on && this.host) {
       const h = this.host
@@ -230,6 +231,25 @@ export class AskSessionsService extends EventEmitter<{ changed: []; status: [Ask
       void h.stop()
       this.emit('status', this.status())
     } else if (on) this.syncSoon(1000)
+  }
+
+  private startHost(): IndexHost {
+    const h = this.deps.createHost()
+    this.host = h
+    // A replaced host's late reports are ignored.
+    h.onStatus(() => {
+      if (this.host === h) this.emit('status', this.status())
+    })
+    return h
+  }
+
+  /** A host whose worker failed (phase "error") can't recover: start a new one in its place. */
+  private async replaceFailedHost(): Promise<IndexHost | undefined> {
+    const old = this.host
+    if (!old || old.status()?.phase !== 'error') return old
+    const h = this.startHost()
+    await old.stop().catch(() => undefined)
+    return h
   }
 
   /** Sessions, names, summaries or git links changed. */
@@ -331,15 +351,18 @@ export class AskSessionsService extends EventEmitter<{ changed: []; status: [Ask
 
   /** Build the index again from the sessions (Settings → Ask → Rebuild). */
   async rebuild(): Promise<void> {
-    if (!this.host) return
-    await this.host.clear()
+    const h = await this.replaceFailedHost()
+    if (!h) return
+    await h.clear()
     this.syncNow()
+    this.emit('status', this.status())
   }
 
   /** Delete the saved index (it's only a cache; Ask builds it again when on). */
   async deleteIndex(): Promise<void> {
-    if (this.host) {
-      await this.host.clear()
+    const host = await this.replaceFailedHost()
+    if (host) {
+      await host.clear()
       this.syncSoon(1000)
     } else {
       // Off: a short-lived host just to remove the file.
@@ -417,7 +440,10 @@ export class AskSessionsService extends EventEmitter<{ changed: []; status: [Ask
           ? {
               codex: {
                 current: cx.plan.label,
-                changes: cx.plan.changes.map((c) => ({ at: c.ts, plan: c.code }))
+                changes: cx.plan.changes.map((c) => {
+                  const p = planOfCode(c.code)
+                  return { at: c.ts, plan: p ? CODEX_PLAN_LABEL[p] : c.code }
+                })
               }
             }
           : {})
@@ -433,15 +459,32 @@ export class AskSessionsService extends EventEmitter<{ changed: []; status: [Ask
             (git?.linkedCommits(s.key) ?? []).map((c) => ({ key: s.key, ...c }))
           )),
         prs: () =>
-          list.flatMap((s) =>
-            (git?.prsOf(s.key) ?? []).map((p) => ({
-              key: s.key,
-              number: p.number,
-              url: p.url,
-              ...(p.title ? { title: p.title } : {}),
-              ...(p.state ? { state: p.state } : {})
-            }))
-          ),
+          list.flatMap((s) => {
+            const links = git?.prsOf(s.key) ?? []
+            if (!links.length) return []
+            const seen = git?.seenPrs(s.key) ?? []
+            const merged = git?.linkedCommits(s.key) ?? []
+            return links.map((p) => {
+              // When the session showed it (its own `gh pr create`), else its merge commit's time.
+              const at =
+                seen.find((x) => x.url === p.url)?.at ||
+                seen.find((x) => x.number === p.number)?.at ||
+                merged
+                  .filter((c) => c.pr === p.number)
+                  .reduce<number | undefined>(
+                    (t, c) => (t === undefined || c.at < t ? c.at : t),
+                    undefined
+                  )
+              return {
+                key: s.key,
+                number: p.number,
+                url: p.url,
+                ...(p.title ? { title: p.title } : {}),
+                ...(p.state ? { state: p.state } : {}),
+                ...(at ? { at } : {})
+              }
+            })
+          }),
         files: () =>
           list.flatMap((s) => (git?.editedFiles(s.key) ?? []).map((f) => ({ key: s.key, ...f })))
       }
@@ -649,6 +692,8 @@ export class AskSessionsService extends EventEmitter<{ changed: []; status: [Ask
     const req = this.deps.runner.newRequest()
     this.running.set(previewId, req)
     const started = Date.now()
+    // `sent` is added only once the prompt reached Claude (not for "no CLI",
+    // a refused subscription check or a Cancel before the run started).
     const base: AskSessionsItem = {
       id: previewId,
       at: now(),
@@ -657,11 +702,6 @@ export class AskSessionsService extends EventEmitter<{ changed: []; status: [Ask
       ok: false,
       scope: p.scope,
       scopeText: p.scopeText,
-      sent: {
-        snippets: snippets.length,
-        sessions: new Set(snippets.map((s) => s.key)).size,
-        chars: prompt.length
-      },
       searched: p.searchText,
       matched: p.matched,
       modelChoice: opts.model,
@@ -694,8 +734,14 @@ export class AskSessionsService extends EventEmitter<{ changed: []; status: [Ask
     started: number,
     opts: { model: AskModel; effort: AskEffort }
   ): Promise<AskSessionsItem> {
-    const failed = (error: string, where = '—'): AskSessionsItem => ({
+    const sent: NonNullable<AskSessionsItem['sent']> = {
+      snippets: snippets.length,
+      sessions: new Set(snippets.map((s) => s.key)).size,
+      chars: prompt.length
+    }
+    const failed = (error: string, where = '—', reached = false): AskSessionsItem => ({
       ...base,
+      ...(reached ? { sent } : {}),
       ok: false,
       error,
       where,
@@ -723,7 +769,7 @@ export class AskSessionsService extends EventEmitter<{ changed: []; status: [Ask
         timeoutMs: timeoutSec * 1000,
         command: (cli) => printCommand(cli, extra)
       })
-      if (out.kind === 'cancelled') return failed('Cancelled.', out.where)
+      if (out.kind === 'cancelled') return failed('Cancelled.', out.where, !!out.started)
       if (out.kind === 'refused') return failed(out.error, out.where)
       const res = out.result
       // Whatever happened, the tokens used are counted.
@@ -735,11 +781,12 @@ export class AskSessionsService extends EventEmitter<{ changed: []; status: [Ask
         env: out.cli.kind === 'wsl' ? 'wsl' : 'windows'
       })
       if (records.length) this.deps.usage.addDashboardRecords(records)
-      if (res.cancelled) return failed('Cancelled.', out.where)
+      if (res.cancelled) return failed('Cancelled.', out.where, true)
       if (res.timedOut)
         return failed(
           `No answer after ${timeoutSec} seconds. Try again, or raise the Ask Claude timeout in Settings.`,
-          out.where
+          out.where,
+          true
         )
       const parsed = parseAskOutput(res.stdout, res.stderr, res.code)
       if (!parsed.ok)
@@ -747,7 +794,8 @@ export class AskSessionsService extends EventEmitter<{ changed: []; status: [Ask
           tooOldForAsk(res.stderr)
             ? 'This version of Claude Code is too old for Ask, which runs it in safe mode with none of your settings. Update it with `claude update`, then try again.'
             : (parsed.error ?? 'No answer.'),
-          out.where
+          out.where,
+          true
         )
       raw = parsed.answer
       where = out.where
@@ -774,6 +822,7 @@ export class AskSessionsService extends EventEmitter<{ changed: []; status: [Ask
     const model = answeringModel(records)
     return {
       ...base,
+      sent,
       ok: true,
       answer: checked.answer,
       ...(checked.dropped.length ? { dropped: checked.dropped.slice(0, 30) } : {}),

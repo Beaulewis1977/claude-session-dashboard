@@ -1063,6 +1063,14 @@ export class GitLinksService extends EventEmitter<{ changed: [] }> {
     return this.cfg().enabled ? (this.computed.get(key)?.prs ?? []) : []
   }
 
+  /** Ask across sessions: the PRs a session's own `gh pr create` printed, and when it showed them. */
+  seenPrs(key: string): { number: number; url: string; at: number }[] {
+    if (!this.cfg().enabled) return []
+    const i = this.inputs.get(key)
+    const sig = i ? this.ownSignals(i) : undefined
+    return (sig?.prs ?? []).map((p) => ({ number: p.number, url: p.url, at: p.at }))
+  }
+
   /** Ask across sessions: the files a session's own tool calls edited, and when (0: unknown). */
   editedFiles(key: string): { path: string; at: number }[] {
     if (!this.cfg().enabled) return []

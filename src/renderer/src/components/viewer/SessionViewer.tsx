@@ -88,7 +88,7 @@ import { Transcript, type OnBranch } from './Transcript'
 import { ChangesPanel } from './Changes'
 import { badgeText } from '@shared/git/prs'
 import { useFind } from './useFind'
-import { useFocusMessage } from '@/lib/focus-message'
+import { useCitedMessages, useFocusMessage } from '@/lib/focus-message'
 
 function Fact({
   icon: Icon,
@@ -564,6 +564,7 @@ export function SessionViewer({
   const messages = useMemo(() => detail?.messages ?? [], [detail])
   // A citation from Ask: scroll to its message (or its commit, in Changes).
   useFocusMessage(session.key, tab === 'changes' || !!detail, tab)
+  const citedIds = useCitedMessages(session.key)
 
   const atId = session.lineage?.atMessageId
   const branchPointPreview = useMemo(() => {
@@ -676,6 +677,7 @@ export function SessionViewer({
               onBranch={isViewOnly(session) || !capsOf(session).branch ? undefined : onBranch}
               marks={marks}
               agent={providerOf(session)}
+              openMessages={citedIds}
             />
           ) : error ? (
             <div className="py-16 text-center text-sm text-muted-foreground">

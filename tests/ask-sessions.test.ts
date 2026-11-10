@@ -405,6 +405,44 @@ describe('citations', () => {
     expect(r.dropped).toHaveLength(2)
   })
 
+  it('an uncited sentence never borrows the next one’s citation (review fix)', () => {
+    // Lower case after the full stop is still a new sentence.
+    const r = checkCitations('The bug deleted all backups. npm passed [S1].', valid)
+    expect(r.answer).toBe('npm passed [S1].')
+    expect(r.dropped).toEqual(['The bug deleted all backups.'])
+    // Abbreviations and initials don't end a sentence.
+    expect(checkCitations('Fixed it, e.g. the parser [S1].', valid).answer).toBe(
+      'Fixed it, e.g. the parser [S1].'
+    )
+    expect(checkCitations('Reviewed by J. Smith [S2].', valid).answer).toBe(
+      'Reviewed by J. Smith [S2].'
+    )
+    // CJK sentence ends need no space; a citation right after one belongs to it.
+    const cjk = checkCitations('备份被删除了。测试通过了[S1]。', valid)
+    expect(cjk.answer).toBe('测试通过了[S1]。')
+    expect(cjk.dropped).toEqual(['备份被删除了。'])
+    expect(checkCitations('修好了。[S2]然后发布了。', valid).answer).toBe('修好了。 [S2]')
+  })
+
+  it('only the row right above |---| is a table header (review fix)', () => {
+    const r = checkCitations(
+      [
+        '| Note | Where |',
+        '|---|---|',
+        '| Invented row | nowhere |',
+        '| Fixed in wsl.ts | S1 [S1] |'
+      ].join('\n'),
+      valid
+    )
+    expect(r.answer).toBe(
+      ['| Note | Where |', '|---|---|', '| Fixed in wsl.ts | S1 [S1] |'].join('\n')
+    )
+    expect(r.dropped).toEqual(['| Invented row | nowhere |'])
+    // A table with no separator has no header: every row needs a citation.
+    const bare = checkCitations('| A guess | x |\n| Fixed | y [S2] |', valid)
+    expect(bare.answer).toBe('| Fixed | y [S2] |')
+  })
+
   it('formats citations as chips and copies with numbered sources', () => {
     expect(linkCitations('done [S1][S2]')).toBe('done [S1](#cite-S1)[S2](#cite-S2)')
     const item: AskSessionsItem = {

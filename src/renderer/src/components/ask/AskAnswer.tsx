@@ -222,6 +222,7 @@ function HowAnswered({ item }: { item: AskSessionsItem }) {
               settings, nothing saved by Claude Code.
             </li>
           )}
+          {!s && !item.ok && <li>Nothing was sent: it stopped before Claude got the question.</li>}
           <li>
             Every statement had to cite a snippet that was sent
             {item.notFound

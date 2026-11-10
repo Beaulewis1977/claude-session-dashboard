@@ -88,6 +88,26 @@ export function blocksMatching(messages: ChatMessage[], query: string): Set<stri
   return out
 }
 
+/**
+ * Ids of the collapsible blocks of the messages an Ask citation points at
+ * (their tool calls, agent messages and results; never thinking), and of a
+ * cited compaction summary, so what was cited is open when it's shown.
+ */
+export function blocksOfMessages(messages: ChatMessage[], ids: readonly string[]): Set<string> {
+  const out = new Set<string>()
+  if (!ids.length) return out
+  const want = new Set(ids)
+  for (const m of messages) {
+    if (!want.has(m.id)) continue
+    m.blocks.forEach((b, i) => {
+      if (b.type === 'tool_use' || b.type === 'tool_result' || b.type === 'agent_message')
+        out.add(blockId(m, b, i))
+    })
+    if (m.kind === 'compact') out.add(m.id)
+  }
+  return out
+}
+
 export function blockId(m: ChatMessage, b: ContentBlock, i: number): string {
   return b.type === 'tool_use' ? b.id : `${m.id}:${i}`
 }

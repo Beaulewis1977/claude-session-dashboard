@@ -202,3 +202,16 @@ export function runningKindOf(o: {
   if (o.openIn === 'claude-app') return o.fork ? 'fork' : 'claude-app'
   return o.continueFresh ? 'continue' : o.fork ? 'fork' : 'resume'
 }
+
+/**
+ * Opening a thread in the Codex app while a terminal still runs it is a second
+ * copy: it needs the same confirm as "Start another copy" (the phone asks too).
+ */
+export function needsConfirm(r: RunningCopy, a: RunningAction): boolean {
+  return a === 'open-codex-app' && r.where !== 'codex-app'
+}
+
+/** The first "switch to it" action that needs no confirm (the dialog's main button while it runs). */
+export function primaryAction(r: RunningCopy): RunningAction | undefined {
+  return runningAdvice(r, 'pc').actions.find((a) => a !== 'another' && !needsConfirm(r, a))
+}

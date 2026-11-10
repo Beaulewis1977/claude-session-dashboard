@@ -517,7 +517,7 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
    */
   async recheckSources(): Promise<boolean> {
     if (this.scan.phase === 'scanning') return false
-    await this.refreshDesktopIndex()
+    if (this.desktopDir) await this.refreshDesktopIndex()
     const sig = (list: ResolvedSource[]): string =>
       list
         .map((x) => `${x.id}=${x.status}`)
@@ -544,7 +544,7 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
   }
 
   private async rescanNow(): Promise<void> {
-    await this.refreshDesktopIndex()
+    if (this.desktopDir) await this.refreshDesktopIndex()
     this.sources = await this.detect()
     this.dropDisabled()
     const files = new Map<string, SessionFile[]>()
@@ -581,7 +581,7 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
     const provider = this.providers.find(src)
     if (!provider) return
     // The Windows home's safety-net poll (every minute) also re-reads the desktop app's index.
-    if (sourceId === 'windows') await this.refreshDesktopIndex()
+    if (sourceId === 'windows' && this.desktopDir) await this.refreshDesktopIndex()
     const list = await provider.listSessionFiles(src)
     if (!list) {
       // e.g. the WSL distro was shut down: show archive copies instead.

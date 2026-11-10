@@ -2,22 +2,17 @@
 // (its Remote Control link), Open in Codex app.
 
 import { toast } from 'sonner'
-import { runningAdvice, type RunningAction, type RunningCopy } from '@shared/running'
+import { needsConfirm, type RunningAction, type RunningCopy } from '@shared/running'
+
 import { api } from './api'
+
+export { needsConfirm, primaryAction } from '@shared/running'
 
 export const ACTION_LABEL: Record<RunningAction, string> = {
   focus: 'Focus terminal',
   'open-remote': 'Open in Claude app',
   'open-codex-app': 'Open in Codex app',
   another: 'Start another copy…'
-}
-
-/**
- * Opening a thread in the Codex app while a terminal still runs it is a second
- * copy: it needs the same confirm as "Start another copy" (the phone asks too).
- */
-export function needsConfirm(r: RunningCopy, a: RunningAction): boolean {
-  return a === 'open-codex-app' && r.where !== 'codex-app'
 }
 
 /**
@@ -62,9 +57,4 @@ export async function runRunningAction(
     toast.error("Couldn't switch to it", { description: (err as Error).message })
   }
   return false
-}
-
-/** The first "switch to it" action that needs no confirm (the dialog's main button while it runs). */
-export function primaryAction(r: RunningCopy): RunningAction | undefined {
-  return runningAdvice(r, 'pc').actions.find((a) => a !== 'another' && !needsConfirm(r, a))
 }

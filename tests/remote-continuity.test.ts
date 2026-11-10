@@ -13,7 +13,14 @@ import {
   type ProcInput,
   type RunningFile
 } from '@shared/live'
-import { findRunningCopy, runningAdvice, runningKindOf, type RecordedOrigin } from '@shared/running'
+import {
+  findRunningCopy,
+  needsConfirm,
+  primaryAction,
+  runningAdvice,
+  runningKindOf,
+  type RecordedOrigin
+} from '@shared/running'
 import {
   CLAUDE_APP_FORK,
   CLAUDE_DESKTOP_MIN_VERSION,
@@ -45,7 +52,6 @@ import { Launcher } from '../src/main/services/launcher'
 import { SessionService } from '../src/main/services/sessions'
 import { appPaths, createMetadataStore, createSettingsStore } from '../src/main/services/store'
 import { freshRemoteUrl, liveRemoteUrl, runningNow } from '../src/renderer/src/lib/remote'
-import { needsConfirm, primaryAction } from '../src/renderer/src/lib/running-actions'
 import { ProviderRegistry } from '../src/main/providers/registry'
 import { claudeProvider } from '../src/main/providers/claude'
 import { createCodexProvider } from '../src/main/providers/codex'

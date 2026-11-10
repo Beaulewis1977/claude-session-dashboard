@@ -22,7 +22,7 @@ import { createRoot } from 'react-dom/client'
 import { TitleBar } from '/src/renderer/src/components/TitleBar.tsx'
 import { TooltipProvider } from '/src/renderer/src/components/ui/tooltip.tsx'
 import { useApp } from '/src/renderer/src/lib/store.ts'
-import { useNavigation, navDebug } from '/src/renderer/src/lib/navigation.ts'
+import { useNavigation, navDebug, amendNavigation } from '/src/renderer/src/lib/navigation.ts'
 import '/src/renderer/src/styles.css'
 
 let navCb = null
@@ -74,9 +74,32 @@ window.__nav = {
   scrollTop: (pane) => document.querySelector('[data-nav-scroll=' + pane + ']')?.scrollTop ?? -1,
   scrollTo: (pane, top) => { document.querySelector('[data-nav-scroll=' + pane + ']').scrollTop = top },
   set: (patch) => useApp.getState().set(patch),
+  filters: () => useApp.getState().filters,
   select: (key) => useApp.getState().select(key),
   drop: (key) => useApp.setState({ sessions: useApp.getState().sessions.filter((s) => s.key !== key) }),
   appCommand: (dir) => navCb && navCb(dir),
+  // A move whose screen hides the selected session, with the app's automatic
+  // re-select in the same tick (React runs a click's effects before the microtask).
+  moveAndReselect: (patch, key) => { useApp.getState().set(patch); amendNavigation(() => useApp.getState().select(key)) },
+  autoSelect: (key) => amendNavigation(() => useApp.getState().select(key)),
+  // Which app-region wins at each title bar button's centre, the way Chromium
+  // builds the window's drag area: in page order, a later region covers an earlier one.
+  regionAt: () => {
+    const header = document.querySelector('header.titlebar')
+    const all = [header, ...header.querySelectorAll('*')]
+    return [...header.querySelectorAll('button')].map((b) => {
+      const r = b.getBoundingClientRect()
+      const x = r.left + r.width / 2, y = r.top + r.height / 2
+      let region = 'none'
+      for (const el of all) {
+        const mode = getComputedStyle(el).getPropertyValue('-webkit-app-region') || getComputedStyle(el).getPropertyValue('app-region')
+        if (!mode || mode === 'none') continue
+        const e = el.getBoundingClientRect()
+        if (x >= e.left && x <= e.right && y >= e.top && y <= e.bottom) region = mode
+      }
+      return (b.getAttribute('aria-label') || b.textContent.trim().slice(0, 12)) + '=' + region
+    })
+  },
   debug: () => navDebug()
 }
 `
@@ -129,6 +152,45 @@ const mouse = (page: Page, button: number) =>
   )
 
 describe('Back / Forward on the desktop', () => {
+  it('every title bar button is outside the window drag area (clickable, with tooltips)', async ({
+    skip
+  }) => {
+    if (!browser) skip(unavailableReason)
+    const page = await open()
+    try {
+      const regions = await page.evaluate<string[]>('window.__nav.regionAt()')
+      expect(regions.length).toBeGreaterThanOrEqual(4)
+      for (const r of regions) expect(r).toMatch(/=no-drag$/)
+    } finally {
+      await page.close()
+    }
+  })
+
+  it('a move that makes the app re-select a session is its own entry', async ({ skip }) => {
+    if (!browser) skip(unavailableReason)
+    const page = await open()
+    try {
+      await abc(page)
+      // A filter (or the provider switch) hides c; the app selects a in the same tick.
+      await move(
+        page,
+        "window.__nav.moveAndReselect({ filters: { ...window.__nav.filters(), tag: 'x' } }, 'windows:a')"
+      )
+      await expect.poll(() => state(page)).toBe('sessions|windows:a')
+      await page.keyboard.press('Alt+ArrowLeft')
+      await expect.poll(() => state(page)).toBe('sessions|windows:c')
+      // An automatic change on its own still joins the current entry.
+      const before = (await page.evaluate<{ states: unknown[] }>('window.__nav.debug()')).states
+        .length
+      await move(page, "window.__nav.autoSelect('windows:b')")
+      expect(
+        (await page.evaluate<{ states: unknown[] }>('window.__nav.debug()')).states
+      ).toHaveLength(before)
+    } finally {
+      await page.close()
+    }
+  })
+
   it('Alt+← / Alt+→ and Backspace move through history', async ({ skip }) => {
     if (!browser) skip(unavailableReason)
     const page = await open()

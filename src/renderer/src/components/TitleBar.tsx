@@ -69,18 +69,18 @@ export function TitleBar() {
         <NavButton dir={1} target={nav.forward} icon={<ArrowRight className="size-4" />} />
       </div>
 
-      <div className="pointer-events-none absolute inset-x-0 flex justify-center">
-        <button
-          type="button"
-          onClick={() => set({ paletteOpen: true })}
-          className="no-drag pointer-events-auto flex h-7 w-[min(420px,40vw)] items-center gap-2 rounded-md border border-border bg-background/70 px-2.5 text-[12.5px] text-subtle-foreground shadow-xs transition-colors hover:border-border-strong hover:text-muted-foreground"
-        >
-          <Search className="size-3.5" />
-          <span className="flex-1 text-left">Jump to a session or run a command…</span>
-          <Kbd>{MOD}</Kbd>
-          <Kbd className="-ml-1">K</Kbd>
-        </button>
-      </div>
+      {/* Centred on its own: a full-width wrapper would inherit the header's drag
+          region and cover the buttons to its left, so they'd get no clicks. */}
+      <button
+        type="button"
+        onClick={() => set({ paletteOpen: true })}
+        className="no-drag absolute inset-x-0 mx-auto flex h-7 w-[min(420px,40vw)] items-center gap-2 rounded-md border border-border bg-background/70 px-2.5 text-[12.5px] text-subtle-foreground shadow-xs transition-colors hover:border-border-strong hover:text-muted-foreground"
+      >
+        <Search className="size-3.5" />
+        <span className="flex-1 text-left">Jump to a session or run a command…</span>
+        <Kbd>{MOD}</Kbd>
+        <Kbd className="-ml-1">K</Kbd>
+      </button>
 
       <div className="ml-auto flex items-center gap-2 pr-2">
         {scanning && (

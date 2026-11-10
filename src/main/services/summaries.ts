@@ -115,7 +115,8 @@ export function autoCandidates(
 ): SessionSummary[] {
   return list
     .filter((s) => {
-      if (s.availability === 'imported' || s.source === 'ask-claude' || s.meta.hidden) return false
+      if (s.availability === 'imported' || s.viewOnly || s.source === 'ask-claude' || s.meta.hidden)
+        return false
       if (s.messageCount < settings.autoMinMessages || skip(s.key)) return false
       const last = Date.parse(s.lastActivityAt ?? '')
       if (!Number.isFinite(last) || t - last < AUTO_IDLE_MS) return false
@@ -185,6 +186,8 @@ export class SummaryService extends EventEmitter<{ changed: [] }> {
     const provider = sessionProvider(this.deps.sessions, d.summary)
     if (!provider.capabilities.summaries)
       throw new Error(`Summaries aren't available for ${provider.productName} sessions yet.`)
+    if (d.summary.viewOnly)
+      throw new Error('Claude desktop (Cowork) sessions are view-only: they aren’t summarized.')
     const settings = this.deps.settings()
     const s = d.summary
     const messages = snap ? d.messages.slice(0, snap.messages) : d.messages

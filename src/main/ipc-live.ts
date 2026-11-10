@@ -1,6 +1,7 @@
 // IPC for "Running now" and session alerts.
 
 import { BrowserWindow } from 'electron'
+import type { FocusResult } from '@shared/live'
 import { providerOf } from '@shared/provider'
 import { fileHolders, focusTerminal } from './core/focus'
 import { handle } from './ipc-guard'
@@ -46,28 +47,37 @@ export function registerLiveIpc(deps: LiveIpcDeps): void {
     await live.refreshHooks()
     return res
   })
-  handle('live:focus', async (_e, key) => {
-    const k = String(key)
-    const s = live.snapshot().sessions.find((x) => x.key === k)
-    if (!s || s.state === 'exited')
-      return { ok: false, error: 'This session isn’t running any more.' }
-    const summary = sessions.get(k)
-    let pid = s.env === 'windows' ? s.pid : undefined
-    // A Windows Codex thread: the process holding its lock is the one to bring forward
-    // (Restart Manager, read only; see core/focus.ts).
-    if (s.provider === 'codex' && s.env === 'windows' && !deps.fixtures) {
-      const lock = live.codexLockPath(k)
-      if (lock) pid = (await fileHolders(lock))[0]?.pid
-    }
-    return focusTerminal(
-      {
-        // Only a Windows PID means anything to Windows; a WSL session is found by its title.
-        pid,
-        titles: [s.name, summary?.claudeName, summary?.title, summary?.summary].filter(
-          (t): t is string => !!t
-        )
-      },
-      { simulate: deps.fixtures }
-    )
-  })
+  handle('live:focus', (_e, key) => focusLive(deps, String(key)))
+}
+
+/**
+ * "Focus terminal": bring a running session's terminal forward (the desktop's
+ * button, and a phone's "Focus terminal on PC"). Nothing is started or typed.
+ */
+export async function focusLive(
+  deps: Pick<LiveIpcDeps, 'live' | 'sessions' | 'fixtures'>,
+  k: string
+): Promise<FocusResult> {
+  const { live, sessions } = deps
+  const s = live.snapshot().sessions.find((x) => x.key === k)
+  if (!s || s.state === 'exited')
+    return { ok: false, error: 'This session isn’t running any more.' }
+  const summary = sessions.get(k)
+  let pid = s.env === 'windows' ? s.pid : undefined
+  // A Windows Codex thread: the process holding its lock is the one to bring forward
+  // (Restart Manager, read only; see core/focus.ts).
+  if (s.provider === 'codex' && s.env === 'windows' && !deps.fixtures) {
+    const lock = live.codexLockPath(k)
+    if (lock) pid = (await fileHolders(lock))[0]?.pid
+  }
+  return focusTerminal(
+    {
+      // Only a Windows PID means anything to Windows; a WSL session is found by its title.
+      pid,
+      titles: [s.name, summary?.claudeName, summary?.title, summary?.summary].filter(
+        (t): t is string => !!t
+      )
+    },
+    { simulate: deps.fixtures }
+  )
 }

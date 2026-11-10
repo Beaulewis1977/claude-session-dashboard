@@ -6,6 +6,7 @@
 // the optional home Wi-Fi mode listens on one private LAN address instead.
 
 import type { AppSettings } from './types'
+import type { RunningCopy } from './running'
 import type { ResolvedModel } from './model-choice'
 import type { ResumeEstimate } from './context'
 
@@ -138,8 +139,13 @@ export interface RemoteLaunchRequest {
    * 'continue': Continue fresh, a new session started from the session's summary.
    * 'codex-app': open the existing Codex thread in the Codex desktop app on the PC.
    */
-  kind: 'resume' | 'fork' | 'branch' | 'continue' | 'codex-app'
+  kind: 'resume' | 'fork' | 'branch' | 'continue' | 'codex-app' | 'focus'
   branch?: { at: string; mode: 'include' | 'before' }
+  /**
+   * "Start another copy anyway" (after a confirm on the phone): launch although
+   * it (or a fork / continuation of it) is already running on the PC.
+   */
+  force?: true
 }
 
 export interface RemoteLaunchPreview {
@@ -160,6 +166,8 @@ export interface RemoteLaunchPreview {
   newSinceSummary?: number
   /** Resume / Fork: the context size and what reloading it would cost (estimate). */
   context?: ResumeEstimate
+  /** It (or a fork / continuation of it) is already running on the PC. */
+  running?: RunningCopy
 }
 
 export interface RemoteLaunchResult {
@@ -173,6 +181,10 @@ export interface RemoteLaunchResult {
   simulated?: boolean
   /** Waiting for, or denied by, the confirmation on the PC. */
   denied?: boolean
+  /** Refused because it's already running on the PC (send again with `force` to start another copy). */
+  running?: RunningCopy
+  /** "Focus terminal on PC": how it went. */
+  focused?: 'tab' | 'window'
 }
 
 /** What a paired phone learns about itself and the PC on connecting. */

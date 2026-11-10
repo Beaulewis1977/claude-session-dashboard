@@ -246,9 +246,17 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
       const lin = this.lineageResolver?.(b.key)
       const fork = lin && lin.via !== 'continue' ? lin : undefined
       // Codex records its own fork parent (forked_from_id). A Codex fork or subagent
-      // starts from its parent's history, so its own start is the split.
+      // starts from its parent's history, so its own start is the split. A fork or
+      // branch the app made has its creation time in the app's record: everything it
+      // copied is from before, everything of its own after (the split point itself
+      // can't be worked out when the parent is gone).
       const forkOf = fork?.parentSessionId ?? b.forkedFromId
-      const split = fork?.atTime ?? (b.forkedFromId || b.subagent ? b.startedAt : undefined)
+      const record = this.metaOf(b).branch
+      const made =
+        fork && record && record.via !== 'continue' && record.parentSessionId === forkOf
+          ? record.createdAt
+          : undefined
+      const split = fork?.atTime ?? made ?? (b.forkedFromId || b.subagent ? b.startedAt : undefined)
       const forkAt = split ? Date.parse(split) : NaN
       out.push({
         key: b.key,

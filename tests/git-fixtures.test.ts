@@ -29,7 +29,7 @@ afterEach(async () => {
   await rm(root, { recursive: true, force: true, maxRetries: 5 })
 })
 
-async function setup(gh: 'ask' | 'on' = 'ask') {
+async function setup(gh: 'ask' | 'on' = 'ask', before?: (sessions: SessionService) => void) {
   await cp(FIXTURES, join(root, 'fixtures'), { recursive: true })
   await prepareFixtures(root, { codex: true })
   const layout = fixturesLayout(root)
@@ -50,6 +50,7 @@ async function setup(gh: 'ask' | 'on' = 'ask') {
   busy.push(sessions)
   await sessions.start()
   await sessions.idle()
+  before?.(sessions)
   // Forks and branches, as the app works them out after the scan.
   await new LineageService(sessions, 0).refresh()
   const git = new GitLinksService({
@@ -116,6 +117,24 @@ describe('git links on the sample data', () => {
     const sub = sessions.gitInputs().find((i) => i.key === key('019a3333'))!
     expect(sub.parentId).toBe('019a1111-0000-7000-8000-000000000001')
     expect(sub.forkAt).toBe(Date.parse(sessions.get(key('019a3333'))!.startedAt!))
+  })
+
+  it("a fork the app made whose parent is gone splits at the fork's recorded creation time", async () => {
+    // Recorded as a --fork-session the app launched after all of this session's own
+    // activity, from a parent that's no longer anywhere: all of it is the copy.
+    const id = '7f3c9a12-4b8e-4d21-9c6a-1e2f3a4b5c6d'
+    const parent = 'ffffffff-0000-4000-8000-000000000000'
+    const createdAt = '2026-10-21T14:00:00.000Z'
+    const { sessions, git, key } = await setup('ask', (s) =>
+      s.recordBranch(id, { parentSessionId: parent, via: 'fork', createdAt })
+    )
+    const k = key('7f3c9a12')
+    const i = sessions.gitInputs().find((x) => x.key === k)!
+    expect(i.forkOf).toBe(parent)
+    expect(i.forkAt).toBe(Date.parse(createdAt))
+    // Its copied edits and commits are the parent's, not its own.
+    expect(sessions.searchKeys('touched:cookies.ts').map((h) => h.key)).not.toContain(k)
+    expect(git.view(k, { refresh: false })!.commits).toEqual([])
   })
 
   it('finds sessions by a file they touched or a commit', async () => {

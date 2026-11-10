@@ -7,6 +7,12 @@ import { basename, join } from 'node:path'
 import type { SourceInfo } from '@shared/types'
 import { isInfrastructureDistro, isValidDistroName, parseWslUnc } from '../core/wsl'
 import type { Platform } from '../platform'
+import {
+  claudeDesktopDir,
+  COWORK_SOURCE_ID,
+  COWORK_SOURCE_LABEL,
+  coworkRoot
+} from '../providers/claude/desktop'
 
 export interface ResolvedSource extends SourceInfo {
   /** Host path of the distro root that worked (WSL only). */
@@ -16,6 +22,8 @@ export interface ResolvedSource extends SourceInfo {
 export interface DetectOptions {
   extraFolders: string[]
   scanStoppedDistros: boolean
+  /** Settings → Sources: the Claude desktop app's Cowork sessions (off by default). */
+  cowork?: boolean
 }
 
 async function isDir(p: string): Promise<boolean> {
@@ -158,6 +166,24 @@ export async function detectSources(
           distroRoot: root
         })
     }
+  }
+
+  // The Claude desktop app's Cowork sessions (view-only; see providers/claude/desktop.ts).
+  if (opts.cowork) {
+    const root = coworkRoot(claudeDesktopDir(platform))
+    const ok = await isDir(root)
+    sources.push({
+      id: COWORK_SOURCE_ID,
+      label: COWORK_SOURCE_LABEL,
+      env: 'windows',
+      kind: 'auto',
+      cowork: true,
+      // No settings.json: never a status line, hooks or Running now for it.
+      projectsDir: root,
+      status: ok ? 'ok' : 'missing',
+      statusMessage: ok ? undefined : 'No Claude desktop Cowork sessions on this PC',
+      sessionCount: 0
+    })
   }
 
   // Extra folders

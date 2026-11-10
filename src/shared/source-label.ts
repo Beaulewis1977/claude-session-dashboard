@@ -18,6 +18,7 @@ export type SourceLabel =
   | 'vscode'
   | 'jetbrains'
   | 'desktop'
+  | 'cowork'
   | 'sdk'
   | 'cloud'
   | 'unknown'
@@ -50,7 +51,8 @@ export const SOURCE_LABELS: Record<SourceLabel, string> = {
   'terminal-wsl': 'Terminal (WSL)',
   vscode: 'VS Code',
   jetbrains: 'JetBrains',
-  desktop: 'Desktop (local)',
+  desktop: 'Claude desktop',
+  cowork: 'Claude desktop (Cowork)',
   sdk: 'SDK / claude -p',
   cloud: 'Cloud (teleported)',
   unknown: 'Local · unknown',
@@ -72,6 +74,7 @@ export const MANUAL_LABELS: SourceLabel[] = [
   'vscode',
   'jetbrains',
   'desktop',
+  'cowork',
   'sdk',
   'cloud',
   'unknown'
@@ -150,6 +153,23 @@ export interface SourceContext {
   /** The app started it in a terminal (Resume / Fork / New session). */
   launchedByApp?: boolean
   imported?: boolean
+  /** The Claude desktop app's Code tab lists it (its own session index names this session). */
+  desktopIndexed?: boolean
+  /** From the optional Claude desktop (Cowork) source. */
+  cowork?: boolean
+}
+
+/** Entrypoints the dashboard's own `claude -p` runs (Ask Claude, summaries) can have. */
+const OWN_RUN_ENTRYPOINTS = new Set(['sdk-cli', 'sdk-ts', 'sdk-py'])
+
+/**
+ * Could this be one of the dashboard's own runs (hidden as "Ask Claude")? Only a
+ * `claude -p` run whose first prompt starts with the app's marker, never a
+ * session the Claude desktop app or a terminal ran (those are real sessions).
+ */
+export function couldBeOwnRun(h: SourceHints | undefined, ctx: SourceContext): boolean {
+  if (ctx.desktopIndexed || ctx.cowork || h?.remote || h?.ide) return false
+  return (h?.entrypoints ?? []).every((e) => OWN_RUN_ENTRYPOINTS.has(e))
 }
 
 export interface DetectedSource {
@@ -161,12 +181,19 @@ export interface DetectedSource {
 export function detectSource(h: SourceHints | undefined, ctx: SourceContext): DetectedSource {
   const terminal: SourceLabel = ctx.env === 'wsl' ? 'terminal-wsl' : 'terminal-windows'
   if (ctx.imported) return { label: 'claude-ai', reason: 'Imported from a claude.ai data export' }
-  if (ctx.firstPrompt?.startsWith(ASK_MARKER))
+  if (ctx.cowork)
+    return { label: 'cowork', reason: 'From the Claude desktop app’s Cowork sessions folder' }
+  const own = couldBeOwnRun(h, ctx)
+  if (own && ctx.firstPrompt?.startsWith(ASK_MARKER))
     return { label: 'ask-claude', reason: "Started by the dashboard's Ask Claude" }
   // Summaries run with --no-session-persistence; one that is saved anyway is hidden the same way.
-  if (ctx.firstPrompt?.startsWith(SUMMARY_PROMPT_MARKER))
+  if (own && ctx.firstPrompt?.startsWith(SUMMARY_PROMPT_MARKER))
     return { label: 'ask-claude', reason: "Started by the dashboard's session summaries" }
   const eps = h?.entrypoints ?? []
+  // The desktop app's Code tab can run sessions through the SDK (entrypoint "sdk-cli"):
+  // its own session index says which ones are its.
+  if (ctx.desktopIndexed && !h?.remote)
+    return { label: 'desktop', reason: 'Listed in the Claude desktop app’s Code tab' }
   if (h?.remote)
     return {
       label: 'cloud',
@@ -177,8 +204,10 @@ export function detectSource(h: SourceHints | undefined, ctx: SourceContext): De
   const has = (...names: string[]): string | undefined => eps.find((e) => names.includes(e))
   let ep: string | undefined
   if ((ep = has('claude-vscode'))) return { label: 'vscode', reason: `entrypoint "${ep}"` }
-  if ((ep = has('claude-desktop', 'claude-desktop-3p', 'local-agent', 'local_agent')))
+  if ((ep = has('claude-desktop', 'claude-desktop-3p')))
     return { label: 'desktop', reason: `entrypoint "${ep}"` }
+  if ((ep = has('local-agent', 'local_agent')))
+    return { label: 'cowork', reason: `entrypoint "${ep}" (Claude desktop Cowork)` }
   if ((ep = has('sdk-cli', 'sdk-ts', 'sdk-py')))
     return { label: 'sdk', reason: `entrypoint "${ep}"` }
   if (has('cli')) {

@@ -119,6 +119,8 @@ export interface BackupDeps {
   encryptor: Encryptor
   /** Save the app's in-memory data first, so the snapshot is current. */
   beforeBackup?: () => Promise<void>
+  /** Archive sources left out of backups now (the Claude desktop Cowork source while it's off). */
+  skipArchiveSources?: () => readonly string[]
   /**
    * A desktop notification. Used once per start: when a scheduled backup
    * missed while the app was closed has run (done or failed).
@@ -873,7 +875,9 @@ export class BackupService extends EventEmitter<{ changed: [] }> {
         await writeSet(setDir, set)
       }
       await this.deps.beforeBackup?.().catch(() => undefined)
-      const { files, skipped } = await collectFiles(this.deps.dataDir)
+      const { files, skipped } = await collectFiles(this.deps.dataDir, undefined, {
+        skipArchiveSources: this.deps.skipArchiveSources?.() ?? []
+      })
       const r = await runBackup({
         setDir,
         set,

@@ -4,6 +4,7 @@
 // Reads only. The only writes go to the app's data folder (archive, metadata).
 
 import { createHash } from 'node:crypto'
+import { COWORK_SOURCE_ID, readDesktopIndex } from '../providers/claude/desktop'
 import { EventEmitter } from 'node:events'
 import { existsSync } from 'node:fs'
 import { readFile, stat } from 'node:fs/promises'
@@ -210,12 +211,46 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
    * here until the rescan drops them: they're skipped, never looked up.
    */
   private isOn(e: Entry): boolean {
+    // Cowork sessions (archive copies included) only while that source is on.
+    if (e.base.sourceId === COWORK_SOURCE_ID && !this.coworkOn()) return false
     const p = this.owner.get(e.base.key)
     return !p || this.providers.isOn(p)
   }
 
+  /** Settings → Sources: the Claude desktop app's Cowork sessions are shown. */
+  coworkOn(): boolean {
+    return this.settings.value.coworkSource === true
+  }
+
+  /** `%APPDATA%/Claude` (set at startup): the desktop app's Code-tab index is read from it. */
+  desktopDir?: string
+  /** Session ids the Claude desktop app's Code tab lists (see providers/claude/desktop.ts). */
+  private desktopIds: ReadonlySet<string> = new Set()
+
+  /** Re-read the desktop app's Code-tab index; the labels follow (cheap: a few small files). */
+  async refreshDesktopIndex(): Promise<void> {
+    if (!this.desktopDir) return
+    const next = await readDesktopIndex(this.desktopDir).catch(() => new Set<string>())
+    const same =
+      next.size === this.desktopIds.size && [...next].every((id) => this.desktopIds.has(id))
+    this.desktopIds = next
+    if (!same) this.emitChanged()
+  }
+
   source(id: string): ResolvedSource | undefined {
     return this.sources.find((s) => s.id === id)
+  }
+
+  /**
+   * How the app recorded a session was made (Fork / Continue fresh / Branch
+   * from the app), by its key: also before its file exists (a session that was
+   * just continued fresh, running in a terminal).
+   */
+  originOf(key: string): { parentKey?: string; via: 'app' | 'fork' | 'continue' } | undefined {
+    const i = key.indexOf(':')
+    if (i <= 0) return undefined
+    const b = this.metaOf({ key, sourceId: key.slice(0, i), sessionId: key.slice(i + 1) }).branch
+    return b ? { parentKey: b.parentKey, via: b.via } : undefined
   }
 
   archiveRecord(key: string): ArchiveRecord | undefined {
@@ -438,7 +473,11 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
 
   private async detect(): Promise<ResolvedSource[]> {
     const s = this.settings.value
-    const opts = { extraFolders: s.extraFolders, scanStoppedDistros: s.scanStoppedDistros }
+    const opts = {
+      extraFolders: s.extraFolders,
+      scanStoppedDistros: s.scanStoppedDistros,
+      cowork: s.coworkSource === true
+    }
     const detected: ResolvedSource[] = []
     for (const p of this.providers.all())
       detected.push(...(await p.detectSources(this.platform, opts)))
@@ -463,6 +502,7 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
    */
   async recheckSources(): Promise<boolean> {
     if (this.scan.phase === 'scanning') return false
+    await this.refreshDesktopIndex()
     const sig = (list: ResolvedSource[]): string =>
       list
         .map((x) => `${x.id}=${x.status}`)
@@ -489,6 +529,7 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
   }
 
   private async rescanNow(): Promise<void> {
+    await this.refreshDesktopIndex()
     this.sources = await this.detect()
     this.dropDisabled()
     const files = new Map<string, SessionFile[]>()
@@ -524,6 +565,8 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
     if (!src || src.status !== 'ok') return
     const provider = this.providers.find(src)
     if (!provider) return
+    // The Windows home's safety-net poll (every minute) also re-reads the desktop app's index.
+    if (sourceId === 'windows') await this.refreshDesktopIndex()
     const list = await provider.listSessionFiles(src)
     if (!list) {
       // e.g. the WSL distro was shut down: show archive copies instead.
@@ -599,7 +642,9 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
       sourceUser: this.source(base.sourceId)?.user,
       firstPrompt: base.firstPrompt,
       launchedByApp: meta.billing?.source === 'launch',
-      imported: base.availability === 'imported'
+      imported: base.availability === 'imported',
+      desktopIndexed: base.env === 'windows' && this.desktopIds.has(base.sessionId.toLowerCase()),
+      cowork: base.sourceId === COWORK_SOURCE_ID
     })
   }
 
@@ -634,6 +679,8 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
       sourceReason: manual ? 'Set by hand' : det!.reason,
       lineage: this.lineageResolver?.(base.key),
       git: this.gitBadgeResolver?.(base.key),
+      // Claude desktop Cowork: read, search, usage and git links only.
+      ...(base.sourceId === COWORK_SOURCE_ID ? { viewOnly: 'cowork' as const } : {}),
       context: provider.capabilities.usage
         ? withStatusLine(base.context, this.contextResolver?.(base.sessionId))
         : base.context

@@ -102,6 +102,8 @@ export interface SessionProvider {
     root: string
     depth: number
     isSessionFile(path: string): boolean
+    /** Poll it instead of watching it (WSL shares are always polled). */
+    poll?: boolean
   }
 
   /** The effort levels its launches accept. */

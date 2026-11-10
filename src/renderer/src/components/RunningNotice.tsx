@@ -5,7 +5,7 @@
 import { useState } from 'react'
 import { AppWindow, Copy, MonitorUp, Smartphone } from 'lucide-react'
 import { runningAdvice, type RunningAction, type RunningCopy } from '@shared/running'
-import { ACTION_LABEL, runRunningAction } from '@/lib/running-actions'
+import { ACTION_LABEL, needsConfirm, runRunningAction } from '@/lib/running-actions'
 import { Button } from './ui/button'
 
 export function RunningNotice({
@@ -20,7 +20,8 @@ export function RunningNotice({
   onAnother: () => void
 }) {
   const advice = runningAdvice(running, 'pc')
-  const [confirming, setConfirming] = useState(false)
+  // 'another', or the Codex app for a thread a terminal still runs: confirmed first.
+  const [confirming, setConfirming] = useState<'another' | 'codex-app' | null>(null)
   const icon = (a: RunningAction) =>
     a === 'focus' ? (
       <MonitorUp />
@@ -44,7 +45,7 @@ export function RunningNotice({
         <div className="flex flex-wrap gap-2">
           {advice.actions.map((a) =>
             a === 'another' ? (
-              <Button key={a} variant="ghost" size="xs" onClick={() => setConfirming(true)}>
+              <Button key={a} variant="ghost" size="xs" onClick={() => setConfirming('another')}>
                 {icon(a)} {ACTION_LABEL[a]}
               </Button>
             ) : (
@@ -52,7 +53,11 @@ export function RunningNotice({
                 key={a}
                 variant="outline"
                 size="xs"
-                onClick={() => void runRunningAction(running, a).then((ok) => ok && onDone())}
+                onClick={() =>
+                  needsConfirm(running, a)
+                    ? setConfirming('codex-app')
+                    : void runRunningAction(running, a).then((ok) => ok && onDone())
+                }
               >
                 {icon(a)} {ACTION_LABEL[a]}
               </Button>
@@ -62,14 +67,33 @@ export function RunningNotice({
       ) : (
         <div className="space-y-2 border-t border-warning/30 pt-2">
           <div className="text-foreground">
-            Start a second copy anyway? Both write into the same session file and can get out of
-            step.
+            {confirming === 'another'
+              ? 'Start a second copy anyway? Both write into the same session file and can get out of step.'
+              : 'It’s still open in a terminal. Opening it in the Codex app too means two copies of one thread. Open it anyway?'}
           </div>
           <div className="flex gap-2">
-            <Button variant="outline" size="xs" onClick={onAnother}>
-              <Copy /> Start another copy
+            <Button
+              variant="outline"
+              size="xs"
+              onClick={() =>
+                confirming === 'another'
+                  ? onAnother()
+                  : void runRunningAction(running, 'open-codex-app', true).then(
+                      (ok) => ok && onDone()
+                    )
+              }
+            >
+              {confirming === 'another' ? (
+                <>
+                  <Copy /> Start another copy
+                </>
+              ) : (
+                <>
+                  <AppWindow /> Open in Codex app anyway
+                </>
+              )}
             </Button>
-            <Button variant="ghost" size="xs" onClick={() => setConfirming(false)}>
+            <Button variant="ghost" size="xs" onClick={() => setConfirming(null)}>
               Cancel
             </Button>
           </div>

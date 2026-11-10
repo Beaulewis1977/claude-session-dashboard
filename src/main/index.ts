@@ -840,7 +840,9 @@ async function main(): Promise<void> {
       kind,
       key: s.key,
       live: live.snapshot().sessions,
-      origin: (k) => sessions.originOf(k)
+      origin: (k) => sessions.originOf(k),
+      // The desktop app's Code tab lists it (it may run it through the SDK).
+      desktopApp: (k) => sessions.get(k)?.source === 'desktop'
     })
 
   // Git links: commits, branches and PRs per session, read-only (see git/service.ts).

@@ -122,6 +122,15 @@ export interface LaunchContext {
 
 const DESKTOP: LaunchContext = { via: 'desktop' }
 
+/** A started launch blocks a second one this long, until Running now shows it (seconds). */
+const RESERVE_MS = 60_000
+
+interface Reservation {
+  k: string
+  until: number
+  copy: RunningCopy
+}
+
 export const NO_SUMMARY =
   'Summarize this session first: Continue fresh starts the new session from its summary.'
 
@@ -163,10 +172,10 @@ export class Launcher {
    */
   running?: (s: SessionSummary, kind: RunningKind) => RunningCopy | undefined
 
-  /** The copy already running for this launch, if any. */
+  /** The copy already running for this launch (or one on its way), if any. */
   runningCopy(s: SessionSummary, opts: LaunchOptions): RunningCopy | undefined {
     const kind = runningKindOf(opts)
-    return kind ? this.running?.(s, kind) : undefined
+    return kind ? (this.running?.(s, kind) ?? this.reservedCopy(s, kind)) : undefined
   }
 
   /** Whether (and how) this launch can open in the Claude desktop app; undefined: not offered. */
@@ -1192,8 +1201,8 @@ export class Launcher {
     if (!found) return { ok: false, restored: false, commandLine: '', error: 'Session not found' }
     if (isViewOnly(found) && found.availability !== 'imported')
       return { ok: false, restored: false, commandLine: '', error: VIEW_ONLY_ERROR }
-    // Already running on the PC (it, or a fork / continuation of it): refused
-    // unless "Start another copy anyway" was confirmed.
+    // Already running on the PC (it, or a fork / continuation of it), or a launch of
+    // it is still on its way: refused unless "Start another copy anyway" was confirmed.
     if (!opts.allowDuplicate) {
       const running = this.runningCopy(found, opts)
       if (running)
@@ -1205,6 +1214,73 @@ export class Launcher {
           running
         }
     }
+    // Reserved from here (synchronously, before any await) until Running now has caught up,
+    // so two requests at once can't both start it.
+    const kind = runningKindOf(opts)
+    const slot = kind ? this.reserve(found, kind) : undefined
+    try {
+      const res = await this.launchNow(found, opts, ctx)
+      if (slot) {
+        // Started: kept a while (Running now sees it within seconds). Nothing started: free.
+        if (res.ok && !res.simulated) slot.until = Date.now() + RESERVE_MS
+        else this.release(slot)
+      }
+      return res
+    } catch (err) {
+      if (slot) this.release(slot)
+      throw err
+    }
+  }
+
+  /** Launches started but not in Running now yet, by what they would duplicate. */
+  private reserved = new Map<string, Reservation>()
+
+  private reservationKey(s: SessionSummary, kind: RunningKind): string {
+    return kind === 'fork' || kind === 'continue' ? `${s.key}#children` : `${s.key}#self`
+  }
+
+  /** A launch on its way for this (its reservation as a running copy), if any. */
+  private reservedCopy(s: SessionSummary, kind: RunningKind): RunningCopy | undefined {
+    const r = this.reserved.get(this.reservationKey(s, kind))
+    if (!r) return undefined
+    if (r.until < Date.now()) {
+      this.reserved.delete(r.k)
+      return undefined
+    }
+    return r.copy
+  }
+
+  private reserve(s: SessionSummary, kind: RunningKind): Reservation {
+    const k = this.reservationKey(s, kind)
+    const r: Reservation = {
+      k,
+      // Held while the launch runs (a phone launch can wait for the PC's confirm).
+      until: Number.POSITIVE_INFINITY,
+      copy: {
+        key: s.key,
+        relation: kind === 'fork' ? 'fork' : kind === 'continue' ? 'continue' : 'self',
+        state: 'working',
+        provider: this.provider(s).id,
+        env: s.env,
+        ...(s.distro ? { distro: s.distro } : {}),
+        where:
+          kind === 'codex-app' ? 'codex-app' : kind === 'claude-app' ? 'claude-app' : 'terminal',
+        pending: true
+      }
+    }
+    this.reserved.set(k, r)
+    return r
+  }
+
+  private release(r: Reservation): void {
+    if (this.reserved.get(r.k) === r) this.reserved.delete(r.k)
+  }
+
+  private async launchNow(
+    found: SessionSummary,
+    opts: LaunchOptions,
+    ctx: LaunchContext
+  ): Promise<LaunchResult> {
     if (opts.openIn === 'claude-app') return this.openInClaudeApp(found, opts, ctx)
     // The Codex desktop app instead of a terminal: no folder, terminal or flags involved.
     if (opts.openIn === 'codex-app') return this.openInCodexApp(found, opts, ctx)

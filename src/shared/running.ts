@@ -31,6 +31,8 @@ export interface RunningCopy {
   /** Its name in Claude Code, if any (the title is added by the caller). */
   name?: string
   title?: string
+  /** Launched from the dashboard a moment ago, not in Running now yet. */
+  pending?: true
 }
 
 /** How the app recorded a session was made (Fork / Continue fresh from the app). */
@@ -46,9 +48,14 @@ export interface RunningInput {
   live: readonly LiveSession[]
   /** The app's record of where a running session came from (by its key). */
   origin: (key: string) => RecordedOrigin | undefined
+  /**
+   * The Claude desktop app runs this session (its Code tab lists it). It can run
+   * them through the SDK, so the running file's entrypoint can say "sdk-cli".
+   */
+  desktopApp?: (key: string) => boolean
 }
 
-function whereOf(l: LiveSession): RunningCopy['where'] {
+function whereOf(l: LiveSession, desktopApp?: (key: string) => boolean): RunningCopy['where'] {
   if ((l.provider ?? 'claude') === 'codex') {
     if (l.lockHeld === true) return 'terminal'
     // Working without anyone holding its lock: the Codex app (its app server) runs it.
@@ -56,10 +63,16 @@ function whereOf(l: LiveSession): RunningCopy['where'] {
     return 'unknown'
   }
   if (l.entrypoint === 'claude-desktop' || l.entrypoint === 'claude-desktop-3p') return 'claude-app'
+  // Not a terminal (cli) session, and the desktop app lists it: the desktop app runs it.
+  if (l.entrypoint !== 'cli' && desktopApp?.(l.key)) return 'claude-app'
   return 'terminal'
 }
 
-function copyOf(l: LiveSession, relation: RunningCopy['relation']): RunningCopy {
+function copyOf(
+  l: LiveSession,
+  relation: RunningCopy['relation'],
+  desktopApp?: (key: string) => boolean
+): RunningCopy {
   const provider = l.provider ?? 'claude'
   return {
     key: l.key,
@@ -68,7 +81,7 @@ function copyOf(l: LiveSession, relation: RunningCopy['relation']): RunningCopy 
     provider,
     env: l.env,
     ...(l.distro ? { distro: l.distro } : {}),
-    where: whereOf(l),
+    where: whereOf(l, desktopApp),
     ...(provider === 'claude' && l.remoteActive && l.remoteUrl ? { remoteUrl: l.remoteUrl } : {}),
     ...(l.name ? { name: l.name } : {})
   }
@@ -90,11 +103,11 @@ export function findRunningCopy(inp: RunningInput): RunningCopy | undefined {
       })
       .sort(rank)
     const k = kids[0]
-    return k ? copyOf(k, inp.origin(k.key)!.via as 'fork' | 'continue') : undefined
+    return k ? copyOf(k, inp.origin(k.key)!.via as 'fork' | 'continue', inp.desktopApp) : undefined
   }
   const self = running.find((l) => l.key === inp.key)
   if (!self) return undefined
-  const copy = copyOf(self, 'self')
+  const copy = copyOf(self, 'self', inp.desktopApp)
   // The Codex app showing a thread it already runs is the same thread, not a second copy.
   if (inp.kind === 'codex-app' && copy.where === 'codex-app') return undefined
   return copy
@@ -122,6 +135,12 @@ const WHAT: Record<RunningCopy['relation'], string> = {
 export function runningAdvice(r: RunningCopy, on: 'phone' | 'pc'): RunningAdvice {
   const what = WHAT[r.relation]
   const actions: RunningAction[] = []
+  if (r.pending)
+    return {
+      title: 'Just started on your PC',
+      body: `${what} was started from the dashboard a moment ago and isn't in Running now yet. Give it a few seconds, then refresh.`,
+      actions: ['another']
+    }
   if (r.provider === 'codex') {
     if (r.where === 'codex-app')
       return {

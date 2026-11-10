@@ -16,7 +16,10 @@ const get = () => useApp.getState()
 export function summarize(keys: string[], origin: 'manual' | 'bulk' = 'manual'): void {
   const st = get()
   // Only sessions whose agent has summaries (Claude Code and Codex).
-  const list = keys.filter((k) => st.sessions.some((s) => s.key === k && capsOf(s).summaries))
+  // Claude desktop (Cowork) sessions are view-only: never summarized.
+  const list = keys.filter((k) =>
+    st.sessions.some((s) => s.key === k && capsOf(s).summaries && !s.viewOnly)
+  )
   if (!list.length) {
     if (keys.length) toast("Summaries aren't available for these sessions")
     return

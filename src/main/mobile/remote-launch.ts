@@ -257,6 +257,11 @@ export class RemoteLauncher {
       return { ok: false, error: 'Read-only mode is on: launches from the phone are turned off.' }
     }
     if (!this.deps.focus) return { ok: false, error: "Focus terminal isn't available on this PC." }
+    // The request body was read after the phone was checked: it may have been revoked meanwhile.
+    if (!this.deps.deviceActive(device.id)) {
+      log(false, 'the phone was revoked')
+      return { ok: false, error: 'Not done: the phone was revoked.' }
+    }
     if (!this.focusLimiter.take(device.id)) {
       log(false, 'rate limited')
       const wait = this.focusLimiter.retryAfter(device.id)

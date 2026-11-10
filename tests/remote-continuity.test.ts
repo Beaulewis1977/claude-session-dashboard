@@ -44,7 +44,11 @@ import { createFixturesPlatform } from '../src/main/platform'
 import { Launcher } from '../src/main/services/launcher'
 import { SessionService } from '../src/main/services/sessions'
 import { appPaths, createMetadataStore, createSettingsStore } from '../src/main/services/store'
-import { freshRemoteUrl, liveRemoteUrl } from '../src/renderer/src/lib/remote'
+import { freshRemoteUrl, liveRemoteUrl, runningNow } from '../src/renderer/src/lib/remote'
+import { needsConfirm, primaryAction } from '../src/renderer/src/lib/running-actions'
+import { ProviderRegistry } from '../src/main/providers/registry'
+import { claudeProvider } from '../src/main/providers/claude'
+import { createCodexProvider } from '../src/main/providers/codex'
 import { FIXTURES } from './helpers'
 
 const NOW = Date.parse('2026-11-09T12:00:00Z')
@@ -548,7 +552,11 @@ describe('Open in: Claude desktop app', () => {
     expect(HANDOFF_SCRIPT).toMatch(/-WindowStyle Hidden/)
     expect(HANDOFF_SCRIPT).not.toMatch(/-Redirect/)
     // A hand-over that hangs is ended, never left running.
-    expect(HANDOFF_SCRIPT).toMatch(/WaitForExit\(\[int\]\$env:CSD_WAIT_MS\)\) \{ Stop-Process/)
+    // …with every process it started (an npm claude.cmd runs node under cmd.exe).
+    expect(HANDOFF_SCRIPT).toMatch(
+      /WaitForExit\(\[int\]\$env:CSD_WAIT_MS\)\) \{ & .*taskkill\.exe"\) \/PID \$p\.Id \/T \/F/
+    )
+    expect(HANDOFF_SCRIPT).not.toMatch(/Stop-Process/)
   })
 
   it('only ever passes fixed flags and a checked session id', () => {
@@ -671,9 +679,9 @@ describe('Claude desktop folders are read narrowly', () => {
   })
 })
 
-async function setup(cowork: boolean) {
+async function setup(cowork: boolean, opts: { codex?: boolean; spawned?: string[] } = {}) {
   await cp(FIXTURES, join(root, 'fixtures'), { recursive: true })
-  await prepareFixtures(root)
+  await prepareFixtures(root, { codex: opts.codex })
   const layout = fixturesLayout(root)
   // A sign-in file and task files next to the Cowork transcript (decoys: never read or copied).
   const home = join(
@@ -692,7 +700,20 @@ async function setup(cowork: boolean) {
   await writeFile(join(home, '.claude', '.credentials.json'), '{"sample":"not a real secret"}')
   await mkdir(join(home, 'uploads'), { recursive: true })
   await writeFile(join(home, 'uploads', 'q3-retro.md'), '# notes\n')
-  const platform = createFixturesPlatform(layout.fixturesDir, layout.sourcesDir)
+  const base = createFixturesPlatform(layout.fixturesDir, layout.sourcesDir)
+  // A platform that "starts" commands (nothing runs; each command is recorded).
+  const spawned = opts.spawned
+  const platform = spawned
+    ? {
+        ...base,
+        canLaunch: true,
+        spawnDetached: async (c: { commandLine: string }) => {
+          // Takes a moment, like starting a terminal does.
+          await new Promise((r) => setTimeout(r, 20))
+          spawned.push(c.commandLine)
+        }
+      }
+    : base
   const paths = appPaths(layout.dataDir)
   const metadata = createMetadataStore(paths)
   const settings = createSettingsStore(paths)
@@ -700,7 +721,13 @@ async function setup(cowork: boolean) {
   await settings.load()
   if (cowork) settings.update((s) => void (s.coworkSource = true))
   await seedFixtureData(root, paths.archiveDir, metadata)
-  const sessions = new SessionService(platform, paths, metadata, settings)
+  const sessions = new SessionService(
+    platform,
+    paths,
+    metadata,
+    settings,
+    opts.codex ? new ProviderRegistry([claudeProvider, createCodexProvider()]) : undefined
+  )
   sessions.desktopDir = join(platform.windowsHome, 'AppData', 'Roaming', 'Claude')
   busy.push(sessions)
   const launcher = new Launcher(platform, sessions, () => settings.value.terminal)
@@ -837,5 +864,221 @@ describe('Claude desktop sessions in the dashboard (fixtures)', () => {
     )
     expect(viaPhone.ok).toBe(false)
     expect(viaPhone.error).toMatch(/from the PC only/)
+  })
+})
+
+// ------------------------------------------------------- review fixes
+
+describe('Review fixes', () => {
+  it('two launches at once: only one starts; the second is told one is on its way', async () => {
+    const spawned: string[] = []
+    const { sessions, launcher } = await setup(false, { spawned })
+    launcher.running = () => undefined // Running now hasn't seen it yet
+    const key = `windows:${DESKTOP_ID}`
+    const o = { key, fork: false, skipPermissions: false }
+    const [a, b] = await Promise.all([launcher.launch(o), launcher.launch(o)])
+    expect([a.ok, b.ok].sort()).toEqual([false, true])
+    const refused = a.ok ? b : a
+    expect(refused.running).toMatchObject({ key, relation: 'self', pending: true })
+    expect(spawned).toHaveLength(1)
+    // Still reserved after it started, until Running now catches up.
+    expect((await launcher.launch(o)).running?.pending).toBe(true)
+    expect((await launcher.preview(o)).running?.pending).toBe(true)
+    expect(runningAdvice((await launcher.preview(o)).running!, 'phone')).toMatchObject({
+      title: 'Just started on your PC',
+      actions: ['another']
+    })
+    // Forking it is a different launch: not blocked by the Resume on its way.
+    expect((await launcher.preview({ ...o, fork: true })).running).toBeUndefined()
+    // Confirmed: another copy starts.
+    expect((await launcher.launch({ ...o, allowDuplicate: true })).ok).toBe(true)
+    expect(spawned).toHaveLength(2)
+    void sessions
+  })
+
+  it('a launch that failed frees its reservation at once', async () => {
+    const { sessions, launcher } = await setup(false)
+    launcher.running = () => undefined
+    const s = sessions.get(`windows:${DESKTOP_ID}`)!
+    const bad = await launcher.launch({
+      key: s.key,
+      fork: false,
+      skipPermissions: false,
+      remoteControl: true,
+      billingAccountId: 'acct-1'
+    })
+    expect(bad.ok).toBe(false)
+    expect(
+      (await launcher.preview({ key: s.key, fork: false, skipPermissions: false })).running
+    ).toBeUndefined()
+  })
+
+  it('a Codex fork (forked_from_id in its file) counts as a fork of its parent', async () => {
+    const { sessions } = await setup(false, { codex: true })
+    const parent = 'codex-windows:019a1111-0000-7000-8000-000000000001'
+    const fork = 'codex-windows:019a4444-0000-7000-8000-000000000004'
+    expect(sessions.get(fork)?.forkedFromId).toBe('019a1111-0000-7000-8000-000000000001')
+    expect(sessions.originOf(fork)).toEqual({ parentKey: parent, via: 'fork' })
+    const r = findRunningCopy({
+      kind: 'fork',
+      key: parent,
+      live: [live({ key: fork, provider: 'codex', lockHeld: true })],
+      origin: (k) => sessions.originOf(k)
+    })
+    expect(r).toMatchObject({ key: fork, relation: 'fork', where: 'terminal' })
+  })
+
+  it('desktop Open in Codex app for a terminal-held thread needs a confirm; Focus comes first', () => {
+    const t = {
+      key: 'c:1',
+      relation: 'self' as const,
+      state: 'working' as const,
+      provider: 'codex' as const,
+      env: 'windows' as const,
+      where: 'terminal' as const
+    }
+    expect(needsConfirm(t, 'open-codex-app')).toBe(true)
+    expect(primaryAction(t)).toBe('focus')
+    const app = { ...t, where: 'codex-app' as const }
+    expect(needsConfirm(app, 'open-codex-app')).toBe(false)
+    expect(primaryAction(app)).toBe('open-codex-app')
+  })
+
+  it("a fork's live Remote Control link is never another session's fork", () => {
+    const since = NOW - 20_000
+    const other = live({
+      key: 'windows:theirs',
+      cwd: 'C:\\code',
+      startedAt: NOW - 5000,
+      remoteUrl: RC_URL,
+      remoteActive: true
+    })
+    const sessions = [
+      {
+        key: 'windows:theirs',
+        sourceId: 'windows',
+        env: 'windows' as const,
+        cwd: 'C:\\code',
+        lineage: { parentKey: 'windows:z', parentSessionId: 'z', via: 'fork' as const }
+      }
+    ]
+    const res = { fork: { parentKey: 'windows:a', sourceId: 'windows', cwd: 'C:\\code' } }
+    expect(freshRemoteUrl(sessions, res, since, new Set(), [other])).toBeUndefined()
+    // Linked to this parent: that one wins, even with another new process in the folder.
+    const mine = live({
+      key: 'windows:mine',
+      cwd: 'C:\\code',
+      startedAt: NOW - 4000,
+      remoteUrl: `${RC_URL}x`,
+      remoteActive: true
+    })
+    const stranger = live({
+      key: 'windows:new',
+      cwd: 'C:\\code',
+      startedAt: NOW - 4000,
+      remoteUrl: `${RC_URL}y`,
+      remoteActive: true
+    })
+    const linked = [
+      ...sessions,
+      {
+        key: 'windows:mine',
+        sourceId: 'windows',
+        env: 'windows' as const,
+        cwd: 'C:\\code',
+        lineage: { parentKey: 'windows:a', parentSessionId: 'a', via: 'fork' as const }
+      }
+    ]
+    expect(freshRemoteUrl(linked, res, since, new Set(), [other, mine, stranger])).toBe(
+      `${RC_URL}x`
+    )
+  })
+
+  it('an open phone sheet follows Running now: no stale link after a restart without RC', () => {
+    const seen = {
+      key: 'windows:a',
+      relation: 'self' as const,
+      state: 'working' as const,
+      provider: 'claude' as const,
+      env: 'windows' as const,
+      where: 'terminal' as const,
+      remoteUrl: RC_URL
+    }
+    // Restarted without Remote Control: the old link goes (and Refresh shows again).
+    expect(runningNow(seen, [live({ key: 'windows:a' })])?.remoteUrl).toBeUndefined()
+    // Turned on later: the link comes from Running now.
+    expect(
+      runningNow({ ...seen, remoteUrl: undefined }, [
+        live({ key: 'windows:a', remoteUrl: RC_URL, remoteActive: true })
+      ])?.remoteUrl
+    ).toBe(RC_URL)
+    // Ended since: nothing to warn about.
+    expect(runningNow(seen, [live({ key: 'windows:a', state: 'exited' })])).toBeUndefined()
+    expect(runningNow(seen, [])).toBeUndefined()
+    // On its way (not in Running now yet), or Running now not loaded: kept.
+    expect(runningNow({ ...seen, pending: true }, [])).toMatchObject({ pending: true })
+    expect(runningNow(seen, undefined)).toBe(seen)
+  })
+
+  it('a desktop-app session run through the SDK gets no terminal advice', () => {
+    const l = [live({ key: 'windows:d', entrypoint: 'sdk-cli' })]
+    const r = findRunningCopy({
+      kind: 'resume',
+      key: 'windows:d',
+      live: l,
+      origin: noOrigin,
+      desktopApp: (k) => k === 'windows:d'
+    })
+    expect(r?.where).toBe('claude-app')
+    const a = runningAdvice(r!, 'phone')
+    expect(a.title).toBe('Already open in the Claude desktop app')
+    expect(a.actions).toEqual(['another'])
+    expect(a.body).not.toMatch(/\/rc/)
+    // A terminal session the desktop app lists (handed over earlier, now back in a terminal) stays a terminal.
+    const cli = findRunningCopy({
+      kind: 'resume',
+      key: 'windows:d',
+      live: [live({ key: 'windows:d', entrypoint: 'cli' })],
+      origin: noOrigin,
+      desktopApp: () => true
+    })
+    expect(cli?.where).toBe('terminal')
+  })
+
+  it('Focus terminal on PC checks the phone is still paired right before focusing', async () => {
+    const s = claudeSession()
+    const focused: string[] = []
+    let active = true
+    const rl = new RemoteLauncher({
+      session: () => s,
+      preview: async () => PREVIEW,
+      launch: async () => ({ ok: true, restored: false, commandLine: 'x' }),
+      settings: () => ({
+        terminal: 'wt',
+        readOnly: false,
+        confirmOnPc: false,
+        branchConfirmed: true
+      }),
+      confirm: async () => true,
+      deviceActive: () => active,
+      log: () => undefined,
+      focus: async (k) => {
+        focused.push(k)
+        return { ok: true }
+      }
+    })
+    active = false
+    const r = await rl.launch(DEVICE, { key: s.key, kind: 'focus' })
+    expect(r.ok).toBe(false)
+    expect(r.error).toMatch(/revoked/)
+    expect(focused).toHaveLength(0)
+  })
+
+  it('Cowork sessions stay out of searches while the source is off', async () => {
+    const { sessions, settings } = await setup(true)
+    const key = `${COWORK_SOURCE_ID}:${COWORK_ID}`
+    expect(sessions.searchKeys('action items').some((h) => h.key === key)).toBe(true)
+    settings.update((st) => void (st.coworkSource = false))
+    expect(sessions.searchKeys('action items').some((h) => h.key === key)).toBe(false)
   })
 })

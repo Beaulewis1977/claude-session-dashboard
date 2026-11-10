@@ -241,7 +241,7 @@ function Header({
                     <Zap /> Continue fresh from summary…
                   </DropdownMenuItem>
                 )}
-                {caps.summaries && (
+                {caps.summaries && !session.viewOnly && (
                   <DropdownMenuItem onSelect={() => summarize([session.key])}>
                     <Sparkles /> {session.meta.aiSummary ? 'Regenerate summary' : 'Summarize'}
                   </DropdownMenuItem>

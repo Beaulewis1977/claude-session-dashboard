@@ -76,7 +76,7 @@ function SingleItems({ session: s }: { session: SessionSummary }) {
       <ContextMenuItem disabled={viewOnly} onSelect={() => openContinueFresh(s.key)}>
         <Zap /> Continue fresh…
       </ContextMenuItem>
-      <ContextMenuItem onSelect={() => summarize([s.key])}>
+      <ContextMenuItem disabled={!!s.viewOnly} onSelect={() => summarize([s.key])}>
         <Sparkles /> {s.meta.aiSummary ? 'Regenerate summary' : 'Summarize'}
       </ContextMenuItem>
       <ContextMenuSeparator />

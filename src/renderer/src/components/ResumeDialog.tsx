@@ -351,12 +351,14 @@ function ResumeDialogBody({ resume }: { resume: ResumeRequest }) {
         branchBlocked
 
   const launch = async (createOnly = false, anyway = another): Promise<void> => {
-    if (launching || (createOnly ? branchBlocked || !preview : blocked)) return
-    // Still running and not confirmed: the main button switches to it instead.
+    if (launching) return
+    // Still running and not confirmed: the main button switches to it instead (that
+    // needs no launch, so a missing folder or other launch problem doesn't stop it).
     if (!createOnly && preview?.running && !anyway) {
       if (switchAction && (await runRunningAction(preview.running, switchAction))) close()
       return
     }
+    if (createOnly ? branchBlocked || !preview : blocked) return
     setLaunching(true)
     const res = await api.launch({
       key: resume.key,
@@ -919,7 +921,7 @@ function ResumeDialogBody({ resume }: { resume: ResumeRequest }) {
           <Button
             variant="primary"
             onClick={() => void launch()}
-            disabled={blocked || launching}
+            disabled={(switchAction ? false : blocked || !!running) || launching}
             autoFocus
           >
             {launching ? (

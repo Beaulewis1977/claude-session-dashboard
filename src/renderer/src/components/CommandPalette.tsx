@@ -173,13 +173,15 @@ function PaletteBody() {
             >
               New session in this folder…
             </Item>
-            <Item
-              value="summarize session summary ai"
-              icon={<Sparkles />}
-              onSelect={run(() => summarize([selected.key]))}
-            >
-              {selected.meta.aiSummary ? 'Regenerate summary' : 'Summarize'}
-            </Item>
+            {!selected.viewOnly && (
+              <Item
+                value="summarize session summary ai"
+                icon={<Sparkles />}
+                onSelect={run(() => summarize([selected.key]))}
+              >
+                {selected.meta.aiSummary ? 'Regenerate summary' : 'Summarize'}
+              </Item>
+            )}
             {!isViewOnly(selected) && (
               <Item
                 value="continue fresh new session from summary handoff"

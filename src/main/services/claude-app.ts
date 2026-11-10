@@ -38,7 +38,7 @@ export const HANDOFF_WAIT_MS = 40_000
 
 /**
  * Starts Claude Code in a hidden console of its own, waits for it, returns its
- * exit code (124: it didn't finish and was ended). Inputs come only from the
+ * exit code (124: it didn't finish and was ended, with every process it started). Inputs come only from the
  * environment: CSD_CLAUDE (absolute path), CSD_ARGS (fixed flags and a checked
  * session id, space-separated), CSD_CWD, CSD_WAIT_MS.
  */
@@ -46,7 +46,8 @@ export const HANDOFF_SCRIPT = [
   "$ErrorActionPreference = 'Stop'",
   '$p = Start-Process -FilePath $env:CSD_CLAUDE -ArgumentList ($env:CSD_ARGS -split " ") -WorkingDirectory $env:CSD_CWD -WindowStyle Hidden -PassThru',
   '$null = $p.Handle',
-  'if (-not $p.WaitForExit([int]$env:CSD_WAIT_MS)) { Stop-Process -Id $p.Id -Force; exit 124 }',
+  // Ended with everything it started (an npm claude.cmd runs node under cmd.exe).
+  'if (-not $p.WaitForExit([int]$env:CSD_WAIT_MS)) { & (Join-Path $env:SystemRoot "System32\\taskkill.exe") /PID $p.Id /T /F | Out-Null; exit 124 }',
   'exit $p.ExitCode'
 ].join('; ')
 

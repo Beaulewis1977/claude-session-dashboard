@@ -22,7 +22,7 @@ import { providerOf } from '@shared/provider'
 import type { SessionSummary, TerminalPref } from '@shared/types'
 import { now } from '@shared/clock'
 import { effortLabel, modelLabel } from '@shared/model-choice'
-import { freshRemoteUrl, liveRemoteUrl } from '@/lib/remote'
+import { freshRemoteUrl, runningNow } from '@/lib/remote'
 import type { RunningCopy } from '@shared/running'
 import { RunningBlock } from './RunningBlock'
 import { useMobile } from './state'
@@ -100,14 +100,9 @@ export function LaunchSheet({
   const [runningRes, setRunningRes] = useState<RunningCopy>()
   const liveSessions = useApp((st) => st.live?.sessions)
   const readOnly = useMobile((st) => st.me?.readOnly) ?? false
-  const seen = runningRes ?? preview?.running
-  // The live link shows as soon as Remote Control is on in it (/rc typed later included).
-  const running: RunningCopy | undefined = seen && {
-    ...seen,
-    remoteUrl:
-      seen.remoteUrl ??
-      (seen.provider === 'claude' ? liveRemoteUrl(liveSessions, seen.key) : undefined)
-  }
+  // As Running now says it is now: the link shows as soon as Remote Control is on
+  // (/rc typed later included), and goes when the session restarts without it.
+  const running: RunningCopy | undefined = runningNow(runningRes ?? preview?.running, liveSessions)
   const fresh = useFreshRemoteUrl(result?.ok && !codex ? result : null, result?.at ?? 0)
   const [waitedLong, setWaitedLong] = useState(false)
 

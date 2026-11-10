@@ -244,15 +244,23 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
   }
 
   /**
-   * How the app recorded a session was made (Fork / Continue fresh / Branch
-   * from the app), by its key: also before its file exists (a session that was
-   * just continued fresh, running in a terminal).
+   * Where a session came from, by its key: the app's own record (Fork / Continue
+   * fresh / Branch from the app; also before its file exists, e.g. a session just
+   * continued fresh), else what its file says (a Codex fork's `forked_from_id`;
+   * Codex forks the app launched get no record of their own).
    */
   originOf(key: string): { parentKey?: string; via: 'app' | 'fork' | 'continue' } | undefined {
     const i = key.indexOf(':')
     if (i <= 0) return undefined
-    const b = this.metaOf({ key, sourceId: key.slice(0, i), sessionId: key.slice(i + 1) }).branch
-    return b ? { parentKey: b.parentKey, via: b.via } : undefined
+    const sourceId = key.slice(0, i)
+    const b = this.metaOf({ key, sourceId, sessionId: key.slice(i + 1) }).branch
+    if (b) return { parentKey: b.parentKey, via: b.via }
+    const s = this.get(key)
+    if (s?.forkedFromId) return { parentKey: `${sourceId}:${s.forkedFromId}`, via: 'fork' }
+    const l = s?.lineage
+    if (l?.parentKey && (l.via === 'fork' || l.via === 'continue'))
+      return { parentKey: l.parentKey, via: l.via }
+    return undefined
   }
 
   archiveRecord(key: string): ArchiveRecord | undefined {
@@ -260,11 +268,16 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
   }
 
   searchKeys(query: string): SearchHit[] {
+    // Only sessions that are shown (a provider turned off, or the Cowork source while it's off).
+    const shown = (h: SearchHit): boolean => {
+      const e = this.entries.get(h.key)
+      return !!e && this.isOn(e)
+    }
     const q = parseGitQuery(query)
-    if (!hasGitFilters(q) || !this.gitFilter) return this.search.search(query)
+    if (!hasGitFilters(q) || !this.gitFilter) return this.search.search(query).filter(shown)
     const keys = this.gitFilter(q)
-    if (!q.text) return [...keys].map((key) => ({ key, score: 1, fields: ['git'] }))
-    return this.search.search(q.text).filter((h) => keys.has(h.key))
+    if (!q.text) return [...keys].map((key) => ({ key, score: 1, fields: ['git'] })).filter(shown)
+    return this.search.search(q.text).filter((h) => keys.has(h.key) && shown(h))
   }
 
   /** The sessions a `touched:` / `commit:` filter matches (set by the git links service). */

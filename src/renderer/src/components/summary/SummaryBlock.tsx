@@ -195,6 +195,9 @@ export function SummaryBlock({
     </span>
   )
 
+  // Claude desktop (Cowork) sessions are view-only: no summaries.
+  if (session.viewOnly) return null
+
   if (!summary) {
     return (
       <section

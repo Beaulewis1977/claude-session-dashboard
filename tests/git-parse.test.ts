@@ -39,7 +39,7 @@ const S = (n: number): string => n.toString(16).padStart(40, '0')
 describe('git log output', () => {
   it('reads records, trailers and numstat (renames, binaries)', () => {
     const out =
-      `\x1e${S(2)}\x1f${S(1)}\x1fbeau@example.com\x1fbeau@example.com\x1f1761051840\x1f1761051900\x1fFix it\x1fCo-Authored-By: Claude <noreply@anthropic.com>\nClaude-Session: https://claude.ai/code/session_01AbCdEf9876\n\x1f\n\n` +
+      `\x1e${S(2)}\x1f${S(1)}\x1falex@example.com\x1falex@example.com\x1f1761051840\x1f1761051900\x1fFix it\x1fCo-Authored-By: Claude <noreply@anthropic.com>\nClaude-Session: https://claude.ai/code/session_01AbCdEf9876\n\x1f\n\n` +
       `3\t1\tsrc/a.ts\n-\t-\tlogo.png\n0\t0\tsrc/{old => new}/b.ts\n2\t0\tdocs/x.md => docs/y.md\n` +
       `\x1e${S(1)}\x1f\x1fa@x\x1fa@x\x1f1761000000\x1f1761000000\x1fFirst\x1f\x1f\n\n1\t0\t"a\\tb.txt"\n`
     const [c2, c1] = parseLog(out)
@@ -91,16 +91,16 @@ describe('git log output', () => {
   })
 
   it('knows GitHub remotes and compares remotes without credentials', () => {
-    expect(githubSlug('https://github.com/beau/acme-web.git')).toBe('beau/acme-web')
-    expect(githubSlug('git@github.com:beau/acme-web.git')).toBe('beau/acme-web')
-    expect(githubSlug('ssh://git@github.com/beau/acme-web')).toBe('beau/acme-web')
-    expect(githubSlug('https://user:token@github.com/beau/x.y')).toBe('beau/x.y')
-    expect(githubSlug('https://gitlab.com/beau/acme')).toBeUndefined()
-    expect(normalizeRemote('git@github.com:Beau/Acme.git')).toBe(
-      normalizeRemote('https://github.com/beau/acme')
+    expect(githubSlug('https://github.com/alex/acme-web.git')).toBe('alex/acme-web')
+    expect(githubSlug('git@github.com:alex/acme-web.git')).toBe('alex/acme-web')
+    expect(githubSlug('ssh://git@github.com/alex/acme-web')).toBe('alex/acme-web')
+    expect(githubSlug('https://user:token@github.com/alex/x.y')).toBe('alex/x.y')
+    expect(githubSlug('https://gitlab.com/alex/acme')).toBeUndefined()
+    expect(normalizeRemote('git@github.com:Alex/Acme.git')).toBe(
+      normalizeRemote('https://github.com/alex/acme')
     )
-    expect(normalizeRemote('https://u:p@example.com/beau/shop-api.git')).toBe(
-      'example.com/beau/shop-api'
+    expect(normalizeRemote('https://u:p@example.com/alex/shop-api.git')).toBe(
+      'example.com/alex/shop-api'
     )
   })
 })
@@ -122,7 +122,7 @@ describe('branches from the commit graph', () => {
   }
 
   it('names merged, unmerged and default-branch commits, and their PRs', () => {
-    // main: 1 - 2 ------- 5 (merge #7 from beau/feat/x) - 6 "Polish (#9)"
+    // main: 1 - 2 ------- 5 (merge #7 from alex/feat/x) - 6 "Polish (#9)"
     // feat/x:      \ 3 - 4 /
     // wip/y: 6 - 7
     const all = [
@@ -130,7 +130,7 @@ describe('branches from the commit graph', () => {
       c(2, [1]),
       c(3, [2]),
       c(4, [3]),
-      c(5, [2, 4], 'Merge pull request #7 from beau/feat/x'),
+      c(5, [2, 4], 'Merge pull request #7 from alex/feat/x'),
       c(6, [5], 'Polish (#9)'),
       c(7, [6])
     ]
@@ -151,16 +151,16 @@ describe('branches from the commit graph', () => {
   })
 
   it("stacked PRs: a later merge never takes an earlier PR's commits", () => {
-    // main: 1 ---- 4 (merge #10 from beau/a) ---- 6 (merge #20 from beau/b)
+    // main: 1 ---- 4 (merge #10 from alex/a) ---- 6 (merge #20 from alex/b)
     // a:      \ 2 /                              /
     // b:          \ 3 (on top of a) ----- 5 -----
     const all = [
       c(1, []),
       c(2, [1]),
       c(3, [2]),
-      c(4, [1, 2], 'Merge pull request #10 from beau/a'),
+      c(4, [1, 2], 'Merge pull request #10 from alex/a'),
       c(5, [3]),
-      c(6, [4, 5], 'Merge pull request #20 from beau/b')
+      c(6, [4, 5], 'Merge pull request #20 from alex/b')
     ]
     const map = new Map(all.map((x) => [x.sha, x]))
     labelBranches(map, [{ ref: 'refs/heads/main', sha: S(6) }])
@@ -182,7 +182,7 @@ describe('branches from the commit graph', () => {
         prOf.set(n, k)
         prev = n++
       }
-      all.push(c(n, [main, prev], `Merge pull request #${k} from beau/pr-${k}`))
+      all.push(c(n, [main, prev], `Merge pull request #${k} from alex/pr-${k}`))
       main = n++
     }
     expect(all.length).toBeGreaterThanOrEqual(4996)
@@ -198,7 +198,7 @@ describe('branches from the commit graph', () => {
   })
 
   it('a branch merged into a branch: its commits get both names, the earlier ones only theirs', () => {
-    // main: 1 ----------------------- 7 (merge #30 from beau/feature)
+    // main: 1 ----------------------- 7 (merge #30 from alex/feature)
     // feature: \ 2 - 3 ------ 6 (merge 'sub') /
     // sub:            \ 4 - 5 /
     const all = [
@@ -208,7 +208,7 @@ describe('branches from the commit graph', () => {
       c(4, [3]),
       c(5, [4]),
       c(6, [3, 5], "Merge branch 'sub' into feature"),
-      c(7, [1, 6], 'Merge pull request #30 from beau/feature')
+      c(7, [1, 6], 'Merge pull request #30 from alex/feature')
     ]
     const map = new Map(all.map((x) => [x.sha, x]))
     labelBranches(map, [{ ref: 'refs/heads/main', sha: S(7) }])
@@ -221,7 +221,7 @@ describe('branches from the commit graph', () => {
   })
 
   it("a merge into another branch doesn't take what the default branch already merged", () => {
-    // main: 1 -------- 4 (merge #10 from beau/f)
+    // main: 1 -------- 4 (merge #10 from alex/f)
     // f:     \ 2 - 3 /   \
     // g:                  5 ----- 7 (merge 'x' into g)
     // x:       \ 6 (from f's first commit) /
@@ -229,7 +229,7 @@ describe('branches from the commit graph', () => {
       c(1, []),
       c(2, [1]),
       c(3, [2]),
-      c(4, [1, 3], 'Merge pull request #10 from beau/f'),
+      c(4, [1, 3], 'Merge pull request #10 from alex/f'),
       c(5, [4]),
       c(6, [2]),
       c(7, [5, 6], "Merge branch 'x' into g")
@@ -245,15 +245,15 @@ describe('branches from the commit graph', () => {
   })
 
   it('a PR merged into a branch keeps its own number when a later PR merges that branch', () => {
-    // main: 1 ---------------- 5 (merge #30 from beau/feature)
-    // feature: \ 2 ---- 4 (merge #10 from beau/sub) /
+    // main: 1 ---------------- 5 (merge #30 from alex/feature)
+    // feature: \ 2 ---- 4 (merge #10 from alex/sub) /
     // sub:          \ 3 /
     const all = [
       c(1, []),
       c(2, [1]),
       c(3, [2]),
-      c(4, [2, 3], 'Merge pull request #10 from beau/sub'),
-      c(5, [1, 4], 'Merge pull request #30 from beau/feature')
+      c(4, [2, 3], 'Merge pull request #10 from alex/sub'),
+      c(5, [1, 4], 'Merge pull request #30 from alex/feature')
     ]
     const map = new Map(all.map((x) => [x.sha, x]))
     labelBranches(map, [{ ref: 'refs/heads/main', sha: S(5) }])

@@ -160,10 +160,12 @@ for (const theme of ['dark', 'light']) {
   const hero = win.locator('[data-shot="hero"]')
   await hero.screenshot({ path: join(out, `limits${suffix}.png`) })
   console.log('saved', `limits${suffix}`)
-  await hero
-    .locator(':scope > :nth-child(3)')
-    .screenshot({ path: join(out, `credits${suffix}.png`) })
-  console.log('saved', `credits${suffix}`)
+  // The API credits card (its own block under the gauges in newer layouts).
+  const credits = win.locator('[data-shot="hero"] > *', { hasText: 'API credits' }).last()
+  if (await credits.count()) {
+    await credits.screenshot({ path: join(out, `credits${suffix}.png`) })
+    console.log('saved', `credits${suffix}`)
+  }
   // Limit health ($ per 1% against the baseline) and where the limits went.
   const health = win.locator('[data-shot="health"]')
   await health.scrollIntoViewIfNeeded()
@@ -171,11 +173,11 @@ for (const theme of ['dark', 'light']) {
   await health.screenshot({ path: join(out, `limit-health${suffix}.png`) })
   console.log('saved', `limit-health${suffix}`)
   if (theme === 'dark') {
-    await win.getByRole('button', { name: 'Compare' }).click()
+    await health.getByRole('button', { name: 'Compare', exact: true }).first().click()
     await win.waitForTimeout(900)
     await health.screenshot({ path: join(out, 'limit-compare.png') })
     console.log('saved', 'limit-compare')
-    await win.getByRole('button', { name: 'Compare' }).click()
+    await health.getByRole('button', { name: 'Compare', exact: true }).first().click()
 
     // Ask Claude: the preview of exactly what is sent, then the answer.
     await win.getByRole('button', { name: 'Ask Claude' }).first().click()

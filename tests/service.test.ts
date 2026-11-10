@@ -89,7 +89,7 @@ describe('SessionService (fixtures)', () => {
     const sources = sessions.payload().sources
     expect(sources.find((s) => s.distro === 'Debian')?.status).toBe('not-running')
     expect(sources.some((s) => s.distro === 'docker-desktop')).toBe(false)
-    expect(sources.find((s) => s.id === 'wsl-Ubuntu-beau')?.cleanupPeriodDays).toBe(90)
+    expect(sources.find((s) => s.id === 'wsl-Ubuntu-alex')?.cleanupPeriodDays).toBe(90)
     expect(sources.find((s) => s.id === 'windows')?.cleanupPeriodDays).toBeNull()
   })
 
@@ -216,11 +216,11 @@ describe('SessionService (fixtures)', () => {
       key: s.key,
       fork: true,
       skipPermissions: true,
-      cwdOverride: 'C:\\Users\\beau\\code\\new-place'
+      cwdOverride: 'C:\\Users\\alex\\code\\new-place'
     })
     expect(res).toMatchObject({ ok: true, restored: true, simulated: true })
     expect(res.commandLine).toBe(
-      `Start-Process -FilePath 'C:\\Users\\beau\\AppData\\Local\\Microsoft\\WindowsApps\\wt.exe' -ArgumentList '-d C:\\Users\\beau\\code\\new-place C:\\Windows\\System32\\cmd.exe /s /k "\\"C:\\Users\\beau\\.local\\bin\\claude.exe\\" --resume ${s.sessionId} --dangerously-skip-permissions --fork-session"'`
+      `Start-Process -FilePath 'C:\\Users\\alex\\AppData\\Local\\Microsoft\\WindowsApps\\wt.exe' -ArgumentList '-d C:\\Users\\alex\\code\\new-place C:\\Windows\\System32\\cmd.exe /s /k "\\"C:\\Users\\alex\\.local\\bin\\claude.exe\\" --resume ${s.sessionId} --dangerously-skip-permissions --fork-session"'`
     )
     const restored = await readFile(s.originalPath, 'utf8')
     expect(restored).toBe(await readFile(s.archivePath!, 'utf8'))
@@ -283,7 +283,7 @@ describe('SessionService (fixtures)', () => {
       terminal: 'wt'
     })
     expect(p.commandLine).toBe(
-      `Start-Process -FilePath 'C:\\Users\\beau\\AppData\\Local\\Microsoft\\WindowsApps\\wt.exe' -ArgumentList 'C:\\Windows\\System32\\wsl.exe -d Ubuntu --cd "/root/infra scripts" -- bash -lic "claude --resume ${s.sessionId}"'`
+      `Start-Process -FilePath 'C:\\Users\\alex\\AppData\\Local\\Microsoft\\WindowsApps\\wt.exe' -ArgumentList 'C:\\Windows\\System32\\wsl.exe -d Ubuntu --cd "/root/infra scripts" -- bash -lic "claude --resume ${s.sessionId}"'`
     )
     const detail = (await sessions.detail(s.key))!
     const md = sessionToMarkdown(detail)
@@ -321,10 +321,10 @@ describe('SessionService (fixtures)', () => {
         'wsl',
         'Ubuntu',
         'home',
-        'beau',
+        'alex',
         '.claude',
         'projects',
-        '-home-beau-dotfiles',
+        '-home-alex-dotfiles',
         '5d4c3b2a-1f0e-4d9c-8b7a-6f5e4d3c2b1a.jsonl'
       ),
       join(proj, '0d1e2f3a-4b5c-4d6e-8f70-8192a3b4c5d6.jsonl')
@@ -341,9 +341,9 @@ describe('SessionService (fixtures)', () => {
       expect(sessions.payload().scan.finishedAt).toBeGreaterThan(0)
 
       // A source that went unreadable (e.g. the distro stopped for a moment) comes back too.
-      Object.assign(sessions.source('wsl-Ubuntu-beau')!, { status: 'unreadable' })
+      Object.assign(sessions.source('wsl-Ubuntu-alex')!, { status: 'unreadable' })
       expect(await watcher.recheck()).toBe(true)
-      expect(sessions.source('wsl-Ubuntu-beau')?.status).toBe('ok')
+      expect(sessions.source('wsl-Ubuntu-alex')?.status).toBe('ok')
       // All readable again: nothing to re-check.
       expect(await watcher.recheck()).toBe(false)
     } finally {

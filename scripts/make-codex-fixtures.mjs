@@ -12,8 +12,8 @@ import { fileURLToPath } from 'node:url'
 import { zstdCompressSync } from 'node:zlib'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..', 'fixtures', 'codex')
-const WIN = join(root, 'windows', 'Users', 'beau', '.codex')
-const WSL = join(root, 'wsl', 'Ubuntu', 'home', 'beau', '.codex')
+const WIN = join(root, 'windows', 'Users', 'alex', '.codex')
+const WSL = join(root, 'wsl', 'Ubuntu', 'home', 'alex', '.codex')
 
 const ID = {
   cli: '019a1111-0000-7000-8000-000000000001',
@@ -257,7 +257,7 @@ function write(path, text, { zstd = false } = {}) {
 }
 
 // 1. CLI on Windows, a folder with a space, git info, a patch and a failing then passing test run.
-const shopCwd = 'C:\\Users\\beau\\code\\shop api'
+const shopCwd = 'C:\\Users\\alex\\code\\shop api'
 write(
   join(WIN, 'sessions', '2026', '10', '20', `rollout-2026-10-20T09-15-00-${ID.cli}.jsonl`),
   rollout('2026-10-20T14:15:00Z', [
@@ -267,7 +267,7 @@ write(
       git: {
         commit_hash: 'a1b2c3d4e5f6',
         branch: 'fix/checkout-totals',
-        repository_url: 'https://example.com/beau/shop-api.git'
+        repository_url: 'https://example.com/alex/shop-api.git'
       }
     }),
     ...noise,
@@ -299,7 +299,7 @@ write(
 )
 
 // 2. The desktop app (compressed by Codex): originator "Codex Desktop", source "vscode".
-const siteCwd = 'C:\\Users\\beau\\code\\marketing-site'
+const siteCwd = 'C:\\Users\\alex\\code\\marketing-site'
 write(
   join(WIN, 'sessions', '2026', '10', '18', `rollout-2026-10-18T14-02-11-${ID.desktop}.jsonl.zst`),
   rollout('2026-10-18T19:02:11Z', [
@@ -395,7 +395,7 @@ write(
 
 // 5. Archived in Codex (`codex archive`), compressed, in the older format: no
 //    ordinals, event_msg messages only, the effort in turn_context itself.
-const oldCwd = 'C:\\Users\\beau\\code\\old-prototype'
+const oldCwd = 'C:\\Users\\alex\\code\\old-prototype'
 write(
   join(WIN, 'archived_sessions', `rollout-2026-09-30T10-00-00-${ID.old}.jsonl.zst`),
   rollout(
@@ -449,7 +449,7 @@ write(
 )
 
 // 6. History with a gap in its entries, and one malformed line.
-const gapCwd = 'C:\\Users\\beau\\code\\notes'
+const gapCwd = 'C:\\Users\\alex\\code\\notes'
 write(
   join(WIN, 'sessions', '2026', '10', '15', `rollout-2026-10-15T11-11-11-${ID.gap}.jsonl`),
   rollout('2026-10-15T16:11:11Z', [
@@ -487,7 +487,7 @@ write(
 )
 
 // 7. WSL: the TUI, in the user's dotfiles.
-const dotCwd = '/home/beau/projects/dotfiles'
+const dotCwd = '/home/alex/projects/dotfiles'
 write(
   join(WSL, 'sessions', '2026', '10', '21', `rollout-2026-10-21T20-30-00-${ID.wsl}.jsonl`),
   rollout('2026-10-22T01:30:00Z', [
@@ -511,7 +511,7 @@ write(
 )
 
 // 8. A session running right now (fixtures' clock: 2026-10-22 15:40 UTC), on Pro.
-const apiCwd = 'C:\\Users\\beau\\code\\shop api'
+const apiCwd = 'C:\\Users\\alex\\code\\shop api'
 const nowTokens = counter(353400)
 write(
   join(WIN, 'sessions', '2026', '10', '22', `rollout-2026-10-22T10-05-00-${ID.now}.jsonl`),

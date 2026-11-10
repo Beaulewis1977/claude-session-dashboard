@@ -26,14 +26,14 @@ const line = (entrypoint?: string, extra: Record<string, unknown> = {}) => ({
   isSidechain: false,
   userType: 'external',
   ...(entrypoint ? { entrypoint } : {}),
-  cwd: 'C:\\Users\\beau\\code\\acme-web',
+  cwd: 'C:\\Users\\alex\\code\\acme-web',
   sessionId: 's1',
   version: '2.1.300',
   type: 'user',
   message: { role: 'user', content: 'hi' },
   ...extra
 })
-const win: SourceContext = { env: 'windows', cwd: 'C:\\Users\\beau\\code\\acme-web' }
+const win: SourceContext = { env: 'windows', cwd: 'C:\\Users\\alex\\code\\acme-web' }
 
 describe('source labels', () => {
   it('uses the entrypoint field when present', () => {
@@ -98,7 +98,7 @@ describe('source labels', () => {
       reason: 'Launched from this app in a terminal'
     })
     expect(
-      detectSource(old, { env: 'wsl', cwd: '/home/user/repo', sourceUser: 'beau' }).label
+      detectSource(old, { env: 'wsl', cwd: '/home/user/repo', sourceUser: 'alex' }).label
     ).toBe('cloud')
     expect(
       detectSource(old, { env: 'wsl', cwd: '/home/user/repo', sourceUser: 'user' }).label

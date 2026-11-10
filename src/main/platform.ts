@@ -314,7 +314,7 @@ export function createFixturesPlatform(fixturesDir: string, sourcesDir: string):
   return {
     fixtures: true,
     canLaunch: false,
-    windowsHome: join(sourcesDir, 'windows', 'Users', 'beau'),
+    windowsHome: join(sourcesDir, 'windows', 'Users', 'alex'),
     async listDistros() {
       return parseDistroList(await readFile(join(fixturesDir, 'wsl-list.utf16')))
     },
@@ -336,12 +336,12 @@ export function createFixturesPlatform(fixturesDir: string, sourcesDir: string):
     async launchTools() {
       // Typical Windows paths, for the commands shown; nothing is started.
       return {
-        wt: 'C:\\Users\\beau\\AppData\\Local\\Microsoft\\WindowsApps\\wt.exe',
+        wt: 'C:\\Users\\alex\\AppData\\Local\\Microsoft\\WindowsApps\\wt.exe',
         powershell: 'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe',
         cmd: 'C:\\Windows\\System32\\cmd.exe',
         wsl: 'C:\\Windows\\System32\\wsl.exe',
-        claude: 'C:\\Users\\beau\\.local\\bin\\claude.exe',
-        codex: 'C:\\Users\\beau\\AppData\\Roaming\\npm\\codex.cmd'
+        claude: 'C:\\Users\\alex\\.local\\bin\\claude.exe',
+        codex: 'C:\\Users\\alex\\AppData\\Roaming\\npm\\codex.cmd'
       }
     },
     async spawnDetached() {

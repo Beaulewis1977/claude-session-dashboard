@@ -558,13 +558,13 @@ describe('hook trust (config.toml, read only)', () => {
     '',
     '[hooks.state]',
     '',
-    "[hooks.state.'C:\\Users\\beau\\.codex\\hooks.json:session_start:0:0']",
+    "[hooks.state.'C:\\Users\\alex\\.codex\\hooks.json:session_start:0:0']",
     'trusted_hash = "sha256:b29a"',
     '',
-    "[hooks.state.'C:\\Users\\beau\\.codex\\hooks.json:permission_request:1:0']",
+    "[hooks.state.'C:\\Users\\alex\\.codex\\hooks.json:permission_request:1:0']",
     'trusted_hash = "sha256:aaaa" # trusted in /hooks',
     '',
-    '[hooks.state."/home/beau/.codex/hooks.json:permission_request:0:0"]',
+    '[hooks.state."/home/alex/.codex/hooks.json:permission_request:0:0"]',
     'enabled = false',
     'trusted_hash = "sha256:bbbb"',
     '[tui]',
@@ -574,19 +574,19 @@ describe('hook trust (config.toml, read only)', () => {
   it('reads the trust tables and nothing else', () => {
     expect(parseHookTrust(TOML)).toEqual([
       {
-        key: 'C:\\Users\\beau\\.codex\\hooks.json:session_start:0:0',
+        key: 'C:\\Users\\alex\\.codex\\hooks.json:session_start:0:0',
         trusted: true,
         hash: 'sha256:b29a',
         disabled: false
       },
       {
-        key: 'C:\\Users\\beau\\.codex\\hooks.json:permission_request:1:0',
+        key: 'C:\\Users\\alex\\.codex\\hooks.json:permission_request:1:0',
         trusted: true,
         hash: 'sha256:aaaa',
         disabled: false
       },
       {
-        key: '/home/beau/.codex/hooks.json:permission_request:0:0',
+        key: '/home/alex/.codex/hooks.json:permission_request:0:0',
         trusted: true,
         hash: 'sha256:bbbb',
         disabled: true
@@ -604,15 +604,15 @@ describe('hook trust (config.toml, read only)', () => {
 
   it('finds the trust of a handler by its position (Windows paths in any case and slash)', () => {
     const e = parseHookTrust(TOML)
-    expect(trustOf(e, at('c:/users/beau/.codex/hooks.json', 1, true))).toBe('trusted')
-    expect(trustOf(e, at('C:\\Users\\beau\\.codex\\hooks.json', 0, true))).toBe('untrusted')
-    expect(trustOf(e, at('/home/beau/.codex/hooks.json', 0, false))).toBe('disabled')
+    expect(trustOf(e, at('c:/users/alex/.codex/hooks.json', 1, true))).toBe('trusted')
+    expect(trustOf(e, at('C:\\Users\\alex\\.codex\\hooks.json', 0, true))).toBe('untrusted')
+    expect(trustOf(e, at('/home/alex/.codex/hooks.json', 0, false))).toBe('disabled')
     expect(trustOf([], at('/x/hooks.json', 0, false))).toBe('untrusted')
   })
 
   it('an entry left by an older hook at the same position doesn’t count', () => {
     const e = parseHookTrust(TOML)
-    const where = at('C:\\Users\\beau\\.codex\\hooks.json', 1, true)
+    const where = at('C:\\Users\\alex\\.codex\\hooks.json', 1, true)
     // The same hash as before the app added its hook: stale.
     expect(trustOf(e, where, { priorHash: 'sha256:aaaa' })).toBe('untrusted')
     // A new hash since (Codex wrote it when the hook was trusted).

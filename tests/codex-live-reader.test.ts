@@ -63,7 +63,7 @@ function fakeFs(files: {
 
 describe('WSL: /proc/locks and inodes only', () => {
   const root = '\\\\wsl.localhost\\Ubuntu'
-  const home = `${root}\\home\\beau\\.codex`
+  const home = `${root}\\home\\alex\\.codex`
   const locks = `${home}\\thread-writer-locks`
   const base = (procLocks: string, cmdlines: Record<number, string>) =>
     fakeFs({
@@ -79,7 +79,7 @@ describe('WSL: /proc/locks and inodes only', () => {
 
   it('a lock is held when /proc/locks lists its inode for a Codex process', async () => {
     const { fs, calls } = base('17: FLOCK  ADVISORY  WRITE 51234 08:30:4711001 0 EOF\n', {
-      51234: '/home/beau/.local/bin/codex\0resume\0' + A + '\0'
+      51234: '/home/alex/.local/bin/codex\0resume\0' + A + '\0'
     })
     const r = new CodexLiveReader(fs)
     const out = (await r.locks({ env: 'wsl', home, distroRoot: root })) as ThreadLock[]
@@ -147,7 +147,7 @@ describe('WSL: /proc/locks and inodes only', () => {
 
 describe('Windows: the read-only probe', () => {
   it('asks the probe for each lock file and never reads anything else of the home', async () => {
-    const home = 'C:\\Users\\beau\\.codex'
+    const home = 'C:\\Users\\alex\\.codex'
     const dir = join(home, 'thread-writer-locks')
     const held = join(dir, `${A}.lock`)
     const { fs, calls } = fakeFs({
@@ -245,7 +245,7 @@ describe('every lock counts, and a failed read is never "free"', () => {
   const uuid = (i: number): string => `019b0000-0000-7000-8000-${String(i).padStart(12, '0')}`
 
   it('finds a held lock among hundreds of old ones (no cap)', async () => {
-    const home = String.raw`C:\Users\beau\.codex`
+    const home = String.raw`C:\Users\alex\.codex`
     const dir = join(home, 'thread-writer-locks')
     const names = Array.from({ length: 1200 }, (_, i) => `${uuid(i)}.lock`)
     const held = join(dir, `${uuid(1150)}.lock`)
@@ -277,7 +277,7 @@ describe('every lock counts, and a failed read is never "free"', () => {
 
   it('a holder whose command line can’t be read is "can’t tell", and isn’t remembered', async () => {
     const root = String.raw`\\wsl.localhost\Ubuntu`
-    const home = String.raw`${root}\home\beau\.codex`
+    const home = String.raw`${root}\home\alex\.codex`
     const locks = join(home, 'thread-writer-locks')
     const small: Record<string, string> = {
       [join(root, 'proc', 'locks')]: '17: FLOCK  ADVISORY  WRITE 51234 08:30:4711001 0 EOF\n'
@@ -299,7 +299,7 @@ describe('every lock counts, and a failed read is never "free"', () => {
 
   it('WSL inodes are cached, but a recently active thread’s lock is looked at again', async () => {
     const root = String.raw`\\wsl.localhost\Ubuntu`
-    const home = String.raw`${root}\home\beau\.codex`
+    const home = String.raw`${root}\home\alex\.codex`
     const locks = join(home, 'thread-writer-locks')
     const { fs, calls } = fakeFs({
       dirs: { [locks]: [`${A}.lock`, `${B}.lock`] },

@@ -95,7 +95,7 @@ describe('aggregation', () => {
     rec('2026-10-18T22:00:00Z'), // Sunday
     rec('2026-10-19T08:00:00Z', { model: 'claude-sonnet-5-5' }), // Monday
     rec('2026-10-20T08:00:00Z', { output: 1000 }),
-    rec('2026-10-20T09:00:00Z', { key: 'wsl-Ubuntu-beau:s2', env: 'wsl', project: 'orders-api' })
+    rec('2026-10-20T09:00:00Z', { key: 'wsl-Ubuntu-alex:s2', env: 'wsl', project: 'orders-api' })
   ]
 
   it('fills a daily series with empty days and sums every token type', () => {

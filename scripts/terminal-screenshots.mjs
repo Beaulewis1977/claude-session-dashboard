@@ -91,8 +91,6 @@ await change('Use this shell…', 'Use PowerShell 7', 'confirm-shell')
 await shot('wizard-shell')
 
 await step('Keys')
-await desk.getByRole('button', { name: 'Get key from phone' }).click()
-await desk.waitForTimeout(400)
 
 // The phone: pair, send the key, open a terminal for a session.
 const pairing = await desk.evaluate(() => window.csd.mobilePair())
@@ -111,6 +109,9 @@ phone.on('pageerror', (e) => console.error('phone page error:', e.message))
 await phone.goto(`http://${status.listening}/#pair=${pairing.code}`)
 await phone.getByRole('button', { name: 'Pair this phone' }).click()
 await phone.waitForSelector('text=Live', { timeout: 15_000 })
+// "Get key from phone" needs a paired phone, so the PC starts waiting only now.
+await desk.getByRole('button', { name: 'Get key from phone' }).click({ timeout: 15_000 })
+await desk.waitForTimeout(400)
 await phone.getByRole('button', { name: 'Settings', exact: true }).click()
 await phone.getByLabel('Public SSH key').fill(KEY)
 await phone.locator('text=Send SSH key to PC').scrollIntoViewIfNeeded()

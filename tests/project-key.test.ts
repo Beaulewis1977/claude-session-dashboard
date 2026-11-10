@@ -158,10 +158,10 @@ describe('fixtures', { timeout: 30_000 }, () => {
     }
     const after = migrateLegacyKeys(seed.projectBilling, sessions.list())
     expect(after).toEqual({
-      'wsl:Ubuntu:/home/beau/projects/ml-pipeline':
-        seed.projectBilling['/home/beau/projects/ml-pipeline']
+      'wsl:Ubuntu:/home/alex/projects/ml-pipeline':
+        seed.projectBilling['/home/alex/projects/ml-pipeline']
     })
-    const s = sessions.list().find((x) => x.cwd === '/home/beau/projects/ml-pipeline')!
+    const s = sessions.list().find((x) => x.cwd === '/home/alex/projects/ml-pipeline')!
     expect(projectDefault(after, s)).toBe(projectDefault(seed.projectBilling, s))
   })
 })

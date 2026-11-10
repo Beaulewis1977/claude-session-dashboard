@@ -31,7 +31,7 @@ const ln = (ms: number, payload: Record<string, unknown>): string =>
   `${JSON.stringify({ timestamp: new Date(ms).toISOString(), type: 'event_msg', payload })}\n`
 
 async function setup() {
-  const home = join(root, 'Users', 'beau', '.codex')
+  const home = join(root, 'Users', 'alex', '.codex')
   const day = join(home, 'sessions', '2026', '11', '08')
   await mkdir(day, { recursive: true })
   await mkdir(join(home, 'thread-writer-locks'), { recursive: true })

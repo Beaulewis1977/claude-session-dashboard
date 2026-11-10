@@ -21,7 +21,7 @@ import {
 } from './ccusage-reference'
 import { FIXTURES } from './helpers'
 
-const EDGE = join(FIXTURES, 'ccusage-parity', '.claude', 'projects', '-home-beau-projects-edge')
+const EDGE = join(FIXTURES, 'ccusage-parity', '.claude', 'projects', '-home-alex-projects-edge')
 const A = 'a7c1e0d2-5b3f-4c11-9e2a-000000000001'
 const B = 'a7c1e0d2-5b3f-4c11-9e2a-000000000002'
 

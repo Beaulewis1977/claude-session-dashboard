@@ -2,9 +2,9 @@
   "repos": [
     {
       "env": "windows",
-      "root": "C:\\Users\\beau\\code\\acme-web",
-      "remote": "https://github.com/beau/acme-web.git",
-      "userEmail": "beau@example.com",
+      "root": "C:\\Users\\alex\\code\\acme-web",
+      "remote": "https://github.com/alex/acme-web.git",
+      "userEmail": "alex@example.com",
       "refs": [
         {
           "ref": "refs/heads/main",
@@ -28,7 +28,7 @@
         {
           "sha": "51b35d1506aa69b8d1e7174194c7c243bf4304ca",
           "parents": [],
-          "email": "beau@example.com",
+          "email": "alex@example.com",
           "at": "2026-10-01T09:00:00Z",
           "subject": "Add session cookie helpers",
           "files": [
@@ -44,7 +44,7 @@
           "parents": [
             "51b35d1506aa69b8d1e7174194c7c243bf4304ca"
           ],
-          "email": "beau@example.com",
+          "email": "alex@example.com",
           "at": "2026-10-21T13:04:10Z",
           "subject": "Fix login redirect: SameSite=Lax session cookie",
           "trailers": [
@@ -63,7 +63,7 @@
           "parents": [
             "088c9ceddb42e01f7713a44e7077f05eedaa8cf9"
           ],
-          "email": "beau@example.com",
+          "email": "alex@example.com",
           "at": "2026-10-21T13:05:30Z",
           "subject": "Add cookie tests",
           "trailers": [
@@ -83,9 +83,9 @@
             "51b35d1506aa69b8d1e7174194c7c243bf4304ca",
             "009c48c2e7510515b05a75baff8cbf63c4056f93"
           ],
-          "email": "beau@example.com",
+          "email": "alex@example.com",
           "at": "2026-10-22T08:30:00Z",
-          "subject": "Merge pull request #14 from beau/fix/login-redirect",
+          "subject": "Merge pull request #14 from alex/fix/login-redirect",
           "files": []
         },
         {
@@ -93,7 +93,7 @@
           "parents": [
             "b4864abdd0ff7570b74c4490b939c0d23142ec9f"
           ],
-          "email": "beau@example.com",
+          "email": "alex@example.com",
           "at": "2026-10-22T08:45:00Z",
           "subject": "Bump version to 3.4.1",
           "files": [
@@ -113,9 +113,9 @@
     },
     {
       "env": "wsl:Ubuntu",
-      "root": "/home/beau/projects/orders-api",
-      "remote": "git@github.com:beau/orders-api.git",
-      "userEmail": "beau@example.com",
+      "root": "/home/alex/projects/orders-api",
+      "remote": "git@github.com:alex/orders-api.git",
+      "userEmail": "alex@example.com",
       "refs": [
         {
           "ref": "refs/heads/main",
@@ -143,7 +143,7 @@
         {
           "sha": "e840b9c1a5247df0010497475635f7622c5fd0a4",
           "parents": [],
-          "email": "beau@example.com",
+          "email": "alex@example.com",
           "at": "2026-10-10T10:00:00Z",
           "subject": "Orders API: list and get",
           "files": [
@@ -159,7 +159,7 @@
           "parents": [
             "e840b9c1a5247df0010497475635f7622c5fd0a4"
           ],
-          "email": "beau@example.com",
+          "email": "alex@example.com",
           "at": "2026-10-20T15:31:45Z",
           "subject": "Cursor pagination for GET /orders",
           "files": [
@@ -187,9 +187,9 @@
     },
     {
       "env": "windows",
-      "root": "C:\\Users\\beau\\code\\shop api",
-      "remote": "https://example.com/beau/shop-api.git",
-      "userEmail": "beau@example.com",
+      "root": "C:\\Users\\alex\\code\\shop api",
+      "remote": "https://example.com/alex/shop-api.git",
+      "userEmail": "alex@example.com",
       "refs": [
         {
           "ref": "refs/heads/main",
@@ -204,7 +204,7 @@
         {
           "sha": "3cbf5462cc2f2af7c60c250931c2b49095500cfa",
           "parents": [],
-          "email": "beau@example.com",
+          "email": "alex@example.com",
           "at": "2026-10-01T12:00:00Z",
           "subject": "Checkout totals",
           "files": [
@@ -220,7 +220,7 @@
           "parents": [
             "3cbf5462cc2f2af7c60c250931c2b49095500cfa"
           ],
-          "email": "beau@example.com",
+          "email": "alex@example.com",
           "at": "2026-10-20T14:16:30Z",
           "subject": "Round the discount before the total",
           "files": [
@@ -245,21 +245,21 @@
   "gh": {
     "auth": "ok",
     "prs": {
-      "beau/orders-api": [
+      "alex/orders-api": [
         {
           "number": 22,
           "title": "Cursor pagination for /orders",
-          "url": "https://github.com/beau/orders-api/pull/22",
+          "url": "https://github.com/alex/orders-api/pull/22",
           "state": "OPEN",
           "isDraft": false,
           "headRefName": "feature/pagination"
         }
       ],
-      "beau/acme-web": [
+      "alex/acme-web": [
         {
           "number": 14,
           "title": "Fix login redirect on Safari",
-          "url": "https://github.com/beau/acme-web/pull/14",
+          "url": "https://github.com/alex/acme-web/pull/14",
           "state": "MERGED",
           "isDraft": false,
           "headRefName": "fix/login-redirect"

@@ -73,7 +73,7 @@ it('never opens, stats, copies or reads auth.json while scanning, archiving, rea
   await cp(join(__dirname, '..', 'fixtures'), join(root, 'fixtures'), { recursive: true })
   await prepareFixtures(root, { codex: true })
   const layout = fixturesLayout(root)
-  const authFile = join(layout.sourcesDir, 'windows', 'Users', 'beau', '.codex', 'auth.json')
+  const authFile = join(layout.sourcesDir, 'windows', 'Users', 'alex', '.codex', 'auth.json')
   // The sample home really has one.
   expect((await import('node:fs')).existsSync(authFile)).toBe(true)
 
@@ -143,7 +143,7 @@ it('never names auth.json while Running now polls Codex and the approval hook is
   await cp(join(__dirname, '..', 'fixtures'), join(root, 'fixtures'), { recursive: true })
   await prepareFixtures(root, { codex: true })
   const layout = fixturesLayout(root)
-  const codexHome = join(layout.sourcesDir, 'windows', 'Users', 'beau', '.codex')
+  const codexHome = join(layout.sourcesDir, 'windows', 'Users', 'alex', '.codex')
   // An open thread: its lock file exists (and the probe below says it's held).
   const locks = join(codexHome, 'thread-writer-locks')
   await mkdir(locks, { recursive: true })

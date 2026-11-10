@@ -909,7 +909,7 @@ installs a tiny **status line bridge** that saves that payload for it.
 1. Open **Settings → Live limits** (or click **Enable live limits** on the Usage view).
 2. Pick your plan (default **Max 5x**).
 3. Click **Enable live limits** next to each environment you use: **Windows**, and each WSL distro
-   user (for example **WSL: Ubuntu · beau**).
+   user (for example **WSL: Ubuntu · alex**).
 4. Read the dialog. It shows the exact change to that environment's `settings.json` and, if you
    already have a status line, the command the bridge will pass the data on to. Click **Enable live
    limits**.
@@ -1645,7 +1645,10 @@ These are choices I made where the spec left room, or had to deviate:
   `minisearch` (used by the main process) ship in the installer.
 - **Fixtures mode** copies `fixtures/` into `.fixtures-data/` (git-ignored) and runs against that copy.
   Launching only shows the command. To reset the sample data, delete `.fixtures-data/` yourself; the
-  app never deletes anything.
+  app never deletes anything. When the sample files in `fixtures/` move or are renamed,
+  `FIXTURES_DATA_VERSION` (in `src/main/fixtures.ts`) goes up; at the next start an older
+  `.fixtures-data/` has its `sources` and `appdata` moved into `.fixtures-data/previous/` (kept,
+  never deleted), and the sample data is copied fresh.
 - **Code fonts:** JetBrains Mono ligatures are turned off so code shows the characters that are really
   there (`=>` stays `=>`).
 

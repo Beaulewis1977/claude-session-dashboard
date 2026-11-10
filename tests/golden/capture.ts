@@ -451,7 +451,7 @@ function launchVariants(s: SessionSummary, branchAt?: string): [string, LaunchOp
         key: k,
         fork: false,
         skipPermissions: true,
-        cwdOverride: s.env === 'wsl' ? '/home/beau/elsewhere' : 'C:\\Users\\beau\\Other Folder'
+        cwdOverride: s.env === 'wsl' ? '/home/alex/elsewhere' : 'C:\\Users\\alex\\Other Folder'
       }
     ],
     [
@@ -613,7 +613,7 @@ async function captureLaunches(svc: Services, norm: (s: string) => string) {
     key: archived.key,
     fork: false,
     skipPermissions: true,
-    cwdOverride: 'C:\\Users\\beau\\code\\new place'
+    cwdOverride: 'C:\\Users\\alex\\code\\new place'
   })
   const safari = get('7f3c9a12-4b8e-4d21-9c6a-1e2f3a4b5c6d')
   out.fork = await launcher.launch({ key: safari.key, fork: true, skipPermissions: false })

@@ -697,7 +697,7 @@ async function setup(
     layout.sourcesDir,
     'windows',
     'Users',
-    'beau',
+    'alex',
     'AppData',
     'Roaming',
     'Claude',

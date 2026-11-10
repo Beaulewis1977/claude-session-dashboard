@@ -90,7 +90,7 @@ async function seedData(): Promise<void> {
     '{"type":"user","message":"hello"}\n'
   )
   await put(
-    'archive/wsl-Ubuntu-beau/e9a1b2c3-d4e5-4f60-8172-839405a6b7c8.jsonl',
+    'archive/wsl-Ubuntu-alex/e9a1b2c3-d4e5-4f60-8172-839405a6b7c8.jsonl',
     '{"type":"user","message":"orders"}\n'
   )
   await put(
@@ -165,7 +165,7 @@ describe('what a backup holds', () => {
     expect(rels).toEqual([
       'accounts.json',
       'archive/windows/7f3c9a12-4b8e-4d21-9c6a-1e2f3a4b5c6d.jsonl',
-      'archive/wsl-Ubuntu-beau/e9a1b2c3-d4e5-4f60-8172-839405a6b7c8.jsonl',
+      'archive/wsl-Ubuntu-alex/e9a1b2c3-d4e5-4f60-8172-839405a6b7c8.jsonl',
       'limits-history.ndjson',
       'metadata.json',
       'settings.json',
@@ -191,7 +191,7 @@ describe('what a backup holds', () => {
       'archive/../../.claude/projects/p/x.jsonl',
       'archive/.claude/x.jsonl',
       '/etc/passwd',
-      'C:/Users/beau/.claude/settings.json',
+      'C:/Users/alex/.claude/settings.json',
       'C:\\x',
       'archive\\windows\\x.jsonl',
       'mobile.json',
@@ -451,7 +451,7 @@ describe('retention', () => {
 })
 
 describe('restore', () => {
-  const claudeHome = (): string => join(root, 'Users', 'beau', '.claude')
+  const claudeHome = (): string => join(root, 'Users', 'alex', '.claude')
 
   async function seedClaude(): Promise<void> {
     await mkdir(join(claudeHome(), 'projects', 'C--code'), { recursive: true })
@@ -469,7 +469,7 @@ describe('restore', () => {
       '{"type":"user","message":"hello"}\n{"more":1}\n'
     )
     await rm(
-      join(dataDir, 'archive', 'wsl-Ubuntu-beau', 'e9a1b2c3-d4e5-4f60-8172-839405a6b7c8.jsonl')
+      join(dataDir, 'archive', 'wsl-Ubuntu-alex', 'e9a1b2c3-d4e5-4f60-8172-839405a6b7c8.jsonl')
     )
     await put('settings.json', '{"theme":"light"}')
     await put('usage/records-2026-10.ndjson', '{"tokens":1}\n')
@@ -478,7 +478,7 @@ describe('restore', () => {
     expect(by).toEqual({
       'accounts.json': 'same',
       'archive/windows/7f3c9a12-4b8e-4d21-9c6a-1e2f3a4b5c6d.jsonl': 'keep',
-      'archive/wsl-Ubuntu-beau/e9a1b2c3-d4e5-4f60-8172-839405a6b7c8.jsonl': 'add',
+      'archive/wsl-Ubuntu-alex/e9a1b2c3-d4e5-4f60-8172-839405a6b7c8.jsonl': 'add',
       'limits-history.ndjson': 'same',
       'metadata.json': 'same',
       'settings.json': 'merge',
@@ -555,9 +555,9 @@ describe('restore', () => {
     const r = await backup(set, null)
     const good = manifestFiles(r.manifest, null)[0]!
     const evil = [
-      { ...good, p: '../../../Users/beau/.claude/settings.json' },
+      { ...good, p: '../../../Users/alex/.claude/settings.json' },
       { ...good, p: join(claudeHome(), 'settings.json') },
-      { ...good, p: 'archive/../../../../Users/beau/.claude/projects/C--code/s.jsonl' }
+      { ...good, p: 'archive/../../../../Users/alex/.claude/projects/C--code/s.jsonl' }
     ]
     const { items, skipped } = await planRestore(dataDir, evil)
     expect(items).toEqual([])

@@ -198,7 +198,7 @@ describe('sending a push', () => {
       pushPayload({ kind: 'finished', ref: 'abcdEFGH1234', name: 'Secret project' } as never)
     ).toBe('{"v":1,"kind":"finished","ref":"abcdEFGH1234"}')
     expect(pushPayload({ kind: 'test' })).toBe('{"v":1,"kind":"test"}')
-    expect(() => pushPayload({ kind: 'approval', ref: 'C:\\Users\\beau\\secret' })).toThrow()
+    expect(() => pushPayload({ kind: 'approval', ref: 'C:\\Users\\alex\\secret' })).toThrow()
     expect(() => pushPayload({ kind: 'hello' as never })).toThrow()
   })
 

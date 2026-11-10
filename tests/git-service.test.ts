@@ -51,8 +51,8 @@ function commit(n: number, p: Partial<CommitInfo> = {}): CommitInfo {
   return {
     sha: S(n),
     parents: n > 1 ? [S(n - 1)] : [],
-    authorEmail: 'beau@example.com',
-    committerEmail: 'beau@example.com',
+    authorEmail: 'alex@example.com',
+    committerEmail: 'alex@example.com',
     at: at(30),
     ct: at(30),
     subject: `Commit ${n}`,
@@ -146,7 +146,7 @@ function fakeBackend(repos: Repo[]) {
             {
               number: 14,
               title: 'Fix login',
-              url: 'https://github.com/beau/acme/pull/14',
+              url: 'https://github.com/alex/acme/pull/14',
               state: 'OPEN',
               headRefName: 'fix/login'
             }
@@ -210,8 +210,8 @@ const ACME: Repo = {
   root: 'C:/code/acme',
   commonDir: 'C:/code/acme/.git',
   folders: ['C:\\code\\acme', 'C:\\code\\acme\\.claude\\worktrees\\x', 'C:\\code\\acme\\src'],
-  remote: 'https://beau:secret@github.com/beau/acme.git',
-  email: 'beau@example.com',
+  remote: 'https://alex:secret@github.com/alex/acme.git',
+  email: 'alex@example.com',
   refs: [
     { ref: 'refs/heads/main', sha: S(3) },
     { ref: 'refs/heads/fix/login', sha: S(2) }
@@ -252,8 +252,8 @@ describe('the git links service', () => {
     expect(v.possible.map((c) => c.subject)).toEqual(['Commit 3'])
     // The remote never shows its credentials.
     expect(v.repo).toMatchObject({
-      github: 'beau/acme',
-      remote: 'https://github.com/beau/acme.git'
+      github: 'alex/acme',
+      remote: 'https://github.com/alex/acme.git'
     })
     expect(phoneGitView(v).repo?.remote).toBeUndefined()
     expect(svc.view('none', { refresh: false })).toMatchObject({ status: 'not-repo', commits: [] })
@@ -359,10 +359,10 @@ describe('the git links service', () => {
             ],
             prs: [
               {
-                owner: 'beau',
+                owner: 'alex',
                 repo: 'acme',
                 number: 3,
-                url: 'https://github.com/beau/acme/pull/3',
+                url: 'https://github.com/alex/acme/pull/3',
                 at: at(2)
               }
             ]
@@ -404,7 +404,7 @@ describe('the git links service', () => {
     await s.svc.schedule({ force: false })
     expect(f.count('ghAuth')).toBe(1)
     expect(f.calls.filter((c) => c.op === 'ghPrs').map((c) => c.arg)).toEqual([
-      { slug: 'beau/acme', by: { head: 'fix/login' } }
+      { slug: 'alex/acme', by: { head: 'fix/login' } }
     ])
     const v = s.svc.view('a', { refresh: false })!
     expect(v.gh).toBe('on')
@@ -417,16 +417,16 @@ describe('the git links service', () => {
 
   it("never asks a stopped distro's git (it would start it); keeps what was read", async () => {
     const API: Repo = {
-      env: 'wsl:Ubuntu:beau',
-      root: '/home/beau/api',
-      commonDir: '/home/beau/api/.git',
-      folders: ['/home/beau/api'],
+      env: 'wsl:Ubuntu:alex',
+      root: '/home/alex/api',
+      commonDir: '/home/alex/api/.git',
+      folders: ['/home/alex/api'],
       refs: [{ ref: 'refs/heads/main', sha: S(1) }],
       commits: [commit(1)]
     }
     const f = fakeBackend([API])
     const s = service(
-      [input('w', { env: 'wsl', distro: 'Ubuntu', sourceUser: 'beau', cwd: '/home/beau/api' })],
+      [input('w', { env: 'wsl', distro: 'Ubuntu', sourceUser: 'alex', cwd: '/home/alex/api' })],
       f.backend
     )
     await s.svc.start()
@@ -436,7 +436,7 @@ describe('the git links service', () => {
     // Ubuntu stops: a new start reads nothing from it, but still shows what it read.
     const g = fakeBackend([API])
     const t = service(
-      [input('w', { env: 'wsl', distro: 'Ubuntu', sourceUser: 'beau', cwd: '/home/beau/api' })],
+      [input('w', { env: 'wsl', distro: 'Ubuntu', sourceUser: 'alex', cwd: '/home/alex/api' })],
       g.backend,
       {
         running: []
@@ -456,17 +456,17 @@ describe('the git links service', () => {
 
   it("a fork's replayed parent output doesn't give it the parent's PRs or commits, however late", async () => {
     const pr = {
-      owner: 'beau',
+      owner: 'alex',
       repo: 'acme',
       number: 3,
-      url: 'https://github.com/beau/acme/pull/3',
+      url: 'https://github.com/alex/acme/pull/3',
       at: at(2)
     }
     const mine = {
-      owner: 'beau',
+      owner: 'alex',
       repo: 'acme',
       number: 4,
-      url: 'https://github.com/beau/acme/pull/4',
+      url: 'https://github.com/alex/acme/pull/4',
       at: at(9)
     }
     const seen = {
@@ -568,14 +568,14 @@ describe('the git links service', () => {
 
   it("a copy is its ancestor's even when the parent in between has nothing of its own", async () => {
     const gpPr = {
-      owner: 'beau',
+      owner: 'alex',
       repo: 'acme',
       number: 3,
-      url: 'https://github.com/beau/acme/pull/3',
+      url: 'https://github.com/alex/acme/pull/3',
       at: at(2)
     }
     const gpSeen = { sha: 'abc1234', kind: 'commit-line' as const, from: at(1), to: at(1) }
-    const mine = { ...gpPr, number: 4, url: 'https://github.com/beau/acme/pull/4', at: at(30) }
+    const mine = { ...gpPr, number: 4, url: 'https://github.com/alex/acme/pull/4', at: at(30) }
     const f = fakeBackend([])
     const codex = { cwd: 'C:\\nowhere', provider: 'codex' as const }
     const { svc } = service(
@@ -604,10 +604,10 @@ describe('the git links service', () => {
 
   it("a fork's copied PR doesn't bring the parent's PR back through its branch (gh)", async () => {
     const pr14 = {
-      owner: 'beau',
+      owner: 'alex',
       repo: 'acme',
       number: 14,
-      url: 'https://github.com/beau/acme/pull/14',
+      url: 'https://github.com/alex/acme/pull/14',
       at: at(40)
     }
     const f = fakeBackend([ACME])
@@ -754,7 +754,7 @@ describe('the git links service', () => {
       {
         number: 30,
         title: 'Later',
-        url: 'https://github.com/beau/acme/pull/30',
+        url: 'https://github.com/alex/acme/pull/30',
         state: 'OPEN',
         headRefName: 'x'
       }
@@ -821,20 +821,20 @@ describe('where a session’s git runs', () => {
   it('WSL folders: the distro’s own git, as the home’s user', async () => {
     expect(
       await placeSession(
-        { env: 'wsl', distro: 'Ubuntu', sourceUser: 'beau', cwd: '/home/beau/api' },
+        { env: 'wsl', distro: 'Ubuntu', sourceUser: 'alex', cwd: '/home/alex/api' },
         ctx
       )
     ).toEqual({
       ok: true,
-      env: { kind: 'wsl', distro: 'Ubuntu', user: 'beau' },
-      dir: '/home/beau/api'
+      env: { kind: 'wsl', distro: 'Ubuntu', user: 'alex' },
+      dir: '/home/alex/api'
     })
     expect(
-      await placeSession({ env: 'windows', cwd: '\\\\wsl.localhost\\Ubuntu\\home\\beau\\x' }, ctx)
+      await placeSession({ env: 'windows', cwd: '\\\\wsl.localhost\\Ubuntu\\home\\alex\\x' }, ctx)
     ).toEqual({
       ok: true,
       env: { kind: 'wsl', distro: 'Ubuntu' },
-      dir: '/home/beau/x'
+      dir: '/home/alex/x'
     })
   })
   it('a Windows drive seen from WSL: mapped by the distro, then Windows git', async () => {
@@ -847,14 +847,14 @@ describe('where a session’s git runs', () => {
     })
   })
   it('a Linux folder in a Windows Codex home: the default distro', async () => {
-    expect(await placeSession({ env: 'windows', cwd: '/home/beau/x' }, ctx)).toMatchObject({
+    expect(await placeSession({ env: 'windows', cwd: '/home/alex/x' }, ctx)).toMatchObject({
       ok: true,
       env: { kind: 'wsl', distro: 'Ubuntu' }
     })
   })
   it('never starts a stopped distro; no folder, no git', async () => {
     expect(
-      await placeSession({ env: 'wsl', distro: 'Debian', cwd: '/home/beau/x' }, ctx)
+      await placeSession({ env: 'wsl', distro: 'Debian', cwd: '/home/alex/x' }, ctx)
     ).toMatchObject({ ok: false, status: 'distro-stopped' })
     expect(await placeSession({ env: 'windows' }, ctx)).toMatchObject({
       ok: false,

@@ -483,7 +483,7 @@ describe('Continue fresh: the handoff', () => {
       {
         title: 'Safari login',
         sessionId: '7f3c9a12-4b8e-4d21-9c6a-1e2f3a4b5c6d',
-        cwd: 'C:\\Users\\beau\\code\\acme-web',
+        cwd: 'C:\\Users\\alex\\code\\acme-web',
         gitBranch: 'fix/safari',
         envLabel: 'Windows'
       },
@@ -491,21 +491,21 @@ describe('Continue fresh: the handoff', () => {
     )
     expect(h).toContain('# Handoff: Fix the Safari login cookie')
     expect(h).toContain('7f3c9a12-4b8e-4d21-9c6a-1e2f3a4b5c6d')
-    expect(h).toContain('C:\\Users\\beau\\code\\acme-web')
+    expect(h).toContain('C:\\Users\\alex\\code\\acme-web')
     expect(h).toContain(summaryMarkdown(SUMMARY))
     expect(h).toContain('wait for my go-ahead')
   })
 
   it('points the first message at the file with an @-mention, or asks to read it', () => {
-    expect(handoffPrompt('C:\\Users\\beau\\AppData\\Roaming\\X\\handoffs\\a.md')).toEqual({
+    expect(handoffPrompt('C:\\Users\\alex\\AppData\\Roaming\\X\\handoffs\\a.md')).toEqual({
       prompt:
-        '@C:\\Users\\beau\\AppData\\Roaming\\X\\handoffs\\a.md Continue from this handoff of an earlier session.',
+        '@C:\\Users\\alex\\AppData\\Roaming\\X\\handoffs\\a.md Continue from this handoff of an earlier session.',
       mode: 'mention'
     })
-    expect(handoffPrompt('/mnt/c/Users/beau/AppData/Roaming/X/handoffs/a.md')?.mode).toBe('mention')
-    const spaced = handoffPrompt('C:\\Users\\Beau Lewis\\AppData\\Roaming\\X\\handoffs\\a.md')
+    expect(handoffPrompt('/mnt/c/Users/alex/AppData/Roaming/X/handoffs/a.md')?.mode).toBe('mention')
+    const spaced = handoffPrompt('C:\\Users\\Alex Smith\\AppData\\Roaming\\X\\handoffs\\a.md')
     expect(spaced?.mode).toBe('read')
-    expect(spaced?.prompt).toContain('C:\\Users\\Beau Lewis\\AppData')
+    expect(spaced?.prompt).toContain('C:\\Users\\Alex Smith\\AppData')
   })
 
   it('refuses paths a shell could read as something else', () => {

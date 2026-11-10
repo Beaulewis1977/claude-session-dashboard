@@ -140,7 +140,7 @@ describe('Claude Code provider: exactly the Claude modules', () => {
     const text = read(SESSIONS.safari)
     const file = {
       path: SESSIONS.safari,
-      projectDir: 'C--Users-beau-code-acme-web',
+      projectDir: 'C--Users-alex-code-acme-web',
       sessionId: SAFARI,
       size: text.length
     }

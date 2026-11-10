@@ -44,7 +44,7 @@ describe('source labels', () => {
       reason: 'entrypoint "claude-vscode"'
     })
     expect(detectSource(hints(line('claude-desktop')), win).label).toBe('desktop')
-    expect(detectSource(hints(line('local-agent')), win).label).toBe('desktop')
+    expect(detectSource(hints(line('local-agent')), win).label).toBe('cowork')
     expect(detectSource(hints(line('sdk-cli')), win).label).toBe('sdk')
     expect(detectSource(hints(line('sdk-py')), win).label).toBe('sdk')
     expect(detectSource(hints(line('something-new')), win).label).toBe('unknown')

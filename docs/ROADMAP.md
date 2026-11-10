@@ -2,7 +2,7 @@
 
 Ideas to build next, with the details and a ready-to-paste prompt for each.
 
-**Current state (Nov 9, 2026):** v1.15.0 installed. It includes:
+**Current state (Nov 10, 2026):** v1.15.1 installed. It includes:
 
 - session browsing, names synced from `/rename`, and per-session model and effort;
 - live limits, usage tracking, and limit-health detection;
@@ -11,9 +11,10 @@ Ideas to build next, with the details and a ready-to-paste prompt for each.
 - live sessions and alerts, backups, summaries and Continue fresh, context size before resume;
 - Codex support (sessions, usage and limits, Running now, summaries) and Open in Codex app;
 - git links (the commits, files and PRs each session produced);
-- remote continuity (no duplicate terminals between PC and phone) and Claude desktop sessions.
+- remote continuity (no duplicate terminals between PC and phone) and Claude desktop sessions;
+- Back and Forward navigation on the desktop and the phone.
 
-Next up: back/forward navigation (small PR), then #7 Ask across all sessions.
+Next up: #7 Ask across all sessions.
 
 ---
 
@@ -375,11 +376,12 @@ Run typecheck, lint, tests and the build. Commit, push the branch and open a PR 
 - ✅ Remote continuity (no duplicate terminals between PC and phone, Remote Control link pickup,
   Codex duplicate check) and Claude desktop sessions (Open in Claude desktop app, "Claude desktop"
   source, optional Cowork source) (PR #44, v1.15.0)
+- ✅ Back/forward navigation (title-bar buttons, Alt+arrows, Backspace, mouse side buttons, phone
+  back gesture) (PR #46, v1.15.1)
 
 **Next up:**
 
-1. Back/forward navigation (small PR)
-2. #7 Ask across all sessions
+1. #7 Ask across all sessions
 
 **Loose ends:**
 

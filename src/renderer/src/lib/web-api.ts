@@ -307,6 +307,7 @@ export const webApi: CsdApi = {
   setTrayImage: async () => undefined,
   onShowUsage: () => () => undefined,
   onShowSettings: () => () => undefined,
+  onNavigate: () => () => undefined,
 
   mobileStatus: onPc('Phone settings'),
   mobileUpdate: onPc('Phone settings'),

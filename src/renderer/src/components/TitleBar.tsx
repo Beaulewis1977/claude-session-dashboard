@@ -1,12 +1,43 @@
-import { Loader2, PanelLeft, Search } from 'lucide-react'
+import { ArrowLeft, ArrowRight, Loader2, PanelLeft, Search } from 'lucide-react'
+import type { ReactNode } from 'react'
+import { navigate, useNavTargets } from '@/lib/navigation'
 import { useApp } from '@/lib/store'
-import { MOD } from '@/lib/utils'
+import { cn, MOD } from '@/lib/utils'
 import { ClaudeMark } from './brand'
 import { Kbd } from './ui/kbd'
 import { Tooltip } from './ui/tooltip'
 import { MiniGauges } from './usage/MiniGauges'
 
+/** Back or Forward: disabled when there's nowhere to go; the tooltip says where it leads. */
+function NavButton({ dir, target, icon }: { dir: -1 | 1; target: string | null; icon: ReactNode }) {
+  const name = dir === -1 ? 'Back' : 'Forward'
+  return (
+    <Tooltip
+      content={target ? `${name} to ${target}` : `${name} (nowhere to go)`}
+      shortcut={dir === -1 ? 'Alt+←' : 'Alt+→'}
+    >
+      {/* A wrapper so the tooltip still shows while the button is disabled. */}
+      <span className="no-drag inline-flex">
+        <button
+          type="button"
+          onClick={() => navigate(dir)}
+          disabled={!target}
+          aria-label={name}
+          data-nav-target={target ?? undefined}
+          className={cn(
+            'rounded-md p-1.5 text-muted-foreground transition-colors',
+            target ? 'hover:bg-hover hover:text-foreground' : 'pointer-events-none opacity-40'
+          )}
+        >
+          {icon}
+        </button>
+      </span>
+    </Tooltip>
+  )
+}
+
 export function TitleBar() {
+  const nav = useNavTargets()
   const set = useApp((s) => s.set)
   const sidebarOpen = useApp((s) => s.sidebarOpen)
   const scan = useApp((s) => s.scan)
@@ -33,6 +64,10 @@ export function TitleBar() {
           <PanelLeft className="size-4" />
         </button>
       </Tooltip>
+      <div className="-ml-1 flex items-center">
+        <NavButton dir={-1} target={nav.back} icon={<ArrowLeft className="size-4" />} />
+        <NavButton dir={1} target={nav.forward} icon={<ArrowRight className="size-4" />} />
+      </div>
 
       <div className="pointer-events-none absolute inset-x-0 flex justify-center">
         <button

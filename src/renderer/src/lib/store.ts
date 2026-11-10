@@ -16,6 +16,7 @@ import type { CodexLimitsState } from '@shared/usage/codex'
 import type { LiveSnapshot } from '@shared/live'
 import { EMPTY_SUMMARY_QUEUE, type SummaryQueueState } from '@shared/summary-queue'
 import { EMPTY_FILTERS, type Filters, type SortKey } from './filters'
+import type { UsageTab, ViewerTab } from './nav-history'
 
 export type FocusField = 'name' | 'description' | 'tags' | 'find' | 'search' | null
 
@@ -76,7 +77,7 @@ export function saveGroupBranches(v: boolean): void {
   }
 }
 
-interface State {
+export interface State {
   info: AppInfo | null
   sessions: SessionSummary[]
   sources: SourceInfo[]
@@ -94,6 +95,10 @@ interface State {
   /** Settings section to scroll to when Settings opens (e.g. 'accounts'). */
   settingsSection: string | null
   selectedKey: string | null
+  /** The viewer's tab, for the session it was picked on (any other session opens on Conversation). */
+  viewerTab: { key: string | null; tab: ViewerTab }
+  /** Usage & limits: which tab is open. */
+  usageTab: UsageTab
   /** Sessions picked with Ctrl/Shift+click for a bulk action (includes the selected one). */
   checked: string[]
   /** Where a Shift+click / Shift+arrow range starts. */
@@ -103,6 +108,8 @@ interface State {
   sortBeforeSearch: SortKey
   query: string
   hits: Map<string, SearchHit> | null
+  /** The search text `hits` answer (a newer query's answer may still be on its way). */
+  hitsQuery: string | null
   sidebarOpen: boolean
 
   paletteOpen: boolean
@@ -141,6 +148,8 @@ export const useApp = create<State>((set) => ({
   view: 'sessions',
   settingsSection: null,
   selectedKey: null,
+  viewerTab: { key: null, tab: 'conversation' },
+  usageTab: 'trends',
   checked: [],
   anchorKey: null,
   filters: EMPTY_FILTERS,
@@ -148,6 +157,7 @@ export const useApp = create<State>((set) => ({
   sortBeforeSearch: 'activity',
   query: '',
   hits: null,
+  hitsQuery: null,
   sidebarOpen: true,
 
   paletteOpen: false,

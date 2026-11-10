@@ -117,6 +117,13 @@ const api: CsdApi = {
     ipcRenderer.on('app:showSettings', listener)
     return () => ipcRenderer.removeListener('app:showSettings', listener)
   },
+  onNavigate: (cb) => {
+    const listener = (_e: unknown, dir: unknown): void => {
+      if (dir === 'back' || dir === 'forward') cb(dir)
+    }
+    ipcRenderer.on('app:navigate', listener)
+    return () => ipcRenderer.removeListener('app:navigate', listener)
+  },
 
   mobileStatus: () => ipcRenderer.invoke('mobile:status'),
   mobileUpdate: (patch) => ipcRenderer.invoke('mobile:update', patch),

@@ -268,7 +268,7 @@ export function SettingsView() {
   )
 
   return (
-    <div className="h-full overflow-y-auto bg-background">
+    <div className="h-full overflow-y-auto bg-background" data-nav-scroll="main">
       <div className="mx-auto max-w-[720px] px-8 pt-8 pb-16">
         <h1 className="text-[20px] font-semibold tracking-[-0.015em]">Settings</h1>
         <p className="mt-1 text-[13px] text-muted-foreground">

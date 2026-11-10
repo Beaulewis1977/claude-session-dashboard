@@ -38,6 +38,7 @@ import {
 import { openContinueFresh, summarize } from '@/lib/summaries'
 import { SummaryBlock } from '../summary/SummaryBlock'
 import type { SessionDetail, SessionSummary } from '@shared/types'
+import type { ViewerTab } from '@/lib/nav-history'
 import { formatBytes, formatDateTime } from '@shared/format'
 import { messagePreview } from '@shared/branch'
 import { canUseClaudeName } from '@shared/title'
@@ -498,8 +499,13 @@ export function SessionViewer({
   const [findQuery, setFindQuery] = useState('')
   const [findNonce, setFindNonce] = useState(0)
   const [atBottom, setAtBottom] = useState(false)
-  // Conversation or Changes (git links). The component is keyed by session, so it starts on Conversation.
-  const [tab, setTab] = useState<'conversation' | 'changes'>('conversation')
+  // Conversation or Changes (git links). Kept in the store for Back / Forward; any
+  // other session opens on Conversation.
+  const tab = useApp((s) => (s.viewerTab.key === session.key ? s.viewerTab.tab : 'conversation'))
+  const setTab = useCallback(
+    (t: ViewerTab) => useApp.getState().set({ viewerTab: { key: session.key, tab: t } }),
+    [session.key]
+  )
   const changesTab = session.availability !== 'imported'
   const scrollRef = useRef<HTMLDivElement>(null)
   const contentRef = useRef<HTMLDivElement>(null)
@@ -524,7 +530,7 @@ export function SessionViewer({
     setTab('conversation')
     setFindOpen(true)
     setFindNonce((n) => n + 1)
-  }, [])
+  }, [setTab])
   // Open the find bar when requested from the palette (adjusting state during render).
   const [seenFocus, setSeenFocus] = useState(focus.nonce)
   if (focus.nonce !== seenFocus) {
@@ -599,6 +605,7 @@ export function SessionViewer({
       <div
         ref={scrollRef}
         onScroll={onScroll}
+        data-nav-scroll="main"
         className={cn('min-h-0 flex-1 overflow-y-auto', findOpen && '[--tool-copy-top:3.5rem]')}
         tabIndex={-1}
       >

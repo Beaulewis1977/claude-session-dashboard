@@ -417,19 +417,27 @@ commit that doesn't belong; it moves to **Unlinked**, where you can link it agai
 
 ### Keyboard shortcuts
 
-| Keys                                              | Action                  |
-| ------------------------------------------------- | ----------------------- |
-| <kbd>Ctrl</kbd>+<kbd>K</kbd>                      | Command palette         |
-| <kbd>/</kbd>                                      | Search                  |
-| <kbd>J</kbd> / <kbd>K</kbd>                       | Next / previous session |
-| <kbd>Ctrl</kbd>+<kbd>Enter</kbd>                  | Resume                  |
-| <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Enter</kbd> | Fork                    |
-| <kbd>F2</kbd> / <kbd>D</kbd> / <kbd>T</kbd>       | Rename / describe / tag |
-| <kbd>Ctrl</kbd>+<kbd>F</kbd>                      | Find in session         |
-| <kbd>Ctrl</kbd>+<kbd>U</kbd>                      | Usage and limits        |
-| <kbd>Ctrl</kbd>+<kbd>,</kbd>                      | Settings                |
-| <kbd>F5</kbd>                                     | Rescan                  |
-| <kbd>?</kbd>                                      | Every shortcut          |
+| Keys                                                      | Action                  |
+| --------------------------------------------------------- | ----------------------- |
+| <kbd>Ctrl</kbd>+<kbd>K</kbd>                              | Command palette         |
+| <kbd>/</kbd>                                              | Search                  |
+| <kbd>J</kbd> / <kbd>K</kbd>                               | Next / previous session |
+| <kbd>Ctrl</kbd>+<kbd>Enter</kbd>                          | Resume                  |
+| <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Enter</kbd>         | Fork                    |
+| <kbd>F2</kbd> / <kbd>D</kbd> / <kbd>T</kbd>               | Rename / describe / tag |
+| <kbd>Ctrl</kbd>+<kbd>F</kbd>                              | Find in session         |
+| <kbd>Alt</kbd>+<kbd>←</kbd> / <kbd>Alt</kbd>+<kbd>→</kbd> | Back / forward          |
+| <kbd>Backspace</kbd> (when not typing)                    | Back                    |
+| <kbd>Ctrl</kbd>+<kbd>U</kbd>                              | Usage and limits        |
+| <kbd>Ctrl</kbd>+<kbd>,</kbd>                              | Settings                |
+| <kbd>F5</kbd>                                             | Rescan                  |
+| <kbd>?</kbd>                                              | Every shortcut          |
+
+**Back** and **Forward** (the arrows next to the sidebar button, or the mouse's side buttons) go
+through the screens you visited in this window: views and filters, the session, its Conversation /
+Changes tab, the Usage tab, the agent switch and a linked Settings section, with each one's scroll
+position. Quick repeats (holding <kbd>J</kbd>) count once, and a session that's gone is skipped. It
+starts fresh when the app restarts. On the phone, its back gesture does the same.
 
 ## Privacy and safety
 

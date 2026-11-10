@@ -45,6 +45,7 @@ import { PaceAdviceLine } from './Hero'
 import { TrendsTab } from './Trends'
 import { CodexLimitCards, CodexPlanChip } from './CodexLimits'
 import { AskClaudePanel } from './AskClaude'
+import type { UsageTab } from '@/lib/nav-history'
 
 type RangeId = 'today' | 'week' | 'month' | '7d' | '30d' | '90d' | '1y' | 'all' | 'custom'
 
@@ -183,7 +184,7 @@ function RangePicker({
   )
 }
 
-type Tab = 'trends' | 'limits' | 'credits' | 'raw'
+type Tab = UsageTab
 
 /** A labelled group of one provider's gauges (the All view). */
 function ProviderGroup({
@@ -268,7 +269,9 @@ export function UsageView() {
   const models = useMemo(() => modelsBy[view] ?? [], [modelsBy, view])
   const setModels = (m: string[]): void => setModelsBy((p) => ({ ...p, [view]: m }))
   const [groupBy, setGroupBy] = useState<Dimension>('model')
-  const [tab, setTab] = useState<Tab>('trends')
+  // In the store, so Back / Forward can return to it.
+  const tab = useApp((s) => s.usageTab)
+  const setTab = (usageTab: Tab): void => set({ usageTab })
   // In the All view: whose trends the Trends tab shows.
   const [trendsOf, setTrendsOf] = useState<'claude' | 'codex'>('claude')
   const [bridge, setBridge] = useState<BridgeEnv | null>(null)
@@ -406,7 +409,7 @@ export function UsageView() {
   )
 
   return (
-    <div className="h-full overflow-y-auto bg-surface" data-scroll="usage">
+    <div className="h-full overflow-y-auto bg-surface" data-scroll="usage" data-nav-scroll="main">
       <div
         className={cn(
           'mx-auto max-w-[1180px] pt-7 pb-16 lg:px-8',

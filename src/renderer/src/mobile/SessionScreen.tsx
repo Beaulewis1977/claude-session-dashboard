@@ -75,6 +75,7 @@ import { SessionModelControls } from '@/components/ModelPicker'
 import { useModelChoice } from '@/lib/model-choice'
 import { choiceLabel } from '@shared/model-choice'
 import { TerminalSheet } from './TerminalSheet'
+import { closeSession } from './nav'
 import { canOpenTerminal } from '@shared/terminal'
 import { useMobile } from './state'
 
@@ -123,7 +124,6 @@ function useEdgeSwipeBack(onBack: () => void): {
 }
 
 export function SessionScreen({ session }: { session: SessionSummary }) {
-  const select = useApp((s) => s.select)
   const sessions = useApp((s) => s.sessions)
   const me = useMobile((s) => s.me)
   const readOnly = me?.readOnly ?? false
@@ -140,8 +140,8 @@ export function SessionScreen({ session }: { session: SessionSummary }) {
   const [launch, setLaunch] = useState<LaunchTarget | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const contentRef = useRef<HTMLDivElement>(null)
-  const back = useCallback(() => select(null), [select])
-  const swipe = useEdgeSwipeBack(back)
+  // Back to the screen the session was opened from (through history, like the phone's own Back).
+  const swipe = useEdgeSwipeBack(closeSession)
   const allTags = useMemo(
     () => [...new Set(sessions.flatMap((s) => s.meta.tags ?? []))].sort(),
     [sessions]
@@ -163,14 +163,6 @@ export function SessionScreen({ session }: { session: SessionSummary }) {
       cancelled = true
     }
   }, [session.key, version])
-
-  // The phone's back button / gesture closes the session instead of leaving the app.
-  useEffect(() => {
-    history.pushState({ session: session.key }, '')
-    const onPop = (): void => back()
-    window.addEventListener('popstate', onPop)
-    return () => window.removeEventListener('popstate', onPop)
-  }, [session.key, back])
 
   const messages = useMemo(() => detail?.messages ?? [], [detail])
   const find = useFind(contentRef, scrollRef, findOpen ? findQuery : '', detail)
@@ -207,7 +199,7 @@ export function SessionScreen({ session }: { session: SessionSummary }) {
         <Button
           variant="ghost"
           className="h-11 gap-0.5 px-2 text-[15px] text-primary"
-          onClick={() => history.back()}
+          onClick={closeSession}
         >
           <ChevronLeft className="size-6" /> Sessions
         </Button>
@@ -537,7 +529,7 @@ export function SessionScreen({ session }: { session: SessionSummary }) {
           onClose={() => setChangesOpen(false)}
           onSearch={() => {
             setChangesOpen(false)
-            history.back()
+            closeSession()
           }}
         />
       )}

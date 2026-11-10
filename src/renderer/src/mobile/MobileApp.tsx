@@ -20,6 +20,7 @@ import { SessionScreen } from './SessionScreen'
 import { SettingsTab } from './SettingsTab'
 import { RunningTab } from './RunningTab'
 import { useOpenLive } from './open-live'
+import { usePhoneHistory } from './nav'
 import { bootstrap } from './bootstrap'
 import { useMobile } from './state'
 import { useMobileScope } from './scope'
@@ -115,6 +116,8 @@ export function MobileApp() {
   const live = useLiveCounts(useMobileScope().view)
   // A tapped push alert: Running now, then its session once it can be shown.
   useOpenLive(paired)
+  // The phone's back gesture / button goes to the previous screen.
+  usePhoneHistory(paired)
   const view = useApp((s) => s.view)
   const set = useApp((s) => s.set)
   const openKey = useApp((s) => s.selectedKey)

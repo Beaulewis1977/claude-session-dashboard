@@ -239,6 +239,8 @@ export interface CsdApi {
   onShowUsage(cb: () => void): () => void
   /** A notification asked for a Settings section (e.g. "backup"). */
   onShowSettings(cb: (section: string) => void): () => void
+  /** Windows' Back / Forward app commands (a mouse's side buttons, a keyboard's Back key). */
+  onNavigate(cb: (dir: 'back' | 'forward') => void): () => void
 
   // Phone companion (desktop only: a phone can't reach any of these)
   mobileStatus(): Promise<MobileStatus>

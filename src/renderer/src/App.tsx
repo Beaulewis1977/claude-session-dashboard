@@ -8,6 +8,7 @@ import { useScope } from '@/lib/scope'
 import { useHotkeys } from '@/lib/hotkeys'
 import { useLiveData } from '@/lib/live'
 import { useLiveSessions } from '@/lib/live-sessions'
+import { amendNavigation, useNavigation } from '@/lib/navigation'
 import { useApp } from '@/lib/store'
 import { useThemeEffect } from '@/lib/theme'
 import { cn, MOD } from '@/lib/utils'
@@ -113,6 +114,8 @@ export function App() {
   useBootstrap()
   useLiveData(useApp((s) => s.info !== null))
   useLiveSessions(useApp((s) => s.info !== null))
+  // Back / Forward: history, Alt+← / Alt+→, Backspace, the mouse's side buttons.
+  useNavigation()
   const sessions = useApp((s) => s.sessions)
   const filters = useApp((s) => s.filters)
   const sort = useApp((s) => s.sort)
@@ -142,20 +145,21 @@ export function App() {
     [sessions]
   )
 
-  // Select the first session once data arrives.
+  // Select the first session once data arrives (part of the first history entry).
   const autoSelected = useRef(false)
   useEffect(() => {
     if (!autoSelected.current && loaded && items.length > 0 && !selectedKey) {
       autoSelected.current = true
-      select(items[0].key)
+      amendNavigation(() => select(items[0].key))
     }
   }, [loaded, items, selectedKey, select])
 
   // Keep the viewer in sync with the list: if a search or filter hides the
-  // selected session, select the first visible one.
+  // selected session, select the first visible one (part of that move in history).
   useEffect(() => {
     if (!loaded || view !== 'sessions' || !items.length) return
-    if (selectedKey && !items.some((s) => s.key === selectedKey)) select(items[0].key)
+    if (selectedKey && !items.some((s) => s.key === selectedKey))
+      amendNavigation(() => select(items[0].key))
   }, [items, selectedKey, loaded, view, select])
 
   const [listWidth, setListWidth] = useState(readWidth)

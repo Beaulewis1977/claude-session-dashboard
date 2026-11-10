@@ -1,6 +1,9 @@
 // "Open in: Claude desktop app" (Windows, desktop only): runs the user's own
 // Claude Code with fixed arguments, `claude --desktop --resume <id>`, which
-// hands the session to the Claude desktop app and exits. No terminal opens.
+// hands the session to the Claude desktop app and exits. `--desktop` refuses
+// to run with redirected output, so it gets its own console, hidden (started
+// by PowerShell's Start-Process; its inputs only as environment variables,
+// never as script text). No terminal shows; it's ended if it doesn't finish.
 // Whether the desktop app is installed: its `claude:` link handler in the
 // registry (`reg query`, read only). Nothing of the desktop app's data is read
 // or written by the dashboard.
@@ -8,7 +11,8 @@
 import { execFile } from 'node:child_process'
 import { claudeAppArgs } from '@shared/claude-app'
 import { REMOTE_CONTROL_UNSET_ENV } from '../core/launch'
-import { systemExe } from '../core/which'
+import { win32 } from 'node:path'
+import { systemExe, systemRoot } from '../core/which'
 
 export interface ClaudeAppFactsNow {
   installed: boolean
@@ -29,7 +33,22 @@ export interface ClaudeAppLauncher {
 }
 
 const FACTS_MS = 60_000
-const RUN_TIMEOUT_MS = 45_000
+/** How long the hand-over may take before it's ended (it normally takes a few seconds). */
+export const HANDOFF_WAIT_MS = 40_000
+
+/**
+ * Starts Claude Code in a hidden console of its own, waits for it, returns its
+ * exit code (124: it didn't finish and was ended). Inputs come only from the
+ * environment: CSD_CLAUDE (absolute path), CSD_ARGS (fixed flags and a checked
+ * session id, space-separated), CSD_CWD, CSD_WAIT_MS.
+ */
+export const HANDOFF_SCRIPT = [
+  "$ErrorActionPreference = 'Stop'",
+  '$p = Start-Process -FilePath $env:CSD_CLAUDE -ArgumentList ($env:CSD_ARGS -split " ") -WorkingDirectory $env:CSD_CWD -WindowStyle Hidden -PassThru',
+  '$null = $p.Handle',
+  'if (-not $p.WaitForExit([int]$env:CSD_WAIT_MS)) { Stop-Process -Id $p.Id -Force; exit 124 }',
+  'exit $p.ExitCode'
+].join('; ')
 
 /** `reg query HKCR\claude /v "URL Protocol"`: exit code 0 when the desktop app registered its links. */
 function protocolRegistered(): Promise<boolean> {
@@ -102,11 +121,49 @@ export function claudeAppLauncher(): ClaudeAppLauncher {
       return facts
     },
     async open(claudePath, cwd, sessionId, fork) {
-      const r = await run(claudePath, claudeAppArgs(sessionId, fork), {
-        cwd,
-        timeout: RUN_TIMEOUT_MS
-      })
-      return { ok: r.code === 0, output: r.out }
+      const args = claudeAppArgs(sessionId, fork)
+      const ps = win32.join(systemRoot(), 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe')
+      const code = await new Promise<number | null>((resolve) =>
+        execFile(
+          ps,
+          [
+            '-NoProfile',
+            '-NonInteractive',
+            '-ExecutionPolicy',
+            'Bypass',
+            '-Command',
+            HANDOFF_SCRIPT
+          ],
+          {
+            windowsHide: true,
+            timeout: HANDOFF_WAIT_MS + 15_000,
+            env: {
+              ...env(),
+              CSD_CLAUDE: claudePath,
+              CSD_ARGS: args.join(' '),
+              CSD_CWD: cwd,
+              CSD_WAIT_MS: String(HANDOFF_WAIT_MS)
+            }
+          },
+          (err) =>
+            resolve(
+              err
+                ? typeof (err as { code?: unknown }).code === 'number'
+                  ? (err as { code: number }).code
+                  : null
+                : 0
+            )
+        )
+      )
+      return {
+        ok: code === 0,
+        output:
+          code === 124
+            ? "It didn't finish in time and was stopped."
+            : code === 0
+              ? ''
+              : `It exited with code ${code ?? 'unknown'}. Run claude ${args.join(' ')} in a terminal in that folder to see why.`
+      }
     }
   }
 }

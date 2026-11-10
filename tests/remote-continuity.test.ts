@@ -38,6 +38,7 @@ import {
   readDesktopIndex
 } from '../src/main/providers/claude/desktop'
 import { collectFiles } from '../src/main/core/backup-files'
+import { HANDOFF_SCRIPT } from '../src/main/services/claude-app'
 import { fixturesLayout, prepareFixtures, seedFixtureData } from '../src/main/fixtures'
 import { createFixturesPlatform } from '../src/main/platform'
 import { Launcher } from '../src/main/services/launcher'
@@ -540,6 +541,16 @@ describe('Open in: Claude desktop app', () => {
     expect(claudeAppPreview({ ...facts, fork: true }, ID) === undefined).toBe(!CLAUDE_APP_FORK)
   })
 
+  it('starts Claude Code in its own hidden console (--desktop refuses redirected output), inputs only from env', () => {
+    // No interpolated values in the script: path, folder and arguments come from CSD_* variables.
+    expect(HANDOFF_SCRIPT).not.toMatch(/[A-Za-z]:\\|--resume|\$\{/)
+    expect(HANDOFF_SCRIPT).toMatch(/Start-Process -FilePath \$env:CSD_CLAUDE/)
+    expect(HANDOFF_SCRIPT).toMatch(/-WindowStyle Hidden/)
+    expect(HANDOFF_SCRIPT).not.toMatch(/-Redirect/)
+    // A hand-over that hangs is ended, never left running.
+    expect(HANDOFF_SCRIPT).toMatch(/WaitForExit\(\[int\]\$env:CSD_WAIT_MS\)\) \{ Stop-Process/)
+  })
+
   it('only ever passes fixed flags and a checked session id', () => {
     expect(claudeAppArgs(ID, false)).toEqual(['--desktop', '--resume', ID])
     expect(() => claudeAppArgs('x" & calc', false)).toThrow()
@@ -574,6 +585,30 @@ describe('Claude desktop labels and the Ask Claude hiding rule', () => {
     expect(detectSource(hints('claude-desktop'), ask).label).toBe('desktop')
     expect(detectSource(hints('cli'), ask).label).toBe('terminal-windows')
     expect(detectSource(hints('sdk-cli'), { ...ask, cowork: true }).label).toBe('cowork')
+  })
+
+  it('a local session is not "Cloud" for an empty link attachment or its own Remote Control link', () => {
+    const att = (url: unknown) => ({
+      type: 'attachment',
+      entrypoint: 'cli',
+      attachment: { type: 'remote_session_change', url, commit: '', pr: '' }
+    })
+    const empty = emptyHints()
+    addHints(empty, att(null))
+    expect(detectSource(empty, win).label).toBe('terminal-windows')
+    // Remote Control writes its link there too, next to its bridge_status entries.
+    const rc = emptyHints()
+    addHints(rc, { type: 'system', subtype: 'bridge_status', url: RC_URL, entrypoint: 'cli' })
+    addHints(rc, att(RC_URL))
+    expect(detectSource(rc, win).label).toBe('terminal-windows')
+    // A claude.ai/code link without Remote Control (teleported here) is still a cloud session.
+    const teleported = emptyHints()
+    addHints(teleported, att(RC_URL))
+    expect(detectSource(teleported, win).label).toBe('cloud')
+    // And a remote entrypoint always is.
+    const remote = emptyHints()
+    addHints(remote, { entrypoint: 'remote_mobile' })
+    expect(detectSource(remote, win).label).toBe('cloud')
   })
 
   it('view-only: imported conversations and Cowork sessions', () => {

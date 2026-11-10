@@ -397,6 +397,12 @@ describe('partial clone settings', () => {
     expect(isPartialClone('remote.Back Up.promisor\0')).toBe(true)
     expect(isPartialClone('remote.Back Up.promisor\nfalse\0remote.b.promisor\n0\0')).toBe(false)
     expect(isPartialClone('remote.b.promisor\noff\0remote.c.promisor\nyes\0')).toBe(true)
+    // A filter alone makes a promisor remote (and older git's core one too).
+    expect(isPartialClone('remote.origin.partialclonefilter\nblob:none\0')).toBe(true)
+    expect(
+      isPartialClone('remote.origin.promisor\nfalse\0remote.origin.partialclonefilter\n\0')
+    ).toBe(true)
+    expect(isPartialClone('core.partialclonefilter\nblob:none\0')).toBe(true)
   })
 })
 
@@ -646,6 +652,28 @@ describe.runIf(hasGit())('partial clones', () => {
   const backend = () =>
     createRealBackend(createProcessRunner({ cwd: tmpdir() }), { exists: fileExists, wslRoots })
   const env = { kind: 'windows' as const }
+  /** The clone with only its remote's partialCloneFilter left (put back after). */
+  async function filterOnly(fn: () => Promise<void>): Promise<void> {
+    const keys = ['remote.origin.promisor', 'extensions.partialclone']
+    const saved = keys.map((k) => {
+      try {
+        return run(partial, ['config', '--get', k]).trim()
+      } catch {
+        return undefined
+      }
+    })
+    for (const [i, k] of keys.entries())
+      if (saved[i] !== undefined) run(partial, ['config', '--unset', k])
+    expect(run(partial, ['config', '--get', 'remote.origin.partialclonefilter']).trim()).toBe(
+      'blob:none'
+    )
+    try {
+      await fn()
+    } finally {
+      for (const [i, k] of keys.entries())
+        if (saved[i] !== undefined) run(partial, ['config', k, saved[i]])
+    }
+  }
   /** As a git that doesn't know GIT_NO_LAZY_FETCH (upstream 2.43 and older). */
   async function withoutNoLazyFetch(fn: () => Promise<void>): Promise<void> {
     const saved = GIT_ENV.GIT_NO_LAZY_FETCH
@@ -704,6 +732,41 @@ describe.runIf(hasGit())('partial clones', () => {
       run(server, ['config', '--unset', 'remote.Back Up.promisor'])
     }
     expect(await b.partialClone(env, join(root, 'gone'))).toBeUndefined()
+    // Only the remote's filter left: still a promisor remote to git.
+    await filterOnly(async () => {
+      expect(await b.partialClone(env, partial)).toBe(true)
+    })
+  })
+
+  it('with only a filter and help.autocorrect on, a repo alias still never runs', async () => {
+    // remote.origin.vcs=_ has no helper; autocorrect would run the nearest command
+    // instead, the repo's alias remote-z.
+    const marker = join(partial, 'pwned')
+    const b = backend()
+    const before = objects(partial)
+    await filterOnly(async () => {
+      run(partial, ['config', 'remote.origin.vcs', '_'])
+      run(partial, ['config', 'help.autocorrect', '1'])
+      run(partial, ['config', 'alias.remote-z', '!touch pwned; false'])
+      try {
+        await withoutNoLazyFetch(async () => {
+          await b.show(env, partial, head, undefined, 1024 * 1024)
+        })
+        expect(await fileExists(marker)).toBe(false)
+        expect(objects(partial)).toBe(before)
+        // Without the app's settings the same read runs it: the check above means something.
+        try {
+          run(partial, ['cat-file', '-p', run(server, ['rev-parse', 'HEAD:d.txt']).trim()])
+        } catch {
+          // The "helper" ran and failed.
+        }
+        expect(await fileExists(marker)).toBe(true)
+      } finally {
+        for (const k of ['remote.origin.vcs', 'help.autocorrect', 'alias.remote-z'])
+          run(partial, ['config', '--unset', k])
+        await rm(marker, { force: true })
+      }
+    })
   })
 
   it("a read fails instead of fetching what's missing, also with a git that ignores GIT_NO_LAZY_FETCH", async () => {

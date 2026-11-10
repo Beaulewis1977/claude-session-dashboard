@@ -296,8 +296,10 @@ describe('the processes', () => {
       GIT_NO_LAZY_FETCH: '1',
       GIT_ALLOW_PROTOCOL: '_'
     })
-    // No automatic maintenance or gc on any call.
-    expect(GIT_PREFIX).toEqual(expect.arrayContaining(['maintenance.auto=false', 'gc.auto=0']))
+    // No automatic maintenance or gc, and no autocorrected command, on any call.
+    expect(GIT_PREFIX).toEqual(
+      expect.arrayContaining(['maintenance.auto=false', 'gc.auto=0', 'help.autocorrect=0'])
+    )
     expect(GH_ENV.GH_NO_UPDATE_NOTIFIER).toBe('1')
   })
 

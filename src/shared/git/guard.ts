@@ -22,7 +22,10 @@ export const SAFE_GIT_CONFIG = [
   'core.pager=cat',
   // No automatic maintenance or gc (they write), whatever the repo's config says.
   'maintenance.auto=false',
-  'gc.auto=0'
+  'gc.auto=0',
+  // A command git doesn't know never runs a similar one in its place (with
+  // help.autocorrect a repo's alias could stand in for a missing remote helper).
+  'help.autocorrect=0'
 ] as const
 
 export const GIT_PREFIX: readonly string[] = [
@@ -58,9 +61,12 @@ export const SUBMODULE_SHORT = '--submodule=short'
 
 /**
  * The settings that make a repo a partial clone (a promisor remote git would
- * fetch missing objects from). Read before anything else of a repo.
+ * fetch missing objects from): extensions.partialClone, or a remote's promisor
+ * or partialCloneFilter (either alone makes it one), and older git's
+ * core.partialCloneFilter. Read before anything else of a repo.
  */
-export const PARTIAL_CLONE_KEYS = '^(extensions\\.partialclone|remote\\..+\\.promisor)$'
+export const PARTIAL_CLONE_KEYS =
+  '^(extensions\\.partialclone|core\\.partialclonefilter|remote\\..+\\.(promisor|partialclonefilter))$'
 
 const LOG_FLAGS = new Set([
   '--no-color',

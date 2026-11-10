@@ -71,16 +71,32 @@ for (const theme of ['dark', 'light']) {
   await page.evaluate(() => window.scrollTo(0, 0))
   const s = theme === 'dark' ? '' : '-light'
 
-  // Sessions list.
-  await page.getByRole('button', { name: 'Sessions' }).first().click()
-  await page.waitForTimeout(600)
+  // Sessions list (back to the list if a session is still open from the last pass).
+  await page.getByRole('button', { name: 'Sessions' }).last().click()
+  await page.waitForTimeout(400)
+  if (await page.getByRole('button', { name: 'Resume on PC' }).count())
+    await page.getByRole('button', { name: 'Sessions' }).first().click()
+  await page.evaluate(() =>
+    document.querySelectorAll('*').forEach((e) => {
+      if (e.scrollTop) e.scrollTop = 0
+    })
+  )
+  await page.waitForTimeout(400)
   await shot(`sessions${s}`)
 
   // Running now.
-  await page.getByRole('button', { name: /Running/ }).first().click()
+  await page
+    .getByRole('button', { name: /Running/ })
+    .first()
+    .click()
   await page.waitForSelector('text=Needs approval')
   await shot(`running${s}`)
   await page.getByRole('button', { name: 'Sessions' }).first().click()
+  await page.evaluate(() =>
+    document.querySelectorAll('*').forEach((e) => {
+      if (e.scrollTop) e.scrollTop = 0
+    })
+  )
   await page.waitForTimeout(400)
 
   // A session, read in chat bubbles.

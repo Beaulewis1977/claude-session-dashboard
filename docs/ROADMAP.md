@@ -14,7 +14,7 @@ Ideas to build next, with the details and a ready-to-paste prompt for each.
 - remote continuity (no duplicate terminals between PC and phone) and Claude desktop sessions;
 - Back and Forward navigation on the desktop and the phone.
 
-Next up: #7 Ask across all sessions (in review, branch `feat/ask-across-sessions`).
+Next up: #7 Ask across all sessions (in review: PR #50).
 
 ---
 
@@ -381,7 +381,7 @@ Run typecheck, lint, tests and the build. Commit, push the branch and open a PR 
 
 **Next up:**
 
-1. #7 Ask across all sessions: in review (branch `feat/ask-across-sessions`).
+1. #7 Ask across all sessions: in review (PR #50).
 
 **#7 known limits:**
 

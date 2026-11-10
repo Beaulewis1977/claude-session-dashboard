@@ -31,7 +31,9 @@
     "src/renderer/src/lib/copy.ts",
     "src/renderer/src/lib/remote.ts",
     "src/renderer/src/mobile/bootstrap.ts",
-    "src/renderer/src/mobile/open-live-rules.ts"
+    "src/renderer/src/mobile/open-live-rules.ts",
+    "src/renderer/src/mobile/nav-rules.ts",
+    "src/renderer/src/lib/nav-history.ts"
   ],
   "exclude": ["tests/clipboard.test.ts", "tests/ui-names.test.ts", "tests/credits-empty.test.ts"]
 }

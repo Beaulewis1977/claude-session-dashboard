@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { liveRemoteUrl } from '@/lib/remote'
+import { isViewOnly } from '@shared/view-only'
 import { toast } from 'sonner'
 import {
+  MonitorSmartphone,
   AppWindow,
   Archive,
   ArrowDownToLine,
@@ -171,10 +174,13 @@ export function SessionScreen({ session }: { session: SessionSummary }) {
 
   const messages = useMemo(() => detail?.messages ?? [], [detail])
   const find = useFind(contentRef, scrollRef, findOpen ? findQuery : '', detail)
-  const viewOnly = session.availability === 'imported'
+  const viewOnly = isViewOnly(session)
   // What this session's agent can do (Codex: Resume and Fork, no Remote Control).
   const caps = capsOf(session)
   const product = PROVIDER_LABEL[providerOf(session)]
+  // Running on the PC with Remote Control on (also after /rc typed later): straight to it.
+  const liveSessions = useApp((st) => st.live?.sessions)
+  const rcLink = caps.remoteControl ? liveRemoteUrl(liveSessions, session.key) : undefined
   const choice = choiceLabel(useModelChoice(session))
   const onBranch = useCallback<OnBranch>(
     (id, mode) => setLaunch({ kind: 'branch', at: id, mode }),
@@ -466,9 +472,20 @@ export function SessionScreen({ session }: { session: SessionSummary }) {
 
       {!viewOnly && (
         <footer className="shrink-0 border-t border-border bg-chrome/95 px-4 pt-2.5 pb-[max(0.75rem,env(safe-area-inset-bottom))] backdrop-blur">
+          {rcLink && (
+            <a
+              href={rcLink}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mb-2 flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-primary text-[15px] font-semibold text-primary-foreground active:bg-primary-hover"
+            >
+              <MonitorSmartphone className="size-5" /> Open in Claude app
+              <span className="font-normal opacity-85">· running on your PC</span>
+            </a>
+          )}
           <div className="flex gap-2">
             <Button
-              variant="primary"
+              variant={rcLink ? 'outline' : 'primary'}
               className="h-11 flex-1 text-[15px]"
               disabled={readOnly}
               onClick={() => setLaunch({ kind: 'resume' })}
@@ -496,6 +513,12 @@ export function SessionScreen({ session }: { session: SessionSummary }) {
             >
               <AppWindow /> Open in Codex app on PC
             </Button>
+          )}
+          {providerOf(session) === 'codex' && (
+            <p className="mt-1.5 text-center text-[11.5px] leading-snug text-muted-foreground">
+              To continue on your phone, open it in the Codex app on your PC: Codex Remote in the
+              ChatGPT app reaches Codex app threads, not terminal sessions.
+            </p>
           )}
           <div className="mt-1.5 flex items-center justify-center gap-1 text-[11.5px] text-muted-foreground">
             <Smartphone className="size-3" />

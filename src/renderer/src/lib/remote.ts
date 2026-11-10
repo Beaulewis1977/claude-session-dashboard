@@ -1,6 +1,7 @@
 // Remote Control: which sessions were launched with it, and how to describe that.
 
 import type { RemoteLaunchResult } from '@shared/mobile'
+import { isRunning, type LiveSession } from '@shared/live'
 import type { SessionSummary } from '@shared/types'
 import { formatDateTime } from '@shared/format'
 
@@ -29,6 +30,25 @@ type LinkFields = Pick<
   'key' | 'sourceId' | 'cwd' | 'env' | 'remoteUrl' | 'remoteUrlAt' | 'lineage'
 >
 
+type LiveLink = Pick<
+  LiveSession,
+  'key' | 'sourceId' | 'cwd' | 'env' | 'state' | 'remoteUrl' | 'remoteActive' | 'startedAt'
+>
+
+/**
+ * The Remote Control link of a session running now, as soon as Remote Control
+ * is on in it (launched with it, or `/rc` typed later): Running now reads it
+ * from Claude Code's running-session file every few seconds, before the
+ * transcript is read again. Never a link from an earlier run.
+ */
+export function liveRemoteUrl(
+  live: readonly LiveLink[] | undefined,
+  key: string
+): string | undefined {
+  const l = live?.find((x) => x.key === key)
+  return l && isRunning(l) && l.remoteActive ? l.remoteUrl : undefined
+}
+
 /** Recorded at or after the launch (a little slack for the PC's and phone's clocks). */
 const fresh = (s: LinkFields, since: number): boolean =>
   !!s.remoteUrl && !!s.remoteUrlAt && Date.parse(s.remoteUrlAt) >= since - 2000
@@ -44,17 +64,33 @@ export function freshRemoteUrl(
   sessions: LinkFields[],
   result: Pick<RemoteLaunchResult, 'key' | 'fork'> | null,
   since: number,
-  existing: ReadonlySet<string> = new Set()
+  existing: ReadonlySet<string> = new Set(),
+  /** Running now: its link shows up there first (a process started after the launch). */
+  live: readonly LiveLink[] = []
 ): string | undefined {
   if (!result) return undefined
+  const started = (l: LiveLink): boolean =>
+    isRunning(l) && !!l.remoteActive && !!l.remoteUrl && (l.startedAt ?? 0) >= since - 2000
   if (result.key) {
+    const l = live.find((x) => x.key === result.key)
+    if (l && started(l)) return l.remoteUrl
     const s = sessions.find((x) => x.key === result.key)
     return s && fresh(s, since) ? s.remoteUrl : undefined
   }
   const f = result.fork
   if (!f?.cwd) return undefined
-  const same = (s: LinkFields): boolean =>
+  const same = (s: Pick<LinkFields, 'env' | 'cwd'>): boolean =>
     s.env === 'windows' ? s.cwd?.toLowerCase() === f.cwd!.toLowerCase() : s.cwd === f.cwd
+  // A process that started after the fork, in its folder, that the list didn't have.
+  const procs = live.filter(
+    (l) =>
+      l.key !== f.parentKey &&
+      !existing.has(l.key) &&
+      l.sourceId === f.sourceId &&
+      same(l) &&
+      started(l)
+  )
+  if (procs.length === 1) return procs[0]!.remoteUrl
   const found = sessions
     .filter(
       (s) =>

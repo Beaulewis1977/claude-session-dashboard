@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from 'react'
+import { isViewOnly } from '@shared/view-only'
 import { Command } from 'cmdk'
 import { Dialog as D } from 'radix-ui'
 import {
@@ -179,7 +180,7 @@ function PaletteBody() {
             >
               {selected.meta.aiSummary ? 'Regenerate summary' : 'Summarize'}
             </Item>
-            {selected.availability !== 'imported' && (
+            {!isViewOnly(selected) && (
               <Item
                 value="continue fresh new session from summary handoff"
                 icon={<Zap />}

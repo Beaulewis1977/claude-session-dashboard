@@ -45,6 +45,7 @@ function setup(sessions = ['a', 'b']) {
   const subs = new Set<() => void>()
   let t = 0
   const known = new Set(sessions)
+  const loaded = { value: true }
   const nav = startPhoneHistory({
     history,
     onPopState: history.onPopState,
@@ -58,6 +59,7 @@ function setup(sessions = ['a', 'b']) {
       return () => subs.delete(cb)
     },
     exists: (k) => known.has(k),
+    loaded: () => loaded.value,
     now: () => t
   })
   /** The app changing screens (a tap), `ms` after the last one. */
@@ -66,7 +68,7 @@ function setup(sessions = ['a', 'b']) {
     state = { ...state, ...patch }
     subs.forEach((cb) => cb())
   }
-  return { history, nav, move, known, get: () => state }
+  return { history, nav, move, known, loaded, get: () => state }
 }
 
 describe('phone history', () => {
@@ -122,7 +124,8 @@ describe('phone history', () => {
       get: () => ({ view: 'sessions', key: 'a', usageTab: 'trends' }),
       apply: (st) => (closed = st),
       subscribe: () => () => undefined,
-      exists: () => true
+      exists: () => true,
+      loaded: () => true
     })
     nav.close()
     expect(closed).toMatchObject({ view: 'sessions', key: null })
@@ -160,5 +163,40 @@ describe('phone history', () => {
     history.at = 2
     history.back()
     expect(get().view).toBe('settings')
+  })
+
+  it('before the session list has loaded, no session counts as gone', () => {
+    // E.g. the PC answered slowly after a reload: the list is still empty.
+    const { history, move, known, loaded, get } = setup(['a', 'b'])
+    move({ key: 'a' })
+    move({ key: null })
+    move({ key: 'b' })
+    loaded.value = false
+    known.clear()
+    history.back()
+    history.back()
+    // Session a's entry is kept (not skipped).
+    expect(get()).toMatchObject({ key: 'a' })
+    expect(history.at).toBe(1)
+    history.forward()
+    history.forward()
+    // Session b's entry keeps its key (not replaced with null).
+    expect(get()).toMatchObject({ key: 'b' })
+    expect(history.state).toMatchObject({ csdNav: { key: 'b' } })
+  })
+
+  it('once loaded, an entry on a session that is gone shows its tab', () => {
+    const { history, nav, move, known, loaded, get } = setup(['a'])
+    move({ view: 'running' })
+    move({ key: 'a' })
+    loaded.value = false
+    nav.checkLoaded()
+    expect(get().key).toBe('a')
+    known.delete('a')
+    loaded.value = true
+    nav.checkLoaded()
+    expect(get()).toMatchObject({ view: 'running', key: null })
+    expect(history.state).toMatchObject({ csdNav: { view: 'running', key: null } })
+    expect(history.stack).toHaveLength(3)
   })
 })

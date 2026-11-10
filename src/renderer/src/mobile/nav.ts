@@ -39,10 +39,15 @@ export function usePhoneHistory(paired: boolean): void {
           )
             cb()
         }),
-      exists: (key) => useApp.getState().sessions.some((s) => s.key === key)
+      exists: (key) => useApp.getState().sessions.some((s) => s.key === key),
+      loaded: () => useApp.getState().loaded
+    })
+    const offLoaded = useApp.subscribe((st, prev) => {
+      if (st.loaded && !prev.loaded) nav.checkLoaded()
     })
     active = nav
     return () => {
+      offLoaded()
       nav.stop()
       if (active === nav) active = null
     }

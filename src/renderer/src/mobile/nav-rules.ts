@@ -38,12 +38,19 @@ export interface PhoneNavDeps {
   apply: (s: PhoneNavState) => void
   subscribe: (cb: () => void) => () => void
   exists: (key: string) => boolean
+  /**
+   * The session list has arrived from the PC. Until then no session is known
+   * to be gone: a history entry keeps its session, checked once loaded.
+   */
+  loaded: () => boolean
   now?: () => number
 }
 
 export interface PhoneNav {
   /** Close the open session: back to the screen it was opened from. */
   close: () => void
+  /** The session list just loaded: if the entry shown is on a session that's gone, show its tab. */
+  checkLoaded: () => void
   stop: () => void
 }
 
@@ -92,7 +99,7 @@ export function startPhoneHistory(d: PhoneNavDeps): PhoneNav {
     const st = readStamp(state)
     if (!st) return
     lastAt = -Infinity
-    if (st.key && !d.exists(st.key)) {
+    if (st.key && d.loaded() && !d.exists(st.key)) {
       // Going back past a session that's gone, if there's an earlier screen.
       if (st.i < current.i && st.i > 0) {
         current = st
@@ -115,6 +122,12 @@ export function startPhoneHistory(d: PhoneNavDeps): PhoneNav {
     close: () => {
       if (current.key && current.i > 0) d.history.back()
       else d.apply({ ...current, key: null })
+    },
+    checkLoaded: () => {
+      if (!current.key || !d.loaded() || d.exists(current.key)) return
+      current = { ...current, key: null }
+      d.history.replaceState(wrap(current), '')
+      d.apply(current)
     },
     stop: () => {
       unsub()

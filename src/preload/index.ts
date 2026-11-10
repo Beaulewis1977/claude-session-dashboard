@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer } from 'electron'
 import type { CsdApi } from '@shared/api'
 import type { SessionsPayload } from '@shared/types'
 import type { SummaryQueueState } from '@shared/summary-queue'
+import type { AskIndexStatus } from '@shared/ask-sessions/types'
 
 function on(channel: string, cb: () => void): () => void {
   const listener = (): void => cb()
@@ -87,6 +88,30 @@ const api: CsdApi = {
   askRun: (id) => ipcRenderer.invoke('ask:run', id),
   askCancel: (id) => ipcRenderer.invoke('ask:cancel', id),
   askHistory: () => ipcRenderer.invoke('ask:history'),
+
+  askSessionsStatus: () => ipcRenderer.invoke('askSessions:status'),
+  askSessions: (q, opts) => ipcRenderer.invoke('askSessions:ask', q, opts),
+  askSessionsPrompt: (id, keep) => ipcRenderer.invoke('askSessions:prompt', id, keep),
+  askSessionsEstimate: (id, keep, model) =>
+    ipcRenderer.invoke('askSessions:estimate', id, keep, model),
+  askSessionsSend: (id, opts) => ipcRenderer.invoke('askSessions:send', id, opts),
+  askSessionsCancel: (id) => ipcRenderer.invoke('askSessions:cancel', id),
+  askSessionsHistory: () => ipcRenderer.invoke('askSessions:history'),
+  askSessionsDelete: (id) => ipcRenderer.invoke('askSessions:delete', id),
+  askSessionsRebuild: () => ipcRenderer.invoke('askSessions:rebuild'),
+  askSessionsDeleteIndex: () => ipcRenderer.invoke('askSessions:deleteIndex'),
+  askSessionsPending: () => ipcRenderer.invoke('askSessions:pending'),
+  askSessionsDecline: (id) => ipcRenderer.invoke('askSessions:decline', id),
+  askSessionsLocal: (q) => ipcRenderer.invoke('askSessions:phoneLocal', q),
+  askSessionsRequest: () => Promise.reject(new Error('On the PC, ask in the Ask screen itself.')),
+  askSessionsRequestStatus: (id) => ipcRenderer.invoke('askSessions:phoneStatus', id),
+  onAskSessionsChanged: (cb) => on('askSessions:changed', cb),
+  onAskSessionsStatus: (cb) => {
+    const listener = (_e: unknown, s: AskIndexStatus): void => cb(s)
+    ipcRenderer.on('askSessions:status', listener)
+    return () => ipcRenderer.removeListener('askSessions:status', listener)
+  },
+  onAskSessionsPhoneRequest: (cb) => on('askSessions:phoneRequest', cb),
 
   summaryState: () => ipcRenderer.invoke('summaries:state'),
   onSummariesChanged: (cb) => {

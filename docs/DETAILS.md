@@ -292,7 +292,7 @@ sessions, the archive is often the only copy of older work; a backup on another 
 folder keeps it safe if the PC fails.
 
 **What's in a backup:** the session archive, `metadata.json` (your names, descriptions, tags, pins),
-usage and limit history, Ask Claude history, the app's settings, and `accounts.json` with the API
+usage and limit history, Ask Claude and Ask histories, the app's settings, and `accounts.json` with the API
 keys taken out (nicknames, credit grants and Admin reports stay). **Never in a backup:** API keys,
 paired phones and push keys (`mobile.json`), the status line / session alert / terminal access
 records and their backups of Claude's or OpenSSH's settings (they belong to this PC, and the

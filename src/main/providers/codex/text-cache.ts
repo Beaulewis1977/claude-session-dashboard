@@ -57,6 +57,19 @@ export class CompactTextCache {
     }
   }
 
+  /**
+   * The kept text, read only: no clean-up of older copies (for a second
+   * reader, the Ask index worker, while the session scan owns the cache).
+   */
+  async peek(path: string): Promise<string | undefined> {
+    try {
+      const st = await stat(path)
+      return await readFile(this.file(path, st.size, st.mtimeMs), 'utf8')
+    } catch {
+      return undefined
+    }
+  }
+
   /** Keep the text for this version of the file, and drop the app's older copies for it. */
   async put(path: string, size: number, mtimeMs: number, text: string): Promise<void> {
     const target = this.file(path, size, mtimeMs)

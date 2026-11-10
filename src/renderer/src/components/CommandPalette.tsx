@@ -15,6 +15,7 @@ import {
   GitFork,
   Inbox,
   Keyboard,
+  MessageCircleQuestion,
   Monitor,
   Moon,
   PanelLeft,
@@ -287,6 +288,17 @@ function PaletteBody() {
               </span>
             </Command.Item>
           ))}
+        </Command.Group>
+
+        <Command.Group heading="Ask" className={groupClass}>
+          <Item
+            value="ask across sessions question search history answers"
+            icon={<MessageCircleQuestion />}
+            shortcut={`${MOD}+Shift+K`}
+            onSelect={run(() => set({ view: 'ask' }))}
+          >
+            Ask across sessions
+          </Item>
         </Command.Group>
 
         <Command.Group heading="Usage" className={groupClass}>

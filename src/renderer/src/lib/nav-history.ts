@@ -10,7 +10,7 @@
 import type { ProviderView } from '@shared/provider'
 import type { Filters } from './filters'
 
-export type View = 'sessions' | 'settings' | 'usage' | 'running'
+export type View = 'sessions' | 'settings' | 'usage' | 'running' | 'ask'
 export type ViewerTab = 'conversation' | 'changes'
 export type UsageTab = 'trends' | 'limits' | 'credits' | 'raw'
 
@@ -24,6 +24,8 @@ export interface NavState {
   providerView: ProviderView
   /** The Settings section last linked to (only while Settings is open). */
   settingsSection: string | null
+  /** The answer the Ask screen shows (only while it's open). */
+  askItem?: string | null
 }
 
 /** Scroll offsets by pane name (`data-nav-scroll`): the list and the main pane. */
@@ -57,7 +59,8 @@ const FIELDS: (keyof NavState)[] = [
   'viewerTab',
   'usageTab',
   'providerView',
-  'settingsSection'
+  'settingsSection',
+  'askItem'
 ]
 
 function sameFilters(a: Filters, b: Filters): boolean {
@@ -74,7 +77,9 @@ function sameFilters(a: Filters, b: Filters): boolean {
 }
 
 function sameField(a: NavState, b: NavState, f: keyof NavState): boolean {
-  return f === 'filters' ? sameFilters(a.filters, b.filters) : a[f] === b[f]
+  if (f === 'filters') return sameFilters(a.filters, b.filters)
+  if (f === 'askItem') return (a.askItem ?? null) === (b.askItem ?? null)
+  return a[f] === b[f]
 }
 
 /** The fields that differ between two states. */

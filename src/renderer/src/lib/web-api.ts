@@ -284,6 +284,42 @@ export const webApi: CsdApi = {
   askCancel: async () => undefined,
   askHistory: async () => [],
 
+  // Ask across sessions: past answers and local questions on the phone; a
+  // content question waits on the PC for my OK (it sends session text to Claude).
+  askSessionsStatus: async () => {
+    const s = await rpc<{ enabled: boolean; phase: string; sessions: number; passages: number }>(
+      'askStatus'
+    )
+    return {
+      enabled: s.enabled,
+      phase: s.phase as 'off',
+      sessions: s.sessions,
+      passages: s.passages,
+      chars: 0,
+      bytes: 0,
+      done: 0,
+      total: 0,
+      skipped: 0
+    }
+  },
+  askSessions: onPc('Content questions'),
+  askSessionsPrompt: onPc('Content questions'),
+  askSessionsEstimate: onPc('Content questions'),
+  askSessionsSend: onPc('Content questions'),
+  askSessionsCancel: async () => undefined,
+  askSessionsHistory: () => rpc('askHistory'),
+  askSessionsDelete: onPc('Deleting answers'),
+  askSessionsRebuild: onPc('The index'),
+  askSessionsDeleteIndex: onPc('The index'),
+  askSessionsPending: async () => [],
+  askSessionsDecline: onPc('Questions from phones'),
+  askSessionsLocal: (q) => rpc('askLocal', q),
+  askSessionsRequest: (question, scope) => request('/api/ask', { question, scope }),
+  askSessionsRequestStatus: (id) => rpc('askRequestStatus', id),
+  onAskSessionsChanged: (cb) => subscribe('ask', cb),
+  onAskSessionsStatus: () => () => undefined,
+  onAskSessionsPhoneRequest: () => () => undefined,
+
   // Summaries are written on the PC (they send session text to Claude);
   // a phone reads them with the session and can edit them.
   summaryState: async () => ({ jobs: [], preparing: [], override: false, simulated: false }),

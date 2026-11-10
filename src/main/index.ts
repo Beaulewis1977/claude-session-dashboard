@@ -87,14 +87,19 @@ import { createMeter } from './meter'
 import { registerUsageIpc } from './ipc-usage'
 import { registerAccountsIpc } from './ipc-accounts'
 import { registerAskIpc } from './ipc-ask'
-import { registerSummaryIpc } from './ipc-summaries'
+import { registerAskSessionsIpc } from './ipc-ask-sessions'
+import { AskSessionsService, createAskSessionsStore } from './ask-sessions/service'
+import { InProcessHost } from './ask-sessions/host'
+import { startIndexWorker } from './ask-sessions/spawn'
+import { sanitizeAskSessions } from '@shared/ask-sessions/types'
+import { fiveHourGuard, registerSummaryIpc } from './ipc-summaries'
 import { registerContextIpc } from './ipc-context'
 import { ContextCost, publishContextReadings } from './services/context-cost'
 import { CodexLimitsService } from './services/codex-limits'
 import { codexUsageSettings } from '@shared/usage/codex-settings'
 import { sanitizeContextWarning } from '@shared/context'
 import { PrintRunner } from './services/print-runner'
-import { sanitizeSummarySettings, SUMMARY_USAGE_KEY, SUMMARY_USAGE_LABEL } from '@shared/summary'
+import { isOwnUsageKey, ownUsageLabel, sanitizeSummarySettings } from '@shared/summary'
 import { AccountsService, createAccountsStore, type Encryptor } from './services/accounts'
 import { httpsFetcher } from './services/anthropic-api'
 import { BillingService } from './services/billing'
@@ -491,6 +496,9 @@ async function main(): Promise<void> {
     prices: settings.value.prices,
     codexPrices: codexSettings().codexPrices
   }))
+  // Ask across sessions is made once the git links exist (further down); what
+  // runs before then (settings changes, the backup, a phone) finds it here.
+  const late: { ask?: AskSessionsService } = {}
   registerIpc({
     platform,
     paths,
@@ -504,6 +512,7 @@ async function main(): Promise<void> {
       usage.emit('changed')
       mobile?.push('settings')
       refitMeter()
+      late.ask?.settingsChanged()
     }
   })
   const bridgeStore = createBridgeStore(paths.dataDir)
@@ -514,7 +523,8 @@ async function main(): Promise<void> {
     gitBash: () => platform.gitBash()
   })
   const sourceOf = (key: string): string => {
-    if (key === SUMMARY_USAGE_KEY) return SUMMARY_USAGE_LABEL
+    const own = ownUsageLabel(key)
+    if (own) return own
     const ses = sessions.get(key)
     return ses ? SOURCE_LABELS[ses.source] : SOURCE_LABELS.unknown
   }
@@ -612,8 +622,8 @@ async function main(): Promise<void> {
     weekStart: () => settings.value.weekStart,
     sourceOf,
     billingOf: (key) => {
-      // Summaries only ever run on the subscription.
-      if (key === SUMMARY_USAGE_KEY) return PLAN_LABEL[settings.value.plan]
+      // Summaries and Ask questions only ever run on the subscription.
+      if (isOwnUsageKey(key)) return PLAN_LABEL[settings.value.plan]
       const b = sessions.get(key)?.billing
       if (!b || b.mode === 'unknown') return 'Unknown'
       if (b.mode === 'subscription') return PLAN_LABEL[settings.value.plan]
@@ -672,7 +682,8 @@ async function main(): Promise<void> {
         metadata.flush(),
         settings.flush(),
         accountsStore.flush(),
-        askIpc.flush()
+        askIpc.flush(),
+        late.ask?.flush()
       ]).catch(() => undefined)
     }
   })
@@ -754,7 +765,18 @@ async function main(): Promise<void> {
     claudePath: async () => (await platform.launchTools()).claude,
     proposeKey: (device, key) => terminal.proposeKey(device, key),
     // Running now is created below; this runs only for a phone's request.
-    resolveLiveRef: (deviceId, ref) => live.resolveRef(deviceId, ref)
+    resolveLiveRef: (deviceId, ref) => live.resolveRef(deviceId, ref),
+    // Ask across sessions is created below too; a phone's question waits on the PC.
+    askRequest: async (device, body) => {
+      const ask = late.ask
+      if (!ask) throw new Error('Ask on your PC: it is still starting.')
+      const o = (body && typeof body === 'object' ? body : {}) as Record<string, unknown>
+      return ask.phoneRequest(
+        { id: device.id, name: device.name },
+        typeof o.question === 'string' ? o.question : '',
+        o.scope
+      )
+    }
   })
   registerMobileIpc({ mobile, store: mobileStore, fixtures: FIXTURES })
 
@@ -875,6 +897,60 @@ async function main(): Promise<void> {
   live.on('changed', () => mobile.push('live'))
   accounts.on('changed', () => mobile.push('credits'))
 
+  // Ask across sessions (feature 7): local answers at once; content questions
+  // (and their index, in a worker thread) only after I turn them on.
+  const askSessionsStore = createAskSessionsStore(paths.dataDir)
+  await askSessionsStore.load()
+  const askIndexDir = join(paths.dataDir, 'cache', 'ask')
+  const ask = new AskSessionsService({
+    dataDir: paths.dataDir,
+    store: askSessionsStore,
+    sessions,
+    git: gitLinks,
+    usage,
+    limits,
+    codexLimits,
+    settings: () => {
+      const s = settings.value
+      return {
+        askSessions: sanitizeAskSessions(s.askSessions),
+        weekStart: s.weekStart,
+        prices: s.prices,
+        codexPrices: codexSettings().codexPrices,
+        plan: s.plan,
+        planHistory: s.planHistory,
+        pauseAbovePct: sanitizeSummarySettings(s.summaries).pauseAbovePct,
+        timeoutSec: s.askTimeoutSec,
+        showSubagents: providerSettings(s).showSubagents
+      }
+    },
+    remember: (choice) => {
+      settings.update((s) => {
+        s.askSessions = { ...sanitizeAskSessions(s.askSessions), ...choice }
+      })
+      void settings.flush().catch(() => undefined)
+      mobile.push('settings')
+    },
+    fiveHourPct: fiveHourGuard({ usage, limits, settings }),
+    runner: printRunner,
+    createHost: () =>
+      // The worker bundle exists in the built app and the dev server alike.
+      process.env.CSD_ASK_IN_PROCESS === '1'
+        ? new InProcessHost({ dir: askIndexDir, dataDir: paths.dataDir })
+        : startIndexWorker({ dir: askIndexDir, dataDir: paths.dataDir }),
+    reveal: () => {
+      const w = revealMain()
+      w?.flashFrame(true)
+      w?.webContents.send('askSessions:phoneRequest')
+    },
+    simulate: FIXTURES
+  })
+  late.ask = ask
+  registerAskSessionsIpc(ask)
+  sessions.on('changed', () => ask.sessionsChanged())
+  gitLinks.on('changed', () => ask.sessionsChanged())
+  ask.on('changed', () => mobile.push('ask'))
+
   nativeTheme.themeSource = settings.value.theme
   const loadRenderer = (w: BrowserWindow, hash: string): void => {
     if (process.env.ELECTRON_RENDERER_URL)
@@ -968,6 +1044,8 @@ async function main(): Promise<void> {
       live.start()
     })
     .then(() => mobile.autoStart())
+    // The Ask index (if Ask is on) after the scan: it reads the sessions the scan listed.
+    .then(() => late.ask?.start())
 
   let quitting = false
   app.on('before-quit', (e) => {
@@ -991,6 +1069,8 @@ async function main(): Promise<void> {
       await accountsStore.flush().catch(() => undefined)
       await bridgeStore.flush().catch(() => undefined)
       await askIpc.flush().catch(() => undefined)
+      await late.ask?.stop().catch(() => undefined)
+      await askSessionsStore.flush().catch(() => undefined)
       // A backup still running is just cut short: only complete snapshots count.
       backup.stop()
       await backupStore.flush().catch(() => undefined)

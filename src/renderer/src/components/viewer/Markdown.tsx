@@ -1,4 +1,4 @@
-import { memo, useRef, useState, type ReactNode } from 'react'
+import { memo, useMemo, useRef, useState, type ReactNode } from 'react'
 import ReactMarkdown, { type Components } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import remarkBreaks from 'remark-breaks'
@@ -76,6 +76,22 @@ export function CodeBlock({
   )
 }
 
+/** A link in Markdown: opened in the browser (never in the app's window). */
+function ExternalLink({ href, children }: { href?: string; children?: ReactNode }) {
+  return (
+    <a
+      href={href}
+      onClick={(e) => {
+        e.preventDefault()
+        if (href) void api.openExternal(href)
+      }}
+      title={href}
+    >
+      {children}
+    </a>
+  )
+}
+
 const components: Components = {
   pre({ children }) {
     // react-markdown renders <pre><code class="language-x">…</code></pre>
@@ -85,18 +101,7 @@ const components: Components = {
     return <CodeBlock language={lang}>{children}</CodeBlock>
   },
   a({ href, children }) {
-    return (
-      <a
-        href={href}
-        onClick={(e) => {
-          e.preventDefault()
-          if (href) void api.openExternal(href)
-        }}
-        title={href}
-      >
-        {children}
-      </a>
-    )
+    return <ExternalLink href={href}>{children}</ExternalLink>
   },
   img({ alt }) {
     // Never load remote images (no network calls).
@@ -110,22 +115,41 @@ const rehypePlugins: Parameters<typeof ReactMarkdown>[0]['rehypePlugins'] = [
   [rehypeHighlight, { detect: false }]
 ]
 
+/** A citation chip ([S3] in an Ask answer): links to `#cite-S3`. */
+export type CiteRenderer = (sid: string) => ReactNode
+
 export const Markdown = memo(function Markdown({
   text,
   breaks,
-  className
+  className,
+  cite
 }: {
   text: string
   /** Treat single newlines as line breaks (for user-typed text). */
   breaks?: boolean
   className?: string
+  /** Render `[S3](#cite-S3)` links as citation chips (Ask answers). */
+  cite?: CiteRenderer
 }) {
+  const comps = useMemo<Components>(
+    () =>
+      cite
+        ? {
+            ...components,
+            a({ href, children }) {
+              const m = /^#cite-(S\d{1,3})$/.exec(href ?? '')
+              return m ? cite(m[1]) : <ExternalLink href={href}>{children}</ExternalLink>
+            }
+          }
+        : components,
+    [cite]
+  )
   return (
     <div className={cn('prose-chat selectable', className)}>
       <ReactMarkdown
         remarkPlugins={breaks ? remarkPluginsBreaks : remarkPlugins}
         rehypePlugins={rehypePlugins}
-        components={components}
+        components={comps}
       >
         {text}
       </ReactMarkdown>

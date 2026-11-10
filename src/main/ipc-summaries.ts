@@ -1,7 +1,7 @@
 // IPC for session summaries (claude -p on the subscription) and their queue.
 
 import { BrowserWindow } from 'electron'
-import { guardPct, sanitizeSummarySettings } from '@shared/summary'
+import { guardPct, sanitizeSummarySettings, type GuardReading } from '@shared/summary'
 import { cleanupHandoffs, handoffStats } from './core/handoff'
 import type { JsonStore } from './core/json-store'
 import { handle } from './ipc-guard'
@@ -11,6 +11,30 @@ import type { SessionService } from './services/sessions'
 import type { SettingsFile } from './services/store'
 import { SummaryService } from './services/summaries'
 import type { UsageService } from './services/usage'
+
+/**
+ * The 5-hour % the limits guard goes by: the live reading plus this app's own
+ * claude -p runs since it (summaries and Ask questions; the status line that
+ * feeds the reading doesn't see them).
+ */
+export function fiveHourGuard(deps: {
+  usage: UsageService
+  limits: LimitsService
+  settings: JsonStore<SettingsFile>
+}): () => Promise<GuardReading | undefined> {
+  return async () => {
+    const g = (await deps.limits.state()).fiveHour
+    return guardPct({
+      reading:
+        g && !g.expired ? { pct: g.pct, at: g.updatedAt, windowStart: g.windowStart } : undefined,
+      records: deps.usage.allRecords(),
+      prices: deps.settings.value.prices,
+      weights: deps.settings.value.capacityWeights,
+      dollarsPerPct: deps.limits.dollarsPerPct(),
+      isSubscription: deps.limits.isSubscription
+    })
+  }
+}
 
 export function registerSummaryIpc(deps: {
   dataDir: string
@@ -32,20 +56,8 @@ export function registerSummaryIpc(deps: {
     // A long session takes longer than a usage question.
     timeoutSec: () => Math.max(300, settings.value.askTimeoutSec),
     prices: () => settings.value.prices,
-    // The live reading plus this app's own summary runs since it (the status
-    // line that feeds the reading doesn't see claude -p runs).
-    fiveHourPct: async () => {
-      const g = (await limits.state()).fiveHour
-      return guardPct({
-        reading:
-          g && !g.expired ? { pct: g.pct, at: g.updatedAt, windowStart: g.windowStart } : undefined,
-        records: deps.usage.allRecords(),
-        prices: settings.value.prices,
-        weights: settings.value.capacityWeights,
-        dollarsPerPct: dollarsPerPct(),
-        isSubscription: limits.isSubscription
-      })
-    },
+    // The live reading plus this app's own runs since it.
+    fiveHourPct: fiveHourGuard(deps),
     dollarsPerPct,
     recordUsage: (recs) => deps.usage.addDashboardRecords(recs)
   })

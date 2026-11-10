@@ -1030,6 +1030,61 @@ export class GitLinksService extends EventEmitter<{ changed: [] }> {
     return this.cfg().enabled ? this.computed.get(key)?.badge : undefined
   }
 
+  /**
+   * Ask across sessions: a session's linked commits (exact, high or medium
+   * links, as its Changes tab lists them), with subject, time, files and PR.
+   * From what was already read: never starts git.
+   */
+  linkedCommits(
+    key: string
+  ): { sha: string; subject: string; at: number; files: string[]; pr?: number }[] {
+    if (!this.cfg().enabled) return []
+    const c = this.computed.get(key)
+    const repo = c?.repoKey ? this.repos.get(c.repoKey) : undefined
+    if (!c || !repo) return []
+    const out: { sha: string; subject: string; at: number; files: string[]; pr?: number }[] = []
+    for (const l of c.links) {
+      if (LEVEL_RANK[l.level] < LEVEL_RANK.medium) continue
+      const ci = repo.commits.get(l.sha)
+      if (!ci) continue
+      out.push({
+        sha: ci.sha,
+        subject: ci.subject,
+        at: ci.at,
+        files: ci.files.map((f) => f.path),
+        ...(ci.pr ? { pr: ci.pr } : {})
+      })
+    }
+    return out
+  }
+
+  /** Ask across sessions: a session's PR links (already known; nothing is looked up). */
+  prsOf(key: string): PrLink[] {
+    return this.cfg().enabled ? (this.computed.get(key)?.prs ?? []) : []
+  }
+
+  /** Ask across sessions: the PRs a session's own `gh pr create` printed, and when it showed them. */
+  seenPrs(key: string): { number: number; url: string; at: number }[] {
+    if (!this.cfg().enabled) return []
+    const i = this.inputs.get(key)
+    const sig = i ? this.ownSignals(i) : undefined
+    return (sig?.prs ?? []).map((p) => ({ number: p.number, url: p.url, at: p.at }))
+  }
+
+  /** Ask across sessions: the files a session's own tool calls edited, and when (0: unknown). */
+  editedFiles(key: string): { path: string; at: number }[] {
+    if (!this.cfg().enabled) return []
+    const i = this.inputs.get(key)
+    const sig = i ? this.ownSignals(i) : undefined
+    if (!sig) return []
+    return sig.files.map((path, n) => ({ path, at: sig.filesAt?.[n] ?? 0 }))
+  }
+
+  /** Git links are on (Settings → Git). */
+  enabled(): boolean {
+    return this.cfg().enabled
+  }
+
   /** Sessions a `touched:` / `commit:` filter matches (every filter must match). */
   filter(q: GitQuery): Set<string> {
     const out = new Set<string>()

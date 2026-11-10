@@ -223,6 +223,26 @@ export const RPC: Record<string, RpcMethod> = {
     args: none,
     result: (r) => phoneLive(r as LiveSnapshot)
   },
+  // Ask across sessions: past answers, local answers (worked out on the PC,
+  // nothing sent), and how this phone's own question is doing. A content
+  // question goes to /api/ask (a write), and waits for my OK on the PC.
+  askHistory: { channel: 'askSessions:history', kind: 'read', args: none },
+  askLocal: { channel: 'askSessions:phoneLocal', kind: 'read', args: ([q]) => [str(q, 1000)] },
+  askStatus: {
+    channel: 'askSessions:status',
+    kind: 'read',
+    args: none,
+    // Whether content questions are on, and how big the index is: nothing about the PC's folders.
+    result: (r) => {
+      const s = r as { enabled: boolean; phase: string; sessions: number; passages: number }
+      return { enabled: s.enabled, phase: s.phase, sessions: s.sessions, passages: s.passages }
+    }
+  },
+  askRequestStatus: {
+    channel: 'askSessions:phoneStatus',
+    kind: 'read',
+    args: ([i]) => [str(i, 64)]
+  },
   getCredits: {
     channel: 'credits:state',
     kind: 'read',

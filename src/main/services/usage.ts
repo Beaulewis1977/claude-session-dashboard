@@ -27,7 +27,7 @@ import type {
 import type { SessionSummary } from '@shared/types'
 import type { CodexLimitReading } from '@shared/usage/codex'
 import type { ProviderView } from '@shared/provider'
-import { SUMMARY_USAGE_KEY, SUMMARY_USAGE_LABEL } from '@shared/summary'
+import { isOwnUsageKey, ownUsageLabel } from '@shared/summary'
 import { writeFileAtomic } from '../core/json-store'
 import { listFiles, readNdjson, writeNdjson } from '../core/ndjson'
 import { assertAppDataWrite, assertRealAppDataWrite, isInside } from '../core/safe-paths'
@@ -225,11 +225,11 @@ export class UsageService extends EventEmitter<{ changed: []; 'codex-progress': 
     return this.cachedList
   }
 
-  /** Record the usage of one of the app's own runs (a session summary). */
+  /** Record the usage of one of the app's own runs (a session summary, an Ask question). */
   addDashboardRecords(recs: UsageRecord[]): void {
     let added = false
     for (const r of recs) {
-      if (r.key !== SUMMARY_USAGE_KEY || this.dashboard.has(r.id)) continue
+      if (!isOwnUsageKey(r.key) || this.dashboard.has(r.id)) continue
       this.dashboard.set(r.id, r)
       added = true
     }
@@ -273,7 +273,8 @@ export class UsageService extends EventEmitter<{ changed: []; 'codex-progress': 
       billingOf,
       sourceOf,
       sessionLabel: (key) => {
-        if (key === SUMMARY_USAGE_KEY) return { label: SUMMARY_USAGE_LABEL, detail: 'claude -p' }
+        const own = ownUsageLabel(key)
+        if (own) return { label: own, detail: 'claude -p' }
         const ses = this.sessions.get(key)
         return ses ? { label: ses.title, detail: ses.projectName } : undefined
       }
@@ -350,7 +351,7 @@ export class UsageService extends EventEmitter<{ changed: []; 'codex-progress': 
       if (r && typeof r.id === 'string' && typeof r.ts === 'number') this.usageCmd.set(r.id, r)
     }
     for (const r of await readNdjson<UsageRecord>(join(dir, DASHBOARD_FILE))) {
-      if (r && typeof r.id === 'string' && typeof r.ts === 'number' && r.key === SUMMARY_USAGE_KEY)
+      if (r && typeof r.id === 'string' && typeof r.ts === 'number' && isOwnUsageKey(r.key))
         this.dashboard.set(r.id, r)
     }
     await this.codex.load(dir)

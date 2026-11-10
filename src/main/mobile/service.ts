@@ -70,6 +70,8 @@ export interface MobileServiceDeps {
   proposeKey?: ServerDeps['proposeKey']
   /** Which session a tapped push alert means (Running now; per phone, once). */
   resolveLiveRef?: (deviceId: string, ref: unknown) => string | null
+  /** Ask across sessions: a phone's content question, waiting on the PC for my OK. */
+  askRequest?: ServerDeps['askRequest']
   /** For tests: how a push is posted (default: HTTPS to the push service). */
   pushPost?: PushPost
 }
@@ -125,7 +127,8 @@ export class MobileService extends EventEmitter<{ changed: [] }> {
           }
         }
       },
-      resolveLiveRef: (id, ref) => deps.resolveLiveRef?.(id, ref) ?? null
+      resolveLiveRef: (id, ref) => deps.resolveLiveRef?.(id, ref) ?? null,
+      ...(deps.askRequest ? { askRequest: deps.askRequest } : {})
     })
   }
 

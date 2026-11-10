@@ -146,6 +146,8 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
   private search = new SearchIndex()
   private scan: ScanState = { phase: 'idle', done: 0, total: 0 }
   private archiveQueue: Promise<void> = Promise.resolve()
+  /** Re-reads started in the background (renamed sessions): idle() waits for them. */
+  private background = new Set<Promise<void>>()
   private syncing = new Map<string, Promise<void>>()
   private emitTimer: NodeJS.Timeout | undefined
 
@@ -394,7 +396,7 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
       }
       d.sessions[mk] = next
     })
-    void this.reindex(key)
+    this.inBackground(this.reindex(key))
     // "Only named, pinned or tagged": naming one may make it worth keeping.
     const src = this.source(e.base.sourceId)
     if (src && e.base.availability === 'live' && provider.id !== 'claude')
@@ -634,10 +636,30 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
     this.emitChanged()
   }
 
-  /** Wait for pending archive copies and save the cache (used on quit and in tests). */
+  /**
+   * Wait for pending archive copies and background re-reads, then save the
+   * cache (used on quit and in tests). A re-read that finished later would
+   * mark the cache changed and save it again afterwards (in a test, into a
+   * folder that was already removed).
+   */
   async idle(): Promise<void> {
-    await this.archiveQueue
+    // Until nothing is left: each kind of work can queue the other.
+    for (;;) {
+      const queue = this.archiveQueue
+      await Promise.all([queue, ...this.background])
+      if (queue === this.archiveQueue && this.background.size === 0) break
+    }
     if (this.cacheDirty) await this.saveCache()
+  }
+
+  /** Run `work` in the background, where idle() waits for it. */
+  private inBackground(work: Promise<unknown>): void {
+    const done: Promise<void> = work.then(
+      () => undefined,
+      () => undefined
+    )
+    this.background.add(done)
+    void done.then(() => this.background.delete(done))
   }
 
   // --------------------------------------------------------------- private
@@ -732,7 +754,7 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
       next.updatedAt = new Date().toISOString()
       d.sessions[mk] = next
     })
-    void this.reindex(key)
+    this.inBackground(this.reindex(key))
     this.emitChanged()
     return this.get(key) ?? null
   }
@@ -762,7 +784,7 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
       }
     })
     for (const e of this.entries.values())
-      if (e.base.sessionId === sessionId) void this.reindex(e.base.key)
+      if (e.base.sessionId === sessionId) this.inBackground(this.reindex(e.base.key))
     this.emitChanged()
   }
 
@@ -1261,7 +1283,7 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
         if (src && e.base.availability === 'live') this.queueArchive(src, e.base)
       }
     // Two at a time: each one reads its whole session again.
-    void mapLimit(keys, 2, (k) => this.reindex(k))
+    if (keys.length) this.inBackground(mapLimit(keys, 2, (k) => this.reindex(k)))
   }
 
   /** Pick up archive records added by an import. */

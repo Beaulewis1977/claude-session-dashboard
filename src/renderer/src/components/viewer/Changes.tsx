@@ -262,7 +262,7 @@ function CommitRow({
   const [open, setOpen] = useState(false)
   const canDiff = !api.remote && !c.unknown
   return (
-    <div className="rounded-lg border border-border bg-card">
+    <div className="rounded-lg border border-border bg-card" data-sha={c.sha}>
       <div className="flex items-start gap-2 px-3 py-2">
         <button
           type="button"

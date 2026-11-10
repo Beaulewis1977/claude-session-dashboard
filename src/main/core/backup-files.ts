@@ -2,8 +2,9 @@
 // is restored.
 //
 // Backed up: the session archive, names/descriptions/tags (metadata.json),
-// usage and limit history, Ask Claude history, the app's settings, and the
-// API account labels and credit grants with the keys taken out.
+// usage and limit history, Ask Claude and Ask across sessions history, the
+// app's settings, and the API account labels and credit grants with the keys
+// taken out.
 //
 // Not backed up (all tied to this PC, or secret): API keys (they're encrypted
 // with this PC's Windows account and couldn't be used elsewhere anyway),
@@ -23,6 +24,7 @@ const TOP_FILES = [
   'settings.json',
   'accounts.json',
   'ask-history.json',
+  'ask-sessions-history.json',
   'limits-history.ndjson'
 ] as const
 
@@ -77,7 +79,7 @@ export const GROUP_LABELS: Record<FileGroup, string> = {
   usage: 'Usage and limit history',
   settings: 'App settings',
   accounts: 'API account labels and credits (no keys)',
-  ask: 'Ask Claude history'
+  ask: 'Ask Claude and Ask history'
 }
 
 export function groupOf(rel: string): FileGroup {
@@ -85,7 +87,7 @@ export function groupOf(rel: string): FileGroup {
   if (rel === 'metadata.json') return 'meta'
   if (rel === 'settings.json') return 'settings'
   if (rel === 'accounts.json') return 'accounts'
-  if (rel === 'ask-history.json') return 'ask'
+  if (rel === 'ask-history.json' || rel === 'ask-sessions-history.json') return 'ask'
   return 'usage'
 }
 

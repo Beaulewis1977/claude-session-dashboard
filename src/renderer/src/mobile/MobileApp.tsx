@@ -3,7 +3,13 @@
 
 import { useEffect, useState } from 'react'
 import { toast, Toaster } from 'sonner'
-import { ChartNoAxesColumn, MessagesSquare, Settings2, Zap } from 'lucide-react'
+import {
+  ChartNoAxesColumn,
+  MessageCircleQuestion,
+  MessagesSquare,
+  Settings2,
+  Zap
+} from 'lucide-react'
 import { setClockOffset } from '@shared/clock'
 import { api } from '@/lib/api'
 import { useLiveData } from '@/lib/live'
@@ -19,6 +25,7 @@ import { SessionsTab } from './SessionsTab'
 import { SessionScreen } from './SessionScreen'
 import { SettingsTab } from './SettingsTab'
 import { RunningTab } from './RunningTab'
+import { AskTab } from './AskTab'
 import { useOpenLive } from './open-live'
 import { usePhoneHistory } from './nav'
 import { bootstrap } from './bootstrap'
@@ -101,6 +108,7 @@ function useBootstrap(paired: boolean): void {
 const TABS = [
   { id: 'sessions', label: 'Sessions', icon: MessagesSquare },
   { id: 'running', label: 'Running', icon: Zap },
+  { id: 'ask', label: 'Ask', icon: MessageCircleQuestion },
   { id: 'usage', label: 'Usage', icon: ChartNoAxesColumn },
   { id: 'settings', label: 'Settings', icon: Settings2 }
 ] as const
@@ -137,6 +145,11 @@ export function MobileApp() {
             {view === 'running' && (
               <div className="absolute inset-0">
                 <RunningTab />
+              </div>
+            )}
+            {view === 'ask' && (
+              <div className="absolute inset-0">
+                <AskTab />
               </div>
             )}
             {view === 'usage' && (

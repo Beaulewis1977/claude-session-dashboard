@@ -28,6 +28,7 @@ import { sanitizeLiveAlerts } from '@shared/live-alerts'
 import { sanitizeSummarySettings } from '@shared/summary'
 import { sanitizeContextWarning } from '@shared/context'
 import { sanitizeGitSettings } from '@shared/git/types'
+import { patchAskSessions, sanitizeAskSessions } from '@shared/ask-sessions/types'
 import { codexSettingsPatch, codexUsageSettings } from '@shared/usage/codex-settings'
 import {
   isCodexArchiveMode,
@@ -108,7 +109,8 @@ function publicSettings(s: SettingsFile): AppSettings {
     contextWarning: sanitizeContextWarning(s.contextWarning),
     ...providerSettings(s),
     ...codexUsageSettings(s),
-    gitLinks: sanitizeGitSettings(s.gitLinks)
+    gitLinks: sanitizeGitSettings(s.gitLinks),
+    askSessions: sanitizeAskSessions(s.askSessions)
   }
 }
 
@@ -362,6 +364,13 @@ export function registerIpc(deps: IpcDeps): void {
           ...sanitizeSummarySettings(s.summaries),
           ...((p.summaries ?? {}) as object)
         })
+      // Ask across sessions: on only with the current notice accepted; a new
+      // default model or effort replaces the Ask screen's remembered choice.
+      if ('askSessions' in p && p.askSessions && typeof p.askSessions === 'object')
+        s.askSessions = patchAskSessions(
+          sanitizeAskSessions(s.askSessions),
+          p.askSessions as unknown as Record<string, unknown>
+        )
       if ('contextWarning' in p)
         s.contextWarning = sanitizeContextWarning({
           ...sanitizeContextWarning(s.contextWarning),

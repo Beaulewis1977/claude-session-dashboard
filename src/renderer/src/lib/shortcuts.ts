@@ -8,6 +8,7 @@ export const SHORTCUTS: { group: string; items: [string, string][] }[] = [
       ['/', 'Search sessions'],
       [`${MOD}+,`, 'Settings'],
       [`${MOD}+U`, 'Usage & limits'],
+      [`${MOD}+Shift+K`, 'Ask across sessions'],
       [`${MOD}+B`, 'Toggle sidebar'],
       ['Alt+←', 'Back'],
       ['Alt+→', 'Forward'],

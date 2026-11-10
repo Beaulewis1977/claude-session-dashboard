@@ -91,7 +91,11 @@ export interface State {
   /** Running now (null until loaded). */
   live: LiveSnapshot | null
 
-  view: 'sessions' | 'settings' | 'usage' | 'running'
+  view: 'sessions' | 'settings' | 'usage' | 'running' | 'ask'
+  /** The Ask screen: the answer it shows (a history item's id). */
+  askItem: string | null
+  /** Open the viewer at these messages (a citation), or its Changes tab at this commit. */
+  focusMessage: { key: string; ids: string[]; sha?: string; nonce: number } | null
   /** Settings section to scroll to when Settings opens (e.g. 'accounts'). */
   settingsSection: string | null
   selectedKey: string | null
@@ -146,6 +150,8 @@ export const useApp = create<State>((set) => ({
   live: null,
 
   view: 'sessions',
+  askItem: null,
+  focusMessage: null,
   settingsSection: null,
   selectedKey: null,
   viewerTab: { key: null, tab: 'conversation' },

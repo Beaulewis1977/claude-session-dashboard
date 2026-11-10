@@ -2164,3 +2164,34 @@ describe('fifth review fixes', () => {
     expect(sessions.list().some((x) => x.provider === 'codex')).toBe(false)
   })
 })
+
+describe('background re-reads and idle()', () => {
+  it('idle() waits for a renamed thread to be read again, so nothing saves after a test ends', async () => {
+    const t = await setup()
+    const first = t.sessions.list().find((s) => s.provider === 'codex' && s.claudeName)!
+    const home = dirname(dirname(dirname(dirname(dirname(first.originalPath)))))
+    await writeFile(
+      join(home, 'session_index.jsonl'),
+      (await readFile(join(home, 'session_index.jsonl'), 'utf8')) +
+        JSON.stringify({
+          id: first.sessionId,
+          thread_name: 'Okapi renamed',
+          updated_at: '2026-10-30T10:00:00Z'
+        }) +
+        '\n'
+    )
+    // The rename is read again in the background: idle() waits for it.
+    await t.sessions.pollSource(first.sourceId)
+    await t.sessions.idle()
+    expect(t.sessions.searchKeys('Okapi renamed').map((h) => h.key)).toContain(first.key)
+    // And the cache was saved then: no save is left waiting to land later.
+    const internals = t.sessions as unknown as { cacheTimer?: unknown; cacheDirty: boolean }
+    expect(internals.cacheTimer).toBeUndefined()
+    expect(internals.cacheDirty).toBe(false)
+    // An edit here reads the session again in the background too.
+    t.sessions.updateMeta(first.key, { description: 'Okapi notes' })
+    await t.sessions.idle()
+    expect(t.sessions.searchKeys('Okapi notes').map((h) => h.key)).toContain(first.key)
+    expect(internals.cacheTimer).toBeUndefined()
+  })
+})

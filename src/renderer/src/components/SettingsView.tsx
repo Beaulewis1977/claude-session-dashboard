@@ -40,6 +40,7 @@ import { AlertsSettings } from './settings/AlertsSettings'
 import { TerminalAccessBlock } from './settings/TerminalAccessSettings'
 import { BackupSettings } from './settings/BackupSettings'
 import { SummariesSettings } from './settings/SummariesSettings'
+import { AskSettings } from './settings/AskSettings'
 import { ContextSettings } from './settings/ContextSettings'
 import { GitSettings } from './settings/GitSettings'
 import { DefaultModelPickers } from './ModelPicker'
@@ -398,6 +399,8 @@ export function SettingsView() {
         </Section>
 
         <SummariesSettings update={update} />
+
+        {!api.remote && <AskSettings />}
 
         <ContextSettings update={update} />
 

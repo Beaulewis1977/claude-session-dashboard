@@ -39,8 +39,9 @@ export interface PrintRequest {
 }
 
 export type PrintOutcome =
-  | { kind: 'cancelled'; where: string }
-  /** Nothing was sent: no CLI, or not the subscription. */
+  /** `started`: the prompt process was already running (the prompt may have reached Claude). */
+  | { kind: 'cancelled'; where: string; started?: boolean }
+  /** Nothing was sent: no CLI, not the subscription, or the CLI couldn't be started. */
   | { kind: 'refused'; where: string; error: string; noCli?: boolean }
   | { kind: 'done'; where: string; cli: AskCli; result: RunResult }
 
@@ -102,12 +103,18 @@ export class PrintRunner {
       req.handle = undefined
       // Only a check that ran to the end counts: output printed before a
       // timeout or a failure proves nothing.
+      if (out !== 'cancelled' && out.notStarted) this.cli = undefined
       res =
         out === 'cancelled' || out.cancelled
           ? 'cancelled'
-          : out.timedOut
-            ? { ok: false, reason: AUTH_TIMED_OUT }
-            : subscriptionCheck(out.stdout, out.code)
+          : out.notStarted
+            ? {
+                ok: false,
+                reason: `Claude Code couldn't be started (${out.stderr.trim() || 'unknown error'}). Try again.`
+              }
+            : out.timedOut
+              ? { ok: false, reason: AUTH_TIMED_OUT }
+              : subscriptionCheck(out.stdout, out.code)
     }
     if (res !== 'cancelled') {
       if (res.ok) this.authOk.set(key, Date.now())
@@ -146,7 +153,16 @@ export class PrintRunner {
     })
     req.handle = handle
     const done = await this.until(req, handle.done)
-    if (done === 'cancelled') return { kind: 'cancelled', where: cli.label }
+    if (done === 'cancelled') return { kind: 'cancelled', where: cli.label, started: true }
+    if (done.notStarted) {
+      // The CLI found earlier is gone (or can't run): look for it again next time.
+      this.cli = undefined
+      return {
+        kind: 'refused',
+        where: cli.label,
+        error: `Claude Code couldn't be started (${done.stderr.trim() || 'unknown error'}). Nothing was sent. Try again.`
+      }
+    }
     return { kind: 'done', where: cli.label, cli, result: done }
   }
 }

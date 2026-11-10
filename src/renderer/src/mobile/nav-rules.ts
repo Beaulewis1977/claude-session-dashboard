@@ -18,7 +18,7 @@ interface Stamped extends PhoneNavState {
 }
 
 const MARK = 'csdNav'
-const VIEWS: readonly View[] = ['sessions', 'settings', 'usage', 'running']
+const VIEWS: readonly View[] = ['sessions', 'settings', 'usage', 'running', 'ask']
 const USAGE_TABS: readonly UsageTab[] = ['trends', 'limits', 'credits', 'raw']
 /** Usage tabs tapped through quickly are one entry. */
 const COLLAPSE_MS = 500

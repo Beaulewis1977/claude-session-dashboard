@@ -3,6 +3,8 @@
 // (prompt on stdin, killed on timeout or Cancel).
 
 import { execFile, spawn } from 'node:child_process'
+import { existsSync } from 'node:fs'
+import { isAbsolute } from 'node:path'
 import { askEnvAllowed, type AskCli, type AskCommand } from '@shared/ask'
 import { findWindowsClaude, systemExe } from '../core/which'
 
@@ -12,6 +14,11 @@ export interface RunResult {
   code: number | null
   timedOut: boolean
   cancelled: boolean
+  /**
+   * The process never started (the program is gone, or couldn't be run), so
+   * nothing reached it: not even the prompt on stdin.
+   */
+  notStarted?: boolean
 }
 
 export interface RunHandle {
@@ -43,6 +50,21 @@ export function childEnv(base: NodeJS.ProcessEnv = process.env): NodeJS.ProcessE
 export const spawnRunner: AskRunner = (cmd, stdin, opts) => {
   // wsl.exe by its full path (the shared command names it only).
   const command = cmd.command === 'wsl.exe' ? systemExe('wsl.exe') : cmd.command
+  // A .cmd shim runs through the shell, which starts even when the shim is
+  // gone: check the file itself first (a spawned .exe that's gone fails below).
+  const shim = cmd.shell ? command.replace(/^"(.*)"$/, '$1') : ''
+  if (shim && isAbsolute(shim) && !existsSync(shim))
+    return {
+      done: Promise.resolve({
+        stdout: '',
+        stderr: `${shim} wasn't found.`,
+        code: null,
+        timedOut: false,
+        cancelled: false,
+        notStarted: true
+      }),
+      cancel: () => undefined
+    }
   const child = spawn(command, cmd.args, {
     cwd: opts.cwd,
     shell: cmd.shell,
@@ -54,6 +76,8 @@ export const spawnRunner: AskRunner = (cmd, stdin, opts) => {
   let stderr = ''
   let timedOut = false
   let cancelled = false
+  let started = false
+  child.once('spawn', () => (started = true))
   const kill = (): void => {
     if (child.exitCode !== null) return
     // A shell-wrapped .cmd needs the whole tree killed on Windows.
@@ -79,7 +103,15 @@ export const spawnRunner: AskRunner = (cmd, stdin, opts) => {
     })
     child.once('error', (err) => {
       clearTimeout(timer)
-      resolve({ stdout, stderr: stderr || err.message, code: null, timedOut, cancelled })
+      resolve({
+        stdout,
+        stderr: stderr || err.message,
+        code: null,
+        timedOut,
+        cancelled,
+        // An error before the process started (ENOENT, EACCES…): nothing was sent.
+        ...(started ? {} : { notStarted: true })
+      })
     })
     child.once('close', (code) => {
       clearTimeout(timer)

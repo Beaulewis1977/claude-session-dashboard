@@ -1394,7 +1394,10 @@ These are choices I made where the spec left room, or had to deviate:
   `minisearch` (used by the main process) ship in the installer.
 - **Fixtures mode** copies `fixtures/` into `.fixtures-data/` (git-ignored) and runs against that copy.
   Launching only shows the command. To reset the sample data, delete `.fixtures-data/` yourself; the
-  app never deletes anything.
+  app never deletes anything. When the sample files in `fixtures/` move or are renamed,
+  `FIXTURES_DATA_VERSION` (in `src/main/fixtures.ts`) goes up; at the next start an older
+  `.fixtures-data/` has its `sources` and `appdata` moved into `.fixtures-data/previous/` (kept,
+  never deleted), and the sample data is copied fresh.
 - **Code fonts:** JetBrains Mono ligatures are turned off so code shows the characters that are really
   there (`=>` stays `=>`).
 

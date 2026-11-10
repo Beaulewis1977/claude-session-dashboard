@@ -67,6 +67,7 @@ import { fileExists } from './core/which'
 import { readFile } from 'node:fs/promises'
 import {
   fixturesLayout,
+  retireOldFixtureData,
   prepareFixtures,
   seedFixtureBridge,
   seedFixtureLive,
@@ -138,6 +139,10 @@ const FIXTURES = process.argv.includes('--fixtures') || process.env.CSD_FIXTURES
 const appRoot = app.getAppPath()
 // Fixtures mode runs on the sample data's clock, so "today" has data.
 if (FIXTURES) setClockOffset(FIXTURES_NOW - Date.now())
+
+// Sample data copied from an older layout of fixtures/ is moved aside before
+// anything opens it (fixtures mode only).
+if (FIXTURES) retireOldFixtureData(appRoot)
 
 // All of the app's own data (including Chromium's cache) lives in
 // %APPDATA%\ClaudeSessionDashboard — or .fixtures-data/appdata in fixtures mode.

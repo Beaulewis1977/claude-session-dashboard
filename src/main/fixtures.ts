@@ -1,8 +1,9 @@
 // Fixtures mode (`npm run dev -- --fixtures`): copy the sample sessions into
 // `.fixtures-data/` and run the app against that copy, with simulated launches.
-// Files are only copied when missing; nothing is ever deleted.
+// Files are only copied when missing; nothing is ever deleted. Data made from an
+// older sample layout is moved aside first (see retireOldFixtureData).
 
-import { constants } from 'node:fs'
+import { constants, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import {
   access,
   appendFile,
@@ -49,6 +50,59 @@ async function copyMissing(
       await copyFile(src, dest, constants.COPYFILE_EXCL).catch(() => undefined)
     }
   }
+}
+
+/**
+ * The layout of the sample data in `fixtures/`. Files are only ever copied
+ * when missing, so a change that moves or renames sample files (2: the sample
+ * user and host were renamed) would leave the old copies next to the new ones
+ * in an existing `.fixtures-data/`. Bump this when that happens.
+ */
+export const FIXTURES_DATA_VERSION = 2
+const FIXTURES_VERSION_FILE = 'fixtures-version'
+
+/**
+ * Before anything opens `.fixtures-data/` (Electron keeps its own files and
+ * the single-instance lock in `appdata`): if it was made from an older layout,
+ * move its `sources` and `appdata` aside into `.fixtures-data/previous/`
+ * (still git-ignored; nothing is deleted), so the sample data is copied fresh.
+ * Returns where the old data went, or undefined. If the move isn't possible
+ * (another fixtures-mode run has the files open), the old data stays and the
+ * check runs again next time.
+ */
+export function retireOldFixtureData(
+  appRoot: string,
+  version = FIXTURES_DATA_VERSION,
+  stamp = new Date().toISOString().replace(/[:.]/g, '-')
+): string | undefined {
+  const base = join(appRoot, '.fixtures-data')
+  const marker = join(base, FIXTURES_VERSION_FILE)
+  let had: number | undefined
+  try {
+    had = Number(readFileSync(marker, 'utf8').trim()) || undefined
+  } catch {
+    had = undefined
+  }
+  if (had === version) return undefined
+  const parts = ['sources', 'appdata'].filter((p) => existsSync(join(base, p)))
+  let dest: string | undefined
+  if (parts.length) {
+    dest = join(base, 'previous', `v${had ?? 1}-${stamp}`)
+    try {
+      mkdirSync(dest, { recursive: true })
+      for (const p of parts) renameSync(join(base, p), join(dest, p))
+    } catch (e) {
+      console.warn(
+        `[fixtures] .fixtures-data is from an older sample layout but couldn't be moved aside ` +
+          `(${(e as Error).message}). Close other fixtures-mode runs, or move it yourself.`
+      )
+      return undefined
+    }
+  }
+  mkdirSync(base, { recursive: true })
+  writeFileSync(marker, `${version}\n`)
+  if (dest) console.log(`[fixtures] Older sample data moved to ${dest}`)
+  return dest
 }
 
 export function fixturesLayout(appRoot: string): {

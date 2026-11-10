@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.15.1 (November 10, 2026)
+
+**Back and Forward.**
+
+### Back and Forward navigation (PR #46)
+
+- Back and Forward navigation: title-bar buttons with tooltips, Alt+←/Alt+→, Backspace (outside
+  text fields) and the mouse side buttons. Restores the screen, selected session, viewer tab, Usage
+  sub-tab, provider view, Settings section and scroll position; skips deleted sessions. The
+  phone's back gesture now follows tabs and sessions too.
+
 ## 1.15.0 (November 9, 2026)
 
 **Moving between PC and phone, and Claude desktop sessions.**

@@ -1,15 +1,20 @@
 # Changelog
 
-## 1.15.1 (November 10, 2026)
+## 1.15.2 (November 10, 2026)
 
-**Back and Forward.**
+**Back and Forward.** (1.15.1 was built but not released: its title-bar buttons didn't take
+mouse clicks.)
 
-### Back and Forward navigation (PR #46)
+### Back and Forward navigation (PRs #46, #48)
 
 - Back and Forward navigation: title-bar buttons with tooltips, Alt+←/Alt+→, Backspace (outside
   text fields) and the mouse side buttons. Restores the screen, selected session, viewer tab, Usage
   sub-tab, provider view, Settings section and scroll position; skips deleted sessions. The
   phone's back gesture now follows tabs and sessions too.
+- **Fixed:** the title-bar buttons (sidebar toggle, Back, Forward) didn't respond to the mouse or
+  show tooltips; the search box's centring area covered them as part of the window's drag area.
+- **Fixed:** after switching Claude/Codex or a filter that hides the selected session, Back skipped
+  the screen you were on.
 
 ## 1.15.0 (November 9, 2026)
 

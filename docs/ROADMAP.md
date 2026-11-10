@@ -2,7 +2,7 @@
 
 Ideas to build next, with the details and a ready-to-paste prompt for each.
 
-**Current state (Nov 10, 2026):** v1.15.1 installed. It includes:
+**Current state (Nov 10, 2026):** v1.15.2 installed. It includes:
 
 - session browsing, names synced from `/rename`, and per-session model and effort;
 - live limits, usage tracking, and limit-health detection;
@@ -377,7 +377,7 @@ Run typecheck, lint, tests and the build. Commit, push the branch and open a PR 
   Codex duplicate check) and Claude desktop sessions (Open in Claude desktop app, "Claude desktop"
   source, optional Cowork source) (PR #44, v1.15.0)
 - ✅ Back/forward navigation (title-bar buttons, Alt+arrows, Backspace, mouse side buttons, phone
-  back gesture) (PR #46, v1.15.1)
+  back gesture) (PRs #46, #48, v1.15.2)
 
 **Next up:**
 

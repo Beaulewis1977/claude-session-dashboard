@@ -27,6 +27,7 @@ import {
 } from './context'
 import type { AcceptedProject, CodexAppPreview, OpenIn } from './codex-app'
 import type { GitBadge, GitLinkSettings } from './git/types'
+import type { AskSessionsSettings } from './ask-sessions/types'
 import type { RunningCopy } from './running'
 import type { ClaudeAppPreview } from './claude-app'
 
@@ -396,6 +397,8 @@ export interface AppSettings {
   usageSplit?: UsageSplit
   /** Git links: on/off, and whether the GitHub CLI may look up pull requests (absent: on, ask). */
   gitLinks?: GitLinkSettings
+  /** Ask across sessions (content questions off until turned on; see ask-sessions/types.ts). */
+  askSessions?: AskSessionsSettings
   /**
    * Settings → Sources: also show the Claude desktop app's Cowork sessions
    * (view-only; absent: off). Only their `.claude/projects` is read; never a

@@ -26,6 +26,25 @@ export const SUMMARY_MARKER = SUMMARY_PROMPT_MARKER
 /** Usage of summary runs is recorded under this key (no session file holds it). */
 export const SUMMARY_USAGE_KEY = 'dashboard:summaries'
 export const SUMMARY_USAGE_LABEL = 'Summaries (dashboard)'
+/** Usage of "Ask across sessions" runs (also --no-session-persistence). */
+export const ASK_USAGE_KEY = 'dashboard:ask'
+export const ASK_USAGE_LABEL = 'Ask (dashboard)'
+
+/** The keys of the app's own `claude -p` runs whose usage the app records itself. */
+export const OWN_USAGE_KEYS: ReadonlySet<string> = new Set([SUMMARY_USAGE_KEY, ASK_USAGE_KEY])
+
+export function isOwnUsageKey(key: string): boolean {
+  return OWN_USAGE_KEYS.has(key)
+}
+
+/** "Summaries (dashboard)" / "Ask (dashboard)", for one of the app's own keys. */
+export function ownUsageLabel(key: string): string | undefined {
+  return key === SUMMARY_USAGE_KEY
+    ? SUMMARY_USAGE_LABEL
+    : key === ASK_USAGE_KEY
+      ? ASK_USAGE_LABEL
+      : undefined
+}
 
 /** Models a summary can be written with: fixed aliases only (they reach a shell in WSL). */
 export const SUMMARY_MODELS = ['sonnet', 'haiku', 'opus', 'default'] as const
@@ -457,8 +476,11 @@ export function runUsageRecords(
     startTs?: number
     env: UsageRecord['env']
     fallbackModel?: string
+    /** Which of the app's runs (default: a summary). */
+    kind?: 'summary' | 'ask'
   }
 ): UsageRecord[] {
+  const ask = opts.kind === 'ask'
   let o: Record<string, unknown> | undefined
   const lines = stdout.trim().split(/\r?\n/)
   for (let i = lines.length - 1; i >= 0 && !o; i--) {
@@ -474,10 +496,11 @@ export function runUsageRecords(
   const base = {
     ts: opts.ts,
     ...(opts.startTs !== undefined ? { startTs: opts.startTs } : {}),
-    key: SUMMARY_USAGE_KEY,
-    project: SUMMARY_USAGE_LABEL,
+    key: ask ? ASK_USAGE_KEY : SUMMARY_USAGE_KEY,
+    project: ask ? ASK_USAGE_LABEL : SUMMARY_USAGE_LABEL,
     env: opts.env
   }
+  const prefix = ask ? 'ask' : 'summary'
   const out: UsageRecord[] = []
   const mu = o.modelUsage
   if (mu && typeof mu === 'object') {
@@ -486,7 +509,7 @@ export function runUsageRecords(
       if (!/^[A-Za-z0-9][A-Za-z0-9._:@/[\]-]{0,79}$/.test(model)) continue
       const rec: UsageRecord = {
         ...base,
-        id: `summary:${opts.runId}:${model}`,
+        id: `${prefix}:${opts.runId}:${model}`,
         model,
         input: num(u.inputTokens),
         output: num(u.outputTokens),
@@ -503,7 +526,7 @@ export function runUsageRecords(
   const u = (o.usage ?? {}) as Record<string, unknown>
   const rec: UsageRecord = {
     ...base,
-    id: `summary:${opts.runId}`,
+    id: `${prefix}:${opts.runId}`,
     model: opts.fallbackModel ?? 'unknown',
     input: num(u.input_tokens),
     output: num(u.output_tokens),
@@ -684,7 +707,8 @@ export function guardPct(i: {
   if (!r) return undefined
   const sub = i.isSubscription ?? (() => true)
   const inWindow = (ts: number): boolean => r.windowStart === undefined || ts >= r.windowStart
-  const own = i.records.filter((x) => x.key === SUMMARY_USAGE_KEY && x.ts > r.at && inWindow(x.ts))
+  // The app's own runs: summaries and Ask questions alike.
+  const own = i.records.filter((x) => OWN_USAGE_KEYS.has(x.key) && x.ts > r.at && inWindow(x.ts))
   if (!own.length) return { pct: r.pct }
   if (i.dollarsPerPct && i.dollarsPerPct > 0)
     return { pct: r.pct + own.reduce((n, x) => n + recordCost(x, i.prices), 0) / i.dollarsPerPct }

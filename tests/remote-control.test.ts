@@ -1,8 +1,8 @@
 import { spawnSync } from 'node:child_process'
-import { mkdtempSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, onTestFinished } from 'vitest'
 import {
   buildLaunchCommand,
   claudeArgs,
@@ -210,6 +210,7 @@ describe('Remote Control launch commands', () => {
     'cmd really passes the name as one argument (and nothing else runs)',
     () => {
       const dir = mkdtempSync(join(tmpdir(), 'csd-rc-'))
+      onTestFinished(() => rmSync(dir, { recursive: true, force: true, maxRetries: 5 }))
       const fake = join(dir, 'claude args.cmd')
       writeFileSync(fake, '@echo off\r\necho [%~1][%~2][%~3][%~4][%~5]\r\n')
       for (const raw of HOSTILE_NAMES.concat('Fix login bug')) {

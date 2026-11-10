@@ -6,7 +6,7 @@ import { request as httpRequest } from 'node:http'
 import { connect } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest'
 import WebSocket from 'ws'
 import { DEFAULT_MOBILE } from '../src/shared/mobile'
 import type { LaunchOptions, SessionSummary } from '../src/shared/types'
@@ -403,6 +403,7 @@ describe('PR3-06: API keys are removed in the final shell too', () => {
   it.runIf(process.platform === 'win32')('… and none reaches claude through cmd', async () => {
     const { mkdtempSync, writeFileSync } = await import('node:fs')
     const d = mkdtempSync(join(tmpdir(), 'csd-env-'))
+    onTestFinished(() => rm(d, { recursive: true, force: true, maxRetries: 5 }))
     const fake = join(d, 'claude.cmd')
     writeFileSync(fake, '@echo off\r\necho [%ANTHROPIC_API_KEY%][%ANTHROPIC_AUTH_TOKEN%]\r\n')
     const c = buildLaunchCommand({

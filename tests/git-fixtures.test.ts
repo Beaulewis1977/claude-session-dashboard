@@ -21,12 +21,18 @@ import { FIXTURES } from './helpers'
 
 let root: string
 const busy: SessionService[] = []
+const gits: GitLinksService[] = []
 beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), 'csd-git-fx-'))
 })
 afterEach(async () => {
-  for (const s of busy.splice(0)) await s.idle()
-  await rm(root, { recursive: true, force: true, maxRetries: 5 })
+  try {
+    for (const s of busy.splice(0)) await s.idle()
+    // Its cache is saved 10 s after a pass: write it now, before the folder goes.
+    for (const g of gits.splice(0)) await g.flush()
+  } finally {
+    await rm(root, { recursive: true, force: true, maxRetries: 5 })
+  }
 })
 
 async function setup(gh: 'ask' | 'on' = 'ask', before?: (sessions: SessionService) => void) {
@@ -60,6 +66,7 @@ async function setup(gh: 'ask' | 'on' = 'ask', before?: (sessions: SessionServic
     dataDir: paths.dataDir,
     settings: () => ({ git: sanitizeGitSettings({ gh }), scanStoppedDistros: false })
   })
+  gits.push(git)
   sessions.gitBadgeResolver = (k) => git.badge(k)
   sessions.gitFilter = (q) => git.filter(q)
   await git.start()

@@ -160,8 +160,14 @@ let dataDir: string
 beforeEach(async () => {
   dataDir = await mkdtemp(join(tmpdir(), 'csd-git-svc-'))
 })
+const services: GitLinksService[] = []
 afterEach(async () => {
-  await rm(dataDir, { recursive: true, force: true, maxRetries: 5 })
+  try {
+    // Its cache is saved 10 s after a pass: write it now, before the folder goes.
+    for (const s of services.splice(0)) await s.flush()
+  } finally {
+    await rm(dataDir, { recursive: true, force: true, maxRetries: 5 })
+  }
 })
 
 function service(
@@ -195,6 +201,7 @@ function service(
     dataDir,
     settings: () => ({ git: settings, scanStoppedDistros: false })
   })
+  services.push(svc)
   return { svc, settings, unlinked, touched: () => touched }
 }
 

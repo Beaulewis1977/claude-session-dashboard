@@ -5,7 +5,7 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { request as httpRequest } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, onTestFinished } from 'vitest'
 import {
   canOpenTerminal,
   isTailscaleAddress,
@@ -456,8 +456,11 @@ describe('terminal access service', () => {
     svc = make()
   })
   afterEach(async () => {
-    await store.flush()
-    await rm(dir, { recursive: true, force: true })
+    try {
+      await store.flush()
+    } finally {
+      await rm(dir, { recursive: true, force: true, maxRetries: 5 })
+    }
   })
 
   it('shows the script first and changes nothing until confirmed', async () => {
@@ -836,6 +839,7 @@ describe('helpers', () => {
 describe('a phone offering its SSH key', () => {
   let server: MobileServer
   let reg: DeviceRegistry
+  let keyDir: string
   let port = 0
   let readOnly = false
   const offered: [string, unknown][] = []
@@ -873,7 +877,7 @@ describe('a phone offering its SSH key', () => {
   beforeEach(async () => {
     readOnly = false
     offered.length = 0
-    const dir = await mkdtemp(join(tmpdir(), 'csd-key-'))
+    const dir = (keyDir = await mkdtemp(join(tmpdir(), 'csd-key-')))
     reg = new DeviceRegistry(
       new JsonStore<MobileFile>(join(dir, 'mobile.json'), dir, () => ({
         version: 1,
@@ -909,7 +913,11 @@ describe('a phone offering its SSH key', () => {
     port = server.address()!.port
   })
   afterEach(async () => {
-    await server.stop()
+    try {
+      await server.stop()
+    } finally {
+      await rm(keyDir, { recursive: true, force: true, maxRetries: 5 })
+    }
   })
 
   const pair = async (): Promise<string> => {
@@ -1068,6 +1076,7 @@ describe('after the second review', () => {
 describe('turning off when sshd won’t stop', () => {
   it('keeps Windows’ broad rule off, and its undo record', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'csd-stop-'))
+    onTestFinished(() => rm(dir, { recursive: true, force: true, maxRetries: 5 }))
     const store = new JsonStore<TerminalFile>(join(dir, 't.json'), dir, emptyTerminalFile)
     const pc = fakePc({ config: Buffer.from('Port 22\n'), failStop: true })
     const svc = new TerminalService({
@@ -1094,6 +1103,5 @@ describe('turning off when sshd won’t stop', () => {
     expect(store.value.defaultRuleDisabled).toBe(true)
     expect(pc.state.oursRule).toBe(false)
     await store.flush()
-    await rm(dir, { recursive: true, force: true })
   })
 })

@@ -15,10 +15,10 @@ const project = join(
   root,
   'windows',
   'Users',
-  'beau',
+  'alex',
   '.claude',
   'projects',
-  'C--Users-beau-code-acme-web'
+  'C--Users-alex-code-acme-web'
 )
 
 const SAFARI = '7f3c9a12-4b8e-4d21-9c6a-1e2f3a4b5c6d'
@@ -134,7 +134,7 @@ const write = (id, events) =>
   )
   c.tool(
     'Read',
-    { file_path: 'C:\\Users\\beau\\code\\acme-web\\src\\app\\api\\auth\\callback\\route.ts' },
+    { file_path: 'C:\\Users\\alex\\code\\acme-web\\src\\app\\api\\auth\\callback\\route.ts' },
     "export async function GET(req: Request) {\n  const token = await exchange(req)\n  return redirect('/dashboard', { headers: setCookie(token) })\n}",
     'Let me look at the callback route again.'
   )

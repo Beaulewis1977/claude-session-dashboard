@@ -115,7 +115,7 @@ export async function seedFixtureData(
         env: 'windows',
         originalPath: join(sourcesDir, ...relOriginal.split('/')),
         archivePath: join(archiveDir, 'windows', f),
-        cwd: 'C:\\Users\\beau\\code\\old-prototype',
+        cwd: 'C:\\Users\\alex\\code\\old-prototype',
         size: 0,
         sha256: '',
         sourceMtimeMs: 0,
@@ -139,8 +139,8 @@ export async function seedFixtureUsage(appRoot: string, dataDir: string): Promis
     )
   }
   const homes: Record<string, string> = {
-    windows: join(sourcesDir, 'windows', 'Users', 'beau'),
-    'wsl-Ubuntu-beau': join(sourcesDir, 'wsl', 'Ubuntu', 'home', 'beau')
+    windows: join(sourcesDir, 'windows', 'Users', 'alex'),
+    'wsl-Ubuntu-alex': join(sourcesDir, 'wsl', 'Ubuntu', 'home', 'alex')
   }
   for (const [source, home] of Object.entries(homes)) {
     const from = join(usage, 'live', source)
@@ -159,7 +159,7 @@ export async function seedFixtureUsage(appRoot: string, dataDir: string): Promis
   }
 }
 
-/** Enable the bridge for the Windows and WSL (beau) homes once; WSL root stays off. */
+/** Enable the bridge for the Windows and WSL (alex) homes once; WSL root stays off. */
 export async function seedFixtureBridge(
   dataDir: string,
   sessions: SessionService,
@@ -167,7 +167,7 @@ export async function seedFixtureBridge(
 ): Promise<void> {
   const marker = join(dataDir, '.bridge-seeded')
   if (await exists(marker)) return
-  for (const id of ['windows', 'wsl-Ubuntu-beau']) {
+  for (const id of ['windows', 'wsl-Ubuntu-alex']) {
     const src = sessions.source(id)
     if (!src) continue
     const plan = await installer.plan(src, 'install')
@@ -244,7 +244,7 @@ const FIXTURE_RUNS: FixtureRun[] = [
     source: 'windows',
     pid: 41200,
     sessionId: '7f3c9a12-4b8e-4d21-9c6a-1e2f3a4b5c6d',
-    cwd: 'C:\\Users\\beau\\code\\acme-web',
+    cwd: 'C:\\Users\\alex\\code\\acme-web',
     status: 'busy',
     started: 42,
     changed: 3
@@ -253,7 +253,7 @@ const FIXTURE_RUNS: FixtureRun[] = [
     source: 'windows',
     pid: 41288,
     sessionId: 'c41e2d7a-9b0f-4c3e-b5a6-7d8e9f0a1b2c',
-    cwd: 'C:\\Users\\beau\\My Projects\\desktop app',
+    cwd: 'C:\\Users\\alex\\My Projects\\desktop app',
     status: 'waiting',
     waitingFor: 'dialog open',
     started: 95,
@@ -261,10 +261,10 @@ const FIXTURE_RUNS: FixtureRun[] = [
     bridgeSessionId: 'session_01FixtureRemoteCtl0001'
   },
   {
-    source: 'wsl-Ubuntu-beau',
+    source: 'wsl-Ubuntu-alex',
     pid: 51700,
     sessionId: 'e9a1b2c3-d4e5-4f60-8172-839405a6b7c8',
-    cwd: '/home/beau/projects/orders-api',
+    cwd: '/home/alex/projects/orders-api',
     status: 'idle',
     name: 'orders-api retries',
     started: 130,
@@ -272,10 +272,10 @@ const FIXTURE_RUNS: FixtureRun[] = [
   },
   // Crashed a few minutes ago: shown as Exited for a while.
   {
-    source: 'wsl-Ubuntu-beau',
+    source: 'wsl-Ubuntu-alex',
     pid: 51733,
     sessionId: '5d4c3b2a-1f0e-4d9c-8b7a-6f5e4d3c2b1a',
-    cwd: '/home/beau/dotfiles',
+    cwd: '/home/alex/dotfiles',
     status: 'busy',
     started: 30,
     changed: 8
@@ -285,7 +285,7 @@ const FIXTURE_RUNS: FixtureRun[] = [
     source: 'windows',
     pid: 39001,
     sessionId: '2b6d8e4f-1a3c-4e5f-8a7b-9c0d1e2f3a4b',
-    cwd: 'C:\\Users\\beau\\code\\acme-web',
+    cwd: 'C:\\Users\\alex\\code\\acme-web',
     status: 'idle',
     started: 4400,
     changed: 4300
@@ -328,7 +328,7 @@ export async function seedFixtureLive(
 ): Promise<void> {
   const marker = join(dataDir, '.hooks-seeded')
   if (!(await exists(marker))) {
-    for (const id of ['windows', 'wsl-Ubuntu-beau']) {
+    for (const id of ['windows', 'wsl-Ubuntu-alex']) {
       const src = sessions.source(id)
       if (!src) continue
       const plan = await hooks.plan(src, 'install')

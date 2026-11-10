@@ -68,7 +68,7 @@ describe('lineage: explicit links', () => {
 
   it('prefers a parent in the same source', () => {
     const out = computeLineage([
-      s('P', { key: 'wsl-Ubuntu-beau:P', sourceId: 'wsl-Ubuntu-beau' }),
+      s('P', { key: 'wsl-Ubuntu-alex:P', sourceId: 'wsl-Ubuntu-alex' }),
       s('P'),
       s('B', { forkedFrom: { sessionId: 'P' } })
     ])

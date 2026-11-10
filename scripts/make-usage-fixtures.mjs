@@ -42,13 +42,13 @@ const shortId = (p) =>
 
 // --------------------------------------------------------------- projects
 
-const WIN = { kind: 'windows', home: join(root, 'windows', 'Users', 'beau') }
-const WSL = { kind: 'wsl', home: join(root, 'wsl', 'Ubuntu', 'home', 'beau') }
+const WIN = { kind: 'windows', home: join(root, 'windows', 'Users', 'alex') }
+const WSL = { kind: 'wsl', home: join(root, 'wsl', 'Ubuntu', 'home', 'alex') }
 
 const PROJECTS = [
   {
     env: WIN,
-    cwd: 'C:\\Users\\beau\\code\\acme-web',
+    cwd: 'C:\\Users\\alex\\code\\acme-web',
     branches: ['main', 'feat/checkout-v2', 'fix/hydration', 'chore/deps'],
     prompts: [
       'The checkout page flashes the old price for a second after applying a coupon. Find out why and fix it.',
@@ -65,7 +65,7 @@ const PROJECTS = [
   },
   {
     env: WIN,
-    cwd: 'C:\\Users\\beau\\code\\claude-session-dashboard',
+    cwd: 'C:\\Users\\alex\\code\\claude-session-dashboard',
     branches: ['main', 'feat/usage', 'fix/wsl-paths'],
     prompts: [
       'Add a usage view that shows tokens per day as a stacked chart.',
@@ -80,7 +80,7 @@ const PROJECTS = [
   },
   {
     env: WIN,
-    cwd: 'C:\\Users\\beau\\My Projects\\desktop-app',
+    cwd: 'C:\\Users\\alex\\My Projects\\desktop-app',
     branches: ['master', 'feature/auto-update'],
     prompts: [
       'Set up auto-update with electron-updater and a GitHub releases feed.',
@@ -92,7 +92,7 @@ const PROJECTS = [
   },
   {
     env: WSL,
-    cwd: '/home/beau/projects/orders-api',
+    cwd: '/home/alex/projects/orders-api',
     branches: ['main', 'feature/pagination', 'perf/indexes', 'fix/idempotency'],
     prompts: [
       'Requests to POST /orders are sometimes processed twice. Add idempotency keys.',
@@ -108,7 +108,7 @@ const PROJECTS = [
   },
   {
     env: WSL,
-    cwd: '/home/beau/projects/ml-pipeline',
+    cwd: '/home/alex/projects/ml-pipeline',
     branches: ['main', 'exp/feature-store'],
     prompts: [
       'The nightly training job OOMs at the feature join. Make it stream in chunks.',
@@ -121,7 +121,7 @@ const PROJECTS = [
   },
   {
     env: WSL,
-    cwd: '/home/beau/dotfiles',
+    cwd: '/home/alex/dotfiles',
     branches: ['main'],
     prompts: [
       'Clean up my zshrc, it takes 1.4s to start. Lazy-load nvm and pyenv.',
@@ -295,7 +295,7 @@ function nextPrompt(project) {
   promptTurn.set(project, i + 1)
   return project.prompts[i % project.prompts.length]
 }
-const apiProjects = new Set(['/home/beau/projects/ml-pipeline'])
+const apiProjects = new Set(['/home/alex/projects/ml-pipeline'])
 const API_FROM = Date.parse('2026-10-05T00:00:00Z')
 const API_FROM2 = Date.parse('2026-10-09T00:00:00Z')
 // A separate deterministic choice that doesn't disturb the main random stream.
@@ -631,7 +631,7 @@ for (const s of sessions) {
 }
 
 // Bridge readings: one per few responses (the status line runs on every update).
-const sourceOf = (s) => (s.project.env.kind === 'windows' ? 'windows' : 'wsl-Ubuntu-beau')
+const sourceOf = (s) => (s.project.env.kind === 'windows' ? 'windows' : 'wsl-Ubuntu-alex')
 // Each model's own context window (Claude Code's model configuration): native
 // 1M for Opus 4.7+, Sonnet 5+, Haiku 5.5+ and Fable 5+, 200k otherwise.
 const windowFor = (model) => {
@@ -722,8 +722,8 @@ for (const r of Object.values(latestByEnv)) {
     session_id: r.sessionId,
     transcript_path:
       s.project.env.kind === 'windows'
-        ? `C:\\Users\\beau\\.claude\\projects\\${encodeProject(s.project.cwd)}\\${s.id}.jsonl`
-        : `/home/beau/.claude/projects/${encodeProject(s.project.cwd)}/${s.id}.jsonl`,
+        ? `C:\\Users\\alex\\.claude\\projects\\${encodeProject(s.project.cwd)}\\${s.id}.jsonl`
+        : `/home/alex/.claude/projects/${encodeProject(s.project.cwd)}/${s.id}.jsonl`,
     cwd: r.cwd,
     model: { id: r.model, display_name: r.modelName },
     workspace: { current_dir: r.cwd, project_dir: r.cwd, added_dirs: [] },
@@ -896,7 +896,7 @@ writeFileSync(
         }
       ],
       billing: billingSeed,
-      projectBilling: { '/home/beau/projects/ml-pipeline': 'acct-personal' },
+      projectBilling: { '/home/alex/projects/ml-pipeline': 'acct-personal' },
       apiCostTotal: Math.round(costTotal * 100) / 100
     },
     null,

@@ -77,7 +77,7 @@ const TOOLS: LaunchTools = {
   powershell: 'C:\\Windows\\powershell.exe',
   cmd: 'C:\\Windows\\cmd.exe',
   wsl: 'C:\\Windows\\wsl.exe',
-  codex: 'C:\\Users\\beau\\AppData\\Roaming\\npm\\codex.cmd'
+  codex: 'C:\\Users\\alex\\AppData\\Roaming\\npm\\codex.cmd'
 }
 
 let root: string
@@ -188,7 +188,7 @@ describe('messages between agents', () => {
       'codex',
       'windows',
       'Users',
-      'beau',
+      'alex',
       '.codex',
       'sessions',
       '2026',
@@ -333,15 +333,15 @@ describe('the summary transcript of a Codex session', () => {
 
 describe('Continue fresh for Codex: the command', () => {
   const winPrompt = readHandoffPrompt(
-    `C:\\Users\\beau smith\\AppData\\Roaming\\ClaudeSessionDashboard\\handoffs\\codex\\${HANDOFF_ID}.md`
+    `C:\\Users\\alex smith\\AppData\\Roaming\\ClaudeSessionDashboard\\handoffs\\codex\\${HANDOFF_ID}.md`
   )!
   const wslPrompt = readHandoffPrompt(
-    `/mnt/c/Users/beau smith/AppData/Roaming/ClaudeSessionDashboard/handoffs/codex/${HANDOFF_ID}.md`
+    `/mnt/c/Users/alex smith/AppData/Roaming/ClaudeSessionDashboard/handoffs/codex/${HANDOFF_ID}.md`
   )!
 
   it('is a new codex session whose first message asks it to read the handoff file', () => {
     expect(winPrompt.mode).toBe('read')
-    expect(winPrompt.prompt).toMatch(/^Read the handoff file C:\\Users\\beau smith\\.*\.md first/)
+    expect(winPrompt.prompt).toMatch(/^Read the handoff file C:\\Users\\alex smith\\.*\.md first/)
     const args = codexContinueArgs({
       prompt: winPrompt.prompt,
       bypass: false,
@@ -392,7 +392,7 @@ describe('Continue fresh for Codex: the command', () => {
       const cmd = buildCodexLaunch({
         ...base,
         env: 'windows',
-        cwd: 'C:\\Users\\beau smith\\code\\shop api',
+        cwd: 'C:\\Users\\alex smith\\code\\shop api',
         terminal
       })
       expect(cmd.claudeArgs).toContain(winPrompt.prompt)
@@ -404,7 +404,7 @@ describe('Continue fresh for Codex: the command', () => {
       ...base,
       env: 'wsl',
       distro: 'Ubuntu',
-      cwd: '/home/beau/code/shop api',
+      cwd: '/home/alex/code/shop api',
       terminal: 'wt',
       continueFresh: { newSessionId: HANDOFF_ID, prompt: wslPrompt.prompt }
     })
@@ -1427,7 +1427,7 @@ describe('second review fixes', { timeout: 30_000 }, () => {
     // Only the session's own WSL user can read the app's data folder here.
     const { sessions, launcher, canReadCalls } = await setup({
       launch: true,
-      canRead: (_p, user) => user === 'beau'
+      canRead: (_p, user) => user === 'alex'
     })
     const s = sessions.list().find((x) => x.provider === 'codex' && x.sessionId === WSL)!
     sessions.setAiSummary(s.key, SUMMARY)
@@ -1440,7 +1440,7 @@ describe('second review fixes', { timeout: 30_000 }, () => {
       /handoffs|ClaudeSessionDashboard|appdata/i.test(c.path)
     )
     expect(handoffChecks.length).toBeGreaterThan(0)
-    expect(handoffChecks.every((c) => c.user === 'beau')).toBe(true)
+    expect(handoffChecks.every((c) => c.user === 'alex')).toBe(true)
   })
 
   it("a WSL user that can't read the handoff stops the launch", async () => {

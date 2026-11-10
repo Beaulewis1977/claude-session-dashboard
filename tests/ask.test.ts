@@ -133,17 +133,17 @@ describe('Ask Claude prompt', () => {
     ])
     const exe = askCommand({
       kind: 'native',
-      path: 'C:\\Users\\beau\\.local\\bin\\claude.exe',
+      path: 'C:\\Users\\alex\\.local\\bin\\claude.exe',
       label: 'Windows'
     })
     expect(exe).toEqual({
-      command: 'C:\\Users\\beau\\.local\\bin\\claude.exe',
+      command: 'C:\\Users\\alex\\.local\\bin\\claude.exe',
       args: ASK_ARGS,
       shell: false
     })
     const cmd = askCommand({
       kind: 'native',
-      path: 'C:\\Users\\beau\\AppData\\Roaming\\npm\\claude.cmd',
+      path: 'C:\\Users\\alex\\AppData\\Roaming\\npm\\claude.cmd',
       label: 'Windows'
     })
     expect(cmd.shell).toBe(true)
@@ -350,10 +350,10 @@ describe('Ask Claude: subscription only, and nothing extra sent', () => {
     const env = childEnv({
       Path: 'C:\\Windows',
       SystemRoot: 'C:\\Windows',
-      USERPROFILE: 'C:\\Users\\beau',
+      USERPROFILE: 'C:\\Users\\alex',
       HTTPS_PROXY: 'http://proxy:8080',
       CLAUDE_CODE_OAUTH_TOKEN: 'subscription-token',
-      CLAUDE_CONFIG_DIR: 'C:\\Users\\beau\\.claude',
+      CLAUDE_CONFIG_DIR: 'C:\\Users\\alex\\.claude',
       ANTHROPIC_API_KEY: 'sk-ant-api',
       ANTHROPIC_AUTH_TOKEN: 't',
       ANTHROPIC_BASE_URL: 'https://gateway',
@@ -370,10 +370,10 @@ describe('Ask Claude: subscription only, and nothing extra sent', () => {
     expect(env).toEqual({
       Path: 'C:\\Windows',
       SystemRoot: 'C:\\Windows',
-      USERPROFILE: 'C:\\Users\\beau',
+      USERPROFILE: 'C:\\Users\\alex',
       HTTPS_PROXY: 'http://proxy:8080',
       CLAUDE_CODE_OAUTH_TOKEN: 'subscription-token',
-      CLAUDE_CONFIG_DIR: 'C:\\Users\\beau\\.claude'
+      CLAUDE_CONFIG_DIR: 'C:\\Users\\alex\\.claude'
     })
   })
 
@@ -401,7 +401,7 @@ describe('Ask Claude: subscription only, and nothing extra sent', () => {
       encoding: 'utf8',
       env: {
         PATH: shellPath(BASH!),
-        HOME: '/home/beau',
+        HOME: '/home/alex',
         LANG: 'en_US.UTF-8 with spaces',
         CLAUDE_CODE_OAUTH_TOKEN: 'subscription-token',
         ANTHROPIC_CUSTOM_HEADERS: 'Authorization: Bearer other',

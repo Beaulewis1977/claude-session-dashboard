@@ -61,7 +61,7 @@ const ID = {
   wsl: '019a7777-0000-7000-8000-000000000007',
   now: '019a8888-0000-7000-8000-000000000008'
 }
-const CODEX = join(FIXTURES, 'codex', 'windows', 'Users', 'beau', '.codex')
+const CODEX = join(FIXTURES, 'codex', 'windows', 'Users', 'alex', '.codex')
 const DESKTOP_FILE = join(
   CODEX,
   'sessions',

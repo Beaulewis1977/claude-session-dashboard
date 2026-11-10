@@ -63,16 +63,16 @@ describe('git output parsing', () => {
 
   it('reads PR links and Claude-Session trailers', () => {
     expect(
-      prsInOutput('Creating pull request…\nhttps://github.com/beau/acme-web/pull/14\n')
+      prsInOutput('Creating pull request…\nhttps://github.com/alex/acme-web/pull/14\n')
     ).toEqual([
       {
-        owner: 'beau',
+        owner: 'alex',
         repo: 'acme-web',
         number: 14,
-        url: 'https://github.com/beau/acme-web/pull/14'
+        url: 'https://github.com/alex/acme-web/pull/14'
       }
     ])
-    expect(prsInOutput('https://gitlab.com/beau/x/pull/3')).toEqual([])
+    expect(prsInOutput('https://gitlab.com/alex/x/pull/3')).toEqual([])
     expect(
       sessionTrailers(
         'git commit -m "Fix\n\nClaude-Session: https://claude.ai/code/session_01ABCdef234"'
@@ -128,7 +128,7 @@ describe('Claude Code signals', () => {
       bash('c2', 'git commit -q -m x && git log --oneline -1', 3),
       result('c2', 'bcd2345 x', 3.1),
       bash('p1', 'gh pr create --fill', 4),
-      result('p1', 'https://github.com/beau/acme/pull/14', 4.5),
+      result('p1', 'https://github.com/alex/acme/pull/14', 4.5),
       {
         type: 'system',
         subtype: 'bridge_status',
@@ -251,7 +251,7 @@ describe('Codex signals', () => {
         git: {
           commit_hash: 'A1B2C3D4E5F6',
           branch: 'fix/checkout-totals',
-          repository_url: 'https://github.com/beau/shop.git'
+          repository_url: 'https://github.com/alex/shop.git'
         }
       }),
       patch(
@@ -275,11 +275,11 @@ describe('Codex signals', () => {
         'Exit code: 0\nOutput:\n[fix/checkout-totals 9f8e7d6] Fix totals\n 2 files changed'
       ),
       call('2026-10-20T14:19:00.000Z', 'g1', 'exec_command', { cmd: 'gh pr create --fill' }),
-      out('2026-10-20T14:19:05.000Z', 'g1', 'https://github.com/beau/shop/pull/7')
+      out('2026-10-20T14:19:05.000Z', 'g1', 'https://github.com/alex/shop/pull/7')
     ].join('\n')
     const s = analyzeCodex(text, OWN).git
     expect(s.head).toBe('a1b2c3d4e5f6')
-    expect(s.remote).toBe('https://github.com/beau/shop.git')
+    expect(s.remote).toBe('https://github.com/alex/shop.git')
     expect(s.branches).toEqual(['fix/checkout-totals'])
     expect(s.files).toEqual(['src/cart.ts', 'src/tax.ts', 'old.ts'])
     expect(s.commits).toMatchObject([
@@ -343,7 +343,7 @@ describe('Codex signals', () => {
       call(late(6001), 'c0', 'exec_command', { cmd: 'git commit -m parent' }),
       out(late(6002), 'c0', '[main 1111111] parent'),
       call(late(6040), 'g0', 'exec_command', { cmd: 'gh pr create --fill' }),
-      out(late(6080), 'g0', 'https://github.com/beau/shop/pull/3'),
+      out(late(6080), 'g0', 'https://github.com/alex/shop/pull/3'),
       patch(late(6200), 'p0', '*** Begin Patch\n*** Update File: parent-only.ts\n*** End Patch'),
       patch(late(20_000), 'p1', '*** Begin Patch\n*** Update File: mine.ts\n*** End Patch'),
       call(late(30_000), 'c1', 'exec_command', { cmd: 'git commit -m mine' }),

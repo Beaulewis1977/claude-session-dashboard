@@ -217,17 +217,17 @@ describe('status line installer', () => {
 `
 
   it('builds the right command per environment', () => {
-    const win = envPaths(source('windows', 'C:\\Users\\Beau Lewis'))!
+    const win = envPaths(source('windows', 'C:\\Users\\Alex Smith'))!
     expect(win.command).toBe(
-      `powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "${join('C:\\Users\\Beau Lewis', '.claude-session-dashboard').replace(/\\/g, '/')}/bin/statusline.ps1"`
+      `powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "${join('C:\\Users\\Alex Smith', '.claude-session-dashboard').replace(/\\/g, '/')}/bin/statusline.ps1"`
     )
-    expect(envPaths(source('wsl', '/x/home/beau', 'beau'))!.command).toBe(
-      'sh /home/beau/.claude-session-dashboard/bin/statusline.sh'
+    expect(envPaths(source('wsl', '/x/home/alex', 'alex'))!.command).toBe(
+      'sh /home/alex/.claude-session-dashboard/bin/statusline.sh'
     )
     expect(envPaths(source('wsl', '/x/root', 'root'))!.command).toBe(
       'sh /root/.claude-session-dashboard/bin/statusline.sh'
     )
-    expect(envPaths({ ...source('wsl', '/x', 'beau'), kind: 'custom' })).toBeUndefined()
+    expect(envPaths({ ...source('wsl', '/x', 'alex'), kind: 'custom' })).toBeUndefined()
   })
 
   it('preserves other keys, chains the old command, backs up first, and restores exactly', async () => {
@@ -235,7 +235,7 @@ describe('status line installer', () => {
     await mkdir(join(home, '.claude'), { recursive: true })
     const settingsPath = join(home, '.claude', 'settings.json')
     await writeFile(settingsPath, settingsText)
-    const src = source('wsl', home, 'beau')
+    const src = source('wsl', home, 'alex')
     const { inst, dataDir } = await installer()
 
     const plan = await inst.plan(src, 'install')
@@ -245,7 +245,7 @@ describe('status line installer', () => {
       plan.diff.filter((d) => d.type !== 'same').map((d) => `${d.type} ${d.text.trim()}`)
     ).toEqual([
       'remove "command": "~/.claude/my status.sh",',
-      'add "command": "sh /home/beau/.claude-session-dashboard/bin/statusline.sh",'
+      'add "command": "sh /home/alex/.claude-session-dashboard/bin/statusline.sh",'
     ])
     // Nothing is written by planning.
     expect(await readFile(settingsPath, 'utf8')).toBe(settingsText)
@@ -259,7 +259,7 @@ describe('status line installer', () => {
       model: 'opus',
       statusLine: {
         type: 'command',
-        command: 'sh /home/beau/.claude-session-dashboard/bin/statusline.sh',
+        command: 'sh /home/alex/.claude-session-dashboard/bin/statusline.sh',
         padding: 1
       },
       env: { FOO: '1' }
@@ -288,7 +288,7 @@ describe('status line installer', () => {
     await mkdir(join(home, '.claude'), { recursive: true })
     const settingsPath = join(home, '.claude', 'settings.json')
     await writeFile(settingsPath, settingsText)
-    const src = source('wsl', home, 'beau')
+    const src = source('wsl', home, 'alex')
     const { inst } = await installer()
     await inst.apply(src, 'install', (await inst.plan(src, 'install')).token)
     // Claude Code (or the user) edits another key meanwhile.
@@ -326,7 +326,7 @@ describe('status line installer', () => {
     const home = join(root, 'home')
     await mkdir(join(home, '.claude'), { recursive: true })
     const p = join(home, '.claude', 'settings.json')
-    const src = source('wsl', home, 'beau')
+    const src = source('wsl', home, 'alex')
     const { inst } = await installer()
     await writeFile(p, '{ "a": 1, }')
     expect((await inst.plan(src, 'install')).error).toMatch(/isn't valid JSON/)

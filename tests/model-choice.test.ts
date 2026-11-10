@@ -41,7 +41,7 @@ const PS = TOOLS.powershell
 const WT = TOOLS.wt!
 const WSL = TOOLS.wsl
 const CLAUDE = TOOLS.claude!
-const SPACES = 'C:\\Users\\beau\\My Projects\\desktop app'
+const SPACES = 'C:\\Users\\alex\\My Projects\\desktop app'
 
 const launch = (o: Partial<LaunchInput> & Pick<LaunchInput, 'env' | 'cwd' | 'terminal'>) =>
   buildLaunchCommand({ sessionId: ID, fork: false, skipPermissions: false, tools: TOOLS, ...o })
@@ -199,13 +199,13 @@ describe('launch commands with a model and effort', () => {
     ).toContain(`--model 'sonnet[1m]' --resume`)
     // bash would expand [1m] as a glob without quotes.
     expect(
-      launch({ env: 'wsl', distro: 'Ubuntu', cwd: '/home/beau/x', terminal: 'wt', modelChoice: m })
+      launch({ env: 'wsl', distro: 'Ubuntu', cwd: '/home/alex/x', terminal: 'wt', modelChoice: m })
         .claudeCommand
     ).toBe(`claude --model 'sonnet[1m]' --resume ${ID}`)
   })
 
   it('WSL in every terminal (path with spaces)', () => {
-    const cwd = '/home/beau/My Projects/orders api'
+    const cwd = '/home/alex/My Projects/orders api'
     const line = `claude --model opus --effort medium --resume ${ID} --fork-session`
     const m = { model: 'opus', effort: 'medium' as const }
     const wt = launch({
@@ -245,7 +245,7 @@ describe('launch commands with a model and effort', () => {
 })
 
 describe('where the choice comes from', () => {
-  const cwd = 'C:\\Users\\beau\\code\\acme-web'
+  const cwd = 'C:\\Users\\alex\\code\\acme-web'
   const win = { env: 'windows' as const, cwd }
   const settings = {
     defaultModel: 'sonnet',
@@ -366,16 +366,16 @@ describe('saving the choice', () => {
     expect(
       sanitizeProjectModels({
         'C:\\Code\\App': { model: 'opus', effort: 'low' },
-        'wsl:Ubuntu:/home/beau/x': { model: 'rm -rf /', effort: 'nope' },
-        'wsl:Ubuntu:/home/beau/Y': { effort: 'default' },
+        'wsl:Ubuntu:/home/alex/x': { model: 'rm -rf /', effort: 'nope' },
+        'wsl:Ubuntu:/home/alex/Y': { effort: 'default' },
         'wsl:Ubuntu:relative': { model: 'opus' },
         // A bare Linux path doesn't say which distro: dropped, not applied to all of them.
-        '/home/beau/z': { model: 'sonnet' },
+        '/home/alex/z': { model: 'sonnet' },
         bad: 'opus'
       })
     ).toEqual({
       'c:\\code\\app': { model: 'opus', effort: 'low' },
-      'wsl:Ubuntu:/home/beau/Y': { effort: 'default' }
+      'wsl:Ubuntu:/home/alex/Y': { effort: 'default' }
     })
     expect(sanitizeProjectModels(null)).toEqual({})
     expect(sanitizeProjectModels(['x'])).toEqual({})

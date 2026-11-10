@@ -57,7 +57,7 @@ function session(turns: [string, string][], start = '2026-10-14T15:00:00Z'): str
 }
 
 function job(key: string, text: string, p: Partial<IndexJob> = {}): IndexJob {
-  const path = `C:\\Users\\beau\\.claude\\projects\\p\\${key}.jsonl`
+  const path = `C:\\Users\\alex\\.claude\\projects\\p\\${key}.jsonl`
   files.set(path, text)
   return {
     key,
@@ -313,14 +313,14 @@ describe('saving', () => {
 
 describe('only session files are opened', () => {
   it.each([
-    'C:\\Users\\beau\\.claude\\.credentials.json',
-    'C:\\Users\\beau\\.codex\\auth.json',
-    'C:\\Users\\beau\\AppData\\Roaming\\Claude\\local-agent-mode-sessions\\x\\.claude\\.credentials.json',
-    '/home/beau/.ssh/id_ed25519.pem',
-    '/home/beau/tokens.jsonl',
-    '/home/beau/secret-notes.jsonl',
+    'C:\\Users\\alex\\.claude\\.credentials.json',
+    'C:\\Users\\alex\\.codex\\auth.json',
+    'C:\\Users\\alex\\AppData\\Roaming\\Claude\\local-agent-mode-sessions\\x\\.claude\\.credentials.json',
+    '/home/alex/.ssh/id_ed25519.pem',
+    '/home/alex/tokens.jsonl',
+    '/home/alex/secret-notes.jsonl',
     'C:\\x\\..\\..\\Windows\\win.ini',
-    '/home/beau/.claude/projects/p/notes.txt',
+    '/home/alex/.claude/projects/p/notes.txt',
     ''
   ])('refuses %s before touching it', async (path) => {
     expect(() => assertSessionFile(path)).toThrow('Not a session file')
@@ -341,21 +341,21 @@ describe('only session files are opened', () => {
   it('reads Claude Code sessions and Codex rollouts', async () => {
     expect(() =>
       assertSessionFile(
-        'C:\\Users\\beau\\.claude\\projects\\p\\7f3c9a12-4b8e-4d21-9c6a-1e2f3a4b5c6d.jsonl'
+        'C:\\Users\\alex\\.claude\\projects\\p\\7f3c9a12-4b8e-4d21-9c6a-1e2f3a4b5c6d.jsonl'
       )
     ).not.toThrow()
     expect(() =>
       assertSessionFile(
-        '\\\\wsl.localhost\\Ubuntu\\home\\beau\\.codex\\sessions\\2026\\10\\01\\rollout-2026-10-01T10-00-00-01a0.jsonl.zst'
+        '\\\\wsl.localhost\\Ubuntu\\home\\alex\\.codex\\sessions\\2026\\10\\01\\rollout-2026-10-01T10-00-00-01a0.jsonl.zst'
       )
     ).not.toThrow()
     // Any case, as the session scan accepts it on Windows; credential shapes still refused.
-    expect(() => assertSessionFile('C:\\Users\\beau\\.claude\\projects\\p\\S.JSONL')).not.toThrow()
+    expect(() => assertSessionFile('C:\\Users\\alex\\.claude\\projects\\p\\S.JSONL')).not.toThrow()
     expect(() =>
-      assertSessionFile('C:\\Users\\beau\\.codex\\sessions\\rollout-2026-x.Jsonl.ZST')
+      assertSessionFile('C:\\Users\\alex\\.codex\\sessions\\rollout-2026-x.Jsonl.ZST')
     ).not.toThrow()
-    expect(() => assertSessionFile('C:\\Users\\beau\\.claude\\TOKENS.JSONL')).toThrow()
-    expect(() => assertSessionFile('C:\\Users\\beau\\.codex\\AUTH.JSON')).toThrow()
+    expect(() => assertSessionFile('C:\\Users\\alex\\.claude\\TOKENS.JSONL')).toThrow()
+    expect(() => assertSessionFile('C:\\Users\\alex\\.codex\\AUTH.JSON')).toThrow()
     const msgs = await readSessionMessages(
       { path: 'C:\\p\\s.jsonl', provider: 'claude' },
       { readText: async () => session([['hello', 'world']]) }

@@ -37,7 +37,7 @@ describe('analyzeEvents', () => {
   it('reads a new-format session', () => {
     const a = analyzeEvents(parseJsonl(read(SESSIONS.safari)).events)
     expect(a.sessionId).toBe('7f3c9a12-4b8e-4d21-9c6a-1e2f3a4b5c6d')
-    expect(a.cwd).toBe('C:\\Users\\beau\\code\\acme-web')
+    expect(a.cwd).toBe('C:\\Users\\alex\\code\\acme-web')
     expect(a.gitBranch).toBe('fix/login-redirect')
     expect(a.version).toBe('2.0.14')
     expect(a.summary).toBe('Fix Safari login redirect loop caused by cookie path')
@@ -52,7 +52,7 @@ describe('analyzeEvents', () => {
 
   it('reads a legacy session (string content, no gitBranch)', () => {
     const a = analyzeEvents(parseJsonl(read(SESSIONS.legacy)).events)
-    expect(a.cwd).toBe('C:\\Users\\beau\\My Projects\\desktop app')
+    expect(a.cwd).toBe('C:\\Users\\alex\\My Projects\\desktop app')
     expect(a.gitBranch).toBeUndefined()
     expect(a.version).toBe('0.2.115')
     expect(a.userMessageCount).toBe(2)

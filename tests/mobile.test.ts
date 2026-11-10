@@ -89,11 +89,11 @@ describe('pairing and tokens', () => {
     const reg = new DeviceRegistry(st, clock)
     const p = reg.startPairing('https://pc.tail.ts.net:8443')
     expect(p.url).toBe(`https://pc.tail.ts.net:8443/#pair=${p.code}`)
-    const r = reg.pair(p.code.toLowerCase(), "Beau's <iPhone>", 'Safari')
+    const r = reg.pair(p.code.toLowerCase(), "Alex's <iPhone>", 'Safari')
     expect(r.ok).toBe(true)
     if (!r.ok) return
     expect(r.token).toMatch(/^[A-Za-z0-9_-]{43}$/)
-    expect(r.device.name).toBe("Beau's iPhone")
+    expect(r.device.name).toBe("Alex's iPhone")
     await st.flush()
     const saved = JSON.stringify(st.value)
     expect(saved).not.toContain(r.token)
@@ -716,9 +716,9 @@ describe('tailscale serve', () => {
       JSON.stringify({
         Version: '1.104.2-t1',
         BackendState: 'Running',
-        Self: { DNSName: 'ryzen.tail1.ts.net.' },
+        Self: { DNSName: 'my-pc.tail1.ts.net.' },
         CurrentTailnet: { Name: 'me@example.com' },
-        CertDomains: ['ryzen.tail1.ts.net'],
+        CertDomains: ['my-pc.tail1.ts.net'],
         Peer: {
           x: { HostName: 'pixel', OS: 'android', Online: false },
           y: { HostName: 'nas', OS: 'linux' }
@@ -728,7 +728,7 @@ describe('tailscale serve', () => {
     expect(s).toMatchObject({
       version: '1.104.2',
       loggedIn: true,
-      dnsName: 'ryzen.tail1.ts.net',
+      dnsName: 'my-pc.tail1.ts.net',
       httpsEnabled: true
     })
     expect(s.phones).toEqual([{ name: 'pixel', os: 'Android', online: false }])

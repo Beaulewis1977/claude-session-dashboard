@@ -757,7 +757,7 @@ async function main(): Promise<void> {
     }),
     webAppFile: webAppFile(rendererDir),
     tailscale: FIXTURES
-      ? fakeTailscale({ dnsName: 'ryzen-desktop.tail1234.ts.net' })
+      ? fakeTailscale({ dnsName: 'my-pc.tail1234.ts.net' })
       : new TailscaleClient(),
     keys: phoneKeys,
     appVersion: app.getVersion(),
@@ -803,7 +803,7 @@ async function main(): Promise<void> {
     hostKeys: fakeSsh?.hostKeys ?? realHostKeys,
     tailscale: () => mobile.refreshTailscale(),
     exists: fileExists,
-    user: FIXTURES ? 'beau' : sshUserName()
+    user: FIXTURES ? 'alex' : sshUserName()
   })
   registerTerminalIpc({ terminal, launcher, dataDir: paths.dataDir })
   // Phones show or hide "Open terminal here" from this.

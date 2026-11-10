@@ -42,8 +42,8 @@ function commit(n: number, p: Partial<CommitInfo> = {}): CommitInfo {
   return {
     sha: sha(n),
     parents: [sha(n - 1)],
-    authorEmail: 'beau@example.com',
-    committerEmail: 'beau@example.com',
+    authorEmail: 'alex@example.com',
+    committerEmail: 'alex@example.com',
     at: at(30),
     ct: at(30),
     subject: `Commit ${n}`,
@@ -64,9 +64,9 @@ const links = (r: Map<string, CommitLink[]>, key: string) =>
 
 describe('paths', () => {
   it('normalises Windows, WSL drive and relative paths', () => {
-    expect(normPath('C:\\Users\\beau\\code\\x\\')).toBe('c:/Users/beau/code/x')
-    expect(normPath('/mnt/c/Users/beau/./code/../x')).toBe('c:/Users/beau/x')
-    expect(normPath('/home/beau/x')).toBe('/home/beau/x')
+    expect(normPath('C:\\Users\\alex\\code\\x\\')).toBe('c:/Users/alex/code/x')
+    expect(normPath('/mnt/c/Users/alex/./code/../x')).toBe('c:/Users/alex/x')
+    expect(normPath('/home/alex/x')).toBe('/home/alex/x')
     expect(normPath('src/../lib/a.ts')).toBe('lib/a.ts')
     expect(normPath('\\\\wsl.localhost\\Ubuntu\\home\\x')).toBe('//wsl.localhost/Ubuntu/home/x')
   })
@@ -78,9 +78,9 @@ describe('paths', () => {
     expect(repoFile('a.ts', win, 'src')).toBe('src/a.ts')
     expect(repoFile('../outside.ts', win, '')).toBeUndefined()
     expect(repoFile('D:\\other\\x.ts', win, '')).toBeUndefined()
-    const linux = { root: '/home/beau/api', caseInsensitive: false }
-    expect(repoFile('/home/beau/api/internal/X.go', linux, '')).toBe('internal/X.go')
-    expect(relativeTo('/home/beau/api', '/home/beau/api', false)).toBe('')
+    const linux = { root: '/home/alex/api', caseInsensitive: false }
+    expect(repoFile('/home/alex/api/internal/X.go', linux, '')).toBe('internal/X.go')
+    expect(relativeTo('/home/alex/api', '/home/alex/api', false)).toBe('')
   })
 })
 
@@ -154,7 +154,7 @@ describe('confidence', () => {
     const base = { subject: 'Tidy', at: at(10), ct: at(300) }
     const other = commit(9, { ...base, authorEmail: 'x@y', committerEmail: 'x@y' })
     expect(
-      matchRepo(repo([other], 'beau@example.com'), [session('a', { signals: seen(other) })]).get(
+      matchRepo(repo([other], 'alex@example.com'), [session('a', { signals: seen(other) })]).get(
         'a'
       )
     ).toEqual([])
@@ -171,7 +171,7 @@ describe('confidence', () => {
     // The same copy, by the repo's user: High.
     expect(
       links(
-        matchRepo(repo([head], 'beau@example.com'), [session('a', { signals: seen(head) })]),
+        matchRepo(repo([head], 'alex@example.com'), [session('a', { signals: seen(head) })]),
         'a'
       )
     ).toEqual([[head.sha, 'high']])
@@ -203,10 +203,10 @@ describe('confidence', () => {
 
   it("needs the repo's user, no merge commit, the right agent and not the starting HEAD", () => {
     const c = commit(1, { authorEmail: 'someone@else.com', committerEmail: 'someone@else.com' })
-    expect(matchRepo(repo([c], 'beau@example.com'), [session('a')]).get('a')).toEqual([])
-    expect(matchRepo(repo([c], 'BEAU@example.com'), [session('a')]).get('a')).toEqual([])
+    expect(matchRepo(repo([c], 'alex@example.com'), [session('a')]).get('a')).toEqual([])
+    expect(matchRepo(repo([c], 'ALEX@example.com'), [session('a')]).get('a')).toEqual([])
     const mine = commit(2)
-    expect(links(matchRepo(repo([mine], 'BEAU@example.com'), [session('a')]), 'a')).toEqual([
+    expect(links(matchRepo(repo([mine], 'ALEX@example.com'), [session('a')]), 'a')).toEqual([
       [mine.sha, 'low']
     ])
     const merge = commit(3, { parents: [sha(1), sha(2)] })
@@ -341,36 +341,36 @@ describe('pull requests and the badge', () => {
   it("takes the session's own PRs in this repo, merge PRs of linked commits, and gh by branch", () => {
     const c = commit(1, { pr: 40 })
     const own = {
-      owner: 'beau',
+      owner: 'alex',
       repo: 'acme',
       number: 14,
-      url: 'https://github.com/beau/acme/pull/14',
+      url: 'https://github.com/alex/acme/pull/14',
       at: at(5)
     }
     const elsewhere = {
       ...own,
       repo: 'other',
       number: 3,
-      url: 'https://github.com/beau/other/pull/3'
+      url: 'https://github.com/alex/other/pull/3'
     }
     const prs = sessionPrs({
       signals: signals({ prs: [own, elsewhere] }),
       links: [{ sha: c.sha, level: 'high', reasons: [] }],
       commits: new Map([[c.sha, c]]),
-      github: 'beau/acme',
+      github: 'alex/acme',
       ghPrs: [
         { number: 14, title: 'Fix login', url: own.url, state: 'MERGED', headRefName: 'fix/login' },
         {
           number: 99,
           title: 'Unrelated',
-          url: 'https://github.com/beau/acme/pull/99',
+          url: 'https://github.com/alex/acme/pull/99',
           state: 'OPEN',
           headRefName: 'other'
         },
         {
           number: 41,
           title: 'By branch',
-          url: 'https://github.com/beau/acme/pull/41',
+          url: 'https://github.com/alex/acme/pull/41',
           state: 'OPEN',
           isDraft: true,
           headRefName: 'fix/login'

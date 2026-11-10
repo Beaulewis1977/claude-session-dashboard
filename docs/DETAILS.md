@@ -675,7 +675,7 @@ installs a tiny **status line bridge** that saves that payload for it.
 1. Open **Settings → Live limits** (or click **Enable live limits** on the Usage view).
 2. Pick your plan (default **Max 5x**).
 3. Click **Enable live limits** next to each environment you use: **Windows**, and each WSL distro
-   user (for example **WSL: Ubuntu · beau**).
+   user (for example **WSL: Ubuntu · alex**).
 4. Read the dialog. It shows the exact change to that environment's `settings.json` and, if you
    already have a status line, the command the bridge will pass the data on to. Click **Enable live
    limits**.

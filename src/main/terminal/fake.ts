@@ -86,7 +86,7 @@ export function fakePc(
           const fp = /SHA256:\S+/.exec(String(q.Fingerprint ?? ''))?.[0] ?? ''
           state.events.unshift({
             at: new Date().toISOString(),
-            message: `sshd: Accepted publickey for beau from 100.101.102.103 port 50122 ssh2: ED25519 ${fp}`
+            message: `sshd: Accepted publickey for alex from 100.101.102.103 port 50122 ssh2: ED25519 ${fp}`
           })
           return { ok: true, already, appended: !already }
         }

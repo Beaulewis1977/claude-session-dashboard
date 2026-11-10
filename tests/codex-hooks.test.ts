@@ -49,8 +49,8 @@ const GSD = `{
         "hooks": [
           {
             "type": "command",
-            "command": "\\"C:/Users/beau/.codex/hooks/check-update.cmd\\"",
-            "commandWindows": "\\"C:/Users/beau/.codex/hooks/check-update.cmd\\""
+            "command": "\\"C:/Users/alex/.codex/hooks/check-update.cmd\\"",
+            "commandWindows": "\\"C:/Users/alex/.codex/hooks/check-update.cmd\\""
           }
         ]
       }
@@ -74,7 +74,7 @@ function source(home: string, over: Partial<SourceInfo> = {}): SourceInfo {
 }
 
 async function setup(hooksJson?: string, configToml = 'model = "gpt"\n') {
-  const home = join(root, 'Users', 'beau')
+  const home = join(root, 'Users', 'alex')
   const codex = join(home, '.codex')
   await mkdir(join(codex, 'sessions'), { recursive: true })
   if (hooksJson !== undefined) await writeFile(join(codex, 'hooks.json'), hooksJson)
@@ -105,24 +105,24 @@ const read = (p: string): Promise<string> => readFile(p, 'utf8')
 
 describe('where the Codex hook goes', () => {
   it('a Windows home: hooks.json next to config.toml, the script in the bridge folder', () => {
-    const p = codexHookPaths(source('C:\\Users\\beau'))!
-    expect(p.hooksPath).toBe(join('C:\\Users\\beau', '.codex', 'hooks.json'))
+    const p = codexHookPaths(source('C:\\Users\\alex'))!
+    expect(p.hooksPath).toBe(join('C:\\Users\\alex', '.codex', 'hooks.json'))
     expect(p.codexHooksPath).toBe(p.hooksPath)
-    expect(p.bridgeDir).toBe(join('C:\\Users\\beau', '.claude-session-dashboard'))
+    expect(p.bridgeDir).toBe(join('C:\\Users\\alex', '.claude-session-dashboard'))
     expect(p.command).toBe(
       windowsHookCommand(
-        join('C:\\Users\\beau', '.claude-session-dashboard', 'bin', 'csd-codex-hook.ps1')
+        join('C:\\Users\\alex', '.claude-session-dashboard', 'bin', 'csd-codex-hook.ps1')
       )
     )
   })
 
   it('a WSL home: the Linux path Codex sees, and a plain sh command', () => {
-    const home = '\\\\wsl.localhost\\Ubuntu\\home\\beau'
+    const home = '\\\\wsl.localhost\\Ubuntu\\home\\alex'
     const p = codexHookPaths(
-      source(home, { id: 'codex-wsl-Ubuntu-beau', env: 'wsl', distro: 'Ubuntu', user: 'beau' })
+      source(home, { id: 'codex-wsl-Ubuntu-alex', env: 'wsl', distro: 'Ubuntu', user: 'alex' })
     )!
-    expect(p.codexHooksPath).toBe('/home/beau/.codex/hooks.json')
-    expect(p.command).toBe('sh /home/beau/.claude-session-dashboard/bin/csd-codex-hook.sh')
+    expect(p.codexHooksPath).toBe('/home/alex/.codex/hooks.json')
+    expect(p.command).toBe('sh /home/alex/.claude-session-dashboard/bin/csd-codex-hook.sh')
   })
 
   it('never for a custom CODEX_HOME, another name, or a Claude home', () => {
@@ -136,17 +136,17 @@ describe('where the Codex hook goes', () => {
 
 describe('the write guard', () => {
   it('allows only hooks.json (and the app’s temp files next to it) in a .codex folder', () => {
-    expect(() => assertCodexHooksWrite('C:\\Users\\beau\\.codex\\hooks.json')).not.toThrow()
+    expect(() => assertCodexHooksWrite('C:\\Users\\alex\\.codex\\hooks.json')).not.toThrow()
     expect(() =>
-      assertCodexHooksWrite('C:\\Users\\beau\\.codex\\hooks.json.csd-1a2b.tmp')
+      assertCodexHooksWrite('C:\\Users\\alex\\.codex\\hooks.json.csd-1a2b.tmp')
     ).not.toThrow()
     for (const bad of [
-      'C:\\Users\\beau\\.codex\\config.toml',
-      'C:\\Users\\beau\\.codex\\auth.json',
-      'C:\\Users\\beau\\.codex\\sessions\\hooks.json',
-      'C:\\Users\\beau\\.claude\\hooks.json',
-      'C:\\Users\\beau\\.claude\\.codex\\hooks.json',
-      'C:\\Users\\beau\\hooks.json'
+      'C:\\Users\\alex\\.codex\\config.toml',
+      'C:\\Users\\alex\\.codex\\auth.json',
+      'C:\\Users\\alex\\.codex\\sessions\\hooks.json',
+      'C:\\Users\\alex\\.claude\\hooks.json',
+      'C:\\Users\\alex\\.claude\\.codex\\hooks.json',
+      'C:\\Users\\alex\\hooks.json'
     ])
       expect(() => assertCodexHooksWrite(bad), bad).toThrow(UnsafeWriteError)
   })
@@ -180,7 +180,7 @@ describe('installing and removing the hook', () => {
     const script = join(
       root,
       'Users',
-      'beau',
+      'alex',
       '.claude-session-dashboard',
       'bin',
       'csd-codex-hook.ps1'
@@ -329,7 +329,7 @@ describe('trust, read from config.toml', () => {
 
   it('a trust entry an older hook left at the same position is not the app’s', async () => {
     // config.toml already trusts *something* at permission_request:0:0 (a hook removed since).
-    const home = join(root, 'Users', 'beau', '.codex')
+    const home = join(root, 'Users', 'alex', '.codex')
     const key = `${join(home, 'hooks.json')}:permission_request:0:0`
     const stale = `[hooks.state.'${key}']\ntrusted_hash = "sha256:old"\n`
     const { codex, src, inst } = await setup(GSD, stale)
@@ -345,7 +345,7 @@ describe('trust, read from config.toml', () => {
   })
 
   it('an install made before the app recorded old entries: config.toml not saved since is stale', async () => {
-    const home = join(root, 'Users', 'beau', '.codex')
+    const home = join(root, 'Users', 'alex', '.codex')
     const key = `${join(home, 'hooks.json')}:permission_request:0:0`
     const { codex, src, inst } = await setup(
       GSD,

@@ -350,7 +350,7 @@ afterEach(async () => {
   await rm(root, { recursive: true, force: true, maxRetries: 5 })
 })
 
-/** The fixture sources with the bridge installed for Windows and WSL (beau). */
+/** The fixture sources with the bridge installed for Windows and WSL (alex). */
 async function fixtureLimits() {
   await cp(FIXTURES, join(root, 'fixtures'), { recursive: true })
   await prepareFixtures(root)
@@ -483,7 +483,7 @@ describe('LimitsService (fixtures)', () => {
       expect(s.pace7d?.status).toBe('behind')
       expect(s.split5h?.pct).toBeCloseTo(47.1)
       expect(s.limitHits.length).toBeGreaterThan(0)
-      expect(s.envs.find((e) => e.sourceId === 'wsl-Ubuntu-beau')?.installed).toBe(true)
+      expect(s.envs.find((e) => e.sourceId === 'wsl-Ubuntu-alex')?.installed).toBe(true)
       expect(s.envs.find((e) => e.sourceId === 'windows')).toMatchObject({
         installed: true,
         chained: '~/.claude/statusline.sh'

@@ -166,15 +166,15 @@ rmSync(join(root, 'windows'), { recursive: true, force: true })
 rmSync(join(root, 'wsl'), { recursive: true, force: true })
 rmSync(join(root, 'archived'), { recursive: true, force: true })
 
-const winHome = join(root, 'windows', 'Users', 'beau')
+const winHome = join(root, 'windows', 'Users', 'alex')
 const winProjects = join(winHome, '.claude', 'projects')
-const ubuntuHome = join(root, 'wsl', 'Ubuntu', 'home', 'beau')
+const ubuntuHome = join(root, 'wsl', 'Ubuntu', 'home', 'alex')
 const ubuntuProjects = join(ubuntuHome, '.claude', 'projects')
 const ubuntuRootProjects = join(root, 'wsl', 'Ubuntu', 'root', '.claude', 'projects')
 
 // 1. Windows — fix a login redirect loop (new format, summary, thinking, edits)
 {
-  const cwd = 'C:\\Users\\beau\\code\\acme-web'
+  const cwd = 'C:\\Users\\alex\\code\\acme-web'
   const s = new Session({
     id: '7f3c9a12-4b8e-4d21-9c6a-1e2f3a4b5c6d',
     entrypoint: 'claude-vscode',
@@ -195,14 +195,14 @@ const ubuntuRootProjects = join(root, 'wsl', 'Ubuntu', 'root', '.claude', 'proje
     'Grep',
     {
       pattern: 'session_token',
-      path: 'C:\\Users\\beau\\code\\acme-web\\src',
+      path: 'C:\\Users\\alex\\code\\acme-web\\src',
       output_mode: 'files_with_matches'
     },
     'Found 3 files\nsrc\\middleware.ts\nsrc\\lib\\auth\\cookies.ts\nsrc\\app\\api\\auth\\callback\\route.ts'
   )
   s.tool(
     'Read',
-    { file_path: 'C:\\Users\\beau\\code\\acme-web\\src\\lib\\auth\\cookies.ts' },
+    { file_path: 'C:\\Users\\alex\\code\\acme-web\\src\\lib\\auth\\cookies.ts' },
     `     1\timport { cookies } from 'next/headers'
      2\t
      3\texport const SESSION_COOKIE = 'session_token'
@@ -224,11 +224,11 @@ There's a second issue: \`sameSite: 'none'\` isn't needed for a first-party logi
   s.tool(
     'Edit',
     {
-      file_path: 'C:\\Users\\beau\\code\\acme-web\\src\\lib\\auth\\cookies.ts',
+      file_path: 'C:\\Users\\alex\\code\\acme-web\\src\\lib\\auth\\cookies.ts',
       old_string: "    sameSite: 'none',\n    domain: '.acme.dev',\n    path: '/auth',",
       new_string: "    sameSite: 'lax',\n    path: '/',"
     },
-    "The file C:\\Users\\beau\\code\\acme-web\\src\\lib\\auth\\cookies.ts has been updated. Here's the result of running `cat -n` on a snippet of the edited file:\n     6\t  cookies().set(SESSION_COOKIE, token, {\n     7\t    httpOnly: true,\n     8\t    secure: true,\n     9\t    sameSite: 'lax',\n    10\t    path: '/',\n    11\t  })"
+    "The file C:\\Users\\alex\\code\\acme-web\\src\\lib\\auth\\cookies.ts has been updated. Here's the result of running `cat -n` on a snippet of the edited file:\n     6\t  cookies().set(SESSION_COOKIE, token, {\n     7\t    httpOnly: true,\n     8\t    secure: true,\n     9\t    sameSite: 'lax',\n    10\t    path: '/',\n    11\t  })"
   )
   s.tool(
     'Bash',
@@ -259,11 +259,11 @@ You may want to add a regression test that asserts the cookie path is \`/\`. Wan
   s.tool(
     'Write',
     {
-      file_path: 'C:\\Users\\beau\\code\\acme-web\\src\\lib\\auth\\cookies.test.ts',
+      file_path: 'C:\\Users\\alex\\code\\acme-web\\src\\lib\\auth\\cookies.test.ts',
       content:
         "import { describe, it, expect, vi } from 'vitest'\nimport { setSessionCookie } from './cookies'\n\nconst set = vi.fn()\nvi.mock('next/headers', () => ({ cookies: () => ({ set }) }))\n\ndescribe('setSessionCookie', () => {\n  it('scopes the cookie to the whole site', () => {\n    setSessionCookie('abc')\n    expect(set).toHaveBeenCalledWith('session_token', 'abc', expect.objectContaining({ path: '/', sameSite: 'lax' }))\n  })\n})\n"
     },
-    'File created successfully at: C:\\Users\\beau\\code\\acme-web\\src\\lib\\auth\\cookies.test.ts',
+    'File created successfully at: C:\\Users\\alex\\code\\acme-web\\src\\lib\\auth\\cookies.test.ts',
     {
       text: "Browsers can't be emulated in a unit test, but we can lock in the cookie attributes that matter for Safari:"
     }
@@ -280,7 +280,7 @@ You may want to add a regression test that asserts the cookie path is \`/\`. Wan
 
 // 2. Windows — same project, no summary, a long first prompt, malformed lines
 {
-  const cwd = 'C:\\Users\\beau\\code\\acme-web'
+  const cwd = 'C:\\Users\\alex\\code\\acme-web'
   const s = new Session({
     id: '2b6d8e4f-1a3c-4e5f-8a7b-9c0d1e2f3a4b',
     cwd,
@@ -346,7 +346,7 @@ Nothing has been changed yet.`)
 
 // 3. Windows — path with spaces, legacy format (string content, no gitBranch)
 {
-  const cwd = 'C:\\Users\\beau\\My Projects\\desktop app'
+  const cwd = 'C:\\Users\\alex\\My Projects\\desktop app'
   const s = new Session({
     id: 'c41e2d7a-9b0f-4c3e-b5a6-7d8e9f0a1b2c',
     cwd,
@@ -391,7 +391,7 @@ Nothing has been changed yet.`)
 
 // 4. WSL Ubuntu — long API session: errors, huge output, MCP tool, subagent
 {
-  const cwd = '/home/beau/projects/orders-api'
+  const cwd = '/home/alex/projects/orders-api'
   const s = new Session({
     id: 'e9a1b2c3-d4e5-4f60-8172-839405a6b7c8',
     cwd,
@@ -406,11 +406,11 @@ Nothing has been changed yet.`)
   s.tool(
     'Glob',
     { pattern: 'internal/http/**/*.go' },
-    '/home/beau/projects/orders-api/internal/http/router.go\n/home/beau/projects/orders-api/internal/http/orders.go\n/home/beau/projects/orders-api/internal/http/orders_test.go\n/home/beau/projects/orders-api/internal/http/middleware.go'
+    '/home/alex/projects/orders-api/internal/http/router.go\n/home/alex/projects/orders-api/internal/http/orders.go\n/home/alex/projects/orders-api/internal/http/orders_test.go\n/home/alex/projects/orders-api/internal/http/middleware.go'
   )
   s.tool(
     'Read',
-    { file_path: '/home/beau/projects/orders-api/internal/http/orders.go', limit: 60 },
+    { file_path: '/home/alex/projects/orders-api/internal/http/orders.go', limit: 60 },
     `     1\tpackage http
      2\t
      3\timport (
@@ -438,20 +438,20 @@ Nothing has been changed yet.`)
   s.tool(
     'Edit',
     {
-      file_path: '/home/beau/projects/orders-api/internal/http/orders.go',
+      file_path: '/home/alex/projects/orders-api/internal/http/orders.go',
       old_string: '\torders, err := h.store.ListOrders(r.Context(), (page-1)*50, 50)',
       new_string:
         '\tif c := r.URL.Query().Get("cursor"); c != "" {\n\t\th.listOrdersByCursor(w, r, c)\n\t\treturn\n\t}\n\torders, err := h.store.ListOrders(r.Context(), (page-1)*50, 50)'
     },
-    'The file /home/beau/projects/orders-api/internal/http/orders.go has been updated.'
+    'The file /home/alex/projects/orders-api/internal/http/orders.go has been updated.'
   )
   s.tool(
     'Bash',
     { command: 'go test ./...' },
-    `# github.com/beau/orders-api/internal/http
+    `# github.com/alex/orders-api/internal/http
 internal/http/orders.go:14:5: h.listOrdersByCursor undefined (type *Handler has no field or method listOrdersByCursor)
-FAIL\tgithub.com/beau/orders-api/internal/http [build failed]
-ok  \tgithub.com/beau/orders-api/internal/store\t0.412s
+FAIL\tgithub.com/alex/orders-api/internal/http [build failed]
+ok  \tgithub.com/alex/orders-api/internal/store\t0.412s
 FAIL`,
     { isError: true }
   )
@@ -461,11 +461,11 @@ FAIL`,
   s.tool(
     'Write',
     {
-      file_path: '/home/beau/projects/orders-api/internal/http/cursor.go',
+      file_path: '/home/alex/projects/orders-api/internal/http/cursor.go',
       content:
         'package http\n\nimport (\n\t"encoding/base64"\n\t"encoding/json"\n\t"time"\n)\n\ntype cursor struct {\n\tCreatedAt time.Time `json:"t"`\n\tID        int64     `json:"i"`\n}\n\nfunc encodeCursor(c cursor) string {\n\tb, _ := json.Marshal(c)\n\treturn base64.RawURLEncoding.EncodeToString(b)\n}\n'
     },
-    'File created successfully at: /home/beau/projects/orders-api/internal/http/cursor.go'
+    'File created successfully at: /home/alex/projects/orders-api/internal/http/cursor.go'
   )
   const bigLog = Array.from(
     { length: 400 },
@@ -475,7 +475,7 @@ FAIL`,
   s.tool(
     'Bash',
     { command: 'go test ./internal/http -run TestListOrders -v' },
-    `${bigLog}\nPASS\nok  \tgithub.com/beau/orders-api/internal/http\t0.981s`
+    `${bigLog}\nPASS\nok  \tgithub.com/alex/orders-api/internal/http\t0.981s`
   )
   s.tool(
     'mcp__postgres__query',
@@ -514,7 +514,7 @@ curl 'localhost:8080/orders?cursor=eyJ0IjoiMjAyNi0xMC0yMFQxNTo0NTowMFoiLCJpIjo5O
 
 // 5. WSL Ubuntu — dotfiles: slash commands, compact summary, interruption
 {
-  const cwd = '/home/beau/dotfiles'
+  const cwd = '/home/alex/dotfiles'
   const s = new Session({
     id: '5d4c3b2a-1f0e-4d9c-8b7a-6f5e4d3c2b1a',
     cwd,
@@ -533,19 +533,19 @@ curl 'localhost:8080/orders?cursor=eyJ0IjoiMjAyNi0xMC0yMFQxNTo0NTowMFoiLCJpIjo5O
   s.say("I'll create a CLAUDE.md for your dotfiles repo after looking at the structure.")
   s.tool(
     'LS',
-    { path: '/home/beau/dotfiles' },
-    '- /home/beau/dotfiles/\n  - install.sh\n  - zsh/\n    - .zshrc\n    - aliases.zsh\n  - nvim/\n    - init.lua\n  - tmux/\n    - tmux.conf'
+    { path: '/home/alex/dotfiles' },
+    '- /home/alex/dotfiles/\n  - install.sh\n  - zsh/\n    - .zshrc\n    - aliases.zsh\n  - nvim/\n    - init.lua\n  - tmux/\n    - tmux.conf'
   )
   s.say('Created `CLAUDE.md` describing the install script and the zsh / nvim / tmux layout.')
   s.user('make the tmux prefix ctrl-a instead of ctrl-b', 120)
   s.tool(
     'Edit',
     {
-      file_path: '/home/beau/dotfiles/tmux/tmux.conf',
+      file_path: '/home/alex/dotfiles/tmux/tmux.conf',
       old_string: 'set -g prefix C-b',
       new_string: 'unbind C-b\nset -g prefix C-a\nbind C-a send-prefix'
     },
-    'The file /home/beau/dotfiles/tmux/tmux.conf has been updated.'
+    'The file /home/alex/dotfiles/tmux/tmux.conf has been updated.'
   )
   s.user('[Request interrupted by user]', 5)
   s.raw({
@@ -621,7 +621,7 @@ curl 'localhost:8080/orders?cursor=eyJ0IjoiMjAyNi0xMC0yMFQxNTo0NTowMFoiLCJpIjo5O
 
 // 7. Archived only — the original was cleaned up by Claude Code
 {
-  const cwd = 'C:\\Users\\beau\\code\\old-prototype'
+  const cwd = 'C:\\Users\\alex\\code\\old-prototype'
   const s = new Session({
     id: '9e8d7c6b-5a4f-4e3d-8c2b-1a0f9e8d7c6b',
     cwd,
@@ -637,7 +637,7 @@ curl 'localhost:8080/orders?cursor=eyJ0IjoiMjAyNi0xMC0yMFQxNTo0NTowMFoiLCJpIjo5O
   s.write(join(root, 'archived', 'windows', `${s.id}.jsonl`))
   writeFileSync(
     join(root, 'archived', 'windows', 'original-path.txt'),
-    join('windows', 'Users', 'beau', '.claude', 'projects', encodeProject(cwd), `${s.id}.jsonl`) +
+    join('windows', 'Users', 'alex', '.claude', 'projects', encodeProject(cwd), `${s.id}.jsonl`) +
       '\n'
   )
 }

@@ -1,6 +1,6 @@
 // Writes fixtures/git/repos.json: sample repos for fixtures mode
 // (`npm run dev -- --fixtures`), so the Changes tab has something to show
-// without running git. Sample data only (user "beau", example.com).
+// without running git. Sample data only (user "alex", example.com).
 // Run: node scripts/make-git-fixtures.mjs
 
 import { createHash } from 'node:crypto'
@@ -13,7 +13,7 @@ const sha = (s) => createHash('sha1').update(`csd-fixture:${s}`).digest('hex')
 const A = Object.fromEntries(
   ['a1', 'a2', 'a3', 'a4', 'a5', 'o1', 'o2', 's1', 's2'].map((k) => [k, sha(k)])
 )
-const email = 'beau@example.com'
+const email = 'alex@example.com'
 const BT = '`'
 
 function patch(files) {
@@ -34,8 +34,8 @@ const data = {
   repos: [
     {
       env: 'windows',
-      root: 'C:\\Users\\beau\\code\\acme-web',
-      remote: 'https://github.com/beau/acme-web.git',
+      root: 'C:\\Users\\alex\\code\\acme-web',
+      remote: 'https://github.com/alex/acme-web.git',
       userEmail: email,
       refs: [
         { ref: 'refs/heads/main', sha: A.a5 },
@@ -75,7 +75,7 @@ const data = {
           parents: [A.a1, A.a3],
           email,
           at: '2026-10-22T08:30:00Z',
-          subject: 'Merge pull request #14 from beau/fix/login-redirect',
+          subject: 'Merge pull request #14 from alex/fix/login-redirect',
           files: []
         },
         {
@@ -147,8 +147,8 @@ const data = {
     },
     {
       env: 'wsl:Ubuntu',
-      root: '/home/beau/projects/orders-api',
-      remote: 'git@github.com:beau/orders-api.git',
+      root: '/home/alex/projects/orders-api',
+      remote: 'git@github.com:alex/orders-api.git',
       userEmail: email,
       refs: [
         { ref: 'refs/heads/main', sha: A.o1 },
@@ -245,8 +245,8 @@ const data = {
     },
     {
       env: 'windows',
-      root: 'C:\\Users\\beau\\code\\shop api',
-      remote: 'https://example.com/beau/shop-api.git',
+      root: 'C:\\Users\\alex\\code\\shop api',
+      remote: 'https://example.com/alex/shop-api.git',
       userEmail: email,
       refs: [
         { ref: 'refs/heads/main', sha: A.s1 },
@@ -308,21 +308,21 @@ const data = {
   gh: {
     auth: 'ok',
     prs: {
-      'beau/orders-api': [
+      'alex/orders-api': [
         {
           number: 22,
           title: 'Cursor pagination for /orders',
-          url: 'https://github.com/beau/orders-api/pull/22',
+          url: 'https://github.com/alex/orders-api/pull/22',
           state: 'OPEN',
           isDraft: false,
           headRefName: 'feature/pagination'
         }
       ],
-      'beau/acme-web': [
+      'alex/acme-web': [
         {
           number: 14,
           title: 'Fix login redirect on Safari',
-          url: 'https://github.com/beau/acme-web/pull/14',
+          url: 'https://github.com/alex/acme-web/pull/14',
           state: 'MERGED',
           isDraft: false,
           headRefName: 'fix/login-redirect'

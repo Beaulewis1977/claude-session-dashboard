@@ -27,15 +27,15 @@ const BIG = '0c0c0c0c-0c0c-4c0c-8c0c-0c0c0c0c0c0c'
 const PROJECT = join(
   'windows',
   'Users',
-  'beau',
+  'alex',
   '.claude',
   'projects',
-  'C--Users-beau-code-acme-web'
+  'C--Users-alex-code-acme-web'
 )
 
 /** A session whose last reply carried 180k tokens of context (1-hour cache). */
 function bigSession(): string {
-  const base = { sessionId: BIG, cwd: 'C:\\Users\\beau\\code\\acme-web', version: '2.1.0' }
+  const base = { sessionId: BIG, cwd: 'C:\\Users\\alex\\code\\acme-web', version: '2.1.0' }
   const usage = (input: number, read: number, write: number) => ({
     input_tokens: input,
     cache_read_input_tokens: read,

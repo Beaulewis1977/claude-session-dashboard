@@ -75,7 +75,7 @@ import {
 } from '../src/main/core/launch'
 
 const FIXTURES = join(__dirname, '..', 'fixtures')
-const CODEX = join(FIXTURES, 'codex', 'windows', 'Users', 'beau', '.codex')
+const CODEX = join(FIXTURES, 'codex', 'windows', 'Users', 'alex', '.codex')
 const ID = {
   cli: '019a1111-0000-7000-8000-000000000001',
   desktop: '019a2222-0000-7000-8000-000000000002',
@@ -160,7 +160,7 @@ describe('reading rollouts', () => {
     expect(plain.sessionId).toBe(ID.cli)
     const zst = analyzeCodex(await readCodexText(DESKTOP_FILE), ID.desktop)
     expect(zst.sessionId).toBe(ID.desktop)
-    expect(zst.cwd).toBe('C:\\Users\\beau\\code\\marketing-site')
+    expect(zst.cwd).toBe('C:\\Users\\alex\\code\\marketing-site')
     expect(zst.firstPrompt).toBe('Add a dark mode toggle to the header.')
     // The same text, compressed by hand, reads the same.
     const text = await readFile(CLI_FILE)
@@ -274,7 +274,7 @@ describe('reading rollouts', () => {
 
   it('never reads a credential file, whatever path it is given', async () => {
     expect(isCredentialPath(join(CODEX, 'auth.json'))).toBe(true)
-    expect(isCredentialPath('/home/beau/.codex/auth.json')).toBe(true)
+    expect(isCredentialPath('/home/alex/.codex/auth.json')).toBe(true)
     expect(isCredentialPath(CLI_FILE)).toBe(false)
     await expect(readCodexText(join(CODEX, 'auth.json'))).rejects.toThrow(/Not a session file/)
   })
@@ -294,11 +294,11 @@ describe('parsing', () => {
     const a = analyzeCodex(await readCodexText(CLI_FILE), ID.cli)
     expect(a).toMatchObject({
       sessionId: ID.cli,
-      cwd: 'C:\\Users\\beau\\code\\shop api',
+      cwd: 'C:\\Users\\alex\\code\\shop api',
       version: '0.164.0',
       gitBranch: 'fix/checkout-totals',
       gitCommit: 'a1b2c3d4e5f6',
-      gitRemote: 'https://example.com/beau/shop-api.git',
+      gitRemote: 'https://example.com/alex/shop-api.git',
       models: ['gpt-5.5-codex'],
       effort: 'high',
       origin: { originator: 'codex_cli_rs', source: 'cli', threadSource: 'user' },
@@ -473,8 +473,8 @@ describe('Codex sessions in the catalogue', () => {
     expect(wsl).toMatchObject({
       env: 'wsl',
       distro: 'Ubuntu',
-      sourceId: 'codex-wsl-Ubuntu-beau',
-      cwd: '/home/beau/projects/dotfiles',
+      sourceId: 'codex-wsl-Ubuntu-alex',
+      cwd: '/home/alex/projects/dotfiles',
       source: 'codex-cli'
     })
     expect(codexOf(list, ID.desktop)).toMatchObject({
@@ -583,11 +583,11 @@ describe('Codex sessions in the catalogue', () => {
 // ---------------------------------------------------------------- launching
 
 const TOOLS: LaunchTools = {
-  wt: 'C:\\Users\\beau\\AppData\\Local\\Microsoft\\WindowsApps\\wt.exe',
+  wt: 'C:\\Users\\alex\\AppData\\Local\\Microsoft\\WindowsApps\\wt.exe',
   powershell: 'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe',
   cmd: 'C:\\Windows\\System32\\cmd.exe',
   wsl: 'C:\\Windows\\System32\\wsl.exe',
-  codex: 'C:\\Users\\beau\\AppData\\Roaming\\npm\\codex.cmd'
+  codex: 'C:\\Users\\alex\\AppData\\Roaming\\npm\\codex.cmd'
 }
 
 describe('launch commands', () => {
@@ -629,12 +629,12 @@ describe('launch commands', () => {
     const cmd = buildCodexLaunch({
       ...base,
       env: 'windows',
-      cwd: 'C:\\Users\\beau\\code\\shop api'
+      cwd: 'C:\\Users\\alex\\code\\shop api'
     })
     expect(cmd.command).toBe(TOOLS.wt)
     expect(cmd.args).toEqual([
       '-d',
-      'C:\\Users\\beau\\code\\shop api',
+      'C:\\Users\\alex\\code\\shop api',
       TOOLS.cmd,
       '/s',
       '/k',
@@ -644,10 +644,10 @@ describe('launch commands', () => {
     const ps = buildCodexLaunch({
       ...base,
       env: 'windows',
-      cwd: 'C:\\Users\\beau\\code\\shop api',
+      cwd: 'C:\\Users\\alex\\code\\shop api',
       terminal: 'powershell'
     })
-    expect(ps.args[2]).toContain("Set-Location -LiteralPath 'C:\\Users\\beau\\code\\shop api';")
+    expect(ps.args[2]).toContain("Set-Location -LiteralPath 'C:\\Users\\alex\\code\\shop api';")
     expect(ps.args[2]).toContain(`& '${TOOLS.codex}' resume ${ID.cli}`)
     const plain = buildCodexLaunch({ ...base, env: 'windows', cwd: 'C:\\x y', terminal: 'cmd' })
     expect(plain).toMatchObject({ command: TOOLS.cmd, spawnCwd: 'C:\\x y', verbatim: true })
@@ -658,7 +658,7 @@ describe('launch commands', () => {
       ...base,
       env: 'wsl',
       distro: 'Ubuntu',
-      cwd: '/home/beau/my projects/dotfiles',
+      cwd: '/home/alex/my projects/dotfiles',
       fork: true,
       skipPermissions: true
     })
@@ -667,7 +667,7 @@ describe('launch commands', () => {
       '-d',
       'Ubuntu',
       '--cd',
-      '/home/beau/my projects/dotfiles',
+      '/home/alex/my projects/dotfiles',
       '--',
       'bash',
       '-lic',
@@ -948,7 +948,7 @@ describe('review fixes', () => {
   it('follows a rollout that moved with the same size and time', async () => {
     const { sessions, layout } = await setup()
     const s = codexOf(sessions.list(), ID.gap)
-    const home = join(layout.sourcesDir, 'windows', 'Users', 'beau', '.codex')
+    const home = join(layout.sourcesDir, 'windows', 'Users', 'alex', '.codex')
     const moved = join(home, 'archived_sessions', `rollout-2026-10-15T11-11-11-${ID.gap}.jsonl`)
     const st = await stat(s.originalPath)
     await rename(s.originalPath, moved)
@@ -1123,7 +1123,7 @@ describe('second review fixes', () => {
   it("a late unlink for the old path doesn't drop a rollout that moved", async () => {
     const { sessions, layout } = await setup()
     const s = codexOf(sessions.list(), ID.gap)
-    const home = join(layout.sourcesDir, 'windows', 'Users', 'beau', '.codex')
+    const home = join(layout.sourcesDir, 'windows', 'Users', 'alex', '.codex')
     const moved = join(home, 'archived_sessions', `rollout-2026-10-15T11-11-11-${ID.gap}.jsonl`)
     await rename(s.originalPath, moved)
     // The add for the new path is handled first, then the unlink for the old one.
@@ -1382,9 +1382,9 @@ describe('third review fixes', () => {
       kind: 'auto',
       status: 'ok',
       sessionCount: 0,
-      projectsDir: 'C:\\Users\\beau\\.codex\\sessions'
+      projectsDir: 'C:\\Users\\alex\\.codex\\sessions'
     })
-    expect(win).toEqual({ agentEnv: { CODEX_HOME: 'C:\\Users\\beau\\.codex' } })
+    expect(win).toEqual({ agentEnv: { CODEX_HOME: 'C:\\Users\\alex\\.codex' } })
     const wsl = p.launch.target!({
       id: 'codex-wsl',
       label: 'WSL',
@@ -1472,14 +1472,14 @@ describe('a session whose folder belongs to the other environment', () => {
         join(day(home), `rollout-2026-10-22T10-0${n}-00-${id}.jsonl`),
         rollout(id, cwd, originator)
       )
-    await add(winHome, XID.mnt, '/mnt/c/Users/beau/code/reddit', 'Codex Desktop', 1)
-    await add(winHome, XID.home, '/home/beau/notes', 'Codex Desktop', 2)
-    await add(wslHome, XID.win, 'C:\\Users\\beau\\code\\win', 'codex-tui', 3)
+    await add(winHome, XID.mnt, '/mnt/c/Users/alex/code/reddit', 'Codex Desktop', 1)
+    await add(winHome, XID.home, '/home/alex/notes', 'Codex Desktop', 2)
+    await add(wslHome, XID.win, 'C:\\Users\\alex\\code\\win', 'codex-tui', 3)
     // A WSL session on a Windows drive (not under the sample distro root, as from
     // \\wsl.localhost, which can't show drive mounts), and one whose folder is gone.
-    await add(wslHome, XID.wslMnt, '/mnt/c/Users/beau/Documents/notes', 'codex-tui', 4)
-    await add(wslHome, XID.wslGone, '/home/beau/removed-project', 'codex-tui', 5)
-    await mkdir(join(t.layout.sourcesDir, 'wsl', 'Ubuntu', 'home', 'beau', 'notes'), {
+    await add(wslHome, XID.wslMnt, '/mnt/c/Users/alex/Documents/notes', 'codex-tui', 4)
+    await add(wslHome, XID.wslGone, '/home/alex/removed-project', 'codex-tui', 5)
+    await mkdir(join(t.layout.sourcesDir, 'wsl', 'Ubuntu', 'home', 'alex', 'notes'), {
       recursive: true
     })
     await t.sessions.rescan()
@@ -1487,11 +1487,11 @@ describe('a session whose folder belongs to the other environment', () => {
   }
 
   it('maps paths between WSL and Windows, and reads the default distro', () => {
-    expect(mntToWindows('/mnt/c/Users/beau/code/reddit')).toBe('C:\\Users\\beau\\code\\reddit')
+    expect(mntToWindows('/mnt/c/Users/alex/code/reddit')).toBe('C:\\Users\\alex\\code\\reddit')
     expect(mntToWindows('/mnt/d')).toBe('D:\\')
-    expect(mntToWindows('/home/beau')).toBeUndefined()
+    expect(mntToWindows('/home/alex')).toBeUndefined()
     expect(mntToWindows('/mnt/wsl/x')).toBeUndefined()
-    expect(windowsPathToWsl('C:\\Users\\beau\\code\\win')).toBe('/mnt/c/Users/beau/code/win')
+    expect(windowsPathToWsl('C:\\Users\\alex\\code\\win')).toBe('/mnt/c/Users/alex/code/win')
     expect([isLinuxPath('/mnt/c/x'), isLinuxPath('C:\\x'), isLinuxPath('//server/x')]).toEqual([
       true,
       false,
@@ -1521,22 +1521,22 @@ describe('a session whose folder belongs to the other environment', () => {
     expect(p.placement).toMatchObject({
       kind: 'translated',
       runIn: 'windows',
-      cwd: 'C:\\Users\\beau\\code\\reddit',
+      cwd: 'C:\\Users\\alex\\code\\reddit',
       appLink: true
     })
-    expect(p.cwd).toBe('C:\\Users\\beau\\code\\reddit')
+    expect(p.cwd).toBe('C:\\Users\\alex\\code\\reddit')
     expect(p.terminal).toBe('wt')
     // Codex runs where its .codex is: CODEX_HOME is that Windows folder, no wsl.exe.
     // The translated folder is given to Codex too (-C), or it asks which folder to use.
     expect(p.claudeCommand).toMatch(
       new RegExp(
-        `^\\$env:CODEX_HOME = '${esc(winHome)}'; codex resume -C '?C:\\\\Users\\\\beau\\\\code\\\\reddit'? ${XID.mnt}$`
+        `^\\$env:CODEX_HOME = '${esc(winHome)}'; codex resume -C '?C:\\\\Users\\\\alex\\\\code\\\\reddit'? ${XID.mnt}$`
       )
     )
     expect(p.commandLine).not.toContain('wsl.exe')
     const r = await launcher.launch({ key: s.key, ...base })
     expect(r).toMatchObject({ ok: true, simulated: true })
-    expect(r.commandLine).toContain('C:\\Users\\beau\\code\\reddit')
+    expect(r.commandLine).toContain('C:\\Users\\alex\\code\\reddit')
   })
 
   it('a Linux-only folder in the Windows .codex is not resumed unless opted in', async () => {
@@ -1545,7 +1545,7 @@ describe('a session whose folder belongs to the other environment', () => {
     const p = await launcher.preview({ key: s.key, ...base })
     expect(p.placement).toMatchObject({
       kind: 'wsl-only',
-      cwd: '/home/beau/notes',
+      cwd: '/home/alex/notes',
       distro: 'Ubuntu',
       distros: ['Ubuntu', 'Debian'],
       appLink: true
@@ -1559,7 +1559,7 @@ describe('a session whose folder belongs to the other environment', () => {
   it('opted in, Windows Codex runs in the WSL folder, always asking (never bypass)', async () => {
     const { sessions, launcher } = await crossSetup()
     const s = codexOf(sessions.list(), XID.home)
-    const unc = '\\\\wsl.localhost\\Ubuntu\\home\\beau\\notes'
+    const unc = '\\\\wsl.localhost\\Ubuntu\\home\\alex\\notes'
     // Bypass asked for: still off.
     const p = await launcher.preview({
       key: s.key,
@@ -1589,7 +1589,7 @@ describe('a session whose folder belongs to the other environment', () => {
       wslFolder: true,
       distro: 'Debian'
     })
-    expect(debian.cwd).toBe('\\\\wsl.localhost\\Debian\\home\\beau\\notes')
+    expect(debian.cwd).toBe('\\\\wsl.localhost\\Debian\\home\\alex\\notes')
     const r = await launcher.launch({
       key: s.key,
       fork: false,
@@ -1657,12 +1657,12 @@ describe('a session whose folder belongs to the other environment', () => {
     expect(p.placement).toMatchObject({
       kind: 'translated',
       runIn: 'wsl',
-      cwd: '/mnt/c/Users/beau/code/win'
+      cwd: '/mnt/c/Users/alex/code/win'
     })
     expect(p.placement?.appLink).toBeUndefined()
     expect(p.cwdExists).toBe(true)
-    expect(p.commandLine).toContain('--cd /mnt/c/Users/beau/code/win')
-    expect(p.claudeCommand).toMatch(/command codex resume -C '?\/mnt\/c\/Users\/beau\/code\/win'? /)
+    expect(p.commandLine).toContain('--cd /mnt/c/Users/alex/code/win')
+    expect(p.claudeCommand).toMatch(/command codex resume -C '?\/mnt\/c\/Users\/alex\/code\/win'? /)
   })
 
   it('a WSL /mnt/c folder counts as there when Windows has it (\\\\wsl.localhost hides drive mounts)', async () => {
@@ -1679,7 +1679,7 @@ describe('a session whose folder belongs to the other environment', () => {
     const r = await launcher.openShell(codexOf(sessions.list(), XID.home).key)
     expect(r).toMatchObject({ ok: true, simulated: true })
     expect(r.commandLine).toContain('-d Ubuntu')
-    expect(r.commandLine).toContain('/home/beau/notes')
+    expect(r.commandLine).toContain('/home/alex/notes')
   })
 
   it('without WSL, a /mnt/c folder still resumes on Windows; a Linux-only folder says why not', async () => {
@@ -1704,7 +1704,7 @@ describe('a session whose folder belongs to the other environment', () => {
     const chosen = await launcher.preview({
       key,
       ...base,
-      cwdOverride: 'C:\\Users\\beau\\code\\reddit'
+      cwdOverride: 'C:\\Users\\alex\\code\\reddit'
     })
     expect(chosen.launchError).toBeUndefined()
     expect(chosen.claudeCommand).toContain('-C ')
@@ -1833,9 +1833,9 @@ describe('fourth review fixes', () => {
     const p = await launcher.preview({
       key: codexOf(sessions.list(), ID.cli).key,
       ...base,
-      cwdOverride: 'C:\\Users\\beau\\code\\elsewhere'
+      cwdOverride: 'C:\\Users\\alex\\code\\elsewhere'
     })
-    expect(p.claudeCommand).toMatch(/resume -C '?C:\\Users\\beau\\code\\elsewhere'? /)
+    expect(p.claudeCommand).toMatch(/resume -C '?C:\\Users\\alex\\code\\elsewhere'? /)
   })
 
   it('a -C folder cmd would expand (% or !) makes the launch use PowerShell', () => {
@@ -1871,12 +1871,12 @@ describe('fourth review fixes', () => {
       terminal: 'powershell',
       tools: TOOLS,
       env: 'windows',
-      cwd: "C:\\Users\\beau\\it's here",
+      cwd: "C:\\Users\\alex\\it's here",
       passCwd: true,
-      agentEnv: { CODEX_HOME: 'C:\\Users\\beau\\.codex' }
+      agentEnv: { CODEX_HOME: 'C:\\Users\\alex\\.codex' }
     })
     expect(cmd.claudeCommand).toBe(
-      `$env:CODEX_HOME = 'C:\\Users\\beau\\.codex'; codex resume -C 'C:\\Users\\beau\\it''s here' ${ID.cli}`
+      `$env:CODEX_HOME = 'C:\\Users\\alex\\.codex'; codex resume -C 'C:\\Users\\alex\\it''s here' ${ID.cli}`
     )
   })
 
@@ -2143,9 +2143,9 @@ describe('fifth review fixes', () => {
       () => t.settings.value
     )
     const s = codexOf(t.sessions.list(), ID.wsl)
-    const p = await launcher.preview({ key: s.key, ...base, cwdOverride: '/home/beau/private' })
+    const p = await launcher.preview({ key: s.key, ...base, cwdOverride: '/home/alex/private' })
     expect(p.cwdExists).toBe(true)
-    expect(calls).toContainEqual([s.distro, '/home/beau/private', 'beau'])
+    expect(calls).toContainEqual([s.distro, '/home/alex/private', 'alex'])
   })
 
   it('a rollout cut at the reading limit counts as only partly searchable', async () => {

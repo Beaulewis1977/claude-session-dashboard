@@ -21,7 +21,7 @@ import { CodexHooksInstaller, createCodexHooksStore } from '../src/main/services
 
 const T0 = Date.parse('2026-11-08T20:00:00.000Z')
 const TID = '019b0000-0000-7000-8000-00000000c0de'
-const KEY = `codex-wsl-Ubuntu-beau:${TID}`
+const KEY = `codex-wsl-Ubuntu-alex:${TID}`
 const line = (ms: number, payload: Record<string, unknown>): string =>
   JSON.stringify({ timestamp: new Date(ms).toISOString(), type: 'event_msg', payload })
 const working = () =>
@@ -29,7 +29,7 @@ const working = () =>
     line(T0 - 60_000, { type: 'task_started', turn_id: 't', started_at: (T0 - 60_000) / 1000 })
   ])
 const thread = (over: Partial<CodexThreadInput> = {}): CodexThreadInput => ({
-  sourceId: 'codex-wsl-Ubuntu-beau',
+  sourceId: 'codex-wsl-Ubuntu-alex',
   env: 'wsl',
   threadId: TID,
   held: true,
@@ -142,7 +142,7 @@ describe('an old hook event can’t override a later trust change', () => {
   })
 
   async function installed() {
-    const home = join(root, 'Users', 'beau', '.codex')
+    const home = join(root, 'Users', 'alex', '.codex')
     await mkdir(join(home, 'sessions'), { recursive: true })
     await writeFile(join(home, 'config.toml'), 'model = "gpt"\n')
     const src: SourceInfo = {

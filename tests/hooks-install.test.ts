@@ -69,7 +69,7 @@ async function setup(text?: string) {
     scriptsDir: SCRIPTS,
     readScript: (p) => readFile(p, 'utf8')
   })
-  const src = source('wsl', home, 'beau')
+  const src = source('wsl', home, 'alex')
   const install = async () => inst.apply(src, 'install', (await inst.plan(src, 'install')).token)
   const uninstall = async () =>
     inst.apply(src, 'uninstall', (await inst.plan(src, 'uninstall')).token)
@@ -111,7 +111,7 @@ const COMMENTED = `{
 }
 `
 
-const CMD = 'sh /home/beau/.claude-session-dashboard/bin/csd-hook.sh'
+const CMD = 'sh /home/alex/.claude-session-dashboard/bin/csd-hook.sh'
 const OURS = new Set([CMD])
 const mine = (h: unknown) => isOurHandler(h, OURS)
 
@@ -127,11 +127,11 @@ function keepsLines(before: string, after: string): void {
 
 describe('hook commands', () => {
   it('builds the right command per environment', () => {
-    expect(hookCommand(source('wsl', '/x/home/beau', 'beau'))).toBe(CMD)
+    expect(hookCommand(source('wsl', '/x/home/alex', 'alex'))).toBe(CMD)
     expect(hookCommand(source('wsl', '/x/root', 'root'))).toBe(
       'sh /root/.claude-session-dashboard/bin/csd-hook.sh'
     )
-    expect(hookCommand({ ...source('wsl', '/x', 'beau'), kind: 'custom' })).toBeUndefined()
+    expect(hookCommand({ ...source('wsl', '/x', 'alex'), kind: 'custom' })).toBeUndefined()
     expect(hookGroup(CMD)).toEqual({
       hooks: [{ type: 'command', command: CMD, timeout: 10, async: true }]
     })

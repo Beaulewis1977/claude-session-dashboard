@@ -77,13 +77,13 @@ describe('the read-only guard', () => {
     await b.show(env, dir, SHA, undefined, 1024)
     await b.show(env, dir, SHA, ['src/a b.ts', 'src/old.ts'], 1024)
     await b.ghAuth()
-    await b.ghPrs('beau/acme-web', { head: 'fix/login-redirect' })
-    await b.ghPrs('beau/acme-web', { search: 'abc1234' })
+    await b.ghPrs('alex/acme-web', { head: 'fix/login-redirect' })
+    await b.ghPrs('alex/acme-web', { search: 'abc1234' })
     expect(r.git.length).toBeGreaterThanOrEqual(11)
     expect(r.gh).toEqual([
       [...GH_AUTH_ARGS],
-      ghPrListArgs('beau/acme-web', { head: 'fix/login-redirect' }),
-      ghPrListArgs('beau/acme-web', { search: 'abc1234' })
+      ghPrListArgs('alex/acme-web', { head: 'fix/login-redirect' }),
+      ghPrListArgs('alex/acme-web', { search: 'abc1234' })
     ])
     // Every git call starts with the safety settings.
     for (const args of r.git.filter((a) => a.includes('-C')))
@@ -229,28 +229,28 @@ describe('the read-only guard', () => {
   })
 
   const refusedGh: [string, string[]][] = [
-    ['gh api', ['api', 'repos/beau/acme/pulls']],
-    ['gh api -X POST', ['api', '-X', 'POST', 'repos/beau/acme/issues']],
+    ['gh api', ['api', 'repos/alex/acme/pulls']],
+    ['gh api -X POST', ['api', '-X', 'POST', 'repos/alex/acme/issues']],
     ['pr create', ['pr', 'create', '--fill']],
     ['pr merge', ['pr', 'merge', '14']],
     ['pr checkout', ['pr', 'checkout', '14']],
-    ['repo clone', ['repo', 'clone', 'beau/acme']],
+    ['repo clone', ['repo', 'clone', 'alex/acme']],
     ['auth login', ['auth', 'login']],
     ['auth token', ['auth', 'token']],
     ['another host', ['auth', 'status', '--hostname', 'evil.example.com']],
-    ['a bad repo', ghPrListArgs('beau/acme web', { head: 'x' })],
-    ['a branch like an option', ghPrListArgs('beau/acme', { head: '--web' })],
-    ['a branch with ..', ghPrListArgs('beau/acme', { head: 'a..b' })],
-    ['a search that is not a SHA', ghPrListArgs('beau/acme', { search: 'is:open author:me' })],
-    ['a big limit', ghPrListArgs('beau/acme', { head: 'x' }, 1000)],
-    ['an extra flag', [...ghPrListArgs('beau/acme', { head: 'x' }), '--web']],
+    ['a bad repo', ghPrListArgs('alex/acme web', { head: 'x' })],
+    ['a branch like an option', ghPrListArgs('alex/acme', { head: '--web' })],
+    ['a branch with ..', ghPrListArgs('alex/acme', { head: 'a..b' })],
+    ['a search that is not a SHA', ghPrListArgs('alex/acme', { search: 'is:open author:me' })],
+    ['a big limit', ghPrListArgs('alex/acme', { head: 'x' }, 1000)],
+    ['an extra flag', [...ghPrListArgs('alex/acme', { head: 'x' }), '--web']],
     [
       'other fields',
       [
         'pr',
         'list',
         '--repo',
-        'beau/acme',
+        'alex/acme',
         '--state',
         'all',
         '--limit',
@@ -305,12 +305,12 @@ describe('the processes', () => {
 
   it("runs a WSL repo's git through wsl.exe without a shell, as the home's user", () => {
     expect(
-      wslGitArgs({ kind: 'wsl', distro: 'Ubuntu-24.04', user: 'beau' }, ['--no-pager', 'version'])
+      wslGitArgs({ kind: 'wsl', distro: 'Ubuntu-24.04', user: 'alex' }, ['--no-pager', 'version'])
     ).toEqual([
       '-d',
       'Ubuntu-24.04',
       '-u',
-      'beau',
+      'alex',
       '-e',
       'env',
       'GIT_OPTIONAL_LOCKS=0',

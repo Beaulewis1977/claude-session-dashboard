@@ -13,7 +13,7 @@ export interface LimitWindow {
 export interface BridgeReading {
   /** When the payload was captured (file time), epoch ms. */
   ts: number
-  /** Source id of the Claude home it came from, e.g. "windows" or "wsl-Ubuntu-beau". */
+  /** Source id of the Claude home it came from, e.g. "windows" or "wsl-Ubuntu-alex". */
   source: string
   sessionId?: string
   model?: string

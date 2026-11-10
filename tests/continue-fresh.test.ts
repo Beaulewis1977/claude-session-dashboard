@@ -48,7 +48,7 @@ describe('Continue fresh: the claude command', () => {
   const cont = {
     newSessionId: NEW_ID,
     prompt:
-      '@C:\\Users\\beau\\AppData\\Roaming\\CSD\\handoffs\\a.md Continue from this handoff of an earlier session.'
+      '@C:\\Users\\alex\\AppData\\Roaming\\CSD\\handoffs\\a.md Continue from this handoff of an earlier session.'
   }
 
   it('puts the first message first, then the usual flags and a new session id', () => {
@@ -82,12 +82,12 @@ describe('Continue fresh: the claude command', () => {
   it('adds the handoff folder with --add-dir before the session id (it takes several values)', () => {
     const args = claudeArgs('x', false, false, false, undefined, true, undefined, {
       ...cont,
-      prompt: 'Read the handoff file C:\\Users\\Beau Lewis\\h.md first, then continue from it.',
-      addDir: 'C:\\Users\\Beau Lewis\\AppData\\Roaming\\CSD\\handoffs'
+      prompt: 'Read the handoff file C:\\Users\\Alex Smith\\h.md first, then continue from it.',
+      addDir: 'C:\\Users\\Alex Smith\\AppData\\Roaming\\CSD\\handoffs'
     })
     expect(args.slice(-4)).toEqual([
       '--add-dir',
-      'C:\\Users\\Beau Lewis\\AppData\\Roaming\\CSD\\handoffs',
+      'C:\\Users\\Alex Smith\\AppData\\Roaming\\CSD\\handoffs',
       '--session-id',
       NEW_ID
     ])
@@ -125,7 +125,7 @@ describe('Continue fresh: the claude command', () => {
 
   it('builds argument arrays for every terminal, the message staying one argument', () => {
     const msg =
-      'Read the handoff file C:\\Users\\Beau Lewis\\AppData\\Roaming\\CSD\\handoffs\\a.md first, then continue from it.'
+      'Read the handoff file C:\\Users\\Alex Smith\\AppData\\Roaming\\CSD\\handoffs\\a.md first, then continue from it.'
     const base = {
       sessionId: SAFARI,
       fork: false,
@@ -137,7 +137,7 @@ describe('Continue fresh: the claude command', () => {
       buildLaunchCommand({
         ...base,
         env: 'windows',
-        cwd: 'C:\\Users\\Beau Lewis\\code\\my app',
+        cwd: 'C:\\Users\\Alex Smith\\code\\my app',
         terminal
       })
     )
@@ -151,17 +151,17 @@ describe('Continue fresh: the claude command', () => {
       ...base,
       env: 'wsl',
       distro: 'Ubuntu',
-      cwd: '/home/beau/my app',
+      cwd: '/home/alex/my app',
       terminal: 'wt',
       continueFresh: {
         newSessionId: NEW_ID,
         prompt:
-          '@/mnt/c/Users/beau/AppData/Roaming/CSD/handoffs/a.md Continue from this handoff of an earlier session.'
+          '@/mnt/c/Users/alex/AppData/Roaming/CSD/handoffs/a.md Continue from this handoff of an earlier session.'
       }
     })
     const bash = wsl.args[wsl.args.length - 1]
     expect(bash).toContain(
-      "claude '@/mnt/c/Users/beau/AppData/Roaming/CSD/handoffs/a.md Continue from this handoff of an earlier session.'"
+      "claude '@/mnt/c/Users/alex/AppData/Roaming/CSD/handoffs/a.md Continue from this handoff of an earlier session.'"
     )
     expect(bash).toContain(`--session-id ${NEW_ID}`)
   })
@@ -384,7 +384,7 @@ describe('Continue fresh in WSL: the path as the distro sees it', { timeout: 30_
       fork: false,
       skipPermissions: false,
       // A folder that exists in the sample distro.
-      cwdOverride: '/home/beau',
+      cwdOverride: '/home/alex',
       continueFresh: {}
     })
     expect(r.ok).toBe(false)
@@ -413,7 +413,7 @@ describe('A launch is allowed right up to the start', { timeout: 30_000 }, () =>
           skipPermissions: false,
           askPermissions: true,
           remoteControl: true,
-          cwdOverride: '/home/beau',
+          cwdOverride: '/home/alex',
           continueFresh: {}
         },
         { via: 'phone', device: 'Phone', stillAllowed: () => stop }

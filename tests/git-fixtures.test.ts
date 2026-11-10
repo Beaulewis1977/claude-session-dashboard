@@ -79,14 +79,14 @@ describe('git links on the sample data', () => {
     const { sessions, git, key } = await setup()
     const k = key('7f3c9a12')
     const v = git.view(k, { refresh: false })!
-    expect(v.repo).toMatchObject({ github: 'beau/acme-web', env: 'Windows' })
+    expect(v.repo).toMatchObject({ github: 'alex/acme-web', env: 'Windows' })
     expect(v.commits.map((c) => [c.subject, c.level])).toEqual([
       ['Add cookie tests', 'high'],
       ['Fix login redirect: SameSite=Lax session cookie', 'high']
     ])
     expect(v.commits[0].branches).toEqual(['fix/login-redirect'])
     expect(v.prs).toMatchObject([
-      { number: 14, via: 'merge', url: 'https://github.com/beau/acme-web/pull/14' }
+      { number: 14, via: 'merge', url: 'https://github.com/alex/acme-web/pull/14' }
     ])
     expect(sessions.get(k)!.git).toEqual({ commits: 2, prs: [14] })
     // Asked once before gh is used.
@@ -96,7 +96,7 @@ describe('git links on the sample data', () => {
   it('reads a WSL repo through its distro, and finds the PR with gh once turned on', async () => {
     const { git, key } = await setup('on')
     const v = git.view(key('e9a1b2c3'), { refresh: false })!
-    expect(v.repo).toMatchObject({ env: 'WSL: Ubuntu', github: 'beau/orders-api' })
+    expect(v.repo).toMatchObject({ env: 'WSL: Ubuntu', github: 'alex/orders-api' })
     expect(v.commits.map((c) => [c.subject, c.level])).toEqual([
       ['Cursor pagination for GET /orders', 'high']
     ])

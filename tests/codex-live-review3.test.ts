@@ -128,7 +128,7 @@ describe('a Codex home without alert setup isn’t covered', () => {
 
 describe('trust: the app’s own hash, wherever its group sits', () => {
   async function setup(configToml: string, hooksJson?: string) {
-    const home = join(root, 'Users', 'beau', '.codex')
+    const home = join(root, 'Users', 'alex', '.codex')
     await mkdir(join(home, 'sessions'), { recursive: true })
     await writeFile(join(home, 'config.toml'), configToml)
     if (hooksJson) await writeFile(join(home, 'hooks.json'), hooksJson)
@@ -175,11 +175,11 @@ describe('trust: the app’s own hash, wherever its group sits', () => {
     expect(inst.record(src.id)?.installGroup).toBe(1)
     // The app's group moved to 0, where the user's group's trust still sits.
     await trustAt([[0, 'sha256:theirs']])
-    const text = await readFile(join(root, 'Users', 'beau', '.codex', 'hooks.json'), 'utf8')
+    const text = await readFile(join(root, 'Users', 'alex', '.codex', 'hooks.json'), 'utf8')
     const swapped = JSON.parse(text)
     swapped.hooks.PermissionRequest.reverse()
     await writeFile(
-      join(root, 'Users', 'beau', '.codex', 'hooks.json'),
+      join(root, 'Users', 'alex', '.codex', 'hooks.json'),
       JSON.stringify(swapped, null, 2)
     )
     expect((await inst.describe(src))?.trust).toBe('untrusted')
@@ -231,7 +231,7 @@ describe('a home that leaves the source list keeps its threads a while', () => {
       `${ln(Date.now() - 60_000, 'event_msg', { type: 'task_started', turn_id: 'a' })}\n`
     )
     const user: SourceInfo = {
-      id: 'codex-wsl-Ubuntu-beau',
+      id: 'codex-wsl-Ubuntu-alex',
       provider: 'codex',
       label: 'WSL: Ubuntu',
       env: 'windows',

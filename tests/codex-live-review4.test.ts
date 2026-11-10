@@ -189,7 +189,7 @@ describe('trust by position needs an untouched hooks.json', () => {
   })
 
   it('changed since the install (before the hook’s own hash is known): only an approval proves trust', async () => {
-    const home = join(root, 'Users', 'beau', '.codex')
+    const home = join(root, 'Users', 'alex', '.codex')
     await mkdir(join(home, 'sessions'), { recursive: true })
     await writeFile(join(home, 'config.toml'), 'model = "gpt"\n')
     const src: SourceInfo = {

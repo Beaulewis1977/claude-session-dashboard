@@ -45,14 +45,14 @@ describe('Windows sessions', () => {
   it('builds the Windows Terminal command as an argument array (path with spaces)', () => {
     const cmd = launch({
       env: 'windows',
-      cwd: 'C:\\Users\\beau\\My Projects\\desktop app',
+      cwd: 'C:\\Users\\alex\\My Projects\\desktop app',
       skipPermissions: true,
       terminal: 'wt'
     })
     expect(cmd.command).toBe(WT)
     expect(cmd.args).toEqual([
       '-d',
-      'C:\\Users\\beau\\My Projects\\desktop app',
+      'C:\\Users\\alex\\My Projects\\desktop app',
       CMD,
       '/s',
       '/k',
@@ -63,7 +63,7 @@ describe('Windows sessions', () => {
     expect(cmd.spawnCwd).toBeUndefined()
     expect(cmd.claudeCommand).toBe(`claude --resume ${ID} --dangerously-skip-permissions`)
     expect(cmd.commandLine).toBe(
-      `Start-Process -FilePath '${WT}' -ArgumentList '-d "C:\\Users\\beau\\My Projects\\desktop app" ${CMD} /s /k "\\"${CLAUDE}\\" --resume ${ID} --dangerously-skip-permissions"'`
+      `Start-Process -FilePath '${WT}' -ArgumentList '-d "C:\\Users\\alex\\My Projects\\desktop app" ${CMD} /s /k "\\"${CLAUDE}\\" --resume ${ID} --dangerously-skip-permissions"'`
     )
   })
 
@@ -102,7 +102,7 @@ describe('Windows sessions', () => {
   })
 
   it("keeps cmd from finding npm's `node` in the project folder", () => {
-    const shim = 'C:\\Users\\beau\\AppData\\Roaming\\npm\\claude.cmd'
+    const shim = 'C:\\Users\\alex\\AppData\\Roaming\\npm\\claude.cmd'
     const tools = { ...TOOLS, claude: shim }
     const wt = launch({ env: 'windows', cwd: 'C:\\code\\app', terminal: 'wt', tools })
     expect(wt.args.at(-1)).toBe(

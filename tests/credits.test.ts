@@ -27,7 +27,7 @@ const ADMIN = 'sk-ant-admin01-ADMINadminADMIN0987654321zyxwm2Pd'
 describe('API-billed launches', () => {
   const base = {
     sessionId: '7f3c9a12-4b8e-4d21-9c6a-1e2f3a4b5c6d',
-    cwd: 'C:\\Users\\Beau Lewis\\code\\acme web',
+    cwd: 'C:\\Users\\Alex Smith\\code\\acme web',
     fork: false,
     skipPermissions: true,
     tools: TOOLS,
@@ -60,7 +60,7 @@ describe('API-billed launches', () => {
         ...base,
         env: 'wsl',
         distro: 'Ubuntu',
-        cwd: '/home/beau/my project',
+        cwd: '/home/alex/my project',
         terminal,
         wslenv: 'USERPROFILE/p'
       })
@@ -89,7 +89,7 @@ describe('API-billed launches', () => {
       newSession: true,
       env: 'wsl',
       distro: 'Ubuntu',
-      cwd: '/home/beau/x',
+      cwd: '/home/alex/x',
       terminal: 'wt'
     })
     expect(cmd.claudeCommand).toBe('claude --dangerously-skip-permissions')
@@ -98,7 +98,7 @@ describe('API-billed launches', () => {
       '-d',
       'Ubuntu',
       '--cd',
-      '/home/beau/x',
+      '/home/alex/x',
       '--',
       'bash',
       '-lic',
@@ -460,7 +460,7 @@ describe('Launcher with API billing', () => {
           source: 'launch'
         })
     })
-    const key = 'wsl-Ubuntu-beau:e9a1b2c3-d4e5-4f60-8172-839405a6b7c8'
+    const key = 'wsl-Ubuntu-alex:e9a1b2c3-d4e5-4f60-8172-839405a6b7c8'
     const preview = await launcher.preview({
       key,
       fork: false,

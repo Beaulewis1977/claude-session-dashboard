@@ -58,7 +58,7 @@ describe('a lock file that can’t be read stays (never "free")', () => {
       }
     }
     const r = new CodexLiveReader(fs)
-    const home = String.raw`C:\Users\beau\.codex`
+    const home = String.raw`C:\Users\alex\.codex`
     expect((await r.locks({ env: 'windows', home }))![0]).toMatchObject({
       held: true,
       mtimeMs: 1234
@@ -75,7 +75,7 @@ describe('a lock file that can’t be read stays (never "free")', () => {
 
   it('WSL: a lock file that can’t be stat’ed keeps its cached inode, or is "can’t tell"', async () => {
     const distro = String.raw`\\wsl.localhost\Ubuntu`
-    const home = String.raw`\\wsl.localhost\Ubuntu\home\beau\.codex`
+    const home = String.raw`\\wsl.localhost\Ubuntu\home\alex\.codex`
     let fail: string | undefined
     const fs: CodexLiveFs = {
       ...realCodexLiveFs,
@@ -159,7 +159,7 @@ describe('a whole Codex home that can’t be read keeps its threads (unconfirmed
       `${JSON.stringify({ timestamp: new Date(Date.now() - 60_000).toISOString(), type: 'event_msg', payload: { type: 'task_started', turn_id: 'a' } })}\n`
     )
     const src: SourceInfo = {
-      id: 'codex-wsl-Ubuntu-beau',
+      id: 'codex-wsl-Ubuntu-alex',
       provider: 'codex',
       label: 'WSL: Ubuntu',
       env: 'windows',
@@ -296,7 +296,7 @@ describe('an exact approval stays until it’s answered', () => {
 
 describe('a changed hook, or an unknown save time, is never "trusted"', () => {
   async function installed(savedAt?: (p: string) => Promise<number | undefined>) {
-    const home = join(root, 'Users', 'beau', '.codex')
+    const home = join(root, 'Users', 'alex', '.codex')
     await mkdir(join(home, 'sessions'), { recursive: true })
     await writeFile(join(home, 'config.toml'), 'model = "gpt"\n')
     const src: SourceInfo = {

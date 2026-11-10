@@ -81,7 +81,7 @@ describe('UsageService', () => {
     const before = usage.allRecords().length
     const src = join(
       layout.sourcesDir,
-      'windows/Users/beau/.claude/projects/C--Users-beau-code-acme-web/7f3c9a12-4b8e-4d21-9c6a-1e2f3a4b5c6d.jsonl'
+      'windows/Users/alex/.claude/projects/C--Users-alex-code-acme-web/7f3c9a12-4b8e-4d21-9c6a-1e2f3a4b5c6d.jsonl'
     )
     const fork = src.replace(
       '7f3c9a12-4b8e-4d21-9c6a-1e2f3a4b5c6d',
@@ -101,7 +101,7 @@ describe('UsageService', () => {
     const before = usage.allRecords().length
     const file = join(
       layout.sourcesDir,
-      'wsl/Ubuntu/home/beau/.claude/projects/-home-beau-dotfiles/5d4c3b2a-1f0e-4d9c-8b7a-6f5e4d3c2b1a.jsonl'
+      'wsl/Ubuntu/home/alex/.claude/projects/-home-alex-dotfiles/5d4c3b2a-1f0e-4d9c-8b7a-6f5e4d3c2b1a.jsonl'
     )
     await appendFile(
       file,
@@ -116,11 +116,11 @@ describe('UsageService', () => {
         }
       }) + '\n'
     )
-    await sessions.fileChanged('wsl-Ubuntu-beau', file)
+    await sessions.fileChanged('wsl-Ubuntu-alex', file)
     await usage.sync()
     expect(usage.allRecords()).toHaveLength(before + 1)
     expect(
-      usage.sessionUsage('wsl-Ubuntu-beau:5d4c3b2a-1f0e-4d9c-8b7a-6f5e4d3c2b1a').responses
+      usage.sessionUsage('wsl-Ubuntu-alex:5d4c3b2a-1f0e-4d9c-8b7a-6f5e4d3c2b1a').responses
     ).toBeGreaterThan(1)
   })
 
@@ -128,7 +128,7 @@ describe('UsageService', () => {
     const { make, layout, paths } = await setup()
     const dir = join(
       layout.sourcesDir,
-      'windows/Users/beau/.claude/projects/C--Users-beau-code-acme-web/7f3c9a12-4b8e-4d21-9c6a-1e2f3a4b5c6d/subagents'
+      'windows/Users/alex/.claude/projects/C--Users-alex-code-acme-web/7f3c9a12-4b8e-4d21-9c6a-1e2f3a4b5c6d/subagents'
     )
     await mkdir(dir, { recursive: true })
     await writeFile(

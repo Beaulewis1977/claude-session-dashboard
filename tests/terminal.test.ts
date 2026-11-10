@@ -67,8 +67,8 @@ const PWSH: SshShellInfo = { kind: 'pwsh', path: 'C:\\Program Files\\PowerShell\
 const WSL: SshShellInfo = { kind: 'wsl', path: 'C:\\Windows\\System32\\bash.exe', distro: 'Ubuntu' }
 const INFO: TerminalAccessInfo = {
   ready: true,
-  host: 'ryzen-desktop.tail1234.ts.net',
-  user: 'beau',
+  host: 'my-pc.tail1234.ts.net',
+  user: 'alex',
   port: 22,
   shell: PWSH
 }
@@ -81,17 +81,17 @@ describe('commands that land in a folder over SSH', () => {
       "Set-Location -LiteralPath 'C:\\My Projects\\web app'; pwsh -NoLogo"
     )
     expect(
-      remoteCommand({ env: 'windows', cwd: "C:\\Beau's code" }, { kind: 'powershell' }).command
-    ).toBe("Set-Location -LiteralPath 'C:\\Beau''s code'; powershell -NoLogo")
+      remoteCommand({ env: 'windows', cwd: "C:\\Alex's code" }, { kind: 'powershell' }).command
+    ).toBe("Set-Location -LiteralPath 'C:\\Alex''s code'; powershell -NoLogo")
   })
 
   it('cds into the Linux path for WSL, and uses wsl.exe for another distro', () => {
     expect(
-      remoteCommand({ env: 'wsl', cwd: '/home/beau/my project', distro: 'Ubuntu' }, WSL).command
-    ).toBe("cd '/home/beau/my project' && exec ${SHELL:-bash} -l")
+      remoteCommand({ env: 'wsl', cwd: '/home/alex/my project', distro: 'Ubuntu' }, WSL).command
+    ).toBe("cd '/home/alex/my project' && exec ${SHELL:-bash} -l")
     expect(
-      remoteCommand({ env: 'wsl', cwd: '/home/beau/api', distro: 'Debian' }, WSL).command
-    ).toBe('wsl.exe -d Debian --cd /home/beau/api')
+      remoteCommand({ env: 'wsl', cwd: '/home/alex/api', distro: 'Debian' }, WSL).command
+    ).toBe('wsl.exe -d Debian --cd /home/alex/api')
     // A Windows folder from a WSL shell goes through /mnt.
     expect(remoteCommand({ env: 'windows', cwd: 'C:\\code\\My App' }, WSL).command).toBe(
       "cd '/mnt/c/code/My App' && exec ${SHELL:-bash} -l"
@@ -101,8 +101,8 @@ describe('commands that land in a folder over SSH', () => {
 
   it('opens a WSL session from a PowerShell login with wsl.exe', () => {
     expect(
-      remoteCommand({ env: 'wsl', cwd: '/home/beau/my app', distro: 'Ubuntu-24.04' }, PWSH).command
-    ).toBe("wsl.exe -d Ubuntu-24.04 --cd '/home/beau/my app'")
+      remoteCommand({ env: 'wsl', cwd: '/home/alex/my app', distro: 'Ubuntu-24.04' }, PWSH).command
+    ).toBe("wsl.exe -d Ubuntu-24.04 --cd '/home/alex/my app'")
   })
 
   it('never uses double quotes for PowerShell or WSL (Windows OpenSSH would strip them)', () => {
@@ -116,10 +116,10 @@ describe('commands that land in a folder over SSH', () => {
 
   it('refuses folders Windows would mangle on the way to the shell', () => {
     expect(
-      remoteCommand({ env: 'wsl', cwd: '/home/beau/a"b', distro: 'Ubuntu' }, PWSH).command
+      remoteCommand({ env: 'wsl', cwd: '/home/alex/a"b', distro: 'Ubuntu' }, PWSH).command
     ).toBeUndefined()
     expect(
-      remoteCommand({ env: 'wsl', cwd: '/home/beau/a\\b', distro: 'Ubuntu' }, WSL).command
+      remoteCommand({ env: 'wsl', cwd: '/home/alex/a\\b', distro: 'Ubuntu' }, WSL).command
     ).toBeUndefined()
     expect(
       remoteCommand({ env: 'wsl', cwd: '/x', distro: 'bad name' }, PWSH).command
@@ -132,17 +132,17 @@ describe('commands that land in a folder over SSH', () => {
   })
 
   it('quotes the whole ssh command for a POSIX shell', () => {
-    const remote = remoteCommand({ env: 'windows', cwd: "C:\\Beau's code" }, PWSH).command!
+    const remote = remoteCommand({ env: 'windows', cwd: "C:\\Alex's code" }, PWSH).command!
     const cmd = sshCommand(INFO, remote)
     expect(cmd).toBe(
-      `ssh -t beau@ryzen-desktop.tail1234.ts.net "Set-Location -LiteralPath 'C:\\Beau''s code'; pwsh -NoLogo"`
+      `ssh -t alex@my-pc.tail1234.ts.net "Set-Location -LiteralPath 'C:\\Alex''s code'; pwsh -NoLogo"`
     )
     expect(sshCommand(INFO, 'cd /x && ls')).toBe(
-      "ssh -t beau@ryzen-desktop.tail1234.ts.net 'cd /x && ls'"
+      "ssh -t alex@my-pc.tail1234.ts.net 'cd /x && ls'"
     )
-    expect(sshCommand(INFO)).toBe('ssh beau@ryzen-desktop.tail1234.ts.net')
+    expect(sshCommand(INFO)).toBe('ssh alex@my-pc.tail1234.ts.net')
     expect(sshCommand({ ...INFO, port: 2222 })).toBe(
-      'ssh -p 2222 beau@ryzen-desktop.tail1234.ts.net'
+      'ssh -p 2222 alex@my-pc.tail1234.ts.net'
     )
     expect(shQuote('plain-word')).toBe('plain-word')
   })
@@ -153,8 +153,8 @@ describe('commands that land in a folder over SSH', () => {
   )
   it.skipIf(!bash)('quotes words so a POSIX shell reads them back exactly', () => {
     const samples = [
-      "Set-Location -LiteralPath 'C:\\Beau''s code'; pwsh -NoLogo",
-      "cd '/home/beau/my project' && exec ${SHELL:-bash} -l",
+      "Set-Location -LiteralPath 'C:\\Alex''s code'; pwsh -NoLogo",
+      "cd '/home/alex/my project' && exec ${SHELL:-bash} -l",
       "Set-Location -LiteralPath '\\\\nas\\share\\x\\'; pwsh",
       'a "b" `c` $d \\$e \\\\ f\\',
       "it's ! here",
@@ -171,9 +171,9 @@ describe('commands that land in a folder over SSH', () => {
   })
 
   it('builds ssh:// links with the user encoded', () => {
-    expect(sshUrl(INFO)).toBe('ssh://beau@ryzen-desktop.tail1234.ts.net')
-    expect(sshUrl({ ...INFO, user: 'CORP\\beau lewis', port: 2222 })).toBe(
-      'ssh://CORP%5Cbeau%20lewis@ryzen-desktop.tail1234.ts.net:2222'
+    expect(sshUrl(INFO)).toBe('ssh://alex@my-pc.tail1234.ts.net')
+    expect(sshUrl({ ...INFO, user: 'CORP\\alex lewis', port: 2222 })).toBe(
+      'ssh://CORP%5Calex%20lewis@my-pc.tail1234.ts.net:2222'
     )
   })
 
@@ -198,12 +198,12 @@ describe('"Open terminal here" on the desktop', () => {
   it('opens PowerShell with the folder as a literal string', () => {
     const c = buildShellCommand({
       env: 'windows',
-      cwd: "C:\\Beau's",
+      cwd: "C:\\Alex's",
       terminal: 'powershell',
       tools: TOOLS
     })
-    expect(c.args).toEqual(['-NoExit', '-Command', "Set-Location -LiteralPath 'C:\\Beau''s'"])
-    expect(c.spawnCwd).toBe("C:\\Beau's")
+    expect(c.args).toEqual(['-NoExit', '-Command', "Set-Location -LiteralPath 'C:\\Alex''s'"])
+    expect(c.spawnCwd).toBe("C:\\Alex's")
   })
 
   it('opens cmd in the folder without passing the folder to cmd', () => {
@@ -215,21 +215,21 @@ describe('"Open terminal here" on the desktop', () => {
   it('opens WSL in the Linux folder', () => {
     const wt = buildShellCommand({
       env: 'wsl',
-      cwd: '/home/beau/my app',
+      cwd: '/home/alex/my app',
       distro: 'Ubuntu',
       terminal: 'wt',
       tools: TOOLS
     })
-    expect(wt.args).toEqual([TOOLS.wsl, '-d', 'Ubuntu', '--cd', '/home/beau/my app'])
+    expect(wt.args).toEqual([TOOLS.wsl, '-d', 'Ubuntu', '--cd', '/home/alex/my app'])
     const ps = buildShellCommand({
       env: 'wsl',
-      cwd: '/home/beau/my app',
+      cwd: '/home/alex/my app',
       distro: 'Ubuntu',
       terminal: 'powershell',
       tools: TOOLS
     })
     expect(ps.args[2]).toBe(
-      "& 'C:\\Windows\\System32\\wsl.exe' -d 'Ubuntu' --cd '/home/beau/my app'"
+      "& 'C:\\Windows\\System32\\wsl.exe' -d 'Ubuntu' --cd '/home/alex/my app'"
     )
   })
 
@@ -292,13 +292,13 @@ describe('sshd logins', () => {
     const logins = parseSshdLogins([
       {
         at: '2026-10-23T10:00:00Z',
-        message: 'sshd: Accepted password for beau from 192.168.1.20 port 51000 ssh2'
+        message: 'sshd: Accepted password for alex from 192.168.1.20 port 51000 ssh2'
       },
       {
         at: '2026-10-23T11:00:00Z',
-        message: `sshd: Accepted publickey for beau from 100.101.102.103 port 50122 ssh2: ED25519 ${KEY_FP}`
+        message: `sshd: Accepted publickey for alex from 100.101.102.103 port 50122 ssh2: ED25519 ${KEY_FP}`
       },
-      { at: '2026-10-23T12:00:00Z', message: 'sshd: Failed password for beau from 1.2.3.4' }
+      { at: '2026-10-23T12:00:00Z', message: 'sshd: Failed password for alex from 1.2.3.4' }
     ])
     expect(logins).toHaveLength(2)
     expect(logins[0]).toMatchObject({
@@ -357,7 +357,7 @@ describe('the firewall rule', () => {
   })
 
   it('passes inputs as base64 data, never as script text', () => {
-    const text = scriptText(s, 'C:\\Users\\beau\\AppData\\Roaming\\ClaudeSessionDashboard\\r.json')
+    const text = scriptText(s, 'C:\\Users\\alex\\AppData\\Roaming\\ClaudeSessionDashboard\\r.json')
     expect(text).not.toContain('100.64.0.0/10')
     expect(text).toContain('FromBase64String')
     expect(text.length).toBeLessThan(20_000)
@@ -427,15 +427,15 @@ describe('terminal access service', () => {
       tailscale: async () => ({
         installed: true,
         loggedIn: tsUp,
-        dnsName: tsUp ? 'ryzen-desktop.tail1234.ts.net' : undefined
+        dnsName: tsUp ? 'my-pc.tail1234.ts.net' : undefined
       }),
       exists: async () => true,
-      user: 'beau',
+      user: 'alex',
       env: {
         SystemRoot: 'C:\\Windows',
         ProgramFiles: 'C:\\Program Files',
         ProgramData: 'C:\\ProgramData',
-        USERPROFILE: 'C:\\Users\\beau'
+        USERPROFILE: 'C:\\Users\\alex'
       },
       ...over
     })
@@ -525,8 +525,8 @@ describe('terminal access service', () => {
     expect((await svc.phoneInfo()).hostKeys?.[0]?.type).toBe('ED25519')
     expect(await svc.phoneInfo()).toMatchObject({
       ready: true,
-      host: 'ryzen-desktop.tail1234.ts.net',
-      user: 'beau',
+      host: 'my-pc.tail1234.ts.net',
+      user: 'alex',
       port: 22
     })
     tsUp = false
@@ -778,9 +778,9 @@ describe('helpers', () => {
   })
 
   it('names the login user', () => {
-    expect(sshUserName({ USERDOMAIN: 'RYZEN', COMPUTERNAME: 'RYZEN' }, 'beau')).toBe('beau')
-    expect(sshUserName({ USERDOMAIN: 'CORP', COMPUTERNAME: 'RYZEN' }, 'beau')).toBe('CORP\\beau')
-    expect(sshUserName({ USERDOMAIN: 'AzureAD', COMPUTERNAME: 'RYZEN' }, 'beau')).toBe('beau')
+    expect(sshUserName({ USERDOMAIN: 'MY-PC', COMPUTERNAME: 'MY-PC' }, 'alex')).toBe('alex')
+    expect(sshUserName({ USERDOMAIN: 'CORP', COMPUTERNAME: 'MY-PC' }, 'alex')).toBe('CORP\\alex')
+    expect(sshUserName({ USERDOMAIN: 'AzureAD', COMPUTERNAME: 'MY-PC' }, 'alex')).toBe('alex')
   })
 
   it('reads the probe defensively', () => {

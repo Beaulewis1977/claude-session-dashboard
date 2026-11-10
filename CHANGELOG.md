@@ -1,5 +1,40 @@
 # Changelog
 
+## 1.15.0 (November 9, 2026)
+
+**Moving between PC and phone, and Claude desktop sessions.**
+
+### Remote continuity and Claude desktop sessions (PR #44)
+
+- **No second terminal for a session already running on your PC.** Before Resume, Fork or
+  Continue fresh, the app checks Running now (for Fork and Continue fresh: a still-running fork or
+  continuation it launched earlier; forking a running session itself stays allowed).
+  - **Phone, Remote Control on:** "Already running on your PC" with **Open in Claude app** (the
+    session's Remote Control link).
+  - **Phone, Remote Control off:** it tells you to type `/rc` in that terminal, then refresh.
+    Nothing is launched.
+  - **Focus terminal on PC** from the phone (starts nothing, rate-limited, logged, refused in
+    read-only mode).
+  - **Desktop:** the Resume dialog offers **Focus terminal** first.
+  - **Start another copy anyway** is always there, behind a confirm (still rate-limited, logged,
+    Remote Control on, never skip-permissions).
+- **Remote Control links are picked up within seconds of `/rc`** (a link from an earlier run
+  doesn't count).
+- **Codex:** the same duplicate check, **Focus terminal on PC** from the phone, and **Open in
+  Codex app** (with a confirm while a terminal still runs it). The app notes that Codex Remote
+  (ChatGPT app) reaches Codex app threads only, so continue on the phone via the Codex desktop app.
+- **Open in Claude desktop app** (`claude --desktop --resume`) for Windows sessions with Claude
+  Code 2.1.285 or newer. Resume only: Fork isn't offered there yet.
+- **"Claude desktop" as its own source label and sidebar entry** for the desktop app's Code-tab
+  sessions.
+- **Optional "Claude desktop (Cowork)" source**, off by default (Settings → Sources). View-only:
+  read, search, usage and git links, no launching or summaries. Only each task's session
+  transcripts are read; credential files are never read, archived or backed up.
+- **Fixed:** local sessions with a Remote Control link were labelled "Cloud (teleported)". The
+  session cache is re-read once after the update.
+- **Clearer Remote Control label:** it says the session can be continued from the Claude mobile
+  app.
+
 ## 1.14.0 (November 9, 2026)
 
 **Git links.**

@@ -49,6 +49,7 @@ import type {
   TerminalStatus
 } from './terminal'
 import type { FocusResult, LiveSnapshot } from './live'
+import type { CommitDiff, GitLinkSettings, GitStatus, SessionGitView } from './git/types'
 import type {
   BackupError,
   BackupFolderCandidate,
@@ -97,6 +98,17 @@ export interface CsdApi {
   /** Clear my dashboard names for these sessions, so their Claude Code names show. Returns how many changed. */
   applyClaudeNames(keys: string[]): Promise<number>
   rescan(): Promise<void>
+
+  // Git links (the viewer's Changes tab; the phone gets a read-only view, no diffs).
+  getGitView(key: string): Promise<SessionGitView | null>
+  getGitDiff(key: string, sha: string, path?: string, all?: boolean): Promise<CommitDiff>
+  unlinkCommit(key: string, sha: string): Promise<SessionGitView | null>
+  relinkCommit(key: string, sha: string): Promise<SessionGitView | null>
+  refreshGit(key?: string): Promise<void>
+  getGitStatus(): Promise<GitStatus>
+  /** Settings → Git, and the Changes tab's one-time "Look up PRs with the GitHub CLI?" (desktop only). */
+  updateGitSettings(patch: Partial<GitLinkSettings>): Promise<GitStatus>
+  onGitChanged(cb: () => void): () => void
 
   getSettings(): Promise<AppSettings>
   updateSettings(patch: Partial<AppSettings>): Promise<AppSettings>

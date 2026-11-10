@@ -82,6 +82,8 @@ import { DescriptionEditor, EditableTitle, TagEditor, TitleSourceLine } from './
 import { FindBar } from './FindBar'
 import { BranchesPanel, type BranchMark } from './Branches'
 import { Transcript, type OnBranch } from './Transcript'
+import { ChangesPanel } from './Changes'
+import { badgeText } from '@shared/git/prs'
 import { useFind } from './useFind'
 
 function Fact({
@@ -484,6 +486,9 @@ export function SessionViewer({
   const [findQuery, setFindQuery] = useState('')
   const [findNonce, setFindNonce] = useState(0)
   const [atBottom, setAtBottom] = useState(false)
+  // Conversation or Changes (git links). The component is keyed by session, so it starts on Conversation.
+  const [tab, setTab] = useState<'conversation' | 'changes'>('conversation')
+  const changesTab = session.availability !== 'imported'
   const scrollRef = useRef<HTMLDivElement>(null)
   const contentRef = useRef<HTMLDivElement>(null)
   const focus = useApp((s) => s.focus)
@@ -504,6 +509,7 @@ export function SessionViewer({
   }, [session.key, version])
 
   const openFind = useCallback(() => {
+    setTab('conversation')
     setFindOpen(true)
     setFindNonce((n) => n + 1)
   }, [])
@@ -591,6 +597,37 @@ export function SessionViewer({
           onCopyConversation={detail ? () => copyConversation(detail, session) : undefined}
           branchPointPreview={branchPointPreview}
         />
+        {changesTab && (
+          <div className="border-b border-border px-8" role="tablist" aria-label="Session view">
+            <div className="mx-auto flex max-w-[860px] gap-4">
+              {(['conversation', 'changes'] as const).map((t) => (
+                <button
+                  key={t}
+                  type="button"
+                  role="tab"
+                  aria-selected={tab === t}
+                  className={cn(
+                    '-mb-px inline-flex h-9 items-center gap-1.5 border-b-2 text-[13px] font-medium transition-colors',
+                    tab === t
+                      ? 'border-primary text-foreground'
+                      : 'border-transparent text-muted-foreground hover:text-foreground'
+                  )}
+                  onClick={() => {
+                    setTab(t)
+                    if (t === 'changes') setFindOpen(false)
+                  }}
+                >
+                  {t === 'conversation' ? 'Conversation' : 'Changes'}
+                  {t === 'changes' && session.git && (
+                    <span className="rounded bg-secondary px-1.5 text-2xs font-medium text-muted-foreground tabular-nums">
+                      {badgeText(session.git)}
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
         {findOpen && (
           <div className="sticky top-0 z-20 h-0">
             <FindBar
@@ -606,7 +643,9 @@ export function SessionViewer({
           </div>
         )}
         <div ref={contentRef}>
-          {detail ? (
+          {tab === 'changes' && changesTab ? (
+            <ChangesPanel session={session} />
+          ) : detail ? (
             <Transcript
               messages={messages}
               cwd={session.cwd}
@@ -630,7 +669,7 @@ export function SessionViewer({
         </div>
       </div>
 
-      {detail && messages.length > 6 && (
+      {tab === 'conversation' && detail && messages.length > 6 && (
         <div className="absolute right-5 bottom-5 z-10">
           <Tooltip content={atBottom ? 'Back to top' : 'Jump to latest'} side="left">
             <Button

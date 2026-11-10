@@ -26,6 +26,7 @@ import {
   type SessionContext
 } from './context'
 import type { AcceptedProject, CodexAppPreview, OpenIn } from './codex-app'
+import type { GitBadge, GitLinkSettings } from './git/types'
 
 export type EnvKind = 'windows' | 'wsl'
 
@@ -89,6 +90,8 @@ export interface SessionMeta {
   noContextWarning?: boolean
   /** Codex: open Resume / Fork / Continue fresh in a terminal or the Codex app; unset = the project / Settings default. */
   openIn?: OpenIn
+  /** Commits I unlinked from this session in the Changes tab (full SHAs; never written to git or the agent's files). */
+  gitUnlinked?: string[]
   updatedAt?: string
 }
 
@@ -235,6 +238,8 @@ export interface SessionSummary {
   searchPartial?: boolean
   /** The file's content size, decompressed (Codex; for archive decisions). */
   contentBytes?: number
+  /** Git links: linked commits and pull requests, for the card badge ("3 commits · PR #14"). */
+  git?: GitBadge
 }
 
 export interface ToolResult {
@@ -377,6 +382,8 @@ export interface AppSettings {
   meterProvider?: MeterProvider
   /** Usage charts in the All view: stacked or split by provider (absent: stacked). */
   usageSplit?: UsageSplit
+  /** Git links: on/off, and whether the GitHub CLI may look up pull requests (absent: on, ask). */
+  gitLinks?: GitLinkSettings
 }
 
 export type MeterProvider = 'claude' | 'codex' | 'both'

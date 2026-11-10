@@ -23,6 +23,8 @@ import type { SessionContext } from '@shared/context'
 import type { ChatMessage, ContentBlock, ToolResult } from '@shared/types'
 import { READ_NOTE_TYPE, type ReadNote } from './read'
 import { isContextItem, isInjected, whoWrote } from './provenance'
+import { GitSignalBuilder } from '@shared/git/signals'
+import type { SessionGitSignals } from '@shared/git/types'
 
 /**
  * Search text is cut to this many characters per session (prompts and
@@ -68,9 +70,11 @@ export interface CodexAnalysis {
   contentBytes?: number
   /** Context size at the end (from the last token_count), see codexContext. */
   context?: SessionContext
+  /** What the thread's own lines say about its git work. */
+  git: SessionGitSignals
 }
 
-interface Line {
+export interface Line {
   timestamp?: string
   ordinal?: number
   type?: string
@@ -229,7 +233,8 @@ export function analyzeCodex(text: string, fileSessionId?: string): CodexAnalysi
     assistantMessageCount: 0,
     toolCallCount: 0,
     malformedLines: malformed,
-    searchText: ''
+    searchText: '',
+    git: codexGitSignals(lines, fileSessionId)
   }
   const models = new Set<string>()
   // Search text: the prompts and answers first, then reasoning and tool calls
@@ -826,4 +831,133 @@ const ROLLOUT_RE =
 
 export function rolloutIdOf(fileName: string): string | undefined {
   return ROLLOUT_RE.exec(fileName)?.[1]?.toLowerCase()
+}
+
+// ------------------------------------------------------------- git signals
+
+/** Codex's shell tools (their names differ between versions). */
+const SHELL_TOOLS = new Set([
+  'shell',
+  'shell_command',
+  'exec_command',
+  'local_shell',
+  'container.exec'
+])
+
+/**
+ * A copy is written in one go: its lines follow each other within this (real
+ * copies of hundreds of lines take a few ms), and all of it within COPY_SPAN_MS.
+ */
+const COPY_GAP_MS = 250
+const COPY_SPAN_MS = 5000
+
+/**
+ * Which lines a fork (or a subagent started with its parent's history) copied
+ * from its parent. Codex writes the copy stamped with the time it wrote it, so
+ * its tool calls look new; they're the parent's (and its ancestors').
+ * - Newer Codex records where the thread's own history starts
+ *   (`subagent_history_start_ordinal`, against each line's `ordinal`): every
+ *   line before it but the thread's own meta is the copy (or setup Codex adds).
+ * - Otherwise: from the parent's meta (the second session_meta, another id),
+ *   the lines written in the same go (however late that was). The thread's own
+ *   work starts after a pause: its prompt, then a model reply. And a tool call
+ *   whose output comes after those lines is the thread's own (a copied call's
+ *   output is copied with it, or goes to the parent), so the copy ends before it.
+ * Worked out from the thread's own file (the parent's may be gone).
+ */
+export function copiedLines(lines: Line[], sessionId?: string): (i: number) => boolean {
+  const own = lines.findIndex(
+    (l) => l.type === 'session_meta' && (!sessionId || l.payload.id === sessionId)
+  )
+  if (own < 0) return () => false
+  const ownId = lines[own].payload.id
+  const startOrdinal = lines[own].payload.subagent_history_start_ordinal
+  if (
+    typeof startOrdinal === 'number' &&
+    Number.isFinite(startOrdinal) &&
+    lines.some((l) => l.ordinal !== undefined)
+  ) {
+    // A line without an ordinal goes with the line before it.
+    const copied: boolean[] = []
+    let last = -1
+    lines.forEach((l, i) => {
+      if (l.ordinal !== undefined) last = l.ordinal
+      copied.push(i !== own && last < startOrdinal)
+    })
+    return (i) => copied[i] ?? false
+  }
+  const start = lines.findIndex(
+    (l, i) => i > own && l.type === 'session_meta' && l.payload.id !== ownId
+  )
+  if (start < 0) return () => false
+  const t0 = Date.parse(lines[start].timestamp ?? '')
+  let end = start + 1
+  let prev = t0
+  while (end < lines.length) {
+    const t = Date.parse(lines[end].timestamp ?? '')
+    if (Number.isFinite(t)) {
+      if (Number.isFinite(prev) && t > prev + COPY_GAP_MS) break
+      if (Number.isFinite(t0) && t > t0 + COPY_SPAN_MS) break
+      prev = t
+    }
+    end++
+  }
+  const answeredLater = new Set<string>()
+  for (let i = end; i < lines.length; i++) {
+    const id =
+      lines[i].type === 'response_item' ? toolOutputOf(lines[i].payload)?.callId : undefined
+    if (id) answeredLater.add(id)
+  }
+  for (let i = start + 1; i < end; i++) {
+    const id = lines[i].type === 'response_item' ? toolCallOf(lines[i].payload)?.callId : undefined
+    if (id && answeredLater.has(id)) {
+      end = i
+      break
+    }
+  }
+  return (i) => i >= start && i < end
+}
+
+/** What the thread's own lines say about its git work (see @shared/git/signals). */
+export function codexGitSignals(lines: Line[], fileSessionId?: string): SessionGitSignals {
+  const b = new GitSignalBuilder()
+  const meta = ownMeta(lines, fileSessionId) ?? {}
+  const git = (meta.git ?? {}) as Record<string, unknown>
+  b.head = str(git.commit_hash)?.toLowerCase()
+  b.remote = str(git.repository_url)
+  b.branch(git.branch)
+  const copied = copiedLines(lines, fileSessionId)
+  lines.forEach((l, i) => {
+    if (copied(i)) return
+    const t = l.timestamp ? Date.parse(l.timestamp) : NaN
+    const at = Number.isFinite(t) ? t : undefined
+    b.time(at)
+    if (l.type !== 'response_item') return
+    const p = l.payload
+    const out = toolOutputOf(p)
+    if (out) {
+      b.result(out.callId, out.result.text, at)
+      return
+    }
+    const call = toolCallOf(p)
+    if (!call) return
+    // Namespaced names (`functions.exec_command`) are the same tools.
+    const short = call.name.slice(call.name.lastIndexOf('.') + 1)
+    if (call.name === 'apply_patch' || short === 'apply_patch') {
+      const patch =
+        typeof call.input === 'string'
+          ? call.input
+          : String((call.input as { input?: unknown } | undefined)?.input ?? '')
+      for (const f of patchFiles(patch)) b.file(f, at)
+      return
+    }
+    if (SHELL_TOOLS.has(call.name) || SHELL_TOOLS.has(short)) {
+      const cmd = commandText(call.input)
+      if (!cmd) return
+      // `apply_patch <<'EOF' … EOF` run through the shell.
+      if (cmd.includes('*** Begin Patch')) for (const f of patchFiles(cmd)) b.file(f, at)
+      b.command(call.callId, cmd, at)
+    }
+  })
+  return b.build()
 }

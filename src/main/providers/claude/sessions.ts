@@ -5,6 +5,8 @@ import { readdir, stat } from 'node:fs/promises'
 import { basename, dirname, join } from 'node:path'
 import { analyzeEvents, isUuid, parseJsonl } from '@shared/jsonl'
 import { analyzeContext } from '@shared/context'
+import { claudeGitSignals } from '@shared/git/claude-signals'
+import type { SessionGitSignals } from '@shared/git/types'
 import { baseName } from '@shared/format'
 import type { BaseSummary, SessionFile, SourceRef } from '../types'
 
@@ -69,12 +71,13 @@ export function parseSessionText(
   text: string,
   file: Omit<SessionFile, 'mtimeMs'>,
   src: SourceRef
-): { base: BaseSummary; searchText: string } {
+): { base: BaseSummary; searchText: string; git: SessionGitSignals } {
   const { events, malformedLines } = parseJsonl(text)
   const a = analyzeEvents(events, { sessionId: file.sessionId })
   const context = analyzeContext(events)
   return {
     searchText: a.searchText,
+    git: claudeGitSignals(events, file.sessionId),
     base: {
       key: `${src.id}:${file.sessionId}`,
       sessionId: file.sessionId,

@@ -13,6 +13,7 @@ import type { EffortLevels } from '@shared/model-choice'
 import type { BridgeReading } from '@shared/usage/bridge'
 import type { UsageContext } from '@shared/usage/parse'
 import type { UsageAnalysis } from '@shared/usage/types'
+import type { SessionGitSignals } from '@shared/git/types'
 import type { ChatMessage, EnvKind, SessionSummary, SourceInfo } from '@shared/types'
 import type {
   ContinueFreshArgs,
@@ -122,7 +123,7 @@ export interface SessionProvider {
     text: string,
     file: Omit<SessionFile, 'mtimeMs'>,
     src: SourceRef
-  ): { base: BaseSummary; searchText: string }
+  ): { base: BaseSummary; searchText: string; git?: SessionGitSignals }
   buildMessages(text: string, base: BaseSummary): ChatMessage[]
   /** The text indexed for full-text search. */
   searchText(text: string): string

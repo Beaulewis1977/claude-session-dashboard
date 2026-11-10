@@ -29,6 +29,8 @@ import type {
 } from '@shared/types'
 import { metaKey, type ProviderId } from '@shared/provider'
 import type { SearchHit } from '@shared/api'
+import type { GitBadge, SessionGitSignals } from '@shared/git/types'
+import { hasGitFilters, parseGitQuery, type GitQuery } from '@shared/git/query'
 import type { SessionBilling } from '@shared/usage/credits'
 import { archiveGrowth, archiveSession } from '../core/archive'
 import { writeFileAtomic, type JsonStore } from '../core/json-store'
@@ -57,7 +59,11 @@ import {
 // v8: the context size (last reply's usage, compactions, cache lifetime).
 // v9: the cache lifetime as a 1-hour share (mixed 5-minute / 1-hour caches).
 // v10: the 1-hour share of what is cached now (not of all writes).
-const CACHE_VERSION = 10
+// v11: git signals (branches, edited files, commits and PRs a session's own
+// tool calls printed, active stretches) for the git links.
+// v12: when each file was edited, and a Codex copy found by where its own history starts.
+// v13: when each claude.ai/code link was seen, and older Codex copies found more closely.
+const CACHE_VERSION = 13
 
 interface CacheFile {
   version: number
@@ -78,6 +84,32 @@ interface Entry {
    * with: a name read again at startup that matches needs no re-index.
    */
   indexedName?: string
+  /** What its file says about its git work (see @shared/git/signals). */
+  git?: SessionGitSignals
+}
+
+/** One session as the git links service sees it (see SessionService.gitInputs). */
+export interface GitInput {
+  key: string
+  sessionId: string
+  provider: ProviderId
+  env: SessionSummary['env']
+  distro?: string
+  /** The Linux user of its WSL home (runs git as that user). */
+  sourceUser?: string
+  cwd?: string
+  title?: string
+  /** A Codex subagent: its parent thread's id. */
+  parentId?: string
+  /**
+   * A fork or branch with its parent's history copied in: the parent's id, and
+   * when they split (its lines before then are the parent's work).
+   */
+  forkOf?: string
+  forkAt?: number
+  signals?: SessionGitSignals
+  /** Changes when the session does (size, last activity, availability). */
+  rev: string
 }
 
 /** What an imported entry was loaded from: reloaded when either changes. */
@@ -191,7 +223,88 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
   }
 
   searchKeys(query: string): SearchHit[] {
-    return this.search.search(query)
+    const q = parseGitQuery(query)
+    if (!hasGitFilters(q) || !this.gitFilter) return this.search.search(query)
+    const keys = this.gitFilter(q)
+    if (!q.text) return [...keys].map((key) => ({ key, score: 1, fields: ['git'] }))
+    return this.search.search(q.text).filter((h) => keys.has(h.key))
+  }
+
+  /** The sessions a `touched:` / `commit:` filter matches (set by the git links service). */
+  gitFilter?: (q: GitQuery) => Set<string>
+  /** A session's git badge ("3 commits · PR #14"), set by the git links service. */
+  gitBadgeResolver?: (key: string) => GitBadge | undefined
+
+  /** What the git links service needs of every session (its own provider on). */
+  gitInputs(): GitInput[] {
+    const out: GitInput[] = []
+    for (const e of this.entries.values()) {
+      if (!this.isOn(e) || e.base.availability === 'imported') continue
+      const b = e.base
+      const src = this.source(b.sourceId)
+      // Continue fresh starts empty; every other kind of child carries a copy of its parent.
+      const lin = this.lineageResolver?.(b.key)
+      const fork = lin && lin.via !== 'continue' ? lin : undefined
+      // Codex records its own fork parent (forked_from_id). A Codex fork or subagent
+      // starts from its parent's history, so its own start is the split. A fork or
+      // branch the app made has its creation time in the app's record: everything it
+      // copied is from before, everything of its own after (the split point itself
+      // can't be worked out when the parent is gone).
+      const forkOf = fork?.parentSessionId ?? b.forkedFromId
+      const record = this.metaOf(b).branch
+      const made =
+        fork && record && record.via !== 'continue' && record.parentSessionId === forkOf
+          ? record.createdAt
+          : undefined
+      const split = fork?.atTime ?? made ?? (b.forkedFromId || b.subagent ? b.startedAt : undefined)
+      const forkAt = split ? Date.parse(split) : NaN
+      out.push({
+        key: b.key,
+        sessionId: b.sessionId,
+        provider: this.providerOf(b).id,
+        env: b.env,
+        distro: b.distro,
+        sourceUser: src?.kind === 'custom' ? undefined : src?.user,
+        cwd: b.cwd,
+        title: this.metaOf(b).name ?? b.claudeName ?? b.summary ?? b.firstPrompt?.slice(0, 80),
+        parentId: b.subagent?.parentId,
+        ...(forkOf ? { forkOf } : {}),
+        ...(Number.isFinite(forkAt) ? { forkAt } : {}),
+        signals: e.git,
+        // Its fork point counts too: lineage is worked out after the scan.
+        rev: `${e.size}|${b.lastActivityAt ?? ''}|${b.availability}|${forkOf ?? ''}|${split ?? ''}`
+      })
+    }
+    return out
+  }
+
+  /** The signals of one session (for `touched:` and the Changes tab). */
+  gitSignals(key: string): SessionGitSignals | undefined {
+    return this.entries.get(key)?.git
+  }
+
+  /** Commits I unlinked from a session (kept in the app's metadata, never in the agent's files). */
+  gitUnlinked(key: string): string[] {
+    const e = this.entries.get(key)
+    return e ? (this.metaOf(e.base).gitUnlinked ?? []) : []
+  }
+
+  setGitUnlinked(key: string, shas: string[]): boolean {
+    const e = this.entries.get(key)
+    if (!e || !this.isOn(e)) return false
+    const mk = this.metaKeyOf(e.base)
+    const clean = [...new Set(shas.filter((x) => /^[0-9a-f]{40}(?:[0-9a-f]{24})?$/.test(x)))].slice(
+      0,
+      5000
+    )
+    this.metadata.update((d) => {
+      const next: SessionMeta = { ...(d.sessions[mk] ?? {}), updatedAt: new Date().toISOString() }
+      if (clean.length) next.gitUnlinked = clean
+      else delete next.gitUnlinked
+      d.sessions[mk] = next
+    })
+    this.emitChanged()
+    return true
   }
 
   async detail(key: string): Promise<SessionDetail | null> {
@@ -520,6 +633,7 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
       source: manual?.label ?? det!.label,
       sourceReason: manual ? 'Set by hand' : det!.reason,
       lineage: this.lineageResolver?.(base.key),
+      git: this.gitBadgeResolver?.(base.key),
       context: provider.capabilities.usage
         ? withStatusLine(base.context, this.contextResolver?.(base.sessionId))
         : base.context
@@ -758,7 +872,8 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
         mtimeMs: f.mtimeMs,
         ...(pv ? { pv } : {}),
         // The agent name its (reused) search entry was built with.
-        ...(cached.indexedName !== undefined ? { indexedName: cached.indexedName } : {})
+        ...(cached.indexedName !== undefined ? { indexedName: cached.indexedName } : {}),
+        ...(cached.git ? { git: cached.git } : {})
       })
       this.linkContinued(base)
       this.queueArchive(src, base)
@@ -780,11 +895,17 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
     if (this.loadSeq.get(key) !== seq) return
     // Turned off while the file was being read: nothing of it is kept.
     if (!this.providers.isOn(provider.id)) return
-    const { base, searchText } = provider.parseSession(text, f, src)
+    const { base, searchText, git } = provider.parseSession(text, f, src)
     if (record) base.archivePath = record.archivePath
     this.owner.set(key, provider.id)
     const pv = provider.parseVersion
-    this.entries.set(key, { base, size: f.size, mtimeMs: f.mtimeMs, ...(pv ? { pv } : {}) })
+    this.entries.set(key, {
+      base,
+      size: f.size,
+      mtimeMs: f.mtimeMs,
+      ...(pv ? { pv } : {}),
+      ...(git ? { git } : {})
+    })
     await breathe()
     // Replaced by a newer read meanwhile: that one indexes it.
     if (this.loadSeq.get(key) !== seq) return
@@ -998,7 +1119,7 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
       env: rec.env,
       distro: rec.distro
     }
-    const { base, searchText } = provider.parseSession(
+    const { base, searchText, git } = provider.parseSession(
       text,
       {
         path: rec.archivePath,
@@ -1025,7 +1146,8 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
       base,
       size,
       mtimeMs: 0,
-      ...(imported ? { rev: importRev(rec) } : {})
+      ...(imported ? { rev: importRev(rec) } : {}),
+      ...(git && !imported ? { git } : {})
     })
     this.index(base, searchText)
   }

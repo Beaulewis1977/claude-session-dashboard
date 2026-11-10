@@ -8,6 +8,7 @@ import { cn } from '@/lib/utils'
 import { EnvDot } from '@/components/EnvBadge'
 import { RemoteBadge } from '@/components/RemoteBadge'
 import { ContextBadge } from '@/components/context/ContextSize'
+import { GitBadge } from '@/components/GitBadge'
 import { SourceBadge } from '@/components/SourceBadge'
 import { ModelChoiceBadge } from '@/components/ModelPicker'
 import { useModelChoice } from '@/lib/model-choice'
@@ -164,6 +165,7 @@ export const SessionCard = memo(function SessionCard({
             <MessageSquare className="size-3 text-subtle-foreground" />
             {s.messageCount}
           </span>
+          <GitBadge git={s.git} />
           <ContextBadge context={s.context} />
           <RemoteBadge session={s} compact />
           {s.availability !== 'imported' && <ModelChoiceBadge choice={choice} compact />}

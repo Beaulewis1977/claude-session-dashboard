@@ -207,6 +207,16 @@ export const webApi: CsdApi = {
   },
   rescan: async () => fire('sessions'),
 
+  // A phone reads the commits, files and PR links; diffs, unlinking and settings stay on the PC.
+  getGitView: (key) => rpc('getGitLinks', key),
+  getGitDiff: onPc('Diffs'),
+  unlinkCommit: onPc('Unlinking a commit'),
+  relinkCommit: onPc('Linking a commit'),
+  refreshGit: async () => undefined,
+  getGitStatus: onPc('Git settings'),
+  updateGitSettings: onPc('Git settings'),
+  onGitChanged: (cb) => subscribe('sessions', cb),
+
   getSettings: () => rpc('getSettings'),
   updateSettings: (patch) => rpc('updateSettings', patch),
   addExtraFolder: onPc('Adding folders'),

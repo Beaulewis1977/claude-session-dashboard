@@ -13,6 +13,7 @@ import {
   FileDown,
   FolderOpen,
   GitBranch,
+  GitCommitHorizontal,
   GitFork,
   MessageSquare,
   Pin,
@@ -58,6 +59,8 @@ import {
 import { canUseClaudeName } from '@shared/title'
 import { capsOf, PROVIDER_LABEL, providerOf } from '@shared/provider'
 import { ProviderBadge } from '@/components/ProviderSwitch'
+import { ChangesSheet } from './ChangesSheet'
+import { badgeText } from '@shared/git/prs'
 import { FindBar } from '@/components/viewer/FindBar'
 import { SessionUsageStrip } from '@/components/viewer/SessionUsage'
 import { ContextStrip } from '@/components/context/ContextSize'
@@ -124,6 +127,7 @@ export function SessionScreen({ session }: { session: SessionSummary }) {
   // Shown only once terminal access (SSH over Tailscale) is set up on the PC.
   const terminal = useMobile((s) => s.terminal)
   const [terminalOpen, setTerminalOpen] = useState(false)
+  const [changesOpen, setChangesOpen] = useState(false)
   const showTerminal = canOpenTerminal(terminal, session)
   const [detail, setDetail] = useState<SessionDetail | null>(null)
   const [error, setError] = useState(false)
@@ -202,6 +206,21 @@ export function SessionScreen({ session }: { session: SessionSummary }) {
           <ChevronLeft className="size-6" /> Sessions
         </Button>
         <div className="flex-1" />
+        {session.availability !== 'imported' && (
+          <Button
+            variant="ghost"
+            className="h-11 gap-1 px-2 text-[13px]"
+            aria-label="Changes (commits, files and pull requests)"
+            onClick={() => setChangesOpen(true)}
+          >
+            <GitCommitHorizontal className="size-5" />
+            {session.git ? (
+              <span className="tabular-nums">{badgeText(session.git)}</span>
+            ) : (
+              'Changes'
+            )}
+          </Button>
+        )}
         {showTerminal && (
           <Button
             variant="ghost"
@@ -489,6 +508,16 @@ export function SessionScreen({ session }: { session: SessionSummary }) {
         </footer>
       )}
 
+      {changesOpen && (
+        <ChangesSheet
+          session={session}
+          onClose={() => setChangesOpen(false)}
+          onSearch={() => {
+            setChangesOpen(false)
+            history.back()
+          }}
+        />
+      )}
       {terminalOpen && canOpenTerminal(terminal, session) && (
         <TerminalSheet
           info={terminal}

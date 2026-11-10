@@ -26,6 +26,7 @@ import { useModelChoice } from '@/lib/model-choice'
 import { useScope } from '@/lib/scope'
 import { capsOf, PROVIDER_LABEL, providerOf } from '@shared/provider'
 import { ProviderBadge } from '../ProviderSwitch'
+import { GitBadge } from '../GitBadge'
 
 export const ROW_HEIGHT = 104
 
@@ -182,6 +183,7 @@ export const SessionRow = memo(function SessionRow({
               {branches}
             </span>
           )}
+          <GitBadge git={s.git} />
           <ContextBadge context={s.context} />
           <RemoteBadge session={s} compact />
           {s.availability !== 'imported' && <ModelChoiceBadge choice={choice} compact />}

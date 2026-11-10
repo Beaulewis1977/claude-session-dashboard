@@ -27,6 +27,7 @@ import { isOpenIn, PROJECT_ID_RE, sanitizeProjectOpenIn } from '@shared/codex-ap
 import { sanitizeLiveAlerts } from '@shared/live-alerts'
 import { sanitizeSummarySettings } from '@shared/summary'
 import { sanitizeContextWarning } from '@shared/context'
+import { sanitizeGitSettings } from '@shared/git/types'
 import { codexSettingsPatch, codexUsageSettings } from '@shared/usage/codex-settings'
 import {
   isCodexArchiveMode,
@@ -105,7 +106,8 @@ function publicSettings(s: SettingsFile): AppSettings {
     summaries: sanitizeSummarySettings(s.summaries),
     contextWarning: sanitizeContextWarning(s.contextWarning),
     ...providerSettings(s),
-    ...codexUsageSettings(s)
+    ...codexUsageSettings(s),
+    gitLinks: sanitizeGitSettings(s.gitLinks)
   }
 }
 

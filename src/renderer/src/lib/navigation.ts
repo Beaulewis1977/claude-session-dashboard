@@ -103,10 +103,12 @@ function queueFlush(): void {
 /**
  * Run an automatic change (selecting the first session at startup, or the first
  * visible one when a filter hides the selected one) as part of the current
- * entry instead of a move of its own.
+ * entry, or of the move that caused it, instead of a move of its own.
  */
 export function amendNavigation(fn: () => void): void {
-  amendPending = true
+  // A move still waiting to be recorded (a click's effects run before the
+  // microtask) takes the automatic change along as part of its own new entry.
+  if (!flushQueued) amendPending = true
   fn()
   queueFlush()
 }

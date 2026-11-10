@@ -1088,8 +1088,12 @@ dropped?", "Why did I hit my limit Tuesday?" or "Compare this month to last mont
   sessions.
 - **Cost / ≈ $**: an estimate at API list prices from the editable price table (Settings → Usage).
   The table is pre-filled from a bundled snapshot of LiteLLM's price data dated 22 Oct 2026 (the
-  source ccusage uses; it matches Anthropic's published prices). Fast mode is priced with the
-  snapshot's multiplier (×2 for Opus 5.5), and a request over a model's long-context threshold
+  source ccusage uses; it matches Anthropic's published prices). Models the snapshot doesn't have
+  yet are added from Anthropic's own pricing page only (platform.claude.com, checked 10 Nov 2026):
+  Claude Fable 5.2 and Mythos 5.2 ($8 input, $10 / $16 cache writes, $0.20 cache hits, $40 output
+  per MTok; fast mode ×2). A newer model is never priced by an older row (`claude-fable-5` doesn't
+  price `claude-fable-5-2`). Fast mode is priced with the table's multiplier (×2 for Opus 5.5 and
+  Fable 5.2), and a request over a model's long-context threshold
   (Haiku 5.5: 100K input tokens) is billed entirely at the higher tier. Old Claude Code versions
   logged a `costUSD` per response; when it's there, it's used instead of the estimate. On a
   subscription you don't pay this; it's a way to compare. The credits tracker prefers Claude Code's
@@ -1110,6 +1114,28 @@ dropped?", "Why did I hit my limit Tuesday?" or "Compare this month to last mont
   interruption, or starting with "no", "wrong", "that's not"), cache read ratio, thinking blocks and
   their length (newer Claude Code versions often don't save thinking text), and context window use
   (from the bridge). They depend on what you were working on, so they're indicators, not proof.
+- **Token speed** (tokens per second): each response's output tokens ÷ its generation time, from
+  log timestamps only:
+  - _Claude Code_: from the request (the `api-request` line the response points to with
+    `requestRef`; older logs: the prompt or tool result before it) to the response's last line.
+    Tool time is never in it: the next request is sent after the tool result. Time to first token is
+    an estimate for replies that start with thinking (the thinking line's time minus
+    `thinkingDurationMs`, from the request); other replies have none, and the ⓘ says how many have
+    one. Thinking tokens come from `usage.output_tokens_details.thinking_tokens`.
+  - _Codex_: from the last input (the turn's start, a message, a tool output) to the response's
+    `token_usage_record` (newer Codex) or its last item before a tool output. Never its
+    `token_count`: Codex writes that after the response's tools ran. Time to first token is Codex's
+    own per-turn `time_to_first_token_ms`.
+  - Left out of the medians: replies under 50 tokens, times under 0.25 s or over 10 minutes, over
+    1,500 tok/s, a reply cut short or after an API error, and a Codex fork's copied history. A
+    response copied into another session (fork, resume, branch) keeps its original's timing. A
+    median needs 5 responses.
+  - _Fast mode_ (Claude Code's `usage.speed: "fast"`, Codex's `service_tier: "priority"`) is
+    counted as `<model>-fast`: its own line and compare row, priced at the fast prices (OpenAI's
+    Fast/Priority prices, from developers.openai.com, ×2, ×2.5 for GPT-5.5), never in a normal
+    median.
+  - It includes waiting and thinking time, and network and server load affect it: a hint, not a
+    benchmark. In Limit health it's a side signal only, never part of the score.
 - **Admin API figures** cover the whole organization (every key and person), not just this computer.
 - **Verify against ccusage** (Settings → Usage) runs `ccusage daily --json` if it's installed and
   compares per day. ccusage only reads the Windows profile, so it's compared with Windows sessions.

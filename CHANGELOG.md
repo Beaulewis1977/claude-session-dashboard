@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.14.0 (November 9, 2026)
+
+**Git links.**
+
+### Git links (PR #41)
+
+- **Each Claude and Codex session is linked to the commits it made:** exact matches from session
+  trailers and commit output, plus branch, time and file matches with confidence levels.
+- **A Changes tab** in the viewer with the session's commits, files, diffs and PR links, plus
+  "Sessions that touched this file".
+- **Badges on session cards**, and `touched:<path>` and `commit:<sha>` search.
+- **Unlink / restore** a link (kept in the app's metadata).
+- **Optional PR lookup via your GitHub CLI** (asked once; switch in Settings → Git).
+- **A read-only Changes section on the phone.**
+- Git is only ever read, never modified.
+
 ## 1.13.1 (November 9, 2026)
 
 **Loose ends after 1.13.0.**

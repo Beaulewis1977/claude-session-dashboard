@@ -182,7 +182,7 @@ export function ListToolbar({ count }: { count: number }) {
     const t = setTimeout(() => {
       void api.search(q).then((hits) => {
         if (useApp.getState().query.trim() === q)
-          set({ hits: new Map(hits.map((h) => [h.key, h])) })
+          set({ hits: new Map(hits.map((h) => [h.key, h])), hitsQuery: q })
       })
     }, 120)
     return () => clearTimeout(t)

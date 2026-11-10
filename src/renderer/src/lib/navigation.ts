@@ -67,7 +67,30 @@ function flush(): void {
   if (history.record(s, performance.now()) !== 'none') {
     cancelRestore()
     bump()
+    captureScroll()
   }
+}
+
+/**
+ * Once a move's screen has rendered, note where every pane is (a list that
+ * didn't scroll still has its position, which no scroll event would report).
+ */
+function captureScroll(): void {
+  if (typeof requestAnimationFrame === 'undefined') return
+  const entry = history.current()
+  let frames = 0
+  const tick = (): void => {
+    if (++frames < 2) {
+      requestAnimationFrame(tick)
+      return
+    }
+    if (history.current() !== entry) return
+    for (const el of document.querySelectorAll<HTMLElement>('[data-nav-scroll]')) {
+      const pane = el.dataset.navScroll
+      if (pane && !restoring.has(pane)) history.setScroll(pane, el.scrollTop)
+    }
+  }
+  requestAnimationFrame(tick)
 }
 
 function queueFlush(): void {
@@ -127,6 +150,16 @@ export function navBlocked(): boolean {
   )
 }
 
+/** A search is on and doesn't (yet) list this session. */
+export function searchMayHide(
+  st: Pick<AppState, 'query' | 'hits' | 'hitsQuery'>,
+  key: string
+): boolean {
+  const q = st.query.trim()
+  if (!q) return false
+  return !st.hits || st.hitsQuery !== q || !st.hits.has(key)
+}
+
 /** Go Back (-1) or Forward (1). Returns false when there's nowhere to go. */
 export function navigate(dir: Direction): boolean {
   if (navBlocked()) return false
@@ -148,11 +181,15 @@ export function navigate(dir: Direction): boolean {
     patch.anchorKey = key
     patch.checked = []
   }
-  // The search isn't part of history: if it would hide the session, it's cleared.
-  if (key && st.hits && !st.hits.has(key) && st.query.trim()) {
+  // The search isn't part of history. Back to a session in the list: if the
+  // search would hide it, or its answer isn't in yet (it could pick another
+  // session when it arrives), the search is cleared. Other screens don't show
+  // the session, so the search stays.
+  if (s.view === 'sessions' && key && searchMayHide(st, key)) {
     patch.query = ''
     patch.hits = null
-    patch.sort = st.sortBeforeSearch
+    patch.hitsQuery = null
+    patch.sort = st.sort === 'relevance' ? st.sortBeforeSearch : st.sort
   }
   lastSection = s.view === 'settings' ? s.settingsSection : null
   // Never scrolled there: jump to the section like the link did.
@@ -165,6 +202,8 @@ export function navigate(dir: Direction): boolean {
   history.amend(snapshot())
   bump()
   restoreScroll(entry.scroll)
+  // Panes it had no position for (e.g. a list it never showed) are noted as they come up.
+  captureScroll()
   return true
 }
 

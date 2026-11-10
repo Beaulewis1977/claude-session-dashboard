@@ -54,6 +54,9 @@ function Host() {
     h('textarea', { 'aria-label': 'Description', defaultValue: 'text' }),
     h('div', { 'aria-label': 'Editable', contentEditable: true, suppressContentEditableWarning: true }, 'edit me'),
     h('div', { id: 'status' }, view + '|' + key),
+    // The session list: shown (and kept, not remounted) on the session screens only.
+    view === 'sessions' && h('div', { 'data-nav-scroll': 'list', style: { height: '150px', overflow: 'auto' } },
+      h('div', { style: { height: '2000px' } }, 'list')),
     // A tall main pane per screen (remounted on each, like the real views).
     h('div', { key: view + key, 'data-nav-scroll': 'main', style: { height: '200px', overflow: 'auto' } },
       h('div', { style: { height: '3000px' } }, view))
@@ -62,6 +65,14 @@ function Host() {
 createRoot(document.getElementById('root')).render(h(Host))
 window.__nav = {
   state: () => { const s = useApp.getState(); return s.view + '|' + s.selectedKey },
+  query: () => useApp.getState().query,
+  search: (query, keys, answered) => useApp.getState().set({
+    query, sort: 'relevance', sortBeforeSearch: 'activity',
+    hits: keys ? new Map(keys.map((k) => [k, { key: k, score: 1 }])) : null,
+    hitsQuery: answered ? query : null
+  }),
+  scrollTop: (pane) => document.querySelector('[data-nav-scroll=' + pane + ']')?.scrollTop ?? -1,
+  scrollTo: (pane, top) => { document.querySelector('[data-nav-scroll=' + pane + ']').scrollTop = top },
   set: (patch) => useApp.getState().set(patch),
   select: (key) => useApp.getState().select(key),
   drop: (key) => useApp.setState({ sessions: useApp.getState().sessions.filter((s) => s.key !== key) }),
@@ -282,6 +293,71 @@ describe('Back / Forward on the desktop', () => {
       await page.evaluate('window.__nav.set({ paletteOpen: false })')
       await page.keyboard.press('Alt+ArrowLeft')
       await expect.poll(() => state(page)).toBe('sessions|windows:a')
+    } finally {
+      await page.close()
+    }
+  })
+
+  it('Back to a session clears a search whose answer is still on its way', async ({ skip }) => {
+    if (!browser) skip(unavailableReason)
+    const page = await open()
+    try {
+      await abc(page)
+      // Typed, not answered yet (no hits): the answer could pick another session.
+      await page.evaluate("window.__nav.search('orders', null, false)")
+      await page.keyboard.press('Alt+ArrowLeft')
+      await expect.poll(() => state(page)).toBe('sessions|windows:b')
+      expect(await page.evaluate<string>('window.__nav.query()')).toBe('')
+      // Old hits from an earlier search don't count as this search's answer either.
+      await page.evaluate("window.__nav.search('billing', ['windows:a'], false)")
+      await page.keyboard.press('Alt+ArrowLeft')
+      await expect.poll(() => state(page)).toBe('sessions|windows:a')
+      expect(await page.evaluate<string>('window.__nav.query()')).toBe('')
+      // An answered search that lists the session stays.
+      await page.evaluate("window.__nav.search('page', ['windows:b', 'windows:c'], true)")
+      await page.keyboard.press('Alt+ArrowRight')
+      await expect.poll(() => state(page)).toBe('sessions|windows:b')
+      expect(await page.evaluate<string>('window.__nav.query()')).toBe('page')
+    } finally {
+      await page.close()
+    }
+  })
+
+  it('Back to Usage keeps the search, even if it hides the session selected there', async ({
+    skip
+  }) => {
+    if (!browser) skip(unavailableReason)
+    const page = await open()
+    try {
+      await page.waitForTimeout(50)
+      await move(page, "window.__nav.set({ view: 'usage' })")
+      await move(page, "window.__nav.set({ view: 'sessions', selectedKey: 'windows:b' })")
+      await page.evaluate("window.__nav.search('orders', ['windows:b'], true)")
+      await page.keyboard.press('Alt+ArrowLeft')
+      await expect.poll(() => state(page)).toBe('usage|windows:a')
+      expect(await page.evaluate<string>('window.__nav.query()')).toBe('orders')
+      await page.keyboard.press('Alt+ArrowRight')
+      await expect.poll(() => state(page)).toBe('sessions|windows:b')
+      expect(await page.evaluate<string>('window.__nav.query()')).toBe('orders')
+    } finally {
+      await page.close()
+    }
+  })
+
+  it("keeps the list's position for a move that didn't scroll it", async ({ skip }) => {
+    if (!browser) skip(unavailableReason)
+    const page = await open()
+    try {
+      await page.waitForTimeout(50)
+      await page.evaluate("window.__nav.scrollTo('list', 500)")
+      await page.waitForTimeout(100)
+      // A tab change: the list doesn't move, so no scroll event says where it is.
+      await move(page, "window.__nav.set({ viewerTab: { key: 'windows:a', tab: 'changes' } })")
+      // Usage: the list goes away; coming back shows a new one at the top.
+      await move(page, "window.__nav.set({ view: 'usage' })")
+      await page.keyboard.press('Alt+ArrowLeft')
+      await expect.poll(() => state(page)).toBe('sessions|windows:a')
+      await expect.poll(() => page.evaluate<number>("window.__nav.scrollTop('list')")).toBe(500)
     } finally {
       await page.close()
     }

@@ -108,6 +108,8 @@ export interface State {
   sortBeforeSearch: SortKey
   query: string
   hits: Map<string, SearchHit> | null
+  /** The search text `hits` answer (a newer query's answer may still be on its way). */
+  hitsQuery: string | null
   sidebarOpen: boolean
 
   paletteOpen: boolean
@@ -155,6 +157,7 @@ export const useApp = create<State>((set) => ({
   sortBeforeSearch: 'activity',
   query: '',
   hits: null,
+  hitsQuery: null,
   sidebarOpen: true,
 
   paletteOpen: false,

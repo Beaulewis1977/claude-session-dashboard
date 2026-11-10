@@ -364,9 +364,10 @@ that summary instead of reloading the whole history, which is much lighter on yo
 **What is sent, and when.** Summaries are written by Claude through **your own Claude Code**
 (`claude -p`, no tools, on your subscription), only when you ask, or, if you turn it on,
 automatically for big idle sessions (off by default). The first time, a notice explains what is
-sent, and **Show exactly what is sent** shows the full text: the conversation's text and one line
-per tool call, never tool output, thinking or images, with common secrets masked, cut to 120,000
-characters. The queue pauses when your live 5-hour limit is above 80%. Runs show in Usage as
+sent: the conversation's text and one line per tool call, never tool output, thinking or images,
+with common secrets masked, cut to 120,000 characters. **Show exactly what is sent** shows the full
+text for a summary, but it's optional: a summary you don't preview, and every auto-summary, is sent
+without a per-session preview. The queue pauses when your live 5-hour limit is above 80%. Runs show in Usage as
 "Summaries (dashboard)". Summaries live only in the app's data, never in Claude's files.
 
 **Where.** The session header; Settings → **Summaries** (model, size limit, pause line,
@@ -556,7 +557,8 @@ logged or put on a command line.
 
 **Ask Claude** (Usage view or the Limit health card) answers "Have my limits dropped?" or "Why did
 I hit my limit Tuesday?" through your own Claude Code. Only aggregated numbers are sent (no
-session titles, projects or text), and you see them first.
+session titles, projects or text). The exact data is shown before you send, until you tick
+**Don't show again**.
 
 ### Limit health and trends
 
@@ -679,8 +681,8 @@ terminal access** undoes them all. Details: [docs/DETAILS.md → Terminal access
 
 ### Backup and restore
 
-**What it does.** Backs up everything the app keeps (the session archive, your names, descriptions
-and tags, summaries, usage and limit history, Ask histories and settings) to a folder you choose:
+**What it does.** Backs up the app's own data (the session archive, your names, descriptions, tags
+and summaries, usage and limit history, Ask histories and settings) to a folder you choose:
 OneDrive, an external drive or a NAS. Your cloud app syncs it; the dashboard makes no network calls.
 
 **How to use it.**
@@ -701,8 +703,11 @@ OneDrive, an external drive or a NAS. Your cloud app syncs it; the dashboard mak
   snapshot, see what would change, then **Restore and restart**. It writes only into the app's own
   data folder, never deletes a file, and keeps a copy of every file it replaces (cleanable after 30
   days).
-- **Never in a backup:** API keys, phone pairing and push keys, and the app's records of changes it
-  made to Claude's, Codex's or OpenSSH's settings. Details:
+- **Never in a backup:** API keys, phone pairing and push keys, the app's records of changes it
+  made to Claude's, Codex's or OpenSSH's settings, caches, and **Continue fresh handoff files**
+  (`handoffs\`). After a restore (or on a new PC), sessions started with Continue fresh keep their
+  "continued from" link and the original's summary, but the handoff file their first message points
+  to is gone, so resuming one of them can't re-read it. Details:
   [docs/DETAILS.md → Backups](docs/DETAILS.md#backups).
 
 ![Settings → Backup](docs/images/settings-backup.webp)
@@ -790,8 +795,11 @@ with these narrow, explained exceptions:
   review the exact diff, with a backup first and an exact undo. `config.toml` and `auth.json` are
   never written.
 
-There is no delete feature (Hide is a flag). The app's own data lives only in
-`%APPDATA%\ClaudeSessionDashboard\`, plus the backup folder you pick. Other system changes are
+There is no delete feature (Hide is a flag). The app's own data lives in
+`%APPDATA%\ClaudeSessionDashboard\`, plus the backup folder you pick. If you turn on live limits or
+alerts, it also keeps a small `.claude-session-dashboard` folder next to `.claude` in each home you
+enabled (Windows, and each WSL user): the bridge and hook scripts (`bin`), and the readings and
+events they save (`live`, `events`, `codex-events`). Other system changes are
 opt-in and shown first: Windows' OpenSSH setup ([terminal access](#terminal-access-from-your-phone)),
 one firewall rule for home Wi-Fi phone mode, and the Start with Windows entry.
 
@@ -808,15 +816,20 @@ on:
 The window itself can't make requests: remote images in transcripts aren't loaded and spellcheck
 is off. There are no updates, analytics or telemetry.
 
-**What goes to Claude, and when.** Only when you ask, always through **your own** Claude Code
-(`claude -p` with no tools, none of your settings, on your Claude subscription), and always
-previewed first:
+**What goes to Claude, and when.** Always through **your own** Claude Code (`claude -p` with no
+tools, none of your settings, on your Claude subscription), only for these three features. How much
+you see before anything is sent differs:
 
-- **Summaries:** the conversation's text and one line per tool call, secrets masked
+- **Summaries:** the conversation's text and one line per tool call, secrets masked. A one-time
+  notice explains this before the first summary; after that, **Show exactly what is sent** is
+  optional, and a summary you don't preview is sent without one. **Auto-summarize** (off by
+  default) sends eligible idle sessions on its own, with no per-session preview
   ([more](#summaries-and-continue-fresh)).
-- **Ask across sessions (content questions):** exactly the snippets the preview shows
-  ([more](#the-preview)).
-- **Ask Claude about your usage:** aggregated numbers only ([more](#ask-claude-about-your-usage)).
+- **Ask across sessions (content questions):** every question is previewed, and only the snippets
+  the preview shows are sent, after you click **Send** ([more](#the-preview)).
+- **Ask Claude about your usage:** aggregated numbers only. The preview is shown before questions
+  until you tick **Don't show again** (Settings → **Ask Claude** turns it back on)
+  ([more](#ask-claude-about-your-usage)).
 
 Nothing is ever sent to Codex: `codex exec` can't be run without tools, so the app doesn't use it.
 API keys are encrypted with Windows (DPAPI) and never shown, logged, backed up or put on a command
@@ -941,10 +954,26 @@ Click **More info**, then **Run anyway**. The exe isn't code-signed.
 <details>
 <summary><b>Where is my data, and how do I uninstall?</b></summary>
 
-Everything the app keeps is in `%APPDATA%\ClaudeSessionDashboard\`. Windows Settings → Apps → Claude
-Session Dashboard → Uninstall removes the program only; delete that folder to remove the data and
-archive too. If you use the phone companion, turn off Settings → **Phone** first, so the app removes
-its Tailscale (or firewall) rule. Your `.claude` and `.codex` folders are never touched.
+The app's data is in `%APPDATA%\ClaudeSessionDashboard\`. If you turned on live limits or alerts,
+each home you enabled (Windows, and each WSL user) also has a `~/.claude-session-dashboard` folder
+with the bridge and hook scripts and the readings and events they saved.
+
+**Before uninstalling**, undo what you turned on, while the app can still undo it exactly:
+
+1. Settings → **Live limits** → **Disable** for each environment (puts your previous `statusLine`
+   back in Claude Code's `settings.json`).
+2. Settings → **Session alerts** → **Disable** for each environment, and **Disable** approval alerts
+   for each Codex home (takes the app's hooks out of `settings.json` and `~/.codex/hooks.json`).
+3. Settings → **Phone** → turn phone access off (removes the app's Tailscale serve rule, and offers
+   to remove its firewall rule in home Wi-Fi mode).
+4. Settings → **Terminal access (SSH)** → **Turn off terminal access**, if you set it up.
+5. Settings → **Startup** → turn **Start with Windows** off.
+
+**Then** uninstall in Windows Settings → Apps → Claude Session Dashboard (this removes the program
+only). To remove the data too, delete `%APPDATA%\ClaudeSessionDashboard\` (this deletes your archive
+copies of old sessions), the `.claude-session-dashboard` folder in each home, and, if you used
+backups, the `ClaudeSessionDashboard Backup` folder. Apart from the opt-in changes above, your
+`.claude` and `.codex` folders are never modified.
 
 </details>
 

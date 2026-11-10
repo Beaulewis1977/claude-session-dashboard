@@ -112,7 +112,10 @@ Several later features stay inside the rules:
   conversations in the app's archive.
 - **Ask Claude**, **summaries** and **Ask across sessions** make no network call themselves: they
   start your own `claude` CLI (`claude -p`, no tools, none of your settings, subscription only),
-  which talks to Anthropic as it always does, and only after you've seen what will be sent. See
+  which talks to Anthropic as it always does. How much you see first differs: every Ask across
+  sessions question is previewed and sent only on **Send**; Ask Claude shows its data until you
+  tick "Don't show again"; summaries show a one-time notice, after which the exact text is optional
+  (**Show exactly what is sent**), and opt-in auto-summarize sends with no per-session preview. See
   [Ask Claude](#ask-claude), [Summaries](#summaries-and-continue-fresh) and
   [Ask across sessions](#ask-across-sessions).
 - **Open in Codex app** only reads the Codex app's project list and `config.toml`, and opens two
@@ -523,7 +526,11 @@ usage and limit history, Ask Claude and Ask histories, the app's settings, and `
 keys taken out (nicknames, credit grants and Admin reports stay). **Never in a backup:** API keys,
 paired phones and push keys (`mobile.json`), the status line / session alert / terminal access
 records and their backups of Claude's or OpenSSH's settings (they belong to this PC, and the
-settings backups can hold secrets from Claude's `env`), caches, and `backup.json` itself.
+settings backups can hold secrets from Claude's `env`), caches, Continue fresh handoff files
+(`handoffs\` and `handoffs\codex\`), logs, and `backup.json` itself. Because handoffs aren't backed
+up, a restored or moved backup keeps each continued session's "continued from" link (in
+`metadata.json`) and the original session's summary, but not the handoff file the continued
+session's first message points to.
 
 **The backup folder** (`<folder you picked>\ClaudeSessionDashboard Backup\`):
 

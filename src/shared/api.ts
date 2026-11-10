@@ -40,8 +40,7 @@ import type {
 
 /** A phone's local question: answered on the PC (nothing sent), or a content one. */
 export type PhoneLocalAnswer =
-  | { mode: 'local'; answer: LocalAnswer; chips: string[] }
-  | { mode: 'content'; enabled: boolean }
+  { mode: 'local'; answer: LocalAnswer; chips: string[] } | { mode: 'content'; enabled: boolean }
 import type { AiSummary, SummaryEstimate } from './summary'
 import type { ResumeEstimate } from './context'
 import type { SummaryBatchEstimate, SummaryPreview, SummaryQueueState } from './summary-queue'

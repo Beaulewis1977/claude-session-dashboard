@@ -88,7 +88,8 @@ export function openCitation(c: Pick<AskCitation, 'key' | 'messageId' | 'msgIds'
       nonce: Date.now()
     }
   }
-  if (st.query.trim()) Object.assign(patch, { query: '', hits: null, hitsQuery: null, sort: st.sortBeforeSearch })
+  if (st.query.trim())
+    Object.assign(patch, { query: '', hits: null, hitsQuery: null, sort: st.sortBeforeSearch })
   st.set(patch)
   st.select(s.key)
   // select() resets the tab only for a different session: keep the cited one.

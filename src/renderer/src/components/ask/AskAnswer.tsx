@@ -43,7 +43,10 @@ function CiteChip({
         <span className="block max-w-[320px] text-left">
           <span className="block font-medium">{c.title}</span>
           <span className="block text-muted-foreground">
-            {[c.date, c.sha ? `commit ${c.sha.slice(0, 7)}` : c.kind === 'turn' ? 'message' : c.kind]
+            {[
+              c.date,
+              c.sha ? `commit ${c.sha.slice(0, 7)}` : c.kind === 'turn' ? 'message' : c.kind
+            ]
               .filter(Boolean)
               .join(' · ')}
           </span>
@@ -78,7 +81,10 @@ function LocalView({ a, onOpen }: { a: LocalAnswer; onOpen: (c: OpenTarget) => v
                 {a.table.columns.map((c, i) => (
                   <th
                     key={c}
-                    className={cn('px-3 py-1.5 font-medium', a.table!.align?.[i] === 'right' && 'text-right')}
+                    className={cn(
+                      'px-3 py-1.5 font-medium',
+                      a.table!.align?.[i] === 'right' && 'text-right'
+                    )}
                   >
                     {c}
                   </th>
@@ -118,7 +124,9 @@ function LocalView({ a, onOpen }: { a: LocalAnswer; onOpen: (c: OpenTarget) => v
                 <MessageSquareQuote className="mt-0.5 size-3.5 shrink-0 text-subtle-foreground" />
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-[13px] font-medium">{s.title}</span>
-                  {s.detail && <span className="block truncate text-xs text-muted-foreground">{s.detail}</span>}
+                  {s.detail && (
+                    <span className="block truncate text-xs text-muted-foreground">{s.detail}</span>
+                  )}
                 </span>
                 <ChevronRight className="mt-0.5 size-3.5 shrink-0 text-subtle-foreground" />
               </button>
@@ -138,10 +146,14 @@ function LocalView({ a, onOpen }: { a: LocalAnswer; onOpen: (c: OpenTarget) => v
                 <GitCommitHorizontal className="mt-0.5 size-3.5 shrink-0 text-subtle-foreground" />
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-[13px]">
-                    <span className="font-mono text-xs text-muted-foreground">{c.sha.slice(0, 7)}</span>{' '}
+                    <span className="font-mono text-xs text-muted-foreground">
+                      {c.sha.slice(0, 7)}
+                    </span>{' '}
                     {c.subject}
                   </span>
-                  {c.detail && <span className="block truncate text-xs text-muted-foreground">{c.detail}</span>}
+                  {c.detail && (
+                    <span className="block truncate text-xs text-muted-foreground">{c.detail}</span>
+                  )}
                 </span>
               </button>
             </li>
@@ -177,6 +189,51 @@ function LocalView({ a, onOpen }: { a: LocalAnswer; onOpen: (c: OpenTarget) => v
   )
 }
 
+/** A Claude answer: how it came about (what was searched, sent, and checked). */
+function HowAnswered({ item }: { item: AskSessionsItem }) {
+  const [open, setOpen] = useState(false)
+  const s = item.sent
+  const cited = Object.keys(item.citations ?? {}).length
+  return (
+    <div className="mt-3 rounded-lg border border-dashed border-border px-3 py-2">
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        aria-expanded={open}
+        className="flex w-full items-center gap-1.5 text-left text-xs font-medium text-muted-foreground hover:text-foreground"
+      >
+        <ChevronRight className={cn('size-3.5 transition-transform', open && 'rotate-90')} />
+        How this was answered
+      </button>
+      {open && (
+        <ul className="mt-2 list-disc space-y-1 pl-4 text-xs leading-relaxed text-muted-foreground">
+          <li>
+            Searched the local index on this PC
+            {item.searched ? <> for “{item.searched}”</> : ''}
+            {item.matched !== undefined ? ` (${item.matched} matching passages)` : ''}, in{' '}
+            {item.scopeText || 'all my sessions'}.
+          </li>
+          {s && (
+            <li>
+              You reviewed and sent {s.snippets} snippet{s.snippets === 1 ? '' : 's'} from{' '}
+              {s.sessions} session{s.sessions === 1 ? '' : 's'} ({s.chars.toLocaleString('en-US')}{' '}
+              characters, secrets masked) to your own claude -p
+              {itemModelLabel(item) ? `, ${itemModelLabel(item)}` : ''}: no tools, none of your
+              settings, nothing saved by Claude Code.
+            </li>
+          )}
+          <li>
+            Every statement had to cite a snippet that was sent
+            {item.notFound
+              ? '; none did, so the answer is “not found”.'
+              : `: ${cited} snippet${cited === 1 ? ' is' : 's are'} cited${item.dropped?.length ? `, ${item.dropped.length} statement${item.dropped.length === 1 ? ' was' : 's were'} removed` : ''}.`}
+          </li>
+        </ul>
+      )}
+    </div>
+  )
+}
+
 /** One question and its answer. */
 export function AskItemView({
   item,
@@ -202,12 +259,17 @@ export function AskItemView({
         item.where,
         itemModelLabel(item),
         item.durationMs !== undefined ? `${Math.max(1, Math.round(item.durationMs / 1000))}s` : '',
-        item.sent ? `sent ${item.sent.snippets} snippet${item.sent.snippets === 1 ? '' : 's'} from ${item.sent.sessions} session${item.sent.sessions === 1 ? '' : 's'}` : ''
+        item.sent
+          ? `sent ${item.sent.snippets} snippet${item.sent.snippets === 1 ? '' : 's'} from ${item.sent.sessions} session${item.sent.sessions === 1 ? '' : 's'}`
+          : ''
       ]
         .filter(Boolean)
         .join(' · ')
   return (
-    <article className="rounded-xl border border-border bg-card px-4 py-3 shadow-card" aria-label="Answer">
+    <article
+      className="rounded-xl border border-border bg-card px-4 py-3 shadow-card"
+      aria-label="Answer"
+    >
       <div className="mb-2 flex items-start gap-2">
         <div className="min-w-0 flex-1">
           <div className="text-[13.5px] font-medium">{item.question}</div>
@@ -219,7 +281,9 @@ export function AskItemView({
                 <Smartphone className="size-3" /> from {item.phone}
               </span>
             )}
-            {item.scopeText && item.scopeText !== 'all my sessions' && <span>· {item.scopeText}</span>}
+            {item.scopeText && item.scopeText !== 'all my sessions' && (
+              <span>· {item.scopeText}</span>
+            )}
           </div>
         </div>
         {item.ok && (
@@ -236,7 +300,12 @@ export function AskItemView({
         )}
         {onDelete && (
           <Tooltip content="Delete this answer">
-            <Button variant="ghost" size="icon-xs" onClick={onDelete} aria-label="Delete this answer">
+            <Button
+              variant="ghost"
+              size="icon-xs"
+              onClick={onDelete}
+              aria-label="Delete this answer"
+            >
               <Trash2 />
             </Button>
           </Tooltip>
@@ -263,6 +332,7 @@ export function AskItemView({
       ) : (
         <Markdown text={linkCitations(item.answer ?? '')} className="text-[13.5px]" cite={cite} />
       )}
+      {!local && item.ok && <HowAnswered item={item} />}
       {!!item.dropped?.length && (
         <div className="mt-2 text-xs text-muted-foreground">
           <button
@@ -271,7 +341,9 @@ export function AskItemView({
             aria-expanded={showDropped}
             className="inline-flex items-center gap-1 hover:text-foreground"
           >
-            <ChevronRight className={cn('size-3 transition-transform', showDropped && 'rotate-90')} />
+            <ChevronRight
+              className={cn('size-3 transition-transform', showDropped && 'rotate-90')}
+            />
             {item.dropped.length} statement{item.dropped.length === 1 ? '' : 's'} without a valid
             source {item.dropped.length === 1 ? 'was' : 'were'} removed
           </button>
@@ -287,7 +359,12 @@ export function AskItemView({
       <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-subtle-foreground">
         <span>{meta}</span>
         {local && onAskClaude && (
-          <Button variant="link" size="xs" className="h-auto px-0 text-[11px]" onClick={onAskClaude}>
+          <Button
+            variant="link"
+            size="xs"
+            className="h-auto px-0 text-[11px]"
+            onClick={onAskClaude}
+          >
             Ask Claude instead
           </Button>
         )}

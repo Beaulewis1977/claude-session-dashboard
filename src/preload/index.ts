@@ -103,8 +103,7 @@ const api: CsdApi = {
   askSessionsPending: () => ipcRenderer.invoke('askSessions:pending'),
   askSessionsDecline: (id) => ipcRenderer.invoke('askSessions:decline', id),
   askSessionsLocal: (q) => ipcRenderer.invoke('askSessions:phoneLocal', q),
-  askSessionsRequest: () =>
-    Promise.reject(new Error('On the PC, ask in the Ask screen itself.')),
+  askSessionsRequest: () => Promise.reject(new Error('On the PC, ask in the Ask screen itself.')),
   askSessionsRequestStatus: (id) => ipcRenderer.invoke('askSessions:phoneStatus', id),
   onAskSessionsChanged: (cb) => on('askSessions:changed', cb),
   onAskSessionsStatus: (cb) => {

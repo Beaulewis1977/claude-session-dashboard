@@ -185,7 +185,9 @@ export interface AboutInput {
 export function aboutPassage(a: AboutInput): Passage {
   const lines = [
     `Session: ${oneLine(a.name || a.title, 300)}`,
-    ...(a.agentName && a.agentName !== a.name ? [`Agent's name: ${oneLine(a.agentName, 300)}`] : []),
+    ...(a.agentName && a.agentName !== a.name
+      ? [`Agent's name: ${oneLine(a.agentName, 300)}`]
+      : []),
     ...(a.description?.trim() ? [`Description: ${capped(a.description.trim(), 4000)}`] : []),
     ...(a.tags?.length ? [`Tags: ${a.tags.slice(0, 50).join(', ')}`] : []),
     ...(a.project ? [`Project: ${oneLine(a.project, 200)}`] : []),

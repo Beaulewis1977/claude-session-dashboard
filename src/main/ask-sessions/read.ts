@@ -50,11 +50,15 @@ export interface ReadDeps {
 }
 
 /** A session's messages, as the viewer shows them. */
-export async function readSessionMessages(t: ReadTarget, deps: ReadDeps = {}): Promise<ChatMessage[]> {
+export async function readSessionMessages(
+  t: ReadTarget,
+  deps: ReadDeps = {}
+): Promise<ChatMessage[]> {
   assertSessionFile(t.path)
   if (t.provider === 'codex') {
     const text =
-      (await deps.cachedCodex?.(t.path)) ?? (await (deps.readCodex ?? ((p) => readCodexText(p)))(t.path))
+      (await deps.cachedCodex?.(t.path)) ??
+      (await (deps.readCodex ?? ((p) => readCodexText(p)))(t.path))
     return buildCodexMessages(text)
   }
   const text = await (deps.readText ?? ((p) => readFile(p, 'utf8')))(t.path)

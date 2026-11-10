@@ -3,7 +3,13 @@
 // its own memory cap; or in this thread (tests, and as a fallback).
 
 import { Worker } from 'node:worker_threads'
-import { IndexCore, type CoreStatus, type IndexJob, type SearchRequest, type SearchResult } from './core'
+import {
+  IndexCore,
+  type CoreStatus,
+  type IndexJob,
+  type SearchRequest,
+  type SearchResult
+} from './core'
 import type { ReadDeps } from './read'
 
 export interface IndexHost {
@@ -128,7 +134,15 @@ export class WorkerHost implements IndexHost {
       for (const w of this.waiting.values()) w.fail(new Error(why))
       this.waiting.clear()
       const s: CoreStatus = {
-        ...(this.last ?? { sessions: 0, passages: 0, chars: 0, bytes: 0, done: 0, total: 0, skipped: 0 }),
+        ...(this.last ?? {
+          sessions: 0,
+          passages: 0,
+          chars: 0,
+          bytes: 0,
+          done: 0,
+          total: 0,
+          skipped: 0
+        }),
         phase: 'error',
         error: why
       }

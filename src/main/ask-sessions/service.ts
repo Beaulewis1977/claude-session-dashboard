@@ -22,7 +22,12 @@ import { EventEmitter } from 'node:events'
 import { createHash, randomBytes } from 'node:crypto'
 import { join } from 'node:path'
 import { parseAskOutput, printCommand, tooOldForAsk } from '@shared/ask'
-import { aboutPassage, commitPassage, summaryPassage, type Passage } from '@shared/ask-sessions/chunk'
+import {
+  aboutPassage,
+  commitPassage,
+  summaryPassage,
+  type Passage
+} from '@shared/ask-sessions/chunk'
 import { checkCitations } from '@shared/ask-sessions/citations'
 import {
   computeLocal,
@@ -86,10 +91,14 @@ export interface AskSessionsHistoryFile {
 export const ASK_SESSIONS_HISTORY = 'ask-sessions-history.json'
 
 export function createAskSessionsStore(dataDir: string): JsonStore<AskSessionsHistoryFile> {
-  return new JsonStore<AskSessionsHistoryFile>(join(dataDir, ASK_SESSIONS_HISTORY), dataDir, () => ({
-    version: 1,
-    items: []
-  }))
+  return new JsonStore<AskSessionsHistoryFile>(
+    join(dataDir, ASK_SESSIONS_HISTORY),
+    dataDir,
+    () => ({
+      version: 1,
+      items: []
+    })
+  )
 }
 
 export const MAX_HISTORY = 500
@@ -111,7 +120,9 @@ export interface AskSessionsSource {
 
 export interface AskGit {
   enabled(): boolean
-  linkedCommits(key: string): { sha: string; subject: string; at: number; files: string[]; pr?: number }[]
+  linkedCommits(
+    key: string
+  ): { sha: string; subject: string; at: number; files: string[]; pr?: number }[]
   prsOf(key: string): PrLink[]
   editedFiles(key: string): { path: string; at: number }[]
   /** Sessions a `touched:` / `commit:` filter matches. */
@@ -280,7 +291,8 @@ export class AskSessionsService extends EventEmitter<{ changed: []; status: [Ask
     ]
     const sum = s.meta.aiSummary ? summaryPassage(s.meta.aiSummary) : undefined
     if (sum) out.push(sum)
-    for (const c of (this.deps.git?.linkedCommits(s.key) ?? []).slice(0, 100)) out.push(commitPassage(c))
+    for (const c of (this.deps.git?.linkedCommits(s.key) ?? []).slice(0, 100))
+      out.push(commitPassage(c))
     return out
   }
 
@@ -386,8 +398,12 @@ export class AskSessionsService extends EventEmitter<{ changed: []; status: [Ask
       limitHits: this.deps.usage.limitHits(),
       codexLimitHits: cx?.limitHits ?? [],
       limitsNow: {
-        ...(limits ? { claude: { fiveHour: gauge(limits.fiveHour), sevenDay: gauge(limits.sevenDay) } } : {}),
-        ...(cx?.hasData ? { codex: { fiveHour: gauge(cx.fiveHour), sevenDay: gauge(cx.sevenDay) } } : {})
+        ...(limits
+          ? { claude: { fiveHour: gauge(limits.fiveHour), sevenDay: gauge(limits.sevenDay) } }
+          : {}),
+        ...(cx?.hasData
+          ? { codex: { fiveHour: gauge(cx.fiveHour), sevenDay: gauge(cx.sevenDay) } }
+          : {})
       },
       plans: {
         claude: {
@@ -408,10 +424,14 @@ export class AskSessionsService extends EventEmitter<{ changed: []; status: [Ask
       },
       git: {
         enabled: !!git?.enabled(),
-        touched: (path) => git?.filter({ text: '', touched: [normQueryPath(path)], commits: [] }) ?? new Set(),
-        commitSessions: (sha) => git?.filter({ text: '', touched: [], commits: [sha] }) ?? new Set(),
+        touched: (path) =>
+          git?.filter({ text: '', touched: [normQueryPath(path)], commits: [] }) ?? new Set(),
+        commitSessions: (sha) =>
+          git?.filter({ text: '', touched: [], commits: [sha] }) ?? new Set(),
         commits: () =>
-          (commits ??= list.flatMap((s) => (git?.linkedCommits(s.key) ?? []).map((c) => ({ key: s.key, ...c })))),
+          (commits ??= list.flatMap((s) =>
+            (git?.linkedCommits(s.key) ?? []).map((c) => ({ key: s.key, ...c }))
+          )),
         prs: () =>
           list.flatMap((s) =>
             (git?.prsOf(s.key) ?? []).map((p) => ({
@@ -422,13 +442,18 @@ export class AskSessionsService extends EventEmitter<{ changed: []; status: [Ask
               ...(p.state ? { state: p.state } : {})
             }))
           ),
-        files: () => list.flatMap((s) => (git?.editedFiles(s.key) ?? []).map((f) => ({ key: s.key, ...f })))
+        files: () =>
+          list.flatMap((s) => (git?.editedFiles(s.key) ?? []).map((f) => ({ key: s.key, ...f })))
       }
     }
   }
 
   /** A local answer for a phone (computed here, returned, not saved), or "this one is a content question". */
-  async phoneLocal(question: string): Promise<{ mode: 'local'; answer: LocalAnswer; chips: string[] } | { mode: 'content'; enabled: boolean }> {
+  async phoneLocal(
+    question: string
+  ): Promise<
+    { mode: 'local'; answer: LocalAnswer; chips: string[] } | { mode: 'content'; enabled: boolean }
+  > {
     const q = cleanQuestion(question)
     const data = await this.localData()
     const r = routeQuestion(q, vocabOf(data), data.now, data.timeZone, data.weekStart)
@@ -454,7 +479,9 @@ export class AskSessionsService extends EventEmitter<{ changed: []; status: [Ask
     const routed = routeQuestion(q, vocabOf(data), data.now, data.timeZone, data.weekStart)
     const req = opts.phoneRequest ? this.request(opts.phoneRequest) : undefined
     if (opts.phoneRequest && (!req || req.status !== 'pending'))
-      throw new Error('That question from your phone is no longer waiting (it was answered, declined or expired).')
+      throw new Error(
+        'That question from your phone is no longer waiting (it was answered, declined or expired).'
+      )
     // Local questions carry their own filters; the scope chips are for content questions.
     if (routed.mode === 'local' && !opts.content && !req) {
       const item: AskSessionsItem = {
@@ -473,13 +500,27 @@ export class AskSessionsService extends EventEmitter<{ changed: []; status: [Ask
     if (!st.enabled) return { mode: 'content', blocked: ASK_OFF }
     const status = this.status()
     if (!this.host || status.phase === 'error')
-      return { mode: 'content', blocked: status.error ?? 'The index isn’t running. Try again in a moment.' }
-    const scope = sanitizeScope(opts.scope ?? req?.scope ?? (routed.mode === 'content' ? routed.scope : {}))
-    if (opts.scope === undefined && !req && scope.subagents === undefined && this.deps.settings().showSubagents)
+      return {
+        mode: 'content',
+        blocked: status.error ?? 'The index isn’t running. Try again in a moment.'
+      }
+    const scope = sanitizeScope(
+      opts.scope ?? req?.scope ?? (routed.mode === 'content' ? routed.scope : {})
+    )
+    if (
+      opts.scope === undefined &&
+      !req &&
+      scope.subagents === undefined &&
+      this.deps.settings().showSubagents
+    )
       scope.subagents = true
-    const allowed = this.deps.sessions.list().filter((s) => inScope(s, scope)).map((s) => s.key)
+    const allowed = this.deps.sessions
+      .list()
+      .filter((s) => inScope(s, scope))
+      .map((s) => s.key)
+    const searchText = routed.mode === 'content' ? routed.searchText : q
     const res = await this.host.search({
-      query: routed.mode === 'content' ? routed.searchText : q,
+      query: searchText,
       allowed,
       ...(scope.from !== undefined ? { from: scope.from } : {}),
       ...(scope.to !== undefined ? { to: scope.to } : {}),
@@ -513,6 +554,7 @@ export class AskSessionsService extends EventEmitter<{ changed: []; status: [Ask
     const preview: AskPreview = {
       id: randomBytes(8).toString('hex'),
       question: q,
+      searchText,
       scope,
       scopeText: scopeChips(scope).join(' · ') || 'all my sessions',
       today: `${today} (${WEEKDAY[new Date(`${today}T12:00:00Z`).getUTCDay()]})`,
@@ -550,7 +592,8 @@ export class AskSessionsService extends EventEmitter<{ changed: []; status: [Ask
 
   private kept(previewId: string, keep: string[]): { p: AskPreview; snippets: AskSnippet[] } {
     const stored = this.previews.get(previewId)
-    if (!stored || Date.now() - stored.at > PREVIEW_TTL) throw new Error('This preview has expired. Ask again.')
+    if (!stored || Date.now() - stored.at > PREVIEW_TTL)
+      throw new Error('This preview has expired. Ask again.')
     const want = new Set(keep)
     return { p: stored.preview, snippets: stored.preview.snippets.filter((s) => want.has(s.sid)) }
   }
@@ -575,7 +618,12 @@ export class AskSessionsService extends EventEmitter<{ changed: []; status: [Ask
   /** The estimate for the snippets I kept and the model I picked. */
   estimate(previewId: string, keep: string[], model: AskModel) {
     const { p, snippets } = this.kept(previewId, keep)
-    return estimateAsk(this.prompt(p, snippets).length, model, this.deps.settings().prices, this.deps.limits.dollarsPerPct())
+    return estimateAsk(
+      this.prompt(p, snippets).length,
+      model,
+      this.deps.settings().prices,
+      this.deps.limits.dollarsPerPct()
+    )
   }
 
   cancel(previewId: string): void {
@@ -589,9 +637,11 @@ export class AskSessionsService extends EventEmitter<{ changed: []; status: [Ask
     opts: { keep: string[]; model: AskModel; effort: AskEffort }
   ): Promise<AskSessionsItem> {
     if (!this.settings().enabled) throw new Error(ASK_OFF)
-    if (!isAskModel(opts.model) || !isAskEffort(opts.effort)) throw new Error('Unknown model or effort level.')
+    if (!isAskModel(opts.model) || !isAskEffort(opts.effort))
+      throw new Error('Unknown model or effort level.')
     const { p, snippets } = this.kept(previewId, opts.keep)
-    if (!snippets.length) throw new Error('Keep at least one snippet to send, or ask in other words.')
+    if (!snippets.length)
+      throw new Error('Keep at least one snippet to send, or ask in other words.')
     if (this.running.has(previewId)) throw new Error('This question is already being answered.')
     this.previews.delete(previewId)
     const prompt = this.prompt(p, snippets)
@@ -612,6 +662,8 @@ export class AskSessionsService extends EventEmitter<{ changed: []; status: [Ask
         sessions: new Set(snippets.map((s) => s.key)).size,
         chars: prompt.length
       },
+      searched: p.searchText,
+      matched: p.matched,
       modelChoice: opts.model,
       effort: opts.effort,
       ...(p.phone ? { phone: p.phone.device } : {})
@@ -770,8 +822,13 @@ export class AskSessionsService extends EventEmitter<{ changed: []; status: [Ask
   }
 
   /** A phone's content question: it waits on the PC for my OK (nothing is sent before). */
-  phoneRequest(device: { id: string; name: string }, question: string, scope: unknown): AskPhoneRequest {
-    if (!this.settings().enabled) throw new Error('Ask on your PC: content questions are off there.')
+  phoneRequest(
+    device: { id: string; name: string },
+    question: string,
+    scope: unknown
+  ): AskPhoneRequest {
+    if (!this.settings().enabled)
+      throw new Error('Ask on your PC: content questions are off there.')
     const q = cleanQuestion(question)
     if (!q) throw new Error('Type a question first.')
     const t = now()
@@ -836,10 +893,14 @@ export function inScope(s: SessionSummary, scope: AskScope): boolean {
   if (!scope.hidden && s.meta.hidden) return false
   if (scope.providers?.length && !scope.providers.includes(providerOf(s))) return false
   if (scope.sources?.length && !scope.sources.includes(s.source)) return false
-  if (scope.projects?.length && !scope.projects.some((p) => p.toLowerCase() === s.projectName.toLowerCase()))
+  if (
+    scope.projects?.length &&
+    !scope.projects.some((p) => p.toLowerCase() === s.projectName.toLowerCase())
+  )
     return false
   if (scope.envs?.length && !scope.envs.includes(s.env)) return false
-  if (scope.models?.length && !s.models.some((m) => scope.models!.some((n) => modelMatches(m, n)))) return false
+  if (scope.models?.length && !s.models.some((m) => scope.models!.some((n) => modelMatches(m, n))))
+    return false
   if (scope.from !== undefined || scope.to !== undefined) {
     const a = ms(s.startedAt) ?? ms(s.lastActivityAt)
     const b = ms(s.lastActivityAt) ?? a
@@ -861,4 +922,3 @@ function sampleAnswer(snippets: AskSnippet[]): string {
     '- This line cites nothing, so it is removed.'
   ].join('\n')
 }
-

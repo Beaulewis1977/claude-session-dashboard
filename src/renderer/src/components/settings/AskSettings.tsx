@@ -70,7 +70,10 @@ export function AskSettings() {
           onCommit={(v) => void update({ maxSnippets: v })}
         />
       </Row>
-      <Row label="Characters per question" hint="At most this much snippet text goes with one question.">
+      <Row
+        label="Characters per question"
+        hint="At most this much snippet text goes with one question."
+      >
         <NumberField
           value={ask.maxChars}
           min={ASK_LIMITS.maxChars[0]}
@@ -80,7 +83,10 @@ export function AskSettings() {
           onCommit={(v) => void update({ maxChars: v })}
         />
       </Row>
-      <Row label="Snippets from one session" hint="So one long session can't fill a whole question.">
+      <Row
+        label="Snippets from one session"
+        hint="So one long session can't fill a whole question."
+      >
         <NumberField
           value={ask.perSession}
           min={ASK_LIMITS.perSession[0]}
@@ -97,7 +103,9 @@ export function AskSettings() {
             {status && status.phase !== 'off'
               ? `Now: ${formatInt(status.sessions)} sessions, ${formatInt(status.passages)} passages, ${formatBytes(status.chars)} of text, ${formatBytes(status.bytes)} on disk${status.buildMs !== undefined ? `, built in ${formatDuration(status.buildMs).replace('<1m', `${Math.max(1, Math.round(status.buildMs / 1000))}s`)}` : ''}${status.updatedAt ? `, updated ${ago(status.updatedAt)}` : ''}${status.skipped ? `; ${formatInt(status.skipped)} older sessions left out` : ''}.`
               : ''}
-            {status?.phase === 'error' && <span className="block text-destructive">{status.error}</span>}
+            {status?.phase === 'error' && (
+              <span className="block text-destructive">{status.error}</span>
+            )}
           </>
         }
       >
@@ -115,7 +123,9 @@ export function AskSettings() {
           variant="outline"
           size="sm"
           disabled={!ask.enabled}
-          onClick={() => void api.askSessionsRebuild().then(() => toast.success('Rebuilding the index'))}
+          onClick={() =>
+            void api.askSessionsRebuild().then(() => toast.success('Rebuilding the index'))
+          }
         >
           <RefreshCw /> Rebuild the index
         </Button>
@@ -125,7 +135,8 @@ export function AskSettings() {
           </Button>
         ) : (
           <span className="inline-flex items-center gap-2 text-xs">
-            Delete the saved index? It only holds copies of your sessions&apos; text; it&apos;s built again while content questions are on.
+            Delete the saved index? It only holds copies of your sessions&apos; text; it&apos;s
+            built again while content questions are on.
             <Button
               variant="destructive"
               size="xs"
@@ -145,7 +156,9 @@ export function AskSettings() {
         )}
       </div>
       <p className="text-xs leading-relaxed text-muted-foreground">
-        Answers are written by Claude only. Codex isn&apos;t offered as the answerer: <span className="font-mono">codex exec</span> can&apos;t be run without tools, so it could read more than the snippets you approve.
+        Answers are written by Claude only. Codex isn&apos;t offered as the answerer:{' '}
+        <span className="font-mono">codex exec</span> can&apos;t be run without tools, so it could
+        read more than the snippets you approve.
       </p>
     </Section>
   )

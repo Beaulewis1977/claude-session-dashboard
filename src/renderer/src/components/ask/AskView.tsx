@@ -52,7 +52,14 @@ import { Input } from '../ui/input'
 import { AskItemView } from './AskAnswer'
 import { AskPreviewCard } from './AskPreviewCard'
 
-const DATE_PRESETS = ['any', 'the last 7 days', 'the last 30 days', 'this month', 'last month', 'this year'] as const
+const DATE_PRESETS = [
+  'any',
+  'the last 7 days',
+  'the last 30 days',
+  'this month',
+  'last month',
+  'this year'
+] as const
 
 /** The one-time notice about what content questions send, and the switch. */
 export function AskNotice({ onEnabled }: { onEnabled?: () => void }) {
@@ -88,10 +95,10 @@ export function AskNotice({ onEnabled }: { onEnabled?: () => void }) {
         </p>
         <p>
           For questions about what was said or decided, the app first builds a local search index of
-          your sessions (Claude Code, Codex, and Claude desktop when that source is on): your prompts,
-          the agents&apos; answers, messages between agents, tool names and file paths, summaries,
-          names, descriptions, tags and commit messages. Never tool output or thinking. The index
-          stays in the app&apos;s cache folder.
+          your sessions (Claude Code, Codex, and Claude desktop when that source is on): your
+          prompts, the agents&apos; answers, messages between agents, tool names and file paths,
+          summaries, names, descriptions, tags and commit messages. Never tool output or thinking.
+          The index stays in the app&apos;s cache folder.
         </p>
         <p>
           Then, for each question, snippets of your conversations go to Claude through your own{' '}
@@ -104,7 +111,9 @@ export function AskNotice({ onEnabled }: { onEnabled?: () => void }) {
         <Button variant="primary" size="sm" disabled={busy} onClick={() => void turnOn()}>
           <Check /> Turn on content questions
         </Button>
-        <span className="text-[11px] text-subtle-foreground">You can turn this off in Settings → Ask.</span>
+        <span className="text-[11px] text-subtle-foreground">
+          You can turn this off in Settings → Ask.
+        </span>
       </div>
     </div>
   )
@@ -122,23 +131,39 @@ function IndexLine() {
   else
     text = `${formatInt(st.sessions)} sessions · ${formatInt(st.passages)} passages indexed (${formatBytes(st.bytes)})${st.updatedAt ? ` · updated ${ago(st.updatedAt)}` : ''}${st.buildMs !== undefined ? ` · built in ${formatDuration(st.buildMs).replace('<1m', `${Math.max(1, Math.round(st.buildMs / 1000))}s`)}` : ''}`
   return (
-    <div className={cn('text-xs text-muted-foreground', st.phase === 'error' && 'text-destructive')}>
+    <div
+      className={cn('text-xs text-muted-foreground', st.phase === 'error' && 'text-destructive')}
+    >
       {st.phase === 'building' && <LoaderCircle className="mr-1 inline size-3 animate-spin" />}
       {text}
-      {st.skipped > 0 && st.since && ` · older than ${formatDateTime(new Date(st.since).toISOString())} left out (size limit)`}
+      {st.skipped > 0 &&
+        st.since &&
+        ` · older than ${formatDateTime(new Date(st.since).toISOString())} left out (size limit)`}
     </div>
   )
 }
 
-function ScopeBar({ scope, onChange, disabled }: { scope: AskScope | null; onChange: (s: AskScope | null) => void; disabled?: boolean }) {
+function ScopeBar({
+  scope,
+  onChange,
+  disabled
+}: {
+  scope: AskScope | null
+  onChange: (s: AskScope | null) => void
+  disabled?: boolean
+}) {
   const sessions = useApp((s) => s.sessions)
   const weekStart = useApp((s) => s.settings.weekStart)
   const providers = useEnabledProviders()
   const s = scope ?? {}
   const projects = useMemo(() => {
     const n = new Map<string, number>()
-    for (const x of sessions) if (x.source !== 'ask-claude') n.set(x.projectName, (n.get(x.projectName) ?? 0) + 1)
-    return [...n.entries()].sort((a, b) => b[1] - a[1]).slice(0, 24).map(([p]) => p)
+    for (const x of sessions)
+      if (x.source !== 'ask-claude') n.set(x.projectName, (n.get(x.projectName) ?? 0) + 1)
+    return [...n.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 24)
+      .map(([p]) => p)
   }, [sessions])
   const hasDesktop = sessions.some((x) => x.source === 'desktop')
   const hasCowork = sessions.some((x) => x.source === 'cowork')
@@ -163,15 +188,22 @@ function ScopeBar({ scope, onChange, disabled }: { scope: AskScope | null; onCha
     <div className="flex flex-wrap items-center gap-1.5 text-xs">
       <span className="text-muted-foreground">Content scope:</span>
       {!scope ? (
-        <span className="rounded-md bg-secondary px-2 py-0.5 text-muted-foreground">From the question</span>
+        <span className="rounded-md bg-secondary px-2 py-0.5 text-muted-foreground">
+          From the question
+        </span>
       ) : chips.length ? (
         chips.map((c) => (
-          <span key={c} className="inline-flex items-center gap-1 rounded-md bg-accent-soft px-2 py-0.5 text-primary">
+          <span
+            key={c}
+            className="inline-flex items-center gap-1 rounded-md bg-accent-soft px-2 py-0.5 text-primary"
+          >
             {c}
           </span>
         ))
       ) : (
-        <span className="rounded-md bg-secondary px-2 py-0.5 text-muted-foreground">All my sessions</span>
+        <span className="rounded-md bg-secondary px-2 py-0.5 text-muted-foreground">
+          All my sessions
+        </span>
       )}
       <DropdownMenu>
         <DropdownMenuTrigger asChild disabled={disabled}>
@@ -241,7 +273,10 @@ function ScopeBar({ scope, onChange, disabled }: { scope: AskScope | null; onCha
           <DropdownMenuSeparator />
           <DropdownMenuLabel>Dates</DropdownMenuLabel>
           <DropdownMenuRadioGroup
-            value={DATE_PRESETS.find((p) => s.dateLabel?.startsWith(p)) ?? (s.from !== undefined ? '' : 'any')}
+            value={
+              DATE_PRESETS.find((p) => s.dateLabel?.startsWith(p)) ??
+              (s.from !== undefined ? '' : 'any')
+            }
             onValueChange={(v) => preset(v as (typeof DATE_PRESETS)[number])}
           >
             {DATE_PRESETS.map((p) => (
@@ -521,7 +556,12 @@ export function AskView() {
             <div className="flex items-center gap-2 px-3 pt-1 pb-2.5">
               <ScopeBar scope={scope} onChange={setScope} disabled={busy || running} />
               <span className="ml-auto text-[11px] text-subtle-foreground">Enter to ask</span>
-              <Button type="submit" variant="primary" size="sm" disabled={!question.trim() || busy || running}>
+              <Button
+                type="submit"
+                variant="primary"
+                size="sm"
+                disabled={!question.trim() || busy || running}
+              >
                 {busy ? <LoaderCircle className="animate-spin" /> : <ArrowUp />} Ask
               </Button>
             </div>

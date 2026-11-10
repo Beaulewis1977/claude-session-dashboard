@@ -4,7 +4,17 @@
 // Send. Nothing leaves the PC before Send.
 
 import { useEffect, useMemo, useState } from 'react'
-import { ArrowUp, ChevronDown, ChevronRight, Eye, Gauge, LoaderCircle, Smartphone, TriangleAlert, X } from 'lucide-react'
+import {
+  ArrowUp,
+  ChevronDown,
+  ChevronRight,
+  Eye,
+  Gauge,
+  LoaderCircle,
+  Smartphone,
+  TriangleAlert,
+  X
+} from 'lucide-react'
 import {
   ASK_EFFORT_LABEL,
   ASK_EFFORTS,
@@ -49,13 +59,18 @@ export function ModelEffortPicker({
       <DropdownMenuTrigger asChild disabled={disabled}>
         <Button variant="outline" size="sm" aria-label="Model and effort for this answer">
           {ASK_MODEL_LABEL[model]}
-          {effort !== 'default' && <span className="text-muted-foreground">· {ASK_EFFORT_LABEL[effort]}</span>}
+          {effort !== 'default' && (
+            <span className="text-muted-foreground">· {ASK_EFFORT_LABEL[effort]}</span>
+          )}
           <ChevronDown className="text-muted-foreground" />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
         <DropdownMenuLabel>Model</DropdownMenuLabel>
-        <DropdownMenuRadioGroup value={model} onValueChange={(v) => onChange(v as AskModel, effort)}>
+        <DropdownMenuRadioGroup
+          value={model}
+          onValueChange={(v) => onChange(v as AskModel, effort)}
+        >
           {ASK_MODELS.map((m) => (
             <DropdownMenuRadioItem key={m} value={m}>
               {ASK_MODEL_LABEL[m]}
@@ -64,7 +79,10 @@ export function ModelEffortPicker({
         </DropdownMenuRadioGroup>
         <DropdownMenuSeparator />
         <DropdownMenuLabel>Effort</DropdownMenuLabel>
-        <DropdownMenuRadioGroup value={effort} onValueChange={(v) => onChange(model, v as AskEffort)}>
+        <DropdownMenuRadioGroup
+          value={effort}
+          onValueChange={(v) => onChange(model, v as AskEffort)}
+        >
           {ASK_EFFORTS.map((e) => (
             <DropdownMenuRadioItem key={e} value={e}>
               {e === 'default' ? "Claude Code's default" : ASK_EFFORT_LABEL[e]}
@@ -143,7 +161,10 @@ export function AskPreviewCard({
   const [effort, setEffort] = useState<AskEffort>(preview.effort)
   const [estimate, setEstimate] = useState<AskEstimate | null>(null)
   const [exact, setExact] = useState<string | null>(null)
-  const keep = useMemo(() => preview.snippets.filter((s) => kept.has(s.sid)).map((s) => s.sid), [preview, kept])
+  const keep = useMemo(
+    () => preview.snippets.filter((s) => kept.has(s.sid)).map((s) => s.sid),
+    [preview, kept]
+  )
   const groups = useMemo(() => {
     const m = new Map<string, AskSnippet[]>()
     for (const s of preview.snippets) m.set(s.key, [...(m.get(s.key) ?? []), s])
@@ -180,15 +201,25 @@ export function AskPreviewCard({
   const est = keep.length ? estimate : null
   const g = preview.guard
   return (
-    <section className="rounded-xl border border-border bg-card shadow-card" aria-label="What will be sent">
+    <section
+      className="rounded-xl border border-border bg-card shadow-card"
+      aria-label="What will be sent"
+    >
       <div className="flex items-start gap-2 border-b border-border px-4 py-3">
         <div className="min-w-0 flex-1">
           <div className="text-[13.5px] font-medium">{preview.question}</div>
           <div className="mt-0.5 text-[11px] text-subtle-foreground">
-            Searched {formatInt(preview.index.passages)} passages of {formatInt(preview.index.sessions)} sessions · {preview.scopeText}
+            Searched {formatInt(preview.index.passages)} passages of{' '}
+            {formatInt(preview.index.sessions)} sessions · {preview.scopeText}
           </div>
         </div>
-        <Button variant="ghost" size="icon-xs" onClick={onClose} disabled={running} aria-label="Close the preview">
+        <Button
+          variant="ghost"
+          size="icon-xs"
+          onClick={onClose}
+          disabled={running}
+          aria-label="Close the preview"
+        >
           <X />
         </Button>
       </div>
@@ -201,7 +232,9 @@ export function AskPreviewCard({
       <div className="space-y-2 px-4 py-3">
         {preview.snippets.length === 0 ? (
           <div className="text-[13px] text-muted-foreground">
-            Nothing in your sessions matches these words{preview.scopeText !== 'all my sessions' ? ` (${preview.scopeText})` : ''}. Try other words, or widen the scope. Nothing was sent.
+            Nothing in your sessions matches these words
+            {preview.scopeText !== 'all my sessions' ? ` (${preview.scopeText})` : ''}. Try other
+            words, or widen the scope. Nothing was sent.
           </div>
         ) : (
           <>
@@ -222,7 +255,8 @@ export function AskPreviewCard({
             </button>
             {preview.cut > 0 && (
               <div className="pl-6 text-xs text-muted-foreground">
-                {preview.cut} more matching passage{preview.cut === 1 ? '' : 's'} left out by the size limits (Settings → Ask).
+                {preview.cut} more matching passage{preview.cut === 1 ? '' : 's'} left out by the
+                size limits (Settings → Ask).
               </div>
             )}
             {open && (
@@ -234,7 +268,12 @@ export function AskPreviewCard({
                       <div className="flex items-center gap-2 border-b border-border py-2">
                         <Checkbox
                           checked={on === list.length ? true : on === 0 ? false : 'indeterminate'}
-                          onCheckedChange={(v) => toggle(list.map((s) => s.sid), v === true)}
+                          onCheckedChange={(v) =>
+                            toggle(
+                              list.map((s) => s.sid),
+                              v === true
+                            )
+                          }
                           aria-label={`Send the snippets of ${list[0].title}`}
                         />
                         <div className="min-w-0 flex-1">
@@ -246,7 +285,12 @@ export function AskPreviewCard({
                       </div>
                       <ul className="divide-y divide-border">
                         {list.map((s) => (
-                          <SnippetRow key={s.sid} s={s} checked={kept.has(s.sid)} onToggle={(v) => toggle([s.sid], v)} />
+                          <SnippetRow
+                            key={s.sid}
+                            s={s}
+                            checked={kept.has(s.sid)}
+                            onToggle={(v) => toggle([s.sid], v)}
+                          />
                         ))}
                       </ul>
                     </div>
@@ -258,19 +302,22 @@ export function AskPreviewCard({
         )}
         {preview.index.skipped > 0 && (
           <div className="text-xs text-muted-foreground">
-            The index leaves out {formatInt(preview.index.skipped)} older session{preview.index.skipped === 1 ? '' : 's'} to stay within its size limit (Settings → Ask).
+            The index leaves out {formatInt(preview.index.skipped)} older session
+            {preview.index.skipped === 1 ? '' : 's'} to stay within its size limit (Settings → Ask).
           </div>
         )}
         {g?.above && (
           <div className="flex items-start gap-2 rounded-lg border border-warning/30 bg-warning-soft px-3 py-2 text-xs">
             <TriangleAlert className="mt-0.5 size-3.5 shrink-0 text-warning" />
-            Your 5-hour limit is at about {Math.round(g.pct ?? 0)}%, above the pause line of {g.limit}% (Settings → Summaries). Sending still uses your plan&apos;s usage.
+            Your 5-hour limit is at about {Math.round(g.pct ?? 0)}%, above the pause line of{' '}
+            {g.limit}% (Settings → Summaries). Sending still uses your plan&apos;s usage.
           </div>
         )}
         {g?.unknown && !g.above && (
           <div className="flex items-start gap-2 text-xs text-muted-foreground">
             <Gauge className="mt-0.5 size-3.5 shrink-0" />
-            The 5-hour reading doesn&apos;t include the app&apos;s own recent runs (no baseline yet).
+            The 5-hour reading doesn&apos;t include the app&apos;s own recent runs (no baseline
+            yet).
           </div>
         )}
       </div>
@@ -307,7 +354,12 @@ export function AskPreviewCard({
             <LoaderCircle className="animate-spin" /> Cancel
           </Button>
         ) : (
-          <Button variant="primary" size="sm" disabled={!keep.length} onClick={() => onSend(keep, model, effort)}>
+          <Button
+            variant="primary"
+            size="sm"
+            disabled={!keep.length}
+            onClick={() => onSend(keep, model, effort)}
+          >
             <ArrowUp /> Send
           </Button>
         )}

@@ -153,7 +153,9 @@ export function checkCitations(raw: string, valid: ReadonlySet<string>): Checked
         ok.forEach(cite)
         kept.push(
           s
-            .replace(MARK, (_m, id: string) => (valid.has(id.toUpperCase()) ? `[${id.toUpperCase()}]` : ''))
+            .replace(MARK, (_m, id: string) =>
+              valid.has(id.toUpperCase()) ? `[${id.toUpperCase()}]` : ''
+            )
             .replace(/\s+([.,;:!?])/g, '$1')
             .trim()
         )
@@ -168,7 +170,11 @@ export function checkCitations(raw: string, valid: ReadonlySet<string>): Checked
     const l = lines[i]
     if (l.kept) out.push(l.raw)
     else if (l.structural === 'blank') out.push('')
-    else if (l.structural === 'heading' || l.structural === 'leadin' || l.structural === 'table-head') {
+    else if (
+      l.structural === 'heading' ||
+      l.structural === 'leadin' ||
+      l.structural === 'table-head'
+    ) {
       let j = i + 1
       let keep = false
       for (; j < lines.length; j++) {

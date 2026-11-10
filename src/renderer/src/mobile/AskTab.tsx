@@ -6,7 +6,14 @@
 import { useEffect, useState } from 'react'
 import { create } from 'zustand'
 import { toast } from 'sonner'
-import { ArrowUp, ChevronLeft, LoaderCircle, MonitorSmartphone, Sparkles, HardDrive } from 'lucide-react'
+import {
+  ArrowUp,
+  ChevronLeft,
+  LoaderCircle,
+  MonitorSmartphone,
+  Sparkles,
+  HardDrive
+} from 'lucide-react'
 import type { AskPhoneRequest, AskSessionsItem } from '@shared/ask-sessions/types'
 import { SUGGESTED_ASK } from '@shared/ask-sessions/local'
 import { ago } from '@shared/format'
@@ -150,14 +157,22 @@ export function AskTab() {
             aria-label="Your question"
             className="min-w-0 flex-1 resize-none bg-transparent px-1.5 py-1 text-[15px] outline-none placeholder:text-subtle-foreground"
           />
-          <Button type="submit" variant="primary" size="icon" disabled={!question.trim() || busy} aria-label="Ask">
+          <Button
+            type="submit"
+            variant="primary"
+            size="icon"
+            disabled={!question.trim() || busy}
+            aria-label="Ask"
+          >
             {busy ? <LoaderCircle className="animate-spin" /> : <ArrowUp />}
           </Button>
         </form>
 
         {offer && (
           <div className="rounded-xl border border-border bg-card px-3.5 py-3 text-[13px]">
-            <div className="font-medium">This is a question about what&apos;s in your sessions.</div>
+            <div className="font-medium">
+              This is a question about what&apos;s in your sessions.
+            </div>
             {enabled === false ? (
               <p className="mt-1 text-muted-foreground">
                 Ask on your PC: content questions are off there (Settings → Ask). Questions about
@@ -192,7 +207,9 @@ export function AskTab() {
           <div
             className={cn(
               'flex items-start gap-2 rounded-xl border px-3.5 py-3 text-[13px]',
-              waiting.status === 'pending' ? 'border-primary/30 bg-accent-soft' : 'border-border bg-card'
+              waiting.status === 'pending'
+                ? 'border-primary/30 bg-accent-soft'
+                : 'border-border bg-card'
             )}
           >
             {waiting.status === 'pending' ? (

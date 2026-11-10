@@ -373,8 +373,7 @@ export function describeEntry(
   else if (s.view === 'ask') {
     const q = askTitle(s.askItem)
     text = q ? `Ask › ${cut(q, 48)}` : 'Ask'
-  }
-  else {
+  } else {
     const f = s.filters
     const parts = [VISIBILITY[f.visibility] ?? 'All sessions']
     if (f.project) {

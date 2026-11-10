@@ -59,7 +59,14 @@ function fakeRunner(answer: () => string) {
         is_error: false,
         result: answer(),
         total_cost_usd: 0.02,
-        modelUsage: { 'claude-opus-5-5': { inputTokens: 5000, outputTokens: 200, cacheReadInputTokens: 0, cacheCreationInputTokens: 0 } }
+        modelUsage: {
+          'claude-opus-5-5': {
+            inputTokens: 5000,
+            outputTokens: 200,
+            cacheReadInputTokens: 0,
+            cacheCreationInputTokens: 0
+          }
+        }
       }),
       stderr: '',
       code: 0,
@@ -71,7 +78,9 @@ function fakeRunner(answer: () => string) {
   return { runner, calls }
 }
 
-async function setup(over: { settings?: Partial<AskSessionsSettings>; answer?: () => string } = {}) {
+async function setup(
+  over: { settings?: Partial<AskSessionsSettings>; answer?: () => string } = {}
+) {
   await cp(FIXTURES, join(root, 'fixtures'), { recursive: true })
   await prepareFixtures(root)
   const layout = fixturesLayout(root)
@@ -87,7 +96,9 @@ async function setup(over: { settings?: Partial<AskSessionsSettings>; answer?: (
   await sessions.start()
   await sessions.idle()
   // A secret in a description: it must never be sent.
-  sessions.updateMeta(SAFARI, { description: 'Safari cookie notes. Token sk-ant-api03-SECRETSECRETSECRET123 here.' })
+  sessions.updateMeta(SAFARI, {
+    description: 'Safari cookie notes. Token sk-ant-api03-SECRETSECRETSECRET123 here.'
+  })
   const fake = fakeRunner(
     over.answer ??
       (() =>
@@ -114,7 +125,11 @@ async function setup(over: { settings?: Partial<AskSessionsSettings>; answer?: (
     dataDir: paths.dataDir,
     store,
     sessions,
-    usage: { recordsOf: () => [], limitHits: () => [], addDashboardRecords: (r) => recorded.push(...r) },
+    usage: {
+      recordsOf: () => [],
+      limitHits: () => [],
+      addDashboardRecords: (r) => recorded.push(...r)
+    },
     limits: { state: async () => ({}) as LimitsState, dollarsPerPct: () => 0.25 },
     settings: () => ({
       askSessions: ask,
@@ -130,7 +145,12 @@ async function setup(over: { settings?: Partial<AskSessionsSettings>; answer?: (
     remember: (c) => (remembered = c),
     fiveHourPct: async () => ({ pct: 12 }),
     runner,
-    createHost: () => (host = new InProcessHost({ dir: join(paths.dataDir, 'cache', 'ask'), dataDir: paths.dataDir, minReindexMs: 0 })),
+    createHost: () =>
+      (host = new InProcessHost({
+        dir: join(paths.dataDir, 'cache', 'ask'),
+        dataDir: paths.dataDir,
+        minReindexMs: 0
+      })),
     reveal: () => revealed++,
     timeZone: () => 'UTC'
   })
@@ -168,7 +188,10 @@ describe('local questions', () => {
     const { service } = await setup({ settings: { enabled: false } })
     expect((await service.ask('how many sessions last month')).mode).toBe('local')
     const c = await service.ask('why did Safari get stuck in a redirect loop?')
-    expect(c).toMatchObject({ mode: 'content', blocked: expect.stringContaining('Content questions are off') })
+    expect(c).toMatchObject({
+      mode: 'content',
+      blocked: expect.stringContaining('Content questions are off')
+    })
   })
 })
 
@@ -193,28 +216,55 @@ describe('content questions', () => {
     expect(stdin).toBe(shown)
     expect(stdin.startsWith(ASK_SESSIONS_MARKER)).toBe(true)
     expect(stdin).not.toContain('SECRETSECRET')
-    expect(cmd.args).toEqual(expect.arrayContaining(['-p', '--tools', '--strict-mcp-config', '--safe-mode', '--no-session-persistence', '--model', 'opus', '--effort', 'high']))
+    expect(cmd.args).toEqual(
+      expect.arrayContaining([
+        '-p',
+        '--tools',
+        '--strict-mcp-config',
+        '--safe-mode',
+        '--no-session-persistence',
+        '--model',
+        'opus',
+        '--effort',
+        'high'
+      ])
+    )
     expect(cmd.args.join(' ')).not.toContain('dangerously')
     // The question isn't on the command line.
     expect(cmd.args.join(' ')).not.toContain('Safari')
-    expect(item).toMatchObject({ ok: true, mode: 'content', modelChoice: 'opus', effort: 'high', model: 'claude-opus-5-5' })
+    expect(item).toMatchObject({
+      ok: true,
+      mode: 'content',
+      modelChoice: 'opus',
+      effort: 'high',
+      model: 'claude-opus-5-5'
+    })
+    // How it was answered: what the index was searched for, and how much matched.
+    expect(item.searched).toContain('safari')
+    expect(item.matched).toBeGreaterThan(0)
     expect(item.answer).toContain('It was the cookie path [S1].')
     expect(item.answer).not.toContain('guess')
     expect(item.answer).not.toContain('S99')
     expect(item.dropped).toEqual(['Also a guess with no source.', 'And a wrong id.'])
     expect(item.citations?.S1).toMatchObject({ key: p.snippets[0].key })
-    expect(recorded.every((x) => x.key === ASK_USAGE_KEY && x.project === ASK_USAGE_LABEL)).toBe(true)
+    expect(recorded.every((x) => x.key === ASK_USAGE_KEY && x.project === ASK_USAGE_LABEL)).toBe(
+      true
+    )
     expect(recorded).toHaveLength(1)
     expect(remembered()).toEqual({ lastModel: 'opus', lastEffort: 'high' })
     // Sent once: the preview can't be sent again.
-    await expect(service.send(p.id, { keep, model: 'opus', effort: 'high' })).rejects.toThrow(/expired/)
+    await expect(service.send(p.id, { keep, model: 'opus', effort: 'high' })).rejects.toThrow(
+      /expired/
+    )
   })
 
   it('sends only the snippets I kept, and nothing when I keep none', async () => {
     const { service, fake } = await setup()
     const r = await service.ask('cookie redirect login safari dashboard')
     if (r.mode !== 'content' || !r.preview) throw new Error('no preview')
-    await expect(service.send(r.preview.id, { keep: [], model: 'sonnet', effort: 'default' })).rejects.toThrow(/at least one/)
+    await expect(
+      service.send(r.preview.id, { keep: [], model: 'sonnet', effort: 'default' })
+    ).rejects.toThrow(/at least one/)
     expect(fake.calls).toEqual([])
     await service.send(r.preview.id, { keep: ['S1'], model: 'sonnet', effort: 'default' })
     expect(fake.calls[0].stdin).toContain('id="S1"')
@@ -226,7 +276,11 @@ describe('content questions', () => {
     const { service } = await setup({ answer: () => 'NOT_FOUND' })
     const r = await service.ask('what did I decide about the safari cookie?')
     if (r.mode !== 'content' || !r.preview) throw new Error('no preview')
-    const item = await service.send(r.preview.id, { keep: ['S1'], model: 'haiku', effort: 'default' })
+    const item = await service.send(r.preview.id, {
+      keep: ['S1'],
+      model: 'haiku',
+      effort: 'default'
+    })
     expect(item).toMatchObject({ ok: true, notFound: true, answer: '' })
   })
 
@@ -254,7 +308,11 @@ describe('a phone’s content question', () => {
     const r = await service.ask(req.question, { phoneRequest: req.id })
     if (r.mode !== 'content' || !r.preview) throw new Error('no preview')
     expect(r.preview.phone).toEqual({ device: 'Pixel', requestId: req.id })
-    const item = await service.send(r.preview.id, { keep: ['S1'], model: 'sonnet', effort: 'default' })
+    const item = await service.send(r.preview.id, {
+      keep: ['S1'],
+      model: 'sonnet',
+      effort: 'default'
+    })
     expect(item.phone).toBe('Pixel')
     expect(service.requestStatus(req.id)).toMatchObject({ status: 'sent', itemId: item.id })
     expect(service.pending()).toEqual([])
@@ -287,7 +345,12 @@ describe('a phone’s content question', () => {
     expect(fake.calls).toEqual([])
     const askRpcs = Object.values(RPC).filter((m) => m.channel.startsWith('askSessions:'))
     expect(askRpcs.map((m) => m.channel).sort()).toEqual(
-      ['askSessions:history', 'askSessions:phoneLocal', 'askSessions:phoneStatus', 'askSessions:status'].sort()
+      [
+        'askSessions:history',
+        'askSessions:phoneLocal',
+        'askSessions:phoneStatus',
+        'askSessions:status'
+      ].sort()
     )
     expect(askRpcs.every((m) => m.kind === 'read')).toBe(true)
   })
@@ -295,7 +358,11 @@ describe('a phone’s content question', () => {
 
 // --------------------------------------------------------- the phone's endpoint
 
-function req(port: number, path: string, opts: { token?: string; body?: unknown } = {}): Promise<{ status: number; body: string }> {
+function req(
+  port: number,
+  path: string,
+  opts: { token?: string; body?: unknown } = {}
+): Promise<{ status: number; body: string }> {
   return new Promise((resolve, reject) => {
     const data = opts.body === undefined ? undefined : JSON.stringify(opts.body)
     const r = httpRequest(
@@ -323,7 +390,13 @@ function req(port: number, path: string, opts: { token?: string; body?: unknown 
 
 describe('/api/ask on the companion server', () => {
   it('passes a question to the PC (logged), and refuses it in read-only mode', async () => {
-    const reg = new DeviceRegistry(new JsonStore<MobileFile>(join(root, 'mobile.json'), root, () => ({ version: 1, devices: [], activity: [] })))
+    const reg = new DeviceRegistry(
+      new JsonStore<MobileFile>(join(root, 'mobile.json'), root, () => ({
+        version: 1,
+        devices: [],
+        activity: []
+      }))
+    )
     let readOnly = false
     const asked: { device: string; body: unknown }[] = []
     let port = 0
@@ -345,7 +418,13 @@ describe('/api/ask on the companion server', () => {
       }),
       web: { file: async () => undefined },
       flags: () => ({ readOnly, confirmOnPc: false, mode: 'tailscale', appVersion: '1.0.0' }),
-      hosts: () => allowedHosts({ bind: '127.0.0.1', port, tailscaleName: 'pc.tail1234.ts.net', httpsPort: 8443 }),
+      hosts: () =>
+        allowedHosts({
+          bind: '127.0.0.1',
+          port,
+          tailscaleName: 'pc.tail1234.ts.net',
+          httpsPort: 8443
+        }),
       changed: () => undefined,
       askRequest: async (d, body) => {
         asked.push({ device: d.name, body })

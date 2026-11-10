@@ -41,7 +41,8 @@ export function registerAskSessionsIpc(ask: AskSessionsService): void {
   )
   handle('askSessions:send', (_e, p, opts) => {
     const o = (opts && typeof opts === 'object' ? opts : {}) as Record<string, unknown>
-    if (!isAskModel(o.model) || !isAskEffort(o.effort)) throw new Error('Unknown model or effort level.')
+    if (!isAskModel(o.model) || !isAskEffort(o.effort))
+      throw new Error('Unknown model or effort level.')
     return ask.send(id(p), {
       keep: sids(o.keep),
       model: o.model as AskModel,

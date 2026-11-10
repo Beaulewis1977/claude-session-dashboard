@@ -168,7 +168,9 @@ export function SessionScreen({ session }: { session: SessionSummary }) {
   const messages = useMemo(() => detail?.messages ?? [], [detail])
   const find = useFind(contentRef, scrollRef, findOpen ? findQuery : '', detail)
   // A citation from Ask: its message, or (a commit) the Changes sheet at that commit.
-  const focusSha = useApp((s) => (s.focusMessage?.key === session.key ? s.focusMessage.sha : undefined))
+  const focusSha = useApp((s) =>
+    s.focusMessage?.key === session.key ? s.focusMessage.sha : undefined
+  )
   const [seenSha, setSeenSha] = useState<string | undefined>()
   if (focusSha && focusSha !== seenSha) {
     // Adjusting state during render (not in an effect): open the Changes sheet once per citation.

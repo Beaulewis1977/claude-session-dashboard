@@ -17,7 +17,12 @@ import { readFile, mkdir, rename, unlink, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { deflateRawSync, inflateRawSync } from 'node:zlib'
 import { chunkMessages, type Passage, type PassageKind } from '@shared/ask-sessions/chunk'
-import { addTokens, isStopword, queryTokens, TOKENIZER_VERSION } from '@shared/ask-sessions/tokenize'
+import {
+  addTokens,
+  isStopword,
+  queryTokens,
+  TOKENIZER_VERSION
+} from '@shared/ask-sessions/tokenize'
 import { readSessionMessages, type ReadDeps, type ReadTarget } from './read'
 
 /** Bumped whenever what is saved changes (the passages, their words, the file). */
@@ -36,8 +41,20 @@ const KIND_BOOST: Record<PassageKind, number> = {
   compact: 0.9,
   turn: 1
 }
-const KIND_CODE: Record<PassageKind, string> = { turn: 't', compact: 'c', about: 'a', summary: 's', commit: 'g' }
-const CODE_KIND: Record<string, PassageKind> = { t: 'turn', c: 'compact', a: 'about', s: 'summary', g: 'commit' }
+const KIND_CODE: Record<PassageKind, string> = {
+  turn: 't',
+  compact: 'c',
+  about: 'a',
+  summary: 's',
+  commit: 'g'
+}
+const CODE_KIND: Record<string, PassageKind> = {
+  t: 'turn',
+  c: 'compact',
+  a: 'about',
+  s: 'summary',
+  g: 'commit'
+}
 
 export interface IndexJob {
   key: string
@@ -457,7 +474,8 @@ export class IndexCore {
     if (changed) this.touched()
     this.enforceBudget()
     this.maybeCompact()
-    if (this.phase === 'loading' || this.phase === 'error') this.phase = this.queue.length ? 'building' : 'ready'
+    if (this.phase === 'loading' || this.phase === 'error')
+      this.phase = this.queue.length ? 'building' : 'ready'
     this.emit()
     void this.pump()
   }
@@ -578,7 +596,9 @@ export class IndexCore {
   /** Past the budget, the sessions with the oldest activity go first. */
   private enforceBudget(): void {
     if (this.chars <= this.budget) return
-    const byAge = [...this.recs.values()].filter((r) => r.chars > 0).sort((a, b) => a.order - b.order)
+    const byAge = [...this.recs.values()]
+      .filter((r) => r.chars > 0)
+      .sort((a, b) => a.order - b.order)
     for (const r of byAge) {
       if (this.chars <= this.budget) break
       this.skipped.set(r.key, r.contentRev ?? this.latest.get(r.key)?.content?.rev ?? '')
@@ -638,7 +658,10 @@ export class IndexCore {
         if (!this.alive[ord]) continue
         if (allowed && !allowed.has(this.owner[ord])) continue
         const ts = this.ts[ord]
-        if (ts && ((req.from !== undefined && ts < req.from) || (req.to !== undefined && ts >= req.to)))
+        if (
+          ts &&
+          ((req.from !== undefined && ts < req.from) || (req.to !== undefined && ts >= req.to))
+        )
           continue
         const tf = arr[j + 1]
         const dl = this.len[ord]
@@ -667,7 +690,9 @@ export class IndexCore {
     for (let i = 0; i + 1 < words.length; i++) pairs.push(`${words[i]} ${words[i + 1]}`)
     if (pairs.length) {
       for (const h of top) {
-        const t = this.textOf(h.ord).toLowerCase().replace(/[\s_-]+/g, ' ')
+        const t = this.textOf(h.ord)
+          .toLowerCase()
+          .replace(/[\s_-]+/g, ' ')
         let n = 0
         for (const p of pairs) if (t.includes(p)) n++
         if (n) h.s *= 1 + 0.2 * Math.min(3, n)
@@ -702,7 +727,9 @@ export class IndexCore {
         const before = this.pos[h.ord] < near.lo
         near.text = before ? `${text}\n${near.text}` : `${near.text}\n${text}`
         const ids = this.ids[h.ord] ?? []
-        near.msgIds = before ? [...ids, ...near.msgIds.filter((i) => !ids.includes(i))] : [...near.msgIds, ...ids.filter((i) => !near.msgIds.includes(i))]
+        near.msgIds = before
+          ? [...ids, ...near.msgIds.filter((i) => !ids.includes(i))]
+          : [...near.msgIds, ...ids.filter((i) => !near.msgIds.includes(i))]
         if (before) {
           near.lo = this.pos[h.ord]
           if (this.ts[h.ord]) near.ts = this.ts[h.ord]

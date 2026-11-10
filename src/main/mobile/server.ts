@@ -583,7 +583,8 @@ export class MobileServer {
           action: 'ask',
           deviceId: d.id,
           device: d.name,
-          detail: 'Sent a question to the PC for review (nothing is sent to Claude until it is approved there)',
+          detail:
+            'Sent a question to the PC for review (nothing is sent to Claude until it is approved there)',
           ok: true
         })
         this.deps.changed()

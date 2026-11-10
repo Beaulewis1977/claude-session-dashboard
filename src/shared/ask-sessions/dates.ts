@@ -84,7 +84,20 @@ function daysIn(y: number, m: number): number {
   return new Date(Date.UTC(y, m, 0)).getUTCDate()
 }
 
-const SHORT_MONTH = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+const SHORT_MONTH = [
+  'Jan',
+  'Feb',
+  'Mar',
+  'Apr',
+  'May',
+  'Jun',
+  'Jul',
+  'Aug',
+  'Sep',
+  'Oct',
+  'Nov',
+  'Dec'
+]
 
 /** "Nov 2, 2026". */
 export function dayLabel(k: string): string {
@@ -99,7 +112,9 @@ export function rangeLabel(fromKey: string, toKey: string): string {
   const [fy] = fromKey.split('-').map(Number)
   const [ly] = last.split('-').map(Number)
   const f = dayLabel(fromKey)
-  return fy === ly ? `${f.slice(0, f.lastIndexOf(','))} – ${dayLabel(last)}` : `${f} – ${dayLabel(last)}`
+  return fy === ly
+    ? `${f.slice(0, f.lastIndexOf(','))} – ${dayLabel(last)}`
+    : `${f} – ${dayLabel(last)}`
 }
 
 interface Ctx {
@@ -112,7 +127,11 @@ interface Ctx {
 
 /** One date ("oct 3", "2026-10-03", "10/3", "october", "tuesday", "today"): its day key. */
 function parseDay(s: string, c: Ctx, end = false): string | undefined {
-  const t = s.trim().toLowerCase().replace(/(\d)(st|nd|rd|th)\b/g, '$1').replace(/,/g, ' ')
+  const t = s
+    .trim()
+    .toLowerCase()
+    .replace(/(\d)(st|nd|rd|th)\b/g, '$1')
+    .replace(/,/g, ' ')
   let m: RegExpExecArray | null
   if (t === 'today' || t === 'now') return end ? addDays(c.today, 1) : c.today
   if (t === 'yesterday') return end ? c.today : addDays(c.today, -1)
@@ -193,7 +212,9 @@ export function findDateRange(
       : undefined
   const tests: [RegExp, (mm: RegExpExecArray) => DateRange | undefined][] = [
     [
-      new RegExp(`\\b(?:between|from)\\s+(${DAY_RE})\\s+(?:and|to|until|through|-|–)\\s+(${DAY_RE})\\b`),
+      new RegExp(
+        `\\b(?:between|from)\\s+(${DAY_RE})\\s+(?:and|to|until|through|-|–)\\s+(${DAY_RE})\\b`
+      ),
       (mm) => {
         const a = parseDay(mm[1], c)
         const b = parseDay(mm[2], c, true)
@@ -223,8 +244,14 @@ export function findDateRange(
         const n = /^\d+$/.test(mm[1]) ? +mm[1] : (NUM_WORDS[mm[1]] ?? 1)
         const unit = mm[2]
         const end = addDays(today, 1)
-        const days = unit === 'day' ? n : unit === 'week' ? 7 * n : unit === 'month' ? 30 * n : 365 * n
-        return make(addDays(end, -days), end, `the last ${n} ${unit}${n === 1 ? '' : 's'}`, span(mm))
+        const days =
+          unit === 'day' ? n : unit === 'week' ? 7 * n : unit === 'month' ? 30 * n : 365 * n
+        return make(
+          addDays(end, -days),
+          end,
+          `the last ${n} ${unit}${n === 1 ? '' : 's'}`,
+          span(mm)
+        )
       }
     ],
     [
@@ -237,7 +264,8 @@ export function findDateRange(
         if (w === 'this week') return make(ws, addDays(today, 1), 'this week', span(mm))
         if (w === 'last week' || w === 'previous week')
           return make(addDays(ws, -7), ws, 'last week', span(mm))
-        if (w === 'this month') return make(monthStart(y, m), addDays(today, 1), 'this month', span(mm))
+        if (w === 'this month')
+          return make(monthStart(y, m), addDays(today, 1), 'this month', span(mm))
         if (w === 'last month' || w === 'previous month') {
           const py = m === 1 ? y - 1 : y
           const pm = m === 1 ? 12 : m - 1

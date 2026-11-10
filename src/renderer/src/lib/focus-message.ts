@@ -18,7 +18,11 @@ function target(ids: string[], sha?: string): Element | null {
   return null
 }
 
-export function useFocusMessage(key: string, ready: boolean, tab: 'conversation' | 'changes'): void {
+export function useFocusMessage(
+  key: string,
+  ready: boolean,
+  tab: 'conversation' | 'changes'
+): void {
   const focus = useApp((s) => s.focusMessage)
   useEffect(() => {
     if (!focus || focus.key !== key || !ready) return
@@ -34,7 +38,9 @@ export function useFocusMessage(key: string, ready: boolean, tab: 'conversation'
       if (el) {
         el.scrollIntoView({ block: 'center' })
         // Turns above it take their real height once near the screen: aim again.
-        requestAnimationFrame(() => requestAnimationFrame(() => el.scrollIntoView({ block: 'center' })))
+        requestAnimationFrame(() =>
+          requestAnimationFrame(() => el.scrollIntoView({ block: 'center' }))
+        )
         window.setTimeout(() => el.scrollIntoView({ block: 'center' }), 200)
         el.classList.add('cite-flash')
         window.setTimeout(() => el.classList.remove('cite-flash'), 2400)

@@ -22,11 +22,15 @@ const TZ = 'America/Chicago'
 const day = (iso: string): number => Date.parse(`${iso}T12:00:00-06:00`)
 
 describe('dates in a question', () => {
-  const r = (q: string, weekStart: 'monday' | 'sunday' = 'monday') => findDateRange(q, NOW, TZ, weekStart)
+  const r = (q: string, weekStart: 'monday' | 'sunday' = 'monday') =>
+    findDateRange(q, NOW, TZ, weekStart)
 
   it('last week follows the week start', () => {
     expect(r('sessions last week')).toMatchObject({ fromKey: '2026-11-02', toKey: '2026-11-09' })
-    expect(r('sessions last week', 'sunday')).toMatchObject({ fromKey: '2026-11-01', toKey: '2026-11-08' })
+    expect(r('sessions last week', 'sunday')).toMatchObject({
+      fromKey: '2026-11-01',
+      toKey: '2026-11-08'
+    })
     expect(r('this week')).toMatchObject({ fromKey: '2026-11-09', toKey: '2026-11-11' })
   })
 
@@ -38,7 +42,11 @@ describe('dates in a question', () => {
   })
 
   it('a month without a year is the latest one that has started', () => {
-    expect(r('what did I spend in October')).toMatchObject({ fromKey: '2026-10-01', toKey: '2026-11-01', explicit: true })
+    expect(r('what did I spend in October')).toMatchObject({
+      fromKey: '2026-10-01',
+      toKey: '2026-11-01',
+      explicit: true
+    })
     expect(r('in december')).toMatchObject({ fromKey: '2025-12-01', toKey: '2026-01-01' })
     expect(r('in march 2025')).toMatchObject({ fromKey: '2025-03-01', toKey: '2025-04-01' })
     expect(r('last november')).toMatchObject({ fromKey: '2025-11-01' })
@@ -48,8 +56,14 @@ describe('dates in a question', () => {
 
   it('since, between, the last N days, on a weekday', () => {
     expect(r('since Oct 3')).toMatchObject({ fromKey: '2026-10-03', toKey: '2026-11-11' })
-    expect(r('between Oct 1 and Oct 15')).toMatchObject({ fromKey: '2026-10-01', toKey: '2026-10-16' })
-    expect(r('from 2026-09-01 to 2026-09-30')).toMatchObject({ fromKey: '2026-09-01', toKey: '2026-10-01' })
+    expect(r('between Oct 1 and Oct 15')).toMatchObject({
+      fromKey: '2026-10-01',
+      toKey: '2026-10-16'
+    })
+    expect(r('from 2026-09-01 to 2026-09-30')).toMatchObject({
+      fromKey: '2026-09-01',
+      toKey: '2026-10-01'
+    })
     expect(r('in the past 30 days')).toMatchObject({ fromKey: '2026-10-12', toKey: '2026-11-11' })
     expect(r('over the last two weeks')).toMatchObject({ fromKey: '2026-10-28' })
     expect(r('on Monday')).toMatchObject({ fromKey: '2026-11-09', toKey: '2026-11-10' })
@@ -95,10 +109,30 @@ function rec(p: Partial<UsageRecord> & { key: string; ts: number; model: string 
 const SESSIONS: LocalSession[] = [
   session({ key: 'w:a', title: 'Opus last week' }),
   session({ key: 'w:b', title: 'Sonnet last week', models: ['claude-sonnet-5-5'] }),
-  session({ key: 'w:c', title: 'Opus in October', startedAt: day('2026-10-10'), lastActivityAt: day('2026-10-12') }),
+  session({
+    key: 'w:c',
+    title: 'Opus in October',
+    startedAt: day('2026-10-10'),
+    lastActivityAt: day('2026-10-12')
+  }),
   session({ key: 'w:hidden', title: 'Hidden opus', hidden: true }),
-  session({ key: 'x:sub', title: 'Codex subagent', provider: 'codex', subagent: true, models: ['gpt-5.5-codex'] }),
-  session({ key: 'x:cx', title: 'Codex orders', provider: 'codex', project: 'orders-api', env: 'wsl', distro: 'Ubuntu', models: ['gpt-5.5-codex'], tags: ['backend'] }),
+  session({
+    key: 'x:sub',
+    title: 'Codex subagent',
+    provider: 'codex',
+    subagent: true,
+    models: ['gpt-5.5-codex']
+  }),
+  session({
+    key: 'x:cx',
+    title: 'Codex orders',
+    provider: 'codex',
+    project: 'orders-api',
+    env: 'wsl',
+    distro: 'Ubuntu',
+    models: ['gpt-5.5-codex'],
+    tags: ['backend']
+  }),
   session({ key: 'ask', title: 'Ask Claude: x', source: 'ask-claude' })
 ]
 
@@ -107,9 +141,26 @@ const RECORDS: UsageRecord[] = [
   rec({ key: 'w:b', ts: day('2026-11-04'), model: 'claude-sonnet-5-5' }),
   rec({ key: 'w:c', ts: day('2026-10-11'), model: 'claude-opus-5-5' }),
   rec({ key: 'w:hidden', ts: day('2026-11-03'), model: 'claude-opus-5-5' }),
-  rec({ key: 'x:cx', ts: day('2026-10-20'), model: 'gpt-5.5-codex', provider: 'codex', output: 2_000_000 }),
-  rec({ key: 'x:cx', ts: day('2026-11-02'), model: 'gpt-5.5-codex', provider: 'codex', output: 500_000 }),
-  rec({ key: ASK_USAGE_KEY, ts: day('2026-11-05'), model: 'claude-sonnet-5-5', project: 'Ask (dashboard)' })
+  rec({
+    key: 'x:cx',
+    ts: day('2026-10-20'),
+    model: 'gpt-5.5-codex',
+    provider: 'codex',
+    output: 2_000_000
+  }),
+  rec({
+    key: 'x:cx',
+    ts: day('2026-11-02'),
+    model: 'gpt-5.5-codex',
+    provider: 'codex',
+    output: 500_000
+  }),
+  rec({
+    key: ASK_USAGE_KEY,
+    ts: day('2026-11-05'),
+    model: 'claude-sonnet-5-5',
+    project: 'Ask (dashboard)'
+  })
 ]
 
 function data(over: Partial<LocalData> = {}): LocalData {
@@ -120,23 +171,56 @@ function data(over: Partial<LocalData> = {}): LocalData {
     sessions: SESSIONS,
     records: RECORDS,
     prices: DEFAULT_PRICES,
-    codexPrices: [{ model: 'gpt-5.5-codex', label: 'GPT-5.5 Codex', input: 2, output: 10, cacheRead: 0.2, cacheWrite5m: 0, cacheWrite1h: 0 }],
+    codexPrices: [
+      {
+        model: 'gpt-5.5-codex',
+        label: 'GPT-5.5 Codex',
+        input: 2,
+        output: 10,
+        cacheRead: 0.2,
+        cacheWrite5m: 0,
+        cacheWrite1h: 0
+      }
+    ],
     limitHits: [
       { id: 'h1', ts: day('2026-11-03'), key: 'w:a', text: 'limit', kind: 'five_hour' },
       { id: 'h2', ts: day('2026-10-03'), key: 'w:c', text: 'limit', kind: 'weekly' }
     ],
     codexLimitHits: [],
     limitsNow: { claude: { fiveHour: { pct: 42, resetsAt: NOW + 3600_000 } } },
-    plans: { claude: { current: 'Max 5x', history: [{ from: '2026-09-01', plan: 'Max 5x' }] }, codex: { current: 'Plus', changes: [] } },
+    plans: {
+      claude: { current: 'Max 5x', history: [{ from: '2026-09-01', plan: 'Max 5x' }] },
+      codex: { current: 'Plus', changes: [] }
+    },
     git: {
       enabled: true,
       touched: (p) => new Set(p.endsWith('bridge.ts') ? ['w:a', 'x:cx'] : []),
       commitSessions: (sha) => new Set(sha.startsWith('abc1234') ? ['w:b'] : []),
       commits: () => [
-        { key: 'w:a', sha: 'abc1234def', subject: 'Fix bridge', at: day('2026-11-03'), files: ['src/main/bridge.ts'] },
-        { key: 'w:c', sha: 'fff0000111', subject: 'Old work', at: day('2026-10-11'), files: ['README.md'] }
+        {
+          key: 'w:a',
+          sha: 'abc1234def',
+          subject: 'Fix bridge',
+          at: day('2026-11-03'),
+          files: ['src/main/bridge.ts']
+        },
+        {
+          key: 'w:c',
+          sha: 'fff0000111',
+          subject: 'Old work',
+          at: day('2026-10-11'),
+          files: ['README.md']
+        }
       ],
-      prs: () => [{ key: 'w:a', number: 14, url: 'https://github.com/o/r/pull/14', title: 'Bridge', state: 'merged' }],
+      prs: () => [
+        {
+          key: 'w:a',
+          number: 14,
+          url: 'https://github.com/o/r/pull/14',
+          title: 'Bridge',
+          state: 'merged'
+        }
+      ],
       files: () => [{ key: 'w:a', path: 'src/main/bridge.ts', at: day('2026-11-03') }]
     },
     ...over
@@ -179,7 +263,12 @@ describe('which questions are answered on this PC', () => {
     const r = route('How many sessions used Opus 5.5 last week in acme-web?')
     expect(r.mode).toBe('local')
     if (r.mode !== 'local') return
-    expect(r.query).toMatchObject({ intent: 'sessions', count: true, models: ['opus-5-5'], projects: ['acme-web'] })
+    expect(r.query).toMatchObject({
+      intent: 'sessions',
+      count: true,
+      models: ['opus-5-5'],
+      projects: ['acme-web']
+    })
     expect(r.query.range).toMatchObject({ fromKey: '2026-11-02' })
     expect(r.chips).toContain('Project: acme-web')
     const f = route('which sessions touched src/main/bridge.ts or commit abc1234ff')
@@ -275,12 +364,19 @@ describe('local answers', () => {
     const c = answer('how many commits did I make last week')
     expect(c.commits?.map((x) => x.sha)).toEqual(['abc1234def'])
     expect(answer('which pull requests did I open').table?.rows[0][0]).toBe('#14')
-    const off = answer('how many commits last week', data({ git: { ...data().git, enabled: false } }))
+    const off = answer(
+      'how many commits last week',
+      data({ git: { ...data().git, enabled: false } })
+    )
     expect(off.headline).toContain('Git links are off')
   })
 
   it('every answer says how it was worked out', () => {
-    for (const q of ['How many sessions used Opus last week?', 'What did I spend on Codex in October?', 'what plan am I on'])
+    for (const q of [
+      'How many sessions used Opus last week?',
+      'What did I spend on Codex in October?',
+      'what plan am I on'
+    ])
       expect(answer(q).steps.length).toBeGreaterThan(0)
   })
 })

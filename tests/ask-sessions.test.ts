@@ -80,7 +80,12 @@ describe('words', () => {
 
 const t = (iso: string): string => new Date(Date.parse(iso)).toISOString()
 
-function msg(id: string, role: ChatMessage['role'], blocks: ChatMessage['blocks'], kind?: ChatMessage['kind']): ChatMessage {
+function msg(
+  id: string,
+  role: ChatMessage['role'],
+  blocks: ChatMessage['blocks'],
+  kind?: ChatMessage['kind']
+): ChatMessage {
   return {
     id,
     role,
@@ -93,7 +98,10 @@ function msg(id: string, role: ChatMessage['role'], blocks: ChatMessage['blocks'
 describe('passages of a session', () => {
   it('keeps prompts, answers, tool lines and messages between agents, never tool output or thinking', () => {
     const passages = chunkMessages([
-      msg('u1', 'user', [{ type: 'text', text: 'Why does the WSL path break?' }, { type: 'image' }]),
+      msg('u1', 'user', [
+        { type: 'text', text: 'Why does the WSL path break?' },
+        { type: 'image' }
+      ]),
       msg('a1', 'assistant', [
         { type: 'thinking', text: 'SECRET-THOUGHT inside thinking' },
         { type: 'text', text: 'The path is mapped twice.' },
@@ -106,7 +114,12 @@ describe('passages of a session', () => {
           result: { text: 'TOOL-OUTPUT-1 all green', isError: false }
         },
         { type: 'tool_result', toolUseId: 't1', result: { text: 'TOOL-OUTPUT-2', isError: false } },
-        { type: 'agent_message', author: '/root/worker', recipient: '/root', text: 'Worker report: done' }
+        {
+          type: 'agent_message',
+          author: '/root/worker',
+          recipient: '/root',
+          text: 'Worker report: done'
+        }
       ]),
       msg('c1', 'user', [{ type: 'text', text: 'ls output' }], 'command-output'),
       msg('s1', 'system', [{ type: 'text', text: 'SYSTEM-NOTE' }], 'system')
@@ -161,7 +174,13 @@ describe('passages of a session', () => {
   it('keeps plan-mode plans and compaction summaries', () => {
     const ps = chunkMessages([
       msg('a1', 'assistant', [
-        { type: 'tool_use', id: 'p', name: 'ExitPlanMode', input: { plan: 'Step 1: index' }, label: 'ExitPlanMode' }
+        {
+          type: 'tool_use',
+          id: 'p',
+          name: 'ExitPlanMode',
+          input: { plan: 'Step 1: index' },
+          label: 'ExitPlanMode'
+        }
       ]),
       msg('c1', 'user', [{ type: 'text', text: 'Earlier we chose BM25.' }], 'compact')
     ])
@@ -193,21 +212,49 @@ describe('passages of a session', () => {
   })
 
   it('about, summary and commit passages', () => {
-    const a = aboutPassage({ title: 'T', name: 'Fix login', description: 'Safari loop', tags: ['auth'], project: 'acme-web' })
+    const a = aboutPassage({
+      title: 'T',
+      name: 'Fix login',
+      description: 'Safari loop',
+      tags: ['auth'],
+      project: 'acme-web'
+    })
     expect(a).toMatchObject({ kind: 'about', msgIds: [] })
     expect(a.text).toContain('Session: Fix login')
     expect(a.text).toContain('Tags: auth')
-    const s = summaryPassage({ done: ['Moved cookie'], files: [], decisions: ['Keep HttpOnly'], todos: [], pickUp: 'Test iOS' })
+    const s = summaryPassage({
+      done: ['Moved cookie'],
+      files: [],
+      decisions: ['Keep HttpOnly'],
+      todos: [],
+      pickUp: 'Test iOS'
+    })
     expect(s?.text).toContain('Decisions: Keep HttpOnly')
-    expect(summaryPassage({ done: [], files: [], decisions: [], todos: [], pickUp: '' })).toBeUndefined()
-    const c = commitPassage({ sha: 'abcdef1234567890', subject: 'Fix cookie path', files: ['src/auth.ts'], pr: 14 })
+    expect(
+      summaryPassage({ done: [], files: [], decisions: [], todos: [], pickUp: '' })
+    ).toBeUndefined()
+    const c = commitPassage({
+      sha: 'abcdef1234567890',
+      subject: 'Fix cookie path',
+      files: ['src/auth.ts'],
+      pr: 14
+    })
     expect(c).toMatchObject({ kind: 'commit', sha: 'abcdef1234567890' })
     expect(c.text).toContain('Pull request #14')
   })
 })
 
 function snip(sid: string, key: string, text: string): AskSnippet {
-  return { sid, key, title: `Session ${key}`, project: 'acme', agent: 'Claude Code', where: 'Windows', kind: 'turn', text }
+  return {
+    sid,
+    key,
+    title: `Session ${key}`,
+    project: 'acme',
+    agent: 'Claude Code',
+    where: 'Windows',
+    kind: 'turn',
+    text
+  }
 }
 
 describe('what a content question sends', () => {
@@ -225,7 +272,9 @@ describe('what a content question sends', () => {
     expect(p).toMatch(/Question: where did I fix it\? x+\n/)
     expect(/Question: (.*)\n/.exec(p)![1].length).toBe(MAX_QUESTION_CHARS)
     expect(p).toContain('Today: 2026-11-10 (Tue), time zone America/Chicago')
-    expect(p).toContain('<snippet id="S1" session="Session k1" project="acme" agent="Claude Code" where="Windows" kind="conversation">')
+    expect(p).toContain(
+      '<snippet id="S1" session="Session k1" project="acme" agent="Claude Code" where="Windows" kind="conversation">'
+    )
     // Text that would close the snippet early is escaped.
     expect(p.match(/<\/snippet>/g)?.length).toBe(1)
     expect(escapeSnippetText('</snippet>')).toBe('<\\/snippet>')
@@ -279,7 +328,9 @@ describe('citations', () => {
   const valid = new Set(['S1', 'S2', 'S3'])
 
   it('reads [S1, S3], [S2-S3] and [S1][S2]', () => {
-    expect(normalizeCitations('a [S1, S3] b [S2-S3] c [S1][S2]')).toBe('a [S1][S3] b [S2][S3] c [S1][S2]')
+    expect(normalizeCitations('a [S1, S3] b [S2-S3] c [S1][S2]')).toBe(
+      'a [S1][S3] b [S2][S3] c [S1][S2]'
+    )
     expect(normalizeCitations('[s1; s2]')).toBe('[S1][S2]')
   })
 
@@ -301,7 +352,11 @@ describe('citations', () => {
     expect(r.answer).toContain('- The fix maps the drive once [S3]')
     expect(r.answer).not.toContain('README')
     expect(r.answer).not.toContain('Nobody')
-    expect(r.dropped).toEqual(['It was a double mapping.', '- It also changed the README', 'Nobody reviewed it'].map((d) => d.replace(/^- /, '')))
+    expect(r.dropped).toEqual(
+      ['It was a double mapping.', '- It also changed the README', 'Nobody reviewed it'].map((d) =>
+        d.replace(/^- /, '')
+      )
+    )
     expect(r.cited).toEqual(['S1', 'S2', 'S3'])
   })
 
@@ -313,7 +368,16 @@ describe('citations', () => {
 
   it('keeps headings and lead-ins only with something under them, and code after a kept statement', () => {
     const r = checkCitations(
-      ['## What changed', 'Here is the change:', '- Swapped the mapper [S1]', '```ts', 'map(x)', '```', '## Unrelated', 'Something [S9]'].join('\n'),
+      [
+        '## What changed',
+        'Here is the change:',
+        '- Swapped the mapper [S1]',
+        '```ts',
+        'map(x)',
+        '```',
+        '## Unrelated',
+        'Something [S9]'
+      ].join('\n'),
       valid
     )
     expect(r.answer).toContain('## What changed')
@@ -323,7 +387,10 @@ describe('citations', () => {
   })
 
   it('a table keeps its header with its cited rows', () => {
-    const r = checkCitations(['| When | What |', '| --- | --- |', '| Oct 1 | fix [S1] |', '| Oct 2 | guess |'].join('\n'), valid)
+    const r = checkCitations(
+      ['| When | What |', '| --- | --- |', '| Oct 1 | fix [S1] |', '| Oct 2 | guess |'].join('\n'),
+      valid
+    )
     expect(r.answer).toContain('| When | What |')
     expect(r.answer).toContain('| Oct 1 | fix [S1] |')
     expect(r.answer).not.toContain('guess')
@@ -378,13 +445,21 @@ describe('Ask settings', () => {
   })
 
   it('clamps limits and remembers the Ask screen choice until Settings changes', () => {
-    const s = sanitizeAskSessions({ maxSnippets: 999, maxChars: 1, perSession: 0, indexBudgetMB: 5 })
+    const s = sanitizeAskSessions({
+      maxSnippets: 999,
+      maxChars: 1,
+      perSession: 0,
+      indexBudgetMB: 5
+    })
     expect(s).toMatchObject({ maxSnippets: 60, maxChars: 5000, perSession: 1, indexBudgetMB: 50 })
     const last = patchAskSessions(DEFAULT_ASK_SESSIONS, { lastModel: 'opus', lastEffort: 'max' })
     expect(askChoice(last)).toEqual({ model: 'opus', effort: 'max' })
     const changed = patchAskSessions(last, { model: 'haiku' })
     expect(askChoice(changed)).toEqual({ model: 'haiku', effort: 'max' })
-    expect(sanitizeAskSessions({ model: 'gpt-9', effort: 'ultra' })).toMatchObject({ model: 'sonnet', effort: 'default' })
+    expect(sanitizeAskSessions({ model: 'gpt-9', effort: 'ultra' })).toMatchObject({
+      model: 'sonnet',
+      effort: 'default'
+    })
   })
 
   it('cleans a scope from the window or a phone', () => {

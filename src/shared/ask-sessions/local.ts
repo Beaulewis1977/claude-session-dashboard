@@ -284,7 +284,8 @@ export function routeQuestion(
     if (m) scopeSpans.push([m.index, m.index + m[0].length])
     return m
   }
-  if (at(grab(q, used, /\bclaude(?: code)? desktop(?: app)?\b|\bdesktop app\b/))) lq.sources = ['desktop']
+  if (at(grab(q, used, /\bclaude(?: code)? desktop(?: app)?\b|\bdesktop app\b/)))
+    lq.sources = ['desktop']
   if (at(grab(q, used, /\bcowork\b/))) lq.sources = [...(lq.sources ?? []), 'cowork']
   if (grab(q, used, /\bvs ?code\b/)) lq.sources = [...(lq.sources ?? []), 'vscode', 'codex-vscode']
   if (grab(q, used, /\bjetbrains\b/)) lq.sources = [...(lq.sources ?? []), 'jetbrains']
@@ -295,7 +296,11 @@ export function routeQuestion(
     prov.add((m[1] ?? m[2]) === 'codex' ? 'codex' : 'claude')
     providerExplicit = true
   }
-  for (let m = grab(q, used, /\b(codex|claude code|claude)\b/); m; m = grab(q, used, /\b(codex|claude code|claude)\b/))
+  for (
+    let m = grab(q, used, /\b(codex|claude code|claude)\b/);
+    m;
+    m = grab(q, used, /\b(codex|claude code|claude)\b/)
+  )
     prov.add(m[1] === 'codex' ? 'codex' : 'claude')
   if (prov.size) lq.providers = [...prov]
 
@@ -329,7 +334,8 @@ export function routeQuestion(
     }
   }
   if (grab(q, used, /\bwsl\b|\bubuntu\b|\blinux\b/)) envs.add('wsl')
-  if (grab(q, used, /\b(?:on|in|from)\s+windows\b|\bwindows\s+(?:sessions?|side)\b/)) envs.add('windows')
+  if (grab(q, used, /\b(?:on|in|from)\s+windows\b|\bwindows\s+(?:sessions?|side)\b/))
+    envs.add('windows')
   if (envs.size) lq.envs = [...envs]
 
   // Projects (longest name first): with a preposition, before "project", or a distinctive name.
@@ -347,7 +353,7 @@ export function routeQuestion(
   if (projects.length) lq.projects = projects
 
   // Tags.
-  for (let m = grab(q, used, /\b(?:tagged|(?:with\s+)?(?:the\s+)?tag)\s+"?([^\s"?,]+)"?/); m; ) {
+  for (let m = grab(q, used, /\b(?:tagged|(?:with\s+)?(?:the\s+)?tag)\s+"?([^\s"?,]+)"?/); m;) {
     const t = vocab.tags.find((x) => x.toLowerCase() === m![1])
     if (t) (lq.tags ??= []).push(t)
     else (lq.tags ??= []).push(m[1])
@@ -355,7 +361,8 @@ export function routeQuestion(
   }
 
   // Files, commits, PRs.
-  const FILE = /(?:^|\s)(?:the\s+)?(?:file\s+)?("[^"]+"|[\w.\\/-]+\.[a-z0-9]{1,8}|[\w.-]+[\\/][\w.\\/-]+)(?=\s|[?,!]|\.(?:\s|$)|$)/
+  const FILE =
+    /(?:^|\s)(?:the\s+)?(?:file\s+)?("[^"]+"|[\w.\\/-]+\.[a-z0-9]{1,8}|[\w.-]+[\\/][\w.\\/-]+)(?=\s|[?,!]|\.(?:\s|$)|$)/
   for (let m = grab(q, used, FILE); m; m = grab(q, used, FILE)) {
     const f = m[1].replace(/^"|"$/g, '')
     // A version ("1.15.2"), a model id, an abbreviation ("e.g.") or a website isn't a file.
@@ -364,7 +371,9 @@ export function routeQuestion(
       /^gpt-/.test(f) ||
       f.length < 4 ||
       !/\.[a-z][a-z0-9]{0,7}$|[\\/]/.test(f) ||
-      /^(?:[a-z0-9-]+\.)?(?:claude\.ai|chatgpt\.com|github\.com|openai\.com|anthropic\.com)$/.test(f)
+      /^(?:[a-z0-9-]+\.)?(?:claude\.ai|chatgpt\.com|github\.com|openai\.com|anthropic\.com)$/.test(
+        f
+      )
     )
       continue
     ;(lq.files ??= []).push(normQueryPath(f))
@@ -380,7 +389,11 @@ export function routeQuestion(
   if (grab(q, used, /\bhidden\b/)) lq.hidden = true
   if (grab(q, used, /\barchived(?: only)?\b/)) lq.archived = true
   if (grab(q, used, /\bsub-?agents?\b|\bsubagent threads?\b/)) lq.subagents = true
-  const by = grab(q, used, /\b(?:by|per|for each|split by|broken down by)\s+(model|project|day|month|provider)s?\b/)
+  const by = grab(
+    q,
+    used,
+    /\b(?:by|per|for each|split by|broken down by)\s+(model|project|day|month|provider)s?\b/
+  )
   if (by) lq.groupBy = by[1] as LocalQuery['groupBy']
   if (grab(q, used, /\b(?:5|five)[- ]?h(?:ou)?r?s?\b/)) lq.window = '5h'
   else if (grab(q, used, /\b(?:weekly|7[- ]?days?|seven[- ]days?)\b/)) lq.window = '7d'
@@ -391,10 +404,16 @@ export function routeQuestion(
   let intent: LocalIntent | undefined
   if (has(/\b(?:spend|spent|spending|cost|costs|costed|dollars?|usd|money)\b|\$/)) intent = 'cost'
   else if (has(/\btokens?\b/)) intent = 'tokens'
-  else if (has(/\b(?:hit|hits|reached|reach|ran into|run into|maxed out|max out)\b[\w\s'-]{0,30}\blimits?\b|\blimit hits?\b/))
+  else if (
+    has(
+      /\b(?:hit|hits|reached|reach|ran into|run into|maxed out|max out)\b[\w\s'-]{0,30}\blimits?\b|\blimit hits?\b/
+    )
+  )
     intent = 'limitHits'
   else if (
-    has(/\b(?:current|currently|right now|now|so far)\b[\w\s'-]{0,30}\blimits?\b|\bhow (?:close|near)\b[\w\s'-]{0,30}\blimit|\blimits? (?:now|right now|currently)\b|\bwhere am i\b[\w\s'-]{0,20}\blimit/)
+    has(
+      /\b(?:current|currently|right now|now|so far)\b[\w\s'-]{0,30}\blimits?\b|\bhow (?:close|near)\b[\w\s'-]{0,30}\blimit|\blimits? (?:now|right now|currently)\b|\bwhere am i\b[\w\s'-]{0,20}\blimit/
+    )
   )
     intent = 'limitsNow'
   else if (has(/\b(?:plans?|subscriptions?|tier)\b/)) intent = 'plans'
@@ -462,7 +481,12 @@ export function queryChips(q: LocalQuery): string[] {
   if (q.sources?.length) out.push(q.sources.join(', '))
   if (q.models?.length) out.push(`Model: ${q.models.join(', ')}`)
   if (q.projects?.length) out.push(`Project: ${q.projects.join(', ')}`)
-  if (q.envs?.length) out.push(q.distro ? `WSL: ${q.distro}` : q.envs.map((e) => (e === 'wsl' ? 'WSL' : 'Windows')).join(' + '))
+  if (q.envs?.length)
+    out.push(
+      q.distro
+        ? `WSL: ${q.distro}`
+        : q.envs.map((e) => (e === 'wsl' ? 'WSL' : 'Windows')).join(' + ')
+    )
   if (q.tags?.length) out.push(`Tag: ${q.tags.join(', ')}`)
   if (q.files?.length) out.push(`Touched: ${q.files.join(', ')}`)
   if (q.commits?.length) out.push(`Commit: ${q.commits.join(', ')}`)
@@ -475,7 +499,12 @@ export function queryChips(q: LocalQuery): string[] {
 export function scopeChips(s: AskScope): string[] {
   const out: string[] = []
   if (s.providers?.length) out.push(s.providers.map((p) => PROVIDER_NAME[p]).join(' + '))
-  if (s.sources?.length) out.push(s.sources.map((x) => (x === 'cowork' ? 'Cowork' : x === 'desktop' ? 'Claude desktop' : x)).join(', '))
+  if (s.sources?.length)
+    out.push(
+      s.sources
+        .map((x) => (x === 'cowork' ? 'Cowork' : x === 'desktop' ? 'Claude desktop' : x))
+        .join(', ')
+    )
   if (s.projects?.length) out.push(`Project: ${s.projects.join(', ')}`)
   if (s.envs?.length) out.push(s.envs.map((e) => (e === 'wsl' ? 'WSL' : 'Windows')).join(' + '))
   if (s.models?.length) out.push(`Model: ${s.models.join(', ')}`)
@@ -522,7 +551,10 @@ function sessionPool(c: Ctx): { pool: LocalSession[]; notes: string[] } {
   const subs = left.filter((s) => s.subagent).length
   if (!q.subagents) {
     left = left.filter((s) => !s.subagent)
-    if (subs) notes.push(`${plural(subs, 'Codex subagent thread')} not counted (ask about subagents to include them).`)
+    if (subs)
+      notes.push(
+        `${plural(subs, 'Codex subagent thread')} not counted (ask about subagents to include them).`
+      )
   } else left = left.filter((s) => s.subagent)
   const hid = left.filter((s) => s.hidden).length
   if (!q.hidden) {
@@ -557,7 +589,12 @@ function sessionPool(c: Ctx): { pool: LocalSession[]; notes: string[] } {
     }
   }
   if (q.pr !== undefined) {
-    const keys = new Set(d.git.prs().filter((p) => p.number === q.pr).map((p) => p.key))
+    const keys = new Set(
+      d.git
+        .prs()
+        .filter((p) => p.number === q.pr)
+        .map((p) => p.key)
+    )
     left = left.filter((s) => keys.has(s.key))
   }
   return { pool: left, notes }
@@ -575,7 +612,8 @@ function filterWords(q: LocalQuery): string {
   const bits: string[] = []
   if (q.providers?.length) bits.push(q.providers.map((p) => PROVIDER_NAME[p]).join(' and '))
   if (q.projects?.length) bits.push(`in ${q.projects.join(', ')}`)
-  if (q.envs?.length) bits.push(q.distro ? `in WSL (${q.distro})` : q.envs.includes('wsl') ? 'in WSL' : 'on Windows')
+  if (q.envs?.length)
+    bits.push(q.distro ? `in WSL (${q.distro})` : q.envs.includes('wsl') ? 'in WSL' : 'on Windows')
   if (q.tags?.length) bits.push(`tagged ${q.tags.join(', ')}`)
   if (q.sources?.length) bits.push(`from ${q.sources.join(', ')}`)
   return bits.join(' ')
@@ -587,7 +625,10 @@ function sessionsAnswer(c: Ctx): LocalAnswer {
   const steps: string[] = [
     `Read the session list on this PC: ${plural(d.sessions.length, 'session')}, filtered to ${plural(pool.length, 'session')}${filterWords(q) ? ` (${filterWords(q)})` : ''}.`
   ]
-  if (q.files?.length) steps.push(`Kept the sessions git links connect to ${q.files.join(', ')} (edited by the session, or in a commit linked to it), like the touched: search.`)
+  if (q.files?.length)
+    steps.push(
+      `Kept the sessions git links connect to ${q.files.join(', ')} (edited by the session, or in a commit linked to it), like the touched: search.`
+    )
   if (q.commits?.length) steps.push(`Kept the sessions linked to commit ${q.commits.join(', ')}.`)
   if (q.pr !== undefined) steps.push(`Kept the sessions linked to PR #${q.pr}.`)
   const hits = new Map<string, { n: number; last: number }>()
@@ -612,7 +653,8 @@ function sessionsAnswer(c: Ctx): LocalAnswer {
         hits.has(s.key) ||
         (!withRecords.has(s.key) &&
           s.models.some((m) => q.models!.some((n) => modelMatches(m, n))) &&
-          (!q.range || ((s.startedAt ?? 0) < q.range.to && (s.lastActivityAt ?? 0) >= q.range.from)))
+          (!q.range ||
+            ((s.startedAt ?? 0) < q.range.to && (s.lastActivityAt ?? 0) >= q.range.from)))
     )
     steps.push(
       `Counted a session when at least one of its responses${q.range ? ` in ${rangeLabel(q.range.fromKey, q.range.toKey)}` : ''} came from a model containing ${q.models.map((m) => `“${m}”`).join(' or ')} (usage records: one per response).`
@@ -621,7 +663,9 @@ function sessionsAnswer(c: Ctx): LocalAnswer {
     matched = pool.filter(
       (s) =>
         hits.has(s.key) ||
-        (!withRecords.has(s.key) && (s.startedAt ?? 0) < q.range!.to && (s.lastActivityAt ?? 0) >= q.range!.from)
+        (!withRecords.has(s.key) &&
+          (s.startedAt ?? 0) < q.range!.to &&
+          (s.lastActivityAt ?? 0) >= q.range!.from)
     )
     steps.push(
       `Counted a session when it had a response in ${rangeLabel(q.range.fromKey, q.range.toKey)} (usage records), or, without usage records, when its first and last activity overlap those dates.`
@@ -651,7 +695,9 @@ function sessionsAnswer(c: Ctx): LocalAnswer {
         detail: [
           s.project,
           `last activity ${dt(s.lastActivityAt)}`,
-          ...(h && q.models?.length ? [`${plural(h.n, 'response')} from ${q.models.join('/')}`] : [])
+          ...(h && q.models?.length
+            ? [`${plural(h.n, 'response')} from ${q.models.join('/')}`]
+            : [])
         ].join(' · ')
       }
     }),
@@ -665,10 +711,15 @@ function costAnswer(c: Ctx, tokensOnly: boolean): LocalAnswer {
     if (!inRange(r.ts, q.range) || !recordMatches(r, q)) return false
     if (q.providers?.length && !q.providers.includes(providerOfRecord(r))) return false
     const s = c.byKey.get(r.key)
-    if (q.projects?.length && !q.projects.some((p) => p.toLowerCase() === s?.project.toLowerCase())) return false
+    if (q.projects?.length && !q.projects.some((p) => p.toLowerCase() === s?.project.toLowerCase()))
+      return false
     if (q.envs?.length && !q.envs.includes(r.env)) return false
     if (q.sources?.length && (!s || !q.sources.includes(s.source))) return false
-    if (q.tags?.length && (!s || !s.tags.some((t) => q.tags!.some((x) => x.toLowerCase() === t.toLowerCase())))) return false
+    if (
+      q.tags?.length &&
+      (!s || !s.tags.some((t) => q.tags!.some((x) => x.toLowerCase() === t.toLowerCase())))
+    )
+      return false
     return true
   })
   const group = q.groupBy ?? 'model'
@@ -693,7 +744,11 @@ function costAnswer(c: Ctx, tokensOnly: boolean): LocalAnswer {
     row.tokens += tokens
     row.cost += cost
     rows.set(g, row)
-    total = { responses: total.responses + 1, tokens: total.tokens + tokens, cost: total.cost + cost }
+    total = {
+      responses: total.responses + 1,
+      tokens: total.tokens + tokens,
+      cost: total.cost + cost
+    }
   }
   const sorted = [...rows.entries()].sort((a, b) =>
     group === 'day' || group === 'month' ? a[0].localeCompare(b[0]) : b[1].cost - a[1].cost
@@ -707,8 +762,16 @@ function costAnswer(c: Ctx, tokensOnly: boolean): LocalAnswer {
   const steps = [
     `Added up the usage records on this PC${q.range ? ` from ${rangeLabel(q.range.fromKey, q.range.toKey)}` : ''}: one per response, deduplicated like ccusage, ${plural(recs.length, 'record')}${q.models?.length ? ` from models containing ${q.models.map((m) => `“${m}”`).join(' or ')}` : ''}.`,
     `Priced each response with ${providers.includes('codex') && providers.includes('claude') ? 'Settings → Prices (Claude) and Settings → Codex prices' : providers.includes('codex') ? 'Settings → Codex prices' : 'Settings → Prices'} (API list prices).`,
-    ...(providers.includes('codex') ? ["Your ChatGPT plan isn't billed per token: this is what the same use would cost at API prices."] : []),
-    ...(providers.includes('claude') ? ["A Claude subscription isn't billed per token either; API-billed sessions are, at these prices."] : []),
+    ...(providers.includes('codex')
+      ? [
+          "Your ChatGPT plan isn't billed per token: this is what the same use would cost at API prices."
+        ]
+      : []),
+    ...(providers.includes('claude')
+      ? [
+          "A Claude subscription isn't billed per token either; API-billed sessions are, at these prices."
+        ]
+      : []),
     "Usage on other computers, claude.ai and the phone apps isn't in these records."
   ]
   return {
@@ -719,7 +782,9 @@ function costAnswer(c: Ctx, tokensOnly: boolean): LocalAnswer {
       columns: [group[0].toUpperCase() + group.slice(1), 'Responses', 'Tokens', 'API price'],
       align: ['left', 'right', 'right', 'right'],
       rows: [
-        ...sorted.slice(0, 40).map(([k, v]) => [k, formatInt(v.responses), formatTokens(v.tokens), formatUsd(v.cost)]),
+        ...sorted
+          .slice(0, 40)
+          .map(([k, v]) => [k, formatInt(v.responses), formatTokens(v.tokens), formatUsd(v.cost)]),
         ['Total', formatInt(total.responses), formatTokens(total.tokens), formatUsd(total.cost)]
       ]
     }
@@ -733,8 +798,12 @@ function limitHitsAnswer(c: Ctx): LocalAnswer {
     (!q.window || (q.window === '5h' ? h.kind === 'five_hour' : h.kind === 'weekly'))
   const providers = q.providers?.length ? q.providers : (['claude', 'codex'] as ProviderId[])
   const hits = [
-    ...(providers.includes('claude') ? d.limitHits.filter(want).map((h) => ({ h, p: 'claude' as const })) : []),
-    ...(providers.includes('codex') ? d.codexLimitHits.filter(want).map((h) => ({ h, p: 'codex' as const })) : [])
+    ...(providers.includes('claude')
+      ? d.limitHits.filter(want).map((h) => ({ h, p: 'claude' as const }))
+      : []),
+    ...(providers.includes('codex')
+      ? d.codexLimitHits.filter(want).map((h) => ({ h, p: 'codex' as const }))
+      : [])
   ].sort((a, b) => b.h.ts - a.h.ts)
   const kind = q.window === '5h' ? '5-hour ' : q.window === '7d' ? 'weekly ' : ''
   const when = q.range ? ` ${q.range.label.replace(/ \(.*\)$/, '')}` : ''
@@ -748,12 +817,14 @@ function limitHitsAnswer(c: Ctx): LocalAnswer {
     ],
     table: {
       columns: ['When', 'Agent', 'Window', 'Session'],
-      rows: hits.slice(0, MAX_LIST).map(({ h, p }) => [
-        dt(h.ts),
-        PROVIDER_NAME[p],
-        h.kind === 'five_hour' ? '5-hour' : h.kind === 'weekly' ? 'Weekly' : 'Other',
-        c.byKey.get(h.key)?.title ?? '—'
-      ])
+      rows: hits
+        .slice(0, MAX_LIST)
+        .map(({ h, p }) => [
+          dt(h.ts),
+          PROVIDER_NAME[p],
+          h.kind === 'five_hour' ? '5-hour' : h.kind === 'weekly' ? 'Weekly' : 'Other',
+          c.byKey.get(h.key)?.title ?? '—'
+        ])
     },
     sessions: [...new Map(hits.map(({ h }) => [h.key, h])).values()]
       .filter((h) => c.byKey.has(h.key))
@@ -775,7 +846,12 @@ function limitsNowAnswer(c: Ctx): LocalAnswer {
       ['Weekly', l.sevenDay]
     ] as const) {
       if (!g || (q.window && (q.window === '5h') !== (label === '5-hour'))) continue
-      rows.push([PROVIDER_NAME[p], label, `${Math.round(g.pct)}%`, g.resetsAt ? dt(g.resetsAt) : '—'])
+      rows.push([
+        PROVIDER_NAME[p],
+        label,
+        `${Math.round(g.pct)}%`,
+        g.resetsAt ? dt(g.resetsAt) : '—'
+      ])
     }
   }
   return {
@@ -798,7 +874,8 @@ function plansAnswer(c: Ctx): LocalAnswer {
   const bits: string[] = []
   if (providers.includes('claude')) {
     bits.push(`Claude: **${d.plans.claude.current}**`)
-    for (const h of d.plans.claude.history) rows.push(['Claude', h.from === '2000-01-01' ? 'before' : dayLabel(h.from), h.plan])
+    for (const h of d.plans.claude.history)
+      rows.push(['Claude', h.from === '2000-01-01' ? 'before' : dayLabel(h.from), h.plan])
   }
   if (providers.includes('codex') && d.plans.codex) {
     bits.push(`ChatGPT (Codex): **${d.plans.codex.current}**`)
@@ -828,11 +905,22 @@ function modelsAnswer(c: Ctx, first: boolean): LocalAnswer {
       (first || inRange(r.ts, q.range)) &&
       recordMatches(r, q) &&
       (!q.providers?.length || q.providers.includes(providerOfRecord(r))) &&
-      (!q.projects?.length || q.projects.some((p) => p.toLowerCase() === c.byKey.get(r.key)?.project.toLowerCase()))
+      (!q.projects?.length ||
+        q.projects.some((p) => p.toLowerCase() === c.byKey.get(r.key)?.project.toLowerCase()))
   )
-  const by = new Map<string, { n: number; tokens: number; first: number; last: number; firstKey: string; lastKey: string }>()
+  const by = new Map<
+    string,
+    { n: number; tokens: number; first: number; last: number; firstKey: string; lastKey: string }
+  >()
   for (const r of recs) {
-    const m = by.get(r.model) ?? { n: 0, tokens: 0, first: r.ts, last: r.ts, firstKey: r.key, lastKey: r.key }
+    const m = by.get(r.model) ?? {
+      n: 0,
+      tokens: 0,
+      first: r.ts,
+      last: r.ts,
+      firstKey: r.key,
+      lastKey: r.key
+    }
     m.n++
     m.tokens += r.input + r.output + r.cacheRead + r.cacheWrite
     if (r.ts < m.first) {
@@ -869,11 +957,21 @@ function modelsAnswer(c: Ctx, first: boolean): LocalAnswer {
   return {
     headline: `**${plural(sorted.length, 'model')}**${q.range ? ` ${q.range.label.replace(/ \(.*\)$/, '')}` : ''}${sorted[0] ? `, mostly ${modelLabel(sorted[0][0])}` : ''}.`,
     interpretation: `Models that answered${filterWords(q) ? ` ${filterWords(q)}` : ''}${q.range ? `, ${q.range.label}` : ''}`,
-    steps: ['Counted the usage records on this PC (one per response) by the model that wrote them.'],
+    steps: [
+      'Counted the usage records on this PC (one per response) by the model that wrote them.'
+    ],
     table: {
       columns: ['Model', 'Responses', 'Tokens', 'First', 'Last'],
       align: ['left', 'right', 'right', 'left', 'left'],
-      rows: sorted.slice(0, 40).map(([m, v]) => [modelLabel(m), formatInt(v.n), formatTokens(v.tokens), dt(v.first), dt(v.last)])
+      rows: sorted
+        .slice(0, 40)
+        .map(([m, v]) => [
+          modelLabel(m),
+          formatInt(v.n),
+          formatTokens(v.tokens),
+          dt(v.first),
+          dt(v.last)
+        ])
     }
   }
 }
@@ -940,9 +1038,13 @@ function prsAnswer(c: Ctx): LocalAnswer {
     ],
     table: {
       columns: ['PR', 'Title', 'State', 'Session'],
-      rows: list.slice(0, MAX_LIST).map((p) => [`#${p.number}`, p.title ?? '', p.state ?? '', allowed.get(p.key)?.title ?? ''])
+      rows: list
+        .slice(0, MAX_LIST)
+        .map((p) => [`#${p.number}`, p.title ?? '', p.state ?? '', allowed.get(p.key)?.title ?? ''])
     },
-    sessions: [...new Set(list.map((p) => p.key))].slice(0, MAX_LIST).map((k) => ({ key: k, title: allowed.get(k)!.title }))
+    sessions: [...new Set(list.map((p) => p.key))]
+      .slice(0, MAX_LIST)
+      .map((k) => ({ key: k, title: allowed.get(k)!.title }))
   }
 }
 
@@ -965,7 +1067,9 @@ function filesAnswer(c: Ctx): LocalAnswer {
   return {
     headline: `**${plural(sorted.length, 'file')}** edited${filterWords(q) ? ` ${filterWords(q)}` : ''}${q.range ? ` ${q.range.label.replace(/ \(.*\)$/, '')}` : ''}${sorted[0] ? `; most often ${sorted[0][0]}` : ''}.`,
     interpretation: `Files your sessions edited${q.range ? `, ${q.range.label}` : ''}`,
-    steps: ["Files named by the sessions' own edit tool calls (Edit, Write, apply_patch…), by when each was last edited."],
+    steps: [
+      "Files named by the sessions' own edit tool calls (Edit, Write, apply_patch…), by when each was last edited."
+    ],
     table: {
       columns: ['File', 'Sessions'],
       align: ['left', 'right'],
@@ -978,7 +1082,9 @@ function projectDatesAnswer(c: Ctx): LocalAnswer {
   const { pool } = sessionPool(c)
   const q = c.q
   const sorted = [...pool].sort((a, b) =>
-    q.which === 'last' ? (b.lastActivityAt ?? 0) - (a.lastActivityAt ?? 0) : (a.startedAt ?? 0) - (b.startedAt ?? 0)
+    q.which === 'last'
+      ? (b.lastActivityAt ?? 0) - (a.lastActivityAt ?? 0)
+      : (a.startedAt ?? 0) - (b.startedAt ?? 0)
   )
   const s = sorted[0]
   const ts = s ? (q.which === 'last' ? s.lastActivityAt : s.startedAt) : undefined
@@ -987,8 +1093,16 @@ function projectDatesAnswer(c: Ctx): LocalAnswer {
       ? `You ${q.which === 'last' ? 'last worked' : 'first worked'} on ${q.projects?.join(', ')} on **${dt(ts)}** (“${s.title}”), across ${plural(pool.length, 'session')}.`
       : `No session of ${q.projects?.join(', ')} is on this PC.`,
     interpretation: `The ${q.which === 'last' ? 'latest' : 'earliest'} session of ${q.projects?.join(', ')}`,
-    steps: ['The session list on this PC, by first message (start) or last message (last activity).'],
-    sessions: sorted.slice(0, 5).map((x) => ({ key: x.key, title: x.title, detail: `${dt(x.startedAt)} – ${dt(x.lastActivityAt)}` }))
+    steps: [
+      'The session list on this PC, by first message (start) or last message (last activity).'
+    ],
+    sessions: sorted
+      .slice(0, 5)
+      .map((x) => ({
+        key: x.key,
+        title: x.title,
+        detail: `${dt(x.startedAt)} – ${dt(x.lastActivityAt)}`
+      }))
   }
 }
 

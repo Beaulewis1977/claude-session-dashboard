@@ -174,7 +174,9 @@ export function sanitizeScope(v: unknown): AskScope {
   const num = (x: unknown): number | undefined =>
     typeof x === 'number' && Number.isFinite(x) && x >= 0 ? x : undefined
   const out: AskScope = {}
-  const providers = strs(o.providers, 4)?.filter((p): p is ProviderId => p === 'claude' || p === 'codex')
+  const providers = strs(o.providers, 4)?.filter(
+    (p): p is ProviderId => p === 'claude' || p === 'codex'
+  )
   if (providers?.length) out.providers = providers
   const sources = strs(o.sources, 20) as SourceLabel[] | undefined
   if (sources?.length) out.sources = sources
@@ -258,6 +260,9 @@ export interface AskSessionsItem {
   notFound?: boolean
   citations?: Record<string, AskCitation>
   sent?: AskSentInfo
+  /** Content: the words the index was searched for, and how many passages matched. */
+  searched?: string
+  matched?: number
   /** The model and effort picked for it, and the model that answered (from the CLI). */
   modelChoice?: AskModel
   effort?: AskEffort
@@ -340,6 +345,8 @@ export type AskResult =
 export interface AskPreview {
   id: string
   question: string
+  /** The words the index was searched for (the question without its scope's words). */
+  searchText: string
   scope: AskScope
   scopeText: string
   /** Today's line of the prompt ("2026-11-10 (Tue)"). */

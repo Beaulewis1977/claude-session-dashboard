@@ -697,7 +697,9 @@ export const Transcript = memo(function Transcript({
             <div
               className="turn"
               // The messages it shows: a citation from Ask scrolls to them.
-              data-msg-ids={(t.kind === 'assistant' ? t.msgs.map((m) => m.id) : [t.msg.id]).join(' ')}
+              data-msg-ids={(t.kind === 'assistant' ? t.msgs.map((m) => m.id) : [t.msg.id]).join(
+                ' '
+              )}
             >
               {showDay && (
                 <div className="mb-5 flex items-center gap-3 text-2xs font-medium text-subtle-foreground">

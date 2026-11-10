@@ -36,12 +36,21 @@ function session(turns: [string, string][], start = '2026-10-14T15:00:00Z'): str
   const t0 = Date.parse(start)
   return turns
     .flatMap(([q, a], i) => [
-      line({ type: 'user', uuid: `u${i}`, timestamp: new Date(t0 + i * 120_000).toISOString(), message: { role: 'user', content: q } }),
+      line({
+        type: 'user',
+        uuid: `u${i}`,
+        timestamp: new Date(t0 + i * 120_000).toISOString(),
+        message: { role: 'user', content: q }
+      }),
       line({
         type: 'assistant',
         uuid: `a${i}`,
         timestamp: new Date(t0 + i * 120_000 + 60_000).toISOString(),
-        message: { role: 'assistant', model: 'claude-sonnet-5-5', content: [{ type: 'text', text: a }] }
+        message: {
+          role: 'assistant',
+          model: 'claude-sonnet-5-5',
+          content: [{ type: 'text', text: a }]
+        }
       })
     ])
     .join('\n')
@@ -55,7 +64,10 @@ function job(key: string, text: string, p: Partial<IndexJob> = {}): IndexJob {
     order: p.order ?? Date.parse('2026-10-14T16:00:00Z'),
     start: p.start ?? Date.parse('2026-10-14T15:00:00Z'),
     content: { path, provider: 'claude', rev: `${text.length}` },
-    meta: p.meta ?? { rev: key, passages: [aboutPassage({ title: `Session ${key}`, project: 'acme' })] },
+    meta: p.meta ?? {
+      rev: key,
+      passages: [aboutPassage({ title: `Session ${key}`, project: 'acme' })]
+    },
     ...p
   }
 }
@@ -85,14 +97,22 @@ async function built(c: IndexCore, jobs: IndexJob[], budget?: number): Promise<I
   return c
 }
 
-const search = (c: IndexCore, query: string, more: Partial<Parameters<IndexCore['search']>[0]> = {}) =>
-  c.search({ query, limit: 20, perSession: 4, ...more })
+const search = (
+  c: IndexCore,
+  query: string,
+  more: Partial<Parameters<IndexCore['search']>[0]> = {}
+) => c.search({ query, limit: 20, perSession: 4, ...more })
 
 describe('ranking', () => {
   it('finds the passage with the rarer, more specific words first', async () => {
     const c = await built(core(), [
       job('s1', session([['the build is slow', 'Caching node_modules fixed the slow build.']])),
-      job('s2', session([['fix the WSL path bug', 'The wslpath mapping was applied twice; fixed in wsl.ts.']])),
+      job(
+        's2',
+        session([
+          ['fix the WSL path bug', 'The wslpath mapping was applied twice; fixed in wsl.ts.']
+        ])
+      ),
       job('s3', session([['write docs', 'Docs about the path of the build output.']]))
     ])
     const r = search(c, 'where did I fix the WSL path bug')
@@ -111,10 +131,21 @@ describe('ranking', () => {
   })
 
   it('filters by session and by date; at most N per session; neighbours merged into one snippet', async () => {
-    const turns: [string, string][] = Array.from({ length: 6 }, (_, i) => [`cookie question ${i}`, `cookie answer ${i} ${'x '.repeat(400)}`])
-    const c = await built(core(), [job('big', session(turns)), job('other', session([['cookie?', 'cookie answer']], '2026-09-01T10:00:00Z'))])
-    expect(search(c, 'cookie', { allowed: ['other'] }).hits.every((h) => h.key === 'other')).toBe(true)
-    const sept = search(c, 'cookie', { from: Date.parse('2026-09-01T00:00:00Z'), to: Date.parse('2026-09-02T00:00:00Z') })
+    const turns: [string, string][] = Array.from({ length: 6 }, (_, i) => [
+      `cookie question ${i}`,
+      `cookie answer ${i} ${'x '.repeat(400)}`
+    ])
+    const c = await built(core(), [
+      job('big', session(turns)),
+      job('other', session([['cookie?', 'cookie answer']], '2026-09-01T10:00:00Z'))
+    ])
+    expect(search(c, 'cookie', { allowed: ['other'] }).hits.every((h) => h.key === 'other')).toBe(
+      true
+    )
+    const sept = search(c, 'cookie', {
+      from: Date.parse('2026-09-01T00:00:00Z'),
+      to: Date.parse('2026-09-02T00:00:00Z')
+    })
     expect(sept.hits.map((h) => h.key)).toEqual(['other'])
     const capped = search(c, 'cookie', { perSession: 2, allowed: ['big'] })
     expect(capped.hits.length).toBeLessThanOrEqual(2)
@@ -134,7 +165,10 @@ describe('ranking', () => {
 
 describe('incremental updates', () => {
   it('reads only what changed; meta changes need no read; removed sessions leave', async () => {
-    const c = await built(core(), [job('a', session([['alpha', 'one']])), job('b', session([['beta', 'two']]))])
+    const c = await built(core(), [
+      job('a', session([['alpha', 'one']])),
+      job('b', session([['beta', 'two']]))
+    ])
     expect(reads).toHaveLength(2)
     reads = []
     c.sync([job('a', session([['alpha', 'one']])), job('b', session([['beta', 'two']]))])
@@ -142,14 +176,30 @@ describe('incremental updates', () => {
     expect(reads).toEqual([])
     // A new name: no file read, and it's found by it.
     c.sync([
-      job('a', session([['alpha', 'one']]), { meta: { rev: 'a2', passages: [aboutPassage({ title: 'Renamed kiwi' })] } }),
-      job('b', session([['beta', 'two'], ['gamma', 'three']]))
+      job('a', session([['alpha', 'one']]), {
+        meta: { rev: 'a2', passages: [aboutPassage({ title: 'Renamed kiwi' })] }
+      }),
+      job(
+        'b',
+        session([
+          ['beta', 'two'],
+          ['gamma', 'three']
+        ])
+      )
     ])
     await c.idle()
     expect(reads).toHaveLength(1)
     expect(search(c, 'kiwi').hits[0]).toMatchObject({ key: 'a', kind: 'about' })
     expect(search(c, 'gamma').hits[0].key).toBe('b')
-    c.sync([job('b', session([['beta', 'two'], ['gamma', 'three']]))])
+    c.sync([
+      job(
+        'b',
+        session([
+          ['beta', 'two'],
+          ['gamma', 'three']
+        ])
+      )
+    ])
     await c.idle()
     expect(search(c, 'alpha').hits).toEqual([])
     expect(c.status().sessions).toBe(1)
@@ -157,7 +207,13 @@ describe('incremental updates', () => {
 
   it('keeps what was indexed when a file can no longer be read', async () => {
     const c = await built(core(), [job('a', session([['durian', 'fruit']]))])
-    const gone = job('a', session([['durian', 'fruit'], ['more', 'text']]))
+    const gone = job(
+      'a',
+      session([
+        ['durian', 'fruit'],
+        ['more', 'text']
+      ])
+    )
     files.delete(gone.content!.path)
     c.sync([gone])
     await c.idle()
@@ -166,10 +222,20 @@ describe('incremental updates', () => {
 
   it('reads a growing session again at most every minReindexMs', async () => {
     let t = Date.parse('2026-11-10T12:00:00Z')
-    const c = await built(core({ minReindexMs: 30_000, now: () => t }), [job('live', session([['first', 'answer']]))])
+    const c = await built(core({ minReindexMs: 30_000, now: () => t }), [
+      job('live', session([['first', 'answer']]))
+    ])
     reads = []
     t += 1000
-    c.sync([job('live', session([['first', 'answer'], ['second', 'answer']]))])
+    c.sync([
+      job(
+        'live',
+        session([
+          ['first', 'answer'],
+          ['second', 'answer']
+        ])
+      )
+    ])
     await c.idle()
     expect(reads).toEqual([])
     expect(search(c, 'second').hits).toEqual([])
@@ -200,7 +266,10 @@ describe('size budget', () => {
 
 describe('saving', () => {
   it('saves through a temp file and loads back the same answers without reading sessions again', async () => {
-    const a = await built(core(), [job('a', session([['papaya question', 'papaya answer']])), job('b', session([['mango', 'x']]))])
+    const a = await built(core(), [
+      job('a', session([['papaya question', 'papaya answer']])),
+      job('b', session([['mango', 'x']]))
+    ])
     await a.save()
     const saved = JSON.parse(await readFile(join(dir, INDEX_FILE), 'utf8')) as { v: number }
     expect(saved.v).toBe(1)
@@ -208,7 +277,10 @@ describe('saving', () => {
     const b = core()
     await b.load()
     expect(search(b, 'papaya').hits[0].key).toBe('a')
-    b.sync([job('a', session([['papaya question', 'papaya answer']])), job('b', session([['mango', 'x']]))])
+    b.sync([
+      job('a', session([['papaya question', 'papaya answer']])),
+      job('b', session([['mango', 'x']]))
+    ])
     await b.idle()
     expect(reads).toEqual([])
     expect(b.status().passages).toBe(a.status().passages)
@@ -267,8 +339,16 @@ describe('only session files are opened', () => {
   })
 
   it('reads Claude Code sessions and Codex rollouts', async () => {
-    expect(() => assertSessionFile('C:\\Users\\beau\\.claude\\projects\\p\\7f3c9a12-4b8e-4d21-9c6a-1e2f3a4b5c6d.jsonl')).not.toThrow()
-    expect(() => assertSessionFile('\\\\wsl.localhost\\Ubuntu\\home\\beau\\.codex\\sessions\\2026\\10\\01\\rollout-2026-10-01T10-00-00-01a0.jsonl.zst')).not.toThrow()
+    expect(() =>
+      assertSessionFile(
+        'C:\\Users\\beau\\.claude\\projects\\p\\7f3c9a12-4b8e-4d21-9c6a-1e2f3a4b5c6d.jsonl'
+      )
+    ).not.toThrow()
+    expect(() =>
+      assertSessionFile(
+        '\\\\wsl.localhost\\Ubuntu\\home\\beau\\.codex\\sessions\\2026\\10\\01\\rollout-2026-10-01T10-00-00-01a0.jsonl.zst'
+      )
+    ).not.toThrow()
     const msgs = await readSessionMessages(
       { path: 'C:\\p\\s.jsonl', provider: 'claude' },
       { readText: async () => session([['hello', 'world']]) }

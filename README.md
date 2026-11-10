@@ -157,6 +157,14 @@ Everything stays on your PC and your own private network.
 - **Trends** per model and Claude Code version ("is it nerfed?"), and a limit history.
 - **Ask Claude** about your usage ("Have my limits dropped?") through your own Claude Code, on your
   plan. Only aggregated numbers are sent, and you see them first.
+- **Ask across sessions** (Ctrl+Shift+K): "How many sessions used Opus last week?", "Which sessions
+  touched bridge.ts?" and "What did I spend on Codex in October?" are answered on your PC, with how
+  each was worked out; nothing is sent. "Where did I fix the WSL path bug?" searches a local index of
+  your Claude Code, Codex and Claude desktop sessions, shows exactly which snippets would go to Claude
+  (you can leave any out), and only then asks your own `claude -p`. Every statement of the answer
+  cites a snippet, and each citation opens the session at that message (or its Changes tab at that
+  commit). Off until you turn it on; on the phone, local answers come at once and content questions
+  wait for your OK on the PC.
 - **At a glance:** gauges in the title bar, a tray icon with the 5-hour %, and an always-on-top mini
   meter. Each can show Claude, Codex or both (Settings → Codex usage & limits).
 - **Codex too, with no setup:** Codex writes its token counts and plan limits into its own session

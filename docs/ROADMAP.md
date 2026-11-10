@@ -14,7 +14,7 @@ Ideas to build next, with the details and a ready-to-paste prompt for each.
 - remote continuity (no duplicate terminals between PC and phone) and Claude desktop sessions;
 - Back and Forward navigation on the desktop and the phone.
 
-Next up: #7 Ask across all sessions.
+Next up: #7 Ask across all sessions (in review, branch `feat/ask-across-sessions`).
 
 ---
 
@@ -381,7 +381,19 @@ Run typecheck, lint, tests and the build. Commit, push the branch and open a PR 
 
 **Next up:**
 
-1. #7 Ask across all sessions
+1. #7 Ask across all sessions: in review (branch `feat/ask-across-sessions`).
+
+**#7 known limits:**
+
+- Keyword search only (BM25 with stemming, file names and identifiers). No local embeddings:
+  transformers.js needs native modules (`sharp`, `onnxruntime-node`), and `onnxruntime-web`
+  alone is 150 MB plus a model to ship.
+- Answers are written by Claude only. `codex exec` (0.166.0) still offers tools under every disable
+  flag, so it could read more than the approved snippets. The Phase D2 "summarize with codex exec"
+  option was withheld for the same reason.
+- Local questions are rule-based: one with words the router doesn't know goes to the content path
+  (a preview, nothing sent without Send), and "Ask Claude instead" covers a misread local one.
+- A session that keeps growing is indexed again at most every 30 seconds.
 
 **Loose ends:**
 

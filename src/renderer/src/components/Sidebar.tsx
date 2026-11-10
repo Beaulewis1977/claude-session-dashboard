@@ -8,6 +8,7 @@ import {
   Folder,
   GitFork,
   Inbox,
+  MessageCircleQuestion,
   MessagesSquare,
   Monitor,
   Settings,
@@ -144,6 +145,16 @@ export function Sidebar() {
           </div>
         )}
         <div className="space-y-px">
+          <Tooltip content="Ask across your sessions" shortcut={`${MOD}+Shift+K`} side="right">
+            <div>
+              <Item
+                active={view === 'ask'}
+                icon={<MessageCircleQuestion />}
+                label="Ask"
+                onClick={() => set({ view: view === 'ask' ? 'sessions' : 'ask' })}
+              />
+            </div>
+          </Tooltip>
           <Tooltip content="Usage & limits" shortcut={`${MOD}+U`} side="right">
             <div>
               <Item

@@ -29,6 +29,8 @@ import { SessionViewer } from './components/viewer/SessionViewer'
 import { TrayPainter } from './components/usage/TrayPainter'
 import { UsageView } from './components/usage/UsageView'
 import { RunningView } from './components/live/RunningNow'
+import { AskView } from './components/ask/AskView'
+import { subscribeAsk } from '@/lib/ask-sessions'
 
 const LIST_WIDTH_KEY = 'csd.listWidth'
 
@@ -77,6 +79,8 @@ function useBootstrap(): void {
         } else st.set({ view: 'running' })
       })
     ]
+    // Ask across sessions: its history, index status and phones' questions.
+    offs.push(subscribeAsk())
     return () => offs.forEach((off) => off())
   }, [set])
 }
@@ -225,6 +229,11 @@ export function App() {
       allowInInput: true,
       handler: () => set({ view: view === 'usage' ? 'sessions' : 'usage' })
     },
+    {
+      combo: 'mod+shift+k',
+      allowInInput: true,
+      handler: () => set({ view: view === 'ask' ? 'sessions' : 'ask' })
+    },
     { combo: 'f5', allowInInput: true, handler: () => void api.rescan() },
     { combo: '?', handler: () => set({ shortcutsOpen: true }) },
     {
@@ -237,7 +246,7 @@ export function App() {
     {
       combo: 'escape',
       handler: () => set({ view: 'sessions' }),
-      when: () => view === 'settings' || view === 'usage' || view === 'running'
+      when: () => view === 'settings' || view === 'usage' || view === 'running' || view === 'ask'
     },
     { combo: 'j', handler: () => step(1), when: inSessions },
     { combo: 'k', handler: () => step(-1), when: inSessions },
@@ -295,6 +304,10 @@ export function App() {
           ) : view === 'running' ? (
             <div className="min-w-0 flex-1">
               <RunningView />
+            </div>
+          ) : view === 'ask' ? (
+            <div className="min-w-0 flex-1">
+              <AskView />
             </div>
           ) : (
             <>

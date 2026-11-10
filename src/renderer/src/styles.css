@@ -356,6 +356,30 @@ kbd {
   contain-intrinsic-size: auto 240px;
 }
 
+/* A message (or commit) a citation from Ask opened. */
+.cite-flash {
+  border-radius: 12px;
+  animation: cite-flash 2.4s ease-out;
+}
+@keyframes cite-flash {
+  0%,
+  35% {
+    box-shadow: 0 0 0 3px color-mix(in oklab, var(--primary) 55%, transparent);
+    background-color: color-mix(in oklab, var(--primary) 7%, transparent);
+  }
+  100% {
+    box-shadow: 0 0 0 3px transparent;
+    background-color: transparent;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .cite-flash {
+    animation: none;
+    outline: 2px solid var(--primary);
+    outline-offset: 2px;
+  }
+}
+
 /* ----------------------------------------------------------- markdown prose */
 
 .prose-chat {

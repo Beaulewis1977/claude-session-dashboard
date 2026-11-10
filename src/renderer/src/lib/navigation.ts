@@ -15,6 +15,7 @@ import { useHotkeys } from './hotkeys'
 import { NavHistory, type Direction, type NavState, type UsageTab } from './nav-history'
 import { saveView } from './scope'
 import { useApp, type State as AppState } from './store'
+import { askTitle } from './ask-sessions'
 
 let history = new NavHistory()
 /** The Settings section last linked to (the store's settingsSection clears itself once scrolled to). */
@@ -50,7 +51,8 @@ export function snapshot(st: AppState = useApp.getState()): NavState {
     viewerTab: key && st.viewerTab.key === key ? st.viewerTab.tab : 'conversation',
     usageTab: st.usageTab,
     providerView: st.settings.providerView ?? 'all',
-    settingsSection: st.view === 'settings' ? lastSection : null
+    settingsSection: st.view === 'settings' ? lastSection : null,
+    askItem: st.view === 'ask' ? st.askItem : null
   }
 }
 
@@ -125,6 +127,7 @@ function onStore(st: AppState, prev: AppState): void {
     st.viewerTab === prev.viewerTab &&
     st.usageTab === prev.usageTab &&
     st.settingsSection === prev.settingsSection &&
+    st.askItem === prev.askItem &&
     st.settings.providerView === prev.settings.providerView
   )
     return
@@ -177,7 +180,8 @@ export function navigate(dir: Direction): boolean {
     filters: s.filters,
     selectedKey: key,
     viewerTab: { key, tab: s.viewerTab },
-    usageTab: s.usageTab
+    usageTab: s.usageTab,
+    ...(s.view === 'ask' ? { askItem: s.askItem ?? null } : {})
   }
   if (key !== st.selectedKey) {
     patch.anchorKey = key
@@ -335,6 +339,7 @@ const USAGE_TABS: Record<UsageTab, string> = {
 }
 const SECTIONS: Record<string, string> = {
   accounts: 'Accounts & API credits',
+  ask: 'Ask',
   alerts: 'Session alerts',
   backup: 'Backup',
   'codex-usage': 'Codex usage & limits',
@@ -365,6 +370,10 @@ export function describeEntry(
       : 'Settings'
   else if (s.view === 'usage') text = `Usage & limits › ${USAGE_TABS[s.usageTab]}`
   else if (s.view === 'running') text = 'Running now'
+  else if (s.view === 'ask') {
+    const q = askTitle(s.askItem)
+    text = q ? `Ask › ${cut(q, 48)}` : 'Ask'
+  }
   else {
     const f = s.filters
     const parts = [VISIBILITY[f.visibility] ?? 'All sessions']

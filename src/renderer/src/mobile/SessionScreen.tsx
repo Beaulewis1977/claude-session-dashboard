@@ -63,6 +63,7 @@ import { canUseClaudeName } from '@shared/title'
 import { capsOf, PROVIDER_LABEL, providerOf } from '@shared/provider'
 import { ProviderBadge } from '@/components/ProviderSwitch'
 import { ChangesSheet } from './ChangesSheet'
+import { useFocusMessage } from '@/lib/focus-message'
 import { badgeText } from '@shared/git/prs'
 import { FindBar } from '@/components/viewer/FindBar'
 import { SessionUsageStrip } from '@/components/viewer/SessionUsage'
@@ -166,6 +167,15 @@ export function SessionScreen({ session }: { session: SessionSummary }) {
 
   const messages = useMemo(() => detail?.messages ?? [], [detail])
   const find = useFind(contentRef, scrollRef, findOpen ? findQuery : '', detail)
+  // A citation from Ask: its message, or (a commit) the Changes sheet at that commit.
+  const focusSha = useApp((s) => (s.focusMessage?.key === session.key ? s.focusMessage.sha : undefined))
+  const [seenSha, setSeenSha] = useState<string | undefined>()
+  if (focusSha && focusSha !== seenSha) {
+    // Adjusting state during render (not in an effect): open the Changes sheet once per citation.
+    setSeenSha(focusSha)
+    setChangesOpen(true)
+  }
+  useFocusMessage(session.key, changesOpen || !!detail, changesOpen ? 'changes' : 'conversation')
   const viewOnly = isViewOnly(session)
   // What this session's agent can do (Codex: Resume and Fork, no Remote Control).
   const caps = capsOf(session)

@@ -1064,6 +1064,12 @@ async function main(): Promise<void> {
     win.on('moved', saveBounds)
     win.on('maximize', saveBounds)
     win.on('unmaximize', saveBounds)
+    // A mouse's Back / Forward buttons (and a keyboard's Back key) arrive as app
+    // commands on Windows: the renderer's Back / Forward handle them.
+    win.on('app-command', (_e, cmd) => {
+      if (cmd === 'browser-backward') win.webContents.send('app:navigate', 'back')
+      else if (cmd === 'browser-forward') win.webContents.send('app:navigate', 'forward')
+    })
 
     if (process.env.ELECTRON_RENDERER_URL) void win.loadURL(process.env.ELECTRON_RENDERER_URL)
     else void win.loadFile(RENDERER_INDEX)

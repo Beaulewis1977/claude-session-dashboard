@@ -9,6 +9,9 @@ export const SHORTCUTS: { group: string; items: [string, string][] }[] = [
       [`${MOD}+,`, 'Settings'],
       [`${MOD}+U`, 'Usage & limits'],
       [`${MOD}+B`, 'Toggle sidebar'],
+      ['Alt+←', 'Back'],
+      ['Alt+→', 'Forward'],
+      ['Backspace', 'Back (when not typing)'],
       ['F5', 'Rescan sources'],
       ['?', 'Keyboard shortcuts']
     ]

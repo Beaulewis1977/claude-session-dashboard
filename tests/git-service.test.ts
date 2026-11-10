@@ -496,6 +496,44 @@ describe('the git links service', () => {
     expect([...svc.filter(parseGitQuery('commit:abc1234'))]).toEqual(['p'])
   })
 
+  it("a fork's copied claude.ai/code link doesn't make the parent's later commit its own", async () => {
+    const parentUrl = 'https://claude.ai/code/session_01Parent0000'
+    const mineUrl = 'https://claude.ai/code/session_01Fork00000'
+    const by = (n: number, url: string, minute: number) =>
+      commit(n, {
+        parents: [S(n === 11 ? 1 : 11)],
+        at: at(minute),
+        ct: at(minute),
+        subject: `Commit ${n}`,
+        trailers: [`Claude-Session: ${url}`],
+        files: [{ path: 'src/z.ts', add: 1, del: 0 }]
+      })
+    const repo: Repo = {
+      ...ACME,
+      refs: [{ ref: 'refs/heads/main', sha: S(12) }],
+      commits: [
+        commit(1, { at: at(-5000), ct: at(-5000) }),
+        by(11, parentUrl, 40),
+        by(12, mineUrl, 50)
+      ]
+    }
+    // The parent's file is gone; the fork's copy kept its link (with the parent's time).
+    const { svc } = service(
+      [
+        input('f', {
+          forkOf: 'p',
+          forkAt: at(20),
+          signals: sig({ sessionUrls: [parentUrl, mineUrl], sessionUrlsAt: [at(10), at(30)] })
+        })
+      ],
+      fakeBackend([repo]).backend
+    )
+    await svc.start()
+    await svc.schedule({ force: false })
+    const v = svc.view('f', { refresh: false })!
+    expect(v.commits.filter((c) => c.level === 'exact').map((c) => c.sha)).toEqual([S(12)])
+  })
+
   it('a partial clone is never read past its settings (and says why); its diffs are refused', async () => {
     const repo: Repo = { ...ACME, partial: true }
     const f = fakeBackend([repo])

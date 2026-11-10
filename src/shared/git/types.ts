@@ -42,6 +42,8 @@ export interface SessionGitSignals {
   spans: [number, number][]
   /** claude.ai/code session links: its Remote Control links and the `Claude-Session` trailers it wrote. */
   sessionUrls: string[]
+  /** When each of them was last seen (epoch ms, 0 when unknown), in the same order. */
+  sessionUrlsAt?: number[]
   /** Codex: HEAD and remote when the session started. */
   head?: string
   remote?: string

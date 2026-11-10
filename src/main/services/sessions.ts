@@ -62,7 +62,8 @@ import {
 // v11: git signals (branches, edited files, commits and PRs a session's own
 // tool calls printed, active stretches) for the git links.
 // v12: when each file was edited, and a Codex copy found by where its own history starts.
-const CACHE_VERSION = 12
+// v13: when each claude.ai/code link was seen, and older Codex copies found more closely.
+const CACHE_VERSION = 13
 
 interface CacheFile {
   version: number

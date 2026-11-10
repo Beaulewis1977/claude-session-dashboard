@@ -251,7 +251,7 @@ describe('every session carries its provider; stored data stays as it was', () =
     // Not in the app's metadata or the session cache: their format is unchanged.
     expect(await readFile(paths.metadataFile, 'utf8')).not.toContain('"provider"')
     await sessions.saveCache()
-    const cache = await readFile(join(paths.dataDir, 'cache', 'sessions-v12.json'), 'utf8')
+    const cache = await readFile(join(paths.dataDir, 'cache', 'sessions-v13.json'), 'utf8')
     expect(cache).not.toContain('"provider"')
     // Archive copies where they always were.
     const rec = sessions.archiveRecord('windows:' + SAFARI)!

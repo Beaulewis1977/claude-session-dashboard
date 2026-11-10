@@ -945,11 +945,13 @@ the PR links its own `gh pr create` printed, its claude.ai/code links (Remote Co
 in between). Lines a session copied from another (a branch's `forkedFrom` lines, an older-style
 copy, a Codex fork's or subagent's replayed history) are left out. Codex's copy is found in the
 thread's own file, however late it was written: newer Codex records where the thread's own
-history starts (`subagent_history_start_ordinal`), older files have the copy as one burst of lines
-after the parent's `session_meta`. A Claude Code `--fork-session` copy keeps the parent's times,
-so what it printed or edited up to the split (from the lineage) is the parent's; files count by
-when they were last edited. Commits and PR links that any ancestor's file also has are that
-ancestor's (the parent in between may have none of its own, or be gone).
+history starts (`subagent_history_start_ordinal`); in older files the copy is the burst of lines
+after the parent's `session_meta` written in one go (each within 250 ms of the one before, at most
+5 s in all), and a tool call whose output comes after that burst is the thread's own. A Claude
+Code `--fork-session` copy keeps the parent's times, so what it printed, edited or linked up to
+the split (from the lineage) is the parent's; files and claude.ai/code links count by when they
+were last seen. Commits, PR links and claude.ai/code links that any ancestor's file also has are
+that ancestor's (the parent in between may have none of its own, or be gone).
 
 ### Matching and confidence
 

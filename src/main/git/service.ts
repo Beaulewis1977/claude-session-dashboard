@@ -365,10 +365,11 @@ export class GitLinksService extends EventEmitter<{ changed: [] }> {
    * `gh pr create` output and edits are the parent's):
    * - a Codex copy is left out when its file is read (see copiedLines);
    * - a copy that keeps the parent's times (Claude Code): what it saw or edited
-   *   up to the split is the parent's;
-   * - commits and PRs that any ancestor's file also has are that ancestor's,
-   *   however late the copy was written and whether or not the parent in
-   *   between has any of its own.
+   *   up to the split is the parent's (commits, PRs, files, its claude.ai/code
+   *   links), with or without the parent;
+   * - commits, PRs and links that any ancestor's file also has are that
+   *   ancestor's, however late the copy was written and whether or not the
+   *   parent in between has any of its own.
    */
   private ownSignals(i: GitInput): SessionGitSignals | undefined {
     const sig = i.signals
@@ -376,18 +377,25 @@ export class GitLinksService extends EventEmitter<{ changed: [] }> {
     let out = sig
     const cut = i.forkAt
     if (cut !== undefined) {
-      const at = sig.filesAt
-      const keep = sig.files.map((_, k) => !(at?.[k] && at[k] <= cut))
+      // Kept: what has no time (older cache entries), or was last seen after the split.
+      const after = (at: number[] | undefined, k: number): boolean => !(at?.[k] && at[k] <= cut)
+      const files = sig.files.map((_, k) => after(sig.filesAt, k))
+      const urls = sig.sessionUrls.map((_, k) => after(sig.sessionUrlsAt, k))
       out = {
         ...sig,
-        files: sig.files.filter((_, k) => keep[k]),
-        ...(at ? { filesAt: at.filter((_, k) => keep[k]) } : {}),
+        files: sig.files.filter((_, k) => files[k]),
+        ...(sig.filesAt ? { filesAt: sig.filesAt.filter((_, k) => files[k]) } : {}),
+        sessionUrls: sig.sessionUrls.filter((_, k) => urls[k]),
+        ...(sig.sessionUrlsAt
+          ? { sessionUrlsAt: sig.sessionUrlsAt.filter((_, k) => urls[k]) }
+          : {}),
         commits: sig.commits.filter((c) => c.to > cut),
         prs: sig.prs.filter((p) => p.at > cut)
       }
     }
     const prs = new Set<string>()
     const shas = new Set<string>()
+    const urls = new Set<string>()
     const seen = new Set<string>()
     let cur: GitInput | undefined = i
     while (cur && seen.size < 50) {
@@ -397,12 +405,18 @@ export class GitLinksService extends EventEmitter<{ changed: [] }> {
       cur = this.byId.get(`${i.provider}:${pid}`)
       for (const p of cur?.signals?.prs ?? []) prs.add(p.url)
       for (const c of cur?.signals?.commits ?? []) shas.add(c.sha)
+      for (const u of cur?.signals?.sessionUrls ?? []) urls.add(u)
     }
-    if (!prs.size && !shas.size) return out
+    if (!prs.size && !shas.size && !urls.size) return out
+    const keepUrl = out.sessionUrls.map((u) => !urls.has(u))
     return {
       ...out,
       prs: out.prs.filter((x) => !prs.has(x.url)),
-      commits: out.commits.filter((x) => !shas.has(x.sha))
+      commits: out.commits.filter((x) => !shas.has(x.sha)),
+      sessionUrls: out.sessionUrls.filter((_, k) => keepUrl[k]),
+      ...(out.sessionUrlsAt
+        ? { sessionUrlsAt: out.sessionUrlsAt.filter((_, k) => keepUrl[k]) }
+        : {})
     }
   }
 

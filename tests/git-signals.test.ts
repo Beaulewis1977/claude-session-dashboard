@@ -168,6 +168,11 @@ describe('Claude Code signals', () => {
       'https://claude.ai/code/session_01AbCdEf9876',
       'https://claude.ai/code/session_01ZzYyXx1234'
     ])
+    // When each was seen (a fork's copy keeps the parent's times: see the git links service).
+    const seenAt = new Map(s.sessionUrls.map((u, k) => [u, s.sessionUrlsAt?.[k]]))
+    expect(seenAt.get('https://claude.ai/code/session_01AbCdEf9876')).toBe(Date.parse(T(5)))
+    expect(seenAt.get('https://claude.ai/code/session_01ZzYyXx1234')).toBe(Date.parse(T(6)))
+    expect(s.filesAt).toHaveLength(2)
     expect(s.spans).toEqual([[Date.parse(T(0)), Date.parse(T(6.1))]])
   })
 
@@ -337,9 +342,9 @@ describe('Codex signals', () => {
       meta(PARENT, late(6000)),
       call(late(6001), 'c0', 'exec_command', { cmd: 'git commit -m parent' }),
       out(late(6002), 'c0', '[main 1111111] parent'),
-      call(late(6400), 'g0', 'exec_command', { cmd: 'gh pr create --fill' }),
-      out(late(6800), 'g0', 'https://github.com/beau/shop/pull/3'),
-      patch(late(7500), 'p0', '*** Begin Patch\n*** Update File: parent-only.ts\n*** End Patch'),
+      call(late(6040), 'g0', 'exec_command', { cmd: 'gh pr create --fill' }),
+      out(late(6080), 'g0', 'https://github.com/beau/shop/pull/3'),
+      patch(late(6200), 'p0', '*** Begin Patch\n*** Update File: parent-only.ts\n*** End Patch'),
       patch(late(20_000), 'p1', '*** Begin Patch\n*** Update File: mine.ts\n*** End Patch'),
       call(late(30_000), 'c1', 'exec_command', { cmd: 'git commit -m mine' }),
       out(late(31_000), 'c1', '[main 2222222] mine')
@@ -349,6 +354,43 @@ describe('Codex signals', () => {
     expect(s.prs).toEqual([])
     expect(s.files).toEqual(['mine.ts'])
     expect(s.filesAt).toEqual([Date.parse(late(20_000))])
+  })
+
+  it('older Codex: its own first turn right after the copy stays its own', () => {
+    const at = '2026-10-31T18:48:59.000Z'
+    const t = (ms: number) => new Date(Date.parse(at) + ms).toISOString()
+    const msg = (ms: number, role: string, text: string) =>
+      line({
+        timestamp: t(ms),
+        type: 'response_item',
+        payload: { type: 'message', role, content: [{ type: 'input_text', text }] }
+      })
+    const copy = [
+      meta(OWN, at, { forked_from_id: PARENT }),
+      meta(PARENT, t(5)),
+      call(t(6), 'c0', 'exec_command', { cmd: 'git commit -m parent' }),
+      out(t(7), 'c0', '[main 1111111] parent')
+    ]
+    // Each line within a second of the one before: the prompt, the reply, the commit.
+    const spaced = [
+      ...copy,
+      msg(800, 'user', 'Commit it'),
+      msg(1600, 'assistant', 'Committing.'),
+      call(t(2400), 'c1', 'exec_command', { cmd: 'git commit -m mine' }),
+      out(t(3000), 'c1', '[main 2222222] mine')
+    ]
+    // Close together (within 250 ms each), but the commit's output comes later.
+    const close = [
+      ...copy,
+      msg(100, 'user', 'Commit it'),
+      msg(300, 'assistant', 'Committing.'),
+      call(t(450), 'c1', 'exec_command', { cmd: 'git commit -m mine' }),
+      out(t(2000), 'c1', '[main 2222222] mine')
+    ]
+    for (const lines of [spaced, close]) {
+      const s = codexGitSignals(parseLines(lines.join('\n')).lines, OWN)
+      expect(s.commits.map((c) => c.sha)).toEqual(['2222222'])
+    }
   })
 
   it('newer Codex: everything before where its own history starts is the copy, whenever written', () => {

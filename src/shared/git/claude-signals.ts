@@ -51,7 +51,8 @@ export function claudeGitSignals(events: RawEvent[], fileSessionId?: string): Se
     const at = Number.isFinite(t) ? t : undefined
     b.time(at)
     b.branch(e.gitBranch)
-    if (e.type === 'system' && e.subtype === 'bridge_status') b.sessionUrl(remoteSessionUrl(e.url))
+    if (e.type === 'system' && e.subtype === 'bridge_status')
+      b.sessionUrl(remoteSessionUrl(e.url), at)
     const content = obj(e.message)?.content
     if (!Array.isArray(content)) continue
     for (const raw of content) {

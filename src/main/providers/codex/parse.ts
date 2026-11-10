@@ -844,8 +844,12 @@ const SHELL_TOOLS = new Set([
   'container.exec'
 ])
 
-/** Lines of a copy written in one go follow each other within this. */
-const COPY_GAP_MS = 1000
+/**
+ * A copy is written in one go: its lines follow each other within this (real
+ * copies of hundreds of lines take a few ms), and all of it within COPY_SPAN_MS.
+ */
+const COPY_GAP_MS = 250
+const COPY_SPAN_MS = 5000
 
 /**
  * Which lines a fork (or a subagent started with its parent's history) copied
@@ -855,9 +859,10 @@ const COPY_GAP_MS = 1000
  *   (`subagent_history_start_ordinal`, against each line's `ordinal`): every
  *   line before it but the thread's own meta is the copy (or setup Codex adds).
  * - Otherwise: from the parent's meta (the second session_meta, another id),
- *   while each line follows the one before within a second. However late the
- *   copy was written, it's written in one go; the thread's own tool calls
- *   come after a model reply.
+ *   the lines written in the same go (however late that was). The thread's own
+ *   work starts after a pause: its prompt, then a model reply. And a tool call
+ *   whose output comes after those lines is the thread's own (a copied call's
+ *   output is copied with it, or goes to the parent), so the copy ends before it.
  * Worked out from the thread's own file (the parent's may be gone).
  */
 export function copiedLines(lines: Line[], sessionId?: string): (i: number) => boolean {
@@ -885,15 +890,30 @@ export function copiedLines(lines: Line[], sessionId?: string): (i: number) => b
     (l, i) => i > own && l.type === 'session_meta' && l.payload.id !== ownId
   )
   if (start < 0) return () => false
+  const t0 = Date.parse(lines[start].timestamp ?? '')
   let end = start + 1
-  let prev = Date.parse(lines[start].timestamp ?? '')
+  let prev = t0
   while (end < lines.length) {
     const t = Date.parse(lines[end].timestamp ?? '')
     if (Number.isFinite(t)) {
       if (Number.isFinite(prev) && t > prev + COPY_GAP_MS) break
+      if (Number.isFinite(t0) && t > t0 + COPY_SPAN_MS) break
       prev = t
     }
     end++
+  }
+  const answeredLater = new Set<string>()
+  for (let i = end; i < lines.length; i++) {
+    const id =
+      lines[i].type === 'response_item' ? toolOutputOf(lines[i].payload)?.callId : undefined
+    if (id) answeredLater.add(id)
+  }
+  for (let i = start + 1; i < end; i++) {
+    const id = lines[i].type === 'response_item' ? toolCallOf(lines[i].payload)?.callId : undefined
+    if (id && answeredLater.has(id)) {
+      end = i
+      break
+    }
   }
   return (i) => i >= start && i < end
 }

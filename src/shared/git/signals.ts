@@ -112,7 +112,8 @@ export class GitSignalBuilder {
   private files = new Map<string, number>()
   private commits = new Map<string, SeenCommit>()
   private prs = new Map<string, SeenPr>()
-  private urls = new Set<string>()
+  /** Each link, and when it was last seen (epoch ms; 0 = no time). */
+  private urls = new Map<string, number>()
   private calls = new Map<string, PendingCall>()
   head?: string
   remote?: string
@@ -135,15 +136,17 @@ export class GitSignalBuilder {
     this.files.set(p, Math.max(this.files.get(p) ?? 0, t))
   }
 
-  sessionUrl(url: string | undefined): void {
-    if (url && this.urls.size < 50) this.urls.add(url)
+  sessionUrl(url: string | undefined, at?: number): void {
+    if (!url || (!this.urls.has(url) && this.urls.size >= 50)) return
+    const t = at !== undefined && Number.isFinite(at) ? at : 0
+    this.urls.set(url, Math.max(this.urls.get(url) ?? 0, t))
   }
 
   /** A shell command call (Bash, PowerShell, Codex's shell tools). */
   command(id: string | undefined, command: string, at: number | undefined): void {
     const commit = GIT_COMMIT_CMD.test(command)
     const pr = GH_PR_CREATE.test(command)
-    if (commit) for (const u of sessionTrailers(command)) this.sessionUrl(u)
+    if (commit) for (const u of sessionTrailers(command)) this.sessionUrl(u, at)
     if (id && (commit || pr) && at !== undefined && this.calls.size < 5000)
       this.calls.set(id, { at, commit, pr })
   }
@@ -174,7 +177,8 @@ export class GitSignalBuilder {
       commits: [...this.commits.values()],
       prs: [...this.prs.values()],
       spans: spansOf(this.times),
-      sessionUrls: [...this.urls],
+      sessionUrls: [...this.urls.keys()],
+      sessionUrlsAt: [...this.urls.values()],
       ...(this.head ? { head: this.head } : {}),
       ...(this.remote ? { remote: this.remote } : {})
     }

@@ -289,7 +289,7 @@ export function RunningView() {
         ? 'Claude Code sessions'
         : 'Claude Code sessions and Codex threads'
   return (
-    <div className="h-full overflow-y-auto bg-surface">
+    <div className="h-full overflow-y-auto bg-surface" data-nav-scroll="main">
       <div className="mx-auto max-w-[860px] px-8 pt-6 pb-10">
         <div className="flex items-end gap-3">
           <div className="min-w-0 flex-1">

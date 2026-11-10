@@ -211,6 +211,7 @@ export function SessionList({
       <div
         ref={parentRef}
         id="session-list"
+        data-nav-scroll="list"
         role="listbox"
         aria-label="Sessions"
         aria-multiselectable

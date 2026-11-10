@@ -2,7 +2,7 @@
 
 import type { RemoteLaunchResult } from '@shared/mobile'
 import { isRunning, type LiveSession } from '@shared/live'
-import type { RunningCopy } from '@shared/running'
+import { runningCopyOf, startedRun, type RunningCopy } from '@shared/running'
 import type { SessionSummary } from '@shared/types'
 import { formatDateTime } from '@shared/format'
 
@@ -54,14 +54,22 @@ export function liveRemoteUrl(
  * "Already running" as Running now says it is right now (the sheet stays open
  * while it changes): its Remote Control link only while it's on in the current
  * run (never one kept from when the sheet opened), and nothing once it ended.
- * A launch still on its way isn't in Running now yet: kept as it is.
+ * A launch still on its way is kept until Running now shows the run it became
+ * (by its own key; a fork or continuation by the one new process in its folder),
+ * then shown as that run, with its Remote Control link once it's on.
  */
 export function runningNow(
   seen: RunningCopy | undefined,
-  live: readonly LiveLink[] | undefined
+  live: readonly LiveSession[] | undefined
 ): RunningCopy | undefined {
   if (!seen) return undefined
-  if (seen.pending || !live) return seen
+  if (!live) return seen
+  if (seen.pending) {
+    const run = startedRun(seen, live)
+    if (!run) return seen
+    const copy = runningCopyOf(run, seen.relation)
+    return seen.title && seen.relation === 'self' ? { ...copy, title: seen.title } : copy
+  }
   const l = live.find((x) => x.key === seen.key)
   if (!l || !isRunning(l)) return undefined
   const { remoteUrl: _old, ...rest } = seen

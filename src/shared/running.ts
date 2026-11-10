@@ -33,6 +33,10 @@ export interface RunningCopy {
   title?: string
   /** Launched from the dashboard a moment ago, not in Running now yet. */
   pending?: true
+  /** Pending: when that launch began (PC clock, epoch ms). */
+  pendingSince?: number
+  /** Pending: the folder it was launched in (a fork or continuation is found by it). */
+  cwd?: string
 }
 
 /** How the app recorded a session was made (Fork / Continue fresh from the app). */
@@ -66,6 +70,40 @@ function whereOf(l: LiveSession, desktopApp?: (key: string) => boolean): Running
   // Not a terminal (cli) session, and the desktop app lists it: the desktop app runs it.
   if (l.entrypoint !== 'cli' && desktopApp?.(l.key)) return 'claude-app'
   return 'terminal'
+}
+
+/** A running session as a running copy (a pending launch once Running now shows it). */
+export function runningCopyOf(
+  l: LiveSession,
+  relation: RunningCopy['relation'],
+  desktopApp?: (key: string) => boolean
+): RunningCopy {
+  return copyOf(l, relation, desktopApp)
+}
+
+/** Slack between the launch and the new process's start time. */
+const START_SLACK_MS = 2000
+
+/**
+ * The run a pending launch became, once Running now shows it: Resume (and the
+ * apps) by its own key, started after the launch; Fork / Continue fresh by the
+ * one new process in its folder (its id is only known once it runs). Undefined:
+ * not there yet, or more than one could be it.
+ */
+export function startedRun(p: RunningCopy, live: readonly LiveSession[]): LiveSession | undefined {
+  if (!p.pending || p.pendingSince === undefined) return undefined
+  const after = (l: LiveSession): boolean =>
+    isRunning(l) && (l.startedAt ?? l.since) >= p.pendingSince! - START_SLACK_MS
+  if (p.relation === 'self') return live.find((l) => l.key === p.key && after(l))
+  const sourceId = p.key.slice(0, p.key.indexOf(':'))
+  const cwd = p.cwd
+  if (!cwd) return undefined
+  const same = (c: string | undefined): boolean =>
+    !!c && (p.env === 'windows' ? c.toLowerCase() === cwd.toLowerCase() : c === cwd)
+  const kids = live.filter(
+    (l) => l.key !== p.key && l.sourceId === sourceId && same(l.cwd) && after(l)
+  )
+  return kids.length === 1 ? kids[0] : undefined
 }
 
 function copyOf(

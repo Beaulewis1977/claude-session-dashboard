@@ -835,6 +835,9 @@ async function main(): Promise<void> {
   })
   registerLiveIpc({ live, hooks, codexHooks, sessions, fixtures: FIXTURES })
   // "Already running on your PC": Resume / Fork / Continue fresh check Running now first.
+  // Reservations of launches on their way retire as soon as Running now shows their run.
+  launcher.liveSessions = () => live.snapshot().sessions
+  live.on('changed', () => launcher.observeLive())
   launcher.running = (s, kind) =>
     findRunningCopy({
       kind,

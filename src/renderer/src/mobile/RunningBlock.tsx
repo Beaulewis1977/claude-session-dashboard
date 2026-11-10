@@ -152,7 +152,8 @@ export function RunningBlock({
               </Button>
             )
           )}
-          {running.provider === 'claude' && !running.remoteUrl && (
+          {/* Without Remote Control (type /rc first), or still on its way (any agent). */}
+          {(running.pending || (running.provider === 'claude' && !running.remoteUrl)) && (
             <Button variant="ghost" className="h-10 w-full text-[13px]" onClick={onRefresh}>
               <RefreshCw /> Refresh
             </Button>

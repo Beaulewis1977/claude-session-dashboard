@@ -685,7 +685,10 @@ describe('Claude desktop folders are read narrowly', () => {
   })
 })
 
-async function setup(cowork: boolean, opts: { codex?: boolean; spawned?: string[] } = {}) {
+async function setup(
+  cowork: boolean,
+  opts: { codex?: boolean; spawned?: string[]; gate?: Promise<void> } = {}
+) {
   await cp(FIXTURES, join(root, 'fixtures'), { recursive: true })
   await prepareFixtures(root, { codex: opts.codex })
   const layout = fixturesLayout(root)
@@ -714,8 +717,8 @@ async function setup(cowork: boolean, opts: { codex?: boolean; spawned?: string[
         ...base,
         canLaunch: true,
         spawnDetached: async (c: { commandLine: string }) => {
-          // Takes a moment, like starting a terminal does.
-          await new Promise((r) => setTimeout(r, 20))
+          // Takes a moment, like starting a terminal does (or waits for the test).
+          await (opts.gate ?? new Promise((r) => setTimeout(r, 20)))
           spawned.push(c.commandLine)
         }
       }
@@ -1086,5 +1089,170 @@ describe('Review fixes', () => {
     expect(sessions.searchKeys('action items').some((h) => h.key === key)).toBe(true)
     settings.update((st) => void (st.coworkSource = false))
     expect(sessions.searchKeys('action items').some((h) => h.key === key)).toBe(false)
+  })
+})
+
+// ------------------------------------------------- final review fixes
+
+describe('Reservations follow Running now', () => {
+  type Internals = {
+    reserve(s: SessionSummary, kind: string, cwd?: string): unknown
+    release(r: unknown): void
+    reservedCopy(s: SessionSummary, kind: string): unknown
+  }
+
+  it('retire as soon as the run shows up: once it exits, Resume is free (not "pending")', async () => {
+    const spawned: string[] = []
+    const { sessions, launcher } = await setup(false, { spawned })
+    let now: LiveSession[] = []
+    launcher.running = () => undefined
+    launcher.liveSessions = () => now
+    const key = `windows:${DESKTOP_ID}`
+    const o = { key, fork: false, skipPermissions: false }
+    expect((await launcher.launch(o)).ok).toBe(true)
+    expect((await launcher.preview(o)).running?.pending).toBe(true)
+    // Running now shows the new process: the reservation goes (Running now's own check takes over).
+    now = [live({ key, startedAt: Date.now() })]
+    launcher.observeLive()
+    now = []
+    // It exited: nothing is running and nothing is on its way.
+    expect((await launcher.preview(o)).running).toBeUndefined()
+    expect((await launcher.launch(o)).ok).toBe(true)
+    expect(spawned).toHaveLength(2)
+    void sessions
+  })
+
+  it('an older process of the session does not retire a new launch', async () => {
+    const { launcher, sessions } = await setup(false, { spawned: [] })
+    const key = `windows:${DESKTOP_ID}`
+    launcher.running = () => undefined
+    launcher.liveSessions = () => [live({ key, startedAt: Date.now() - 3600_000 })]
+    await launcher.launch({ key, fork: false, skipPermissions: false, allowDuplicate: true })
+    expect(
+      (await launcher.preview({ key, fork: false, skipPermissions: false })).running?.pending
+    ).toBe(true)
+    void sessions
+  })
+
+  it('a fork on its way retires when the one new process in its folder appears', async () => {
+    const { launcher, sessions } = await setup(false, { spawned: [] })
+    const s = sessions.get(`windows:${DESKTOP_ID}`)!
+    let now: LiveSession[] = []
+    launcher.running = () => undefined
+    launcher.liveSessions = () => now
+    await launcher.launch({ key: s.key, fork: true, skipPermissions: false })
+    expect(
+      (await launcher.preview({ key: s.key, fork: true, skipPermissions: false })).running?.pending
+    ).toBe(true)
+    now = [live({ key: 'windows:new-fork', cwd: s.cwd!.toUpperCase(), startedAt: Date.now() })]
+    expect(
+      (await launcher.preview({ key: s.key, fork: true, skipPermissions: false })).running
+    ).toBeUndefined()
+  })
+
+  it('opening a thread in the Codex app again is never blocked by its own open on the way', async () => {
+    const { launcher, sessions } = await setup(false)
+    const l = launcher as unknown as Internals
+    const s = sessions.get(`windows:${DESKTOP_ID}`)!
+    l.reserve(s, 'codex-app', s.cwd)
+    expect(l.reservedCopy(s, 'codex-app')).toBeUndefined()
+    // A terminal Resume of it on the way is a second copy, though.
+    expect(l.reservedCopy(s, 'resume')).toMatchObject({ pending: true, where: 'codex-app' })
+    l.reserve(s, 'resume', s.cwd)
+    expect(l.reservedCopy(s, 'codex-app')).toMatchObject({ pending: true, where: 'terminal' })
+  })
+
+  it("a failed forced launch never frees another launch's reservation", async () => {
+    let open!: () => void
+    const gate = new Promise<void>((r) => (open = r))
+    const spawned: string[] = []
+    const { launcher } = await setup(false, { spawned, gate })
+    launcher.running = () => undefined
+    const key = `windows:${DESKTOP_ID}`
+    const o = { key, fork: false, skipPermissions: false }
+    // 1. A launch that is still starting (its terminal hasn't opened yet).
+    const first = launcher.launch(o)
+    await new Promise((r) => setTimeout(r, 30))
+    // 2. A forced second copy that fails (Remote Control can't run on an API key).
+    const forced = await launcher.launch({
+      ...o,
+      allowDuplicate: true,
+      remoteControl: true,
+      billingAccountId: 'acct-1'
+    })
+    expect(forced.ok).toBe(false)
+    // 3. An unforced launch is still refused: the first one is on its way.
+    const third = await launcher.launch(o)
+    expect(third).toMatchObject({ ok: false, running: { pending: true } })
+    open()
+    expect((await first).ok).toBe(true)
+    expect(spawned).toHaveLength(1)
+  })
+})
+
+describe('Pending phone notices upgrade from Running now', () => {
+  const pending = {
+    key: 'windows:a',
+    relation: 'self' as const,
+    state: 'working' as const,
+    provider: 'claude' as const,
+    env: 'windows' as const,
+    where: 'terminal' as const,
+    pending: true as const,
+    pendingSince: NOW - 10_000,
+    cwd: 'C:\\code',
+    title: 'My session'
+  }
+
+  it('Resume: becomes the run, with its Remote Control link once it is on', () => {
+    expect(runningNow(pending, [])).toBe(pending)
+    // An older process of the session isn't the one just started.
+    expect(
+      runningNow(pending, [live({ key: 'windows:a', startedAt: NOW - 3600_000 })])?.pending
+    ).toBe(true)
+    const r = runningNow(pending, [
+      live({ key: 'windows:a', startedAt: NOW - 5000, remoteUrl: RC_URL, remoteActive: true })
+    ])
+    expect(r).toMatchObject({
+      key: 'windows:a',
+      relation: 'self',
+      remoteUrl: RC_URL,
+      title: 'My session'
+    })
+    expect(r?.pending).toBeUndefined()
+    expect(runningAdvice(r!, 'phone').actions[0]).toBe('open-remote')
+  })
+
+  it('Fork / Continue fresh: the one new process in its folder; two could be it: still pending', () => {
+    const fork = { ...pending, relation: 'fork' as const }
+    const child = live({
+      key: 'windows:child',
+      cwd: 'c:\\CODE',
+      startedAt: NOW - 5000,
+      remoteUrl: RC_URL,
+      remoteActive: true
+    })
+    expect(runningNow(fork, [child])).toMatchObject({
+      key: 'windows:child',
+      relation: 'fork',
+      remoteUrl: RC_URL
+    })
+    const other = live({ key: 'windows:other', cwd: 'C:\\code', startedAt: NOW - 4000 })
+    expect(runningNow(fork, [child, other])?.pending).toBe(true)
+    // The parent itself isn't its fork.
+    expect(
+      runningNow(fork, [live({ key: 'windows:a', cwd: 'C:\\code', startedAt: NOW - 5000 })])
+        ?.pending
+    ).toBe(true)
+  })
+
+  it('Codex: a pending notice upgrades too (and offers Refresh while it waits)', () => {
+    const codex = { ...pending, key: 'codex-windows:t1', provider: 'codex' as const }
+    const r = runningNow(codex, [
+      live({ key: 'codex-windows:t1', provider: 'codex', lockHeld: true, startedAt: NOW - 5000 })
+    ])
+    expect(r).toMatchObject({ key: 'codex-windows:t1', where: 'terminal' })
+    expect(r?.remoteUrl).toBeUndefined()
+    expect(runningAdvice(codex, 'phone').title).toBe('Just started on your PC')
   })
 })

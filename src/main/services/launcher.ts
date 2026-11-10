@@ -77,7 +77,14 @@ import {
 } from '@shared/codex-app'
 import { CODEX_APP_SOURCE_ID, type CodexAppService } from '../providers/codex/app'
 import { timed } from '../timing'
-import { runningError, runningKindOf, type RunningCopy, type RunningKind } from '@shared/running'
+import type { LiveSession } from '@shared/live'
+import {
+  runningError,
+  runningKindOf,
+  startedRun,
+  type RunningCopy,
+  type RunningKind
+} from '@shared/running'
 import { CLAUDE_APP_FORK, claudeAppPreview, type ClaudeAppPreview } from '@shared/claude-app'
 import { isViewOnly, VIEW_ONLY_ERROR } from '@shared/view-only'
 import type { ClaudeAppLauncher } from './claude-app'
@@ -122,13 +129,17 @@ export interface LaunchContext {
 
 const DESKTOP: LaunchContext = { via: 'desktop' }
 
-/** A started launch blocks a second one this long, until Running now shows it (seconds). */
+/**
+ * A started launch blocks a second one until Running now shows its run (seconds,
+ * normally), at most this long.
+ */
 const RESERVE_MS = 60_000
 
+/** One launch on its way. Each launch has its own; a second one never replaces it. */
 interface Reservation {
   k: string
   until: number
-  copy: RunningCopy
+  copy: RunningCopy & { pending: true; pendingSince: number }
 }
 
 export const NO_SUMMARY =
@@ -175,7 +186,26 @@ export class Launcher {
   /** The copy already running for this launch (or one on its way), if any. */
   runningCopy(s: SessionSummary, opts: LaunchOptions): RunningCopy | undefined {
     const kind = runningKindOf(opts)
-    return kind ? (this.running?.(s, kind) ?? this.reservedCopy(s, kind)) : undefined
+    if (!kind) return undefined
+    this.observeLive()
+    return this.running?.(s, kind) ?? this.reservedCopy(s, kind)
+  }
+
+  /** Running now, for retiring reservations (set at startup). */
+  liveSessions?: () => readonly LiveSession[]
+
+  /**
+   * Retire every reservation whose run Running now shows (called on each change of
+   * Running now and before each check): from then on the real run is what counts,
+   * and once it exits nothing is "on its way" any more.
+   */
+  observeLive(live: readonly LiveSession[] | undefined = this.liveSessions?.()): void {
+    if (!live?.length || !this.reserved.size) return
+    for (const [k, list] of this.reserved) {
+      const keep = list.filter((r) => !startedRun(r.copy, live))
+      if (keep.length) this.reserved.set(k, keep)
+      else this.reserved.delete(k)
+    }
   }
 
   /** Whether (and how) this launch can open in the Claude desktop app; undefined: not offered. */
@@ -1217,7 +1247,7 @@ export class Launcher {
     // Reserved from here (synchronously, before any await) until Running now has caught up,
     // so two requests at once can't both start it.
     const kind = runningKindOf(opts)
-    const slot = kind ? this.reserve(found, kind) : undefined
+    const slot = kind ? this.reserve(found, kind, opts.cwdOverride ?? found.cwd) : undefined
     try {
       const res = await this.launchNow(found, opts, ctx)
       if (slot) {
@@ -1232,8 +1262,8 @@ export class Launcher {
     }
   }
 
-  /** Launches started but not in Running now yet, by what they would duplicate. */
-  private reserved = new Map<string, Reservation>()
+  /** Launches started but not in Running now yet, by what they would duplicate (each its own). */
+  private reserved = new Map<string, Reservation[]>()
 
   private reservationKey(s: SessionSummary, kind: RunningKind): string {
     return kind === 'fork' || kind === 'continue' ? `${s.key}#children` : `${s.key}#self`
@@ -1241,16 +1271,17 @@ export class Launcher {
 
   /** A launch on its way for this (its reservation as a running copy), if any. */
   private reservedCopy(s: SessionSummary, kind: RunningKind): RunningCopy | undefined {
-    const r = this.reserved.get(this.reservationKey(s, kind))
-    if (!r) return undefined
-    if (r.until < Date.now()) {
-      this.reserved.delete(r.k)
-      return undefined
-    }
-    return r.copy
+    const k = this.reservationKey(s, kind)
+    const t = Date.now()
+    const list = (this.reserved.get(k) ?? []).filter((r) => r.until >= t)
+    if (list.length) this.reserved.set(k, list)
+    else this.reserved.delete(k)
+    // Opening a thread in the Codex app again while the app opens it is the same
+    // thread, not a second copy (as with a running one: see findRunningCopy).
+    return list.find((r) => kind !== 'codex-app' || r.copy.where !== 'codex-app')?.copy
   }
 
-  private reserve(s: SessionSummary, kind: RunningKind): Reservation {
+  private reserve(s: SessionSummary, kind: RunningKind, cwd: string | undefined): Reservation {
     const k = this.reservationKey(s, kind)
     const r: Reservation = {
       k,
@@ -1258,6 +1289,8 @@ export class Launcher {
       until: Number.POSITIVE_INFINITY,
       copy: {
         key: s.key,
+        pendingSince: Date.now(),
+        ...(cwd ? { cwd } : {}),
         relation: kind === 'fork' ? 'fork' : kind === 'continue' ? 'continue' : 'self',
         state: 'working',
         provider: this.provider(s).id,
@@ -1268,12 +1301,15 @@ export class Launcher {
         pending: true
       }
     }
-    this.reserved.set(k, r)
+    this.reserved.set(k, [...(this.reserved.get(k) ?? []), r])
     return r
   }
 
+  /** Free only this launch's reservation (another launch's stays). */
   private release(r: Reservation): void {
-    if (this.reserved.get(r.k) === r) this.reserved.delete(r.k)
+    const list = (this.reserved.get(r.k) ?? []).filter((x) => x !== r)
+    if (list.length) this.reserved.set(r.k, list)
+    else this.reserved.delete(r.k)
   }
 
   private async launchNow(

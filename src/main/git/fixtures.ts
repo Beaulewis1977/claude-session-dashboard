@@ -86,6 +86,9 @@ export async function createFixturesBackend(fixturesDir: string): Promise<GitBac
     async exists(_env, dir) {
       return !/old-prototype/i.test(dir)
     },
+    async partialClone(env, root) {
+      return repoAt(env, root) ? false : undefined
+    },
     async userEmail(env, root) {
       return repoAt(env, root)?.userEmail
     },

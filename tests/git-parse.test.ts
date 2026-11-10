@@ -19,6 +19,7 @@ import {
 import {
   branchName,
   githubSlug,
+  isPartialClone,
   normalizeRemote,
   parseLog,
   parseNumstat,
@@ -319,6 +320,19 @@ describe('very long diffs', () => {
   })
 })
 
+describe('partial clone settings', () => {
+  it('a promisor remote or extensions.partialClone makes one; a false promisor does not', () => {
+    // `git config --null --get-regexp`: key, newline, value, NUL.
+    expect(isPartialClone('')).toBe(false)
+    expect(isPartialClone('extensions.partialclone\norigin\0')).toBe(true)
+    expect(isPartialClone('remote.origin.promisor\ntrue\0')).toBe(true)
+    // A remote named with a space, and a bare key (true).
+    expect(isPartialClone('remote.Back Up.promisor\0')).toBe(true)
+    expect(isPartialClone('remote.Back Up.promisor\nfalse\0remote.b.promisor\n0\0')).toBe(false)
+    expect(isPartialClone('remote.b.promisor\noff\0remote.c.promisor\nyes\0')).toBe(true)
+  })
+})
+
 describe('search filters', () => {
   it('reads touched: and commit: and keeps the rest as text', () => {
     expect(parseGitQuery('cookie touched:src/bridge.ts commit:ABC1234 fix')).toEqual({
@@ -544,8 +558,11 @@ describe.runIf(hasGit())('the real backend on a temporary repo', () => {
   })
 })
 
-describe.runIf(hasGit())('a partial clone is never fetched into', () => {
+describe.runIf(hasGit())('partial clones', () => {
   let root: string
+  let server: string
+  let partial: string
+  let head: string
   const run = (cwd: string, args: string[]): string =>
     execFileSync('git', args, {
       cwd,
@@ -559,22 +576,30 @@ describe.runIf(hasGit())('a partial clone is never fetched into', () => {
       .split('\n')
       .filter((l) => /^(count|in-pack):/.test(l))
       .reduce((n, l) => n + Number(l.split(':')[1]), 0)
+  const backend = () =>
+    createRealBackend(createProcessRunner({ cwd: tmpdir() }), { exists: fileExists, wslRoots })
+  const env = { kind: 'windows' as const }
+  /** As a git that doesn't know GIT_NO_LAZY_FETCH (upstream 2.43 and older). */
+  async function withoutNoLazyFetch(fn: () => Promise<void>): Promise<void> {
+    const saved = GIT_ENV.GIT_NO_LAZY_FETCH
+    delete GIT_ENV.GIT_NO_LAZY_FETCH
+    try {
+      await fn()
+    } finally {
+      GIT_ENV.GIT_NO_LAZY_FETCH = saved
+    }
+  }
 
-  afterAll(async () => {
-    if (root) await rm(root, { recursive: true, force: true, maxRetries: 5 })
-  })
-
-  it("a read fails instead of fetching what's missing, also with a git that ignores GIT_NO_LAZY_FETCH", async () => {
+  beforeAll(async () => {
     root = await mkdtemp(join(tmpdir(), 'csd-partial-'))
     await writeFile(
       join(root, 'gitconfig'),
       '[user]\n\tname = Sample\n\temail = sample@example.com\n[init]\n\tdefaultBranch = main\n'
     )
-    const server = join(root, 'server')
+    server = join(root, 'server')
     await mkdir(server)
     run(server, ['init', '-q'])
-    await writeFile(join(server, 'a.txt'), 'a\n')
-    await writeFile(join(server, 'b.txt'), 'b\n')
+    for (const f of ['a', 'b', 'c', 'd', 'e']) await writeFile(join(server, `${f}.txt`), `${f}\n`)
     run(server, ['add', '.'])
     run(server, ['commit', '-q', '-m', 'One'])
     await writeFile(join(server, 'a.txt'), 'a\nmore\n')
@@ -590,29 +615,82 @@ describe.runIf(hasGit())('a partial clone is never fetched into', () => {
       pathToFileURL(server).href,
       'partial'
     ])
-    const partial = join(root, 'partial')
-    const before = objects(partial)
-    const head = run(partial, ['rev-parse', 'HEAD']).trim()
-    const b = createRealBackend(createProcessRunner({ cwd: tmpdir() }), {
-      exists: fileExists,
-      wslRoots
-    })
-    const env = { kind: 'windows' as const }
-    const saved = GIT_ENV.GIT_NO_LAZY_FETCH
+    partial = join(root, 'partial')
+    head = run(partial, ['rev-parse', 'HEAD']).trim()
+  })
+
+  afterAll(async () => {
+    if (root) await rm(root, { recursive: true, force: true, maxRetries: 5 })
+  })
+
+  it('are told apart from their settings, before any object is read', async () => {
+    const b = backend()
+    expect(await b.partialClone(env, partial)).toBe(true)
+    expect(await b.partialClone(env, server)).toBe(false)
+    run(server, ['config', 'remote.backup.promisor', 'false'])
     try {
-      for (const ignored of [false, true]) {
-        // As a git that doesn't know GIT_NO_LAZY_FETCH (upstream 2.43 and older).
-        if (ignored) delete GIT_ENV.GIT_NO_LAZY_FETCH
-        await b.log(env, partial, { revs: ['--branches'], maxCount: 10 })
-        const shown = await b.show(env, partial, head, undefined, 1024 * 1024)
-        expect(shown.text).not.toContain('+more')
+      expect(await b.partialClone(env, server)).toBe(false)
+      run(server, ['config', 'remote.Back Up.promisor', 'true'])
+      expect(await b.partialClone(env, server)).toBe(true)
+    } finally {
+      run(server, ['config', '--unset', 'remote.backup.promisor'])
+      run(server, ['config', '--unset', 'remote.Back Up.promisor'])
+    }
+    expect(await b.partialClone(env, join(root, 'gone'))).toBeUndefined()
+  })
+
+  it("a read fails instead of fetching what's missing, also with a git that ignores GIT_NO_LAZY_FETCH", async () => {
+    const b = backend()
+    const before = objects(partial)
+    const read = async (): Promise<void> => {
+      await b.log(env, partial, { revs: ['--branches'], maxCount: 10 })
+      const shown = await b.show(env, partial, head, undefined, 1024 * 1024)
+      expect(shown.text).not.toContain('+more')
+      expect(objects(partial)).toBe(before)
+    }
+    await read()
+    await withoutNoLazyFetch(read)
+  })
+
+  it("a remote helper the repo's own config picks never runs, whatever its name", async () => {
+    // remote.origin.vcs picks the helper, and alias.remote-<name> would run as it.
+    const marker = join(partial, 'pwned')
+    const b = backend()
+    const before = objects(partial)
+    try {
+      for (const name of ['none', '', '_']) {
+        run(partial, ['config', 'remote.origin.vcs', name])
+        try {
+          run(partial, ['config', `alias.remote-${name}`, '!touch pwned; false'])
+        } catch {
+          // No such alias can exist (git refuses the name).
+        }
+        await withoutNoLazyFetch(async () => {
+          await b.show(env, partial, head, undefined, 1024 * 1024)
+        })
+        expect(await fileExists(marker), `helper "${name}"`).toBe(false)
         expect(objects(partial)).toBe(before)
       }
+      // The same read without the app's settings runs it: the checks above mean something.
+      run(partial, ['config', 'remote.origin.vcs', 'none'])
+      try {
+        run(partial, ['cat-file', '-p', run(server, ['rev-parse', 'HEAD:b.txt']).trim()])
+      } catch {
+        // The "helper" ran and failed.
+      }
+      expect(await fileExists(marker)).toBe(true)
     } finally {
-      GIT_ENV.GIT_NO_LAZY_FETCH = saved
+      run(partial, ['config', '--unset', 'remote.origin.vcs'])
+      for (const name of ['none', ''])
+        try {
+          run(partial, ['config', '--unset', `alias.remote-${name}`])
+        } catch {
+          // Wasn't set.
+        }
+      await rm(marker, { force: true })
     }
-    // The same content read without the app's settings is fetched: the check above means something.
-    run(partial, ['cat-file', '-p', run(server, ['rev-parse', 'HEAD:a.txt']).trim()])
+    // And without the helper settings, a plain read fetches (the clone really is partial).
+    run(partial, ['cat-file', '-p', run(server, ['rev-parse', 'HEAD:c.txt']).trim()])
     expect(objects(partial)).toBeGreaterThan(before)
   })
 })

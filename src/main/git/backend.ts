@@ -2,10 +2,18 @@
 // @shared/git/guard and ./runner). Fixtures mode swaps in ./fixtures.
 
 import { posix, win32 } from 'node:path'
-import { DIFF_MERGES, GH_AUTH_ARGS, gitArgs, ghPrListArgs } from '@shared/git/guard'
+import {
+  DIFF_MERGES,
+  GH_AUTH_ARGS,
+  PARTIAL_CLONE_KEYS,
+  SUBMODULE_SHORT,
+  gitArgs,
+  ghPrListArgs
+} from '@shared/git/guard'
 import {
   LOG_FORMAT,
   REF_FORMAT,
+  isPartialClone,
   parseLog,
   parseRefs,
   parseRevParse,
@@ -52,6 +60,11 @@ export interface GitBackend {
   resolve(env: GitEnv, dir: string): Promise<ResolveResult>
   /** Does this folder exist? (WSL: asked through its \\wsl.localhost path; undefined = can't tell.) */
   exists(env: GitEnv, dir: string): Promise<boolean | undefined>
+  /**
+   * Is it a partial clone (git would fetch what's missing to read it)? Asked
+   * before anything else of a repo is read; undefined = couldn't tell.
+   */
+  partialClone(env: GitEnv, root: string): Promise<boolean | undefined>
   userEmail(env: GitEnv, root: string): Promise<string | undefined>
   remoteUrl(env: GitEnv, root: string): Promise<string | undefined>
   refs(env: GitEnv, root: string): Promise<RefTip[] | undefined>
@@ -149,6 +162,15 @@ export function createRealBackend(
       }
       return undefined
     },
+    async partialClone(env, root) {
+      const r = await git(env, root, ['config', '--null', '--get-regexp', PARTIAL_CLONE_KEYS], {
+        timeoutMs: 15_000
+      })
+      // Exit 1 and nothing printed: none of those settings.
+      if (r.code === 1 && !r.stdout.trim() && !r.stderr.trim() && !r.timedOut && !r.missing)
+        return false
+      return ok(r) ? isPartialClone(r.stdout) : undefined
+    },
     async userEmail(env, root) {
       const r = await git(env, root, ['config', '--get', 'user.email'], { timeoutMs: 15_000 })
       return ok(r) ? r.stdout.trim() || undefined : undefined
@@ -183,6 +205,7 @@ export function createRealBackend(
         '-M',
         '--date-order',
         DIFF_MERGES,
+        SUBMODULE_SHORT,
         `--format=${LOG_FORMAT}`,
         `--max-count=${o.maxCount}`,
         ...(o.since !== undefined
@@ -218,6 +241,7 @@ export function createRealBackend(
         '--no-textconv',
         '-M',
         DIFF_MERGES,
+        SUBMODULE_SHORT,
         '--src-prefix=a/',
         '--dst-prefix=b/',
         sha,

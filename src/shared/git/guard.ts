@@ -53,6 +53,15 @@ const REV_PARSE_FLAGS = new Set([
 /** A merge commit is compared with its first parent (what the merge brought in), in history and diffs alike. */
 export const DIFF_MERGES = '--diff-merges=first-parent'
 
+/** A submodule's change is its commit id only: its own objects are never read (whatever diff.submodule says). */
+export const SUBMODULE_SHORT = '--submodule=short'
+
+/**
+ * The settings that make a repo a partial clone (a promisor remote git would
+ * fetch missing objects from). Read before anything else of a repo.
+ */
+export const PARTIAL_CLONE_KEYS = '^(extensions\\.partialclone|remote\\..+\\.promisor)$'
+
 const LOG_FLAGS = new Set([
   '--no-color',
   '--numstat',
@@ -67,7 +76,8 @@ const LOG_FLAGS = new Set([
   '--no-walk',
   '--no-ext-diff',
   '--no-textconv',
-  DIFF_MERGES
+  DIFF_MERGES,
+  SUBMODULE_SHORT
 ])
 
 const SHOW_FLAGS = new Set([
@@ -78,12 +88,13 @@ const SHOW_FLAGS = new Set([
   '--no-textconv',
   '--format=',
   DIFF_MERGES,
+  SUBMODULE_SHORT,
   '--src-prefix=a/',
   '--dst-prefix=b/'
 ])
 
 const CONFIG_KEYS = new Set(['user.email', 'remote.origin.url'])
-const CONFIG_REGEXPS = new Set(['^remote\\..*\\.url$'])
+const CONFIG_REGEXPS = new Set(['^remote\\..*\\.url$', PARTIAL_CLONE_KEYS])
 const REF_PATTERNS = new Set(['refs/heads', 'refs/remotes', 'refs/tags'])
 
 function fail(why: string): never {
@@ -133,6 +144,13 @@ export function assertReadOnlyGit(args: readonly string[]): void {
     case 'config':
       if (rest.length === 2 && rest[0] === '--get' && CONFIG_KEYS.has(rest[1])) return
       if (rest.length === 2 && rest[0] === '--get-regexp' && CONFIG_REGEXPS.has(rest[1])) return
+      if (
+        rest.length === 3 &&
+        rest[0] === '--null' &&
+        rest[1] === '--get-regexp' &&
+        rest[2] === PARTIAL_CLONE_KEYS
+      )
+        return
       fail('config may only be read')
       return
     case 'for-each-ref':
@@ -140,7 +158,7 @@ export function assertReadOnlyGit(args: readonly string[]): void {
       for (const a of rest.slice(1)) if (!REF_PATTERNS.has(a)) fail(`for-each-ref ${a}`)
       return
     case 'log': {
-      needs(rest, '--no-ext-diff', '--no-textconv')
+      needs(rest, '--no-ext-diff', '--no-textconv', SUBMODULE_SHORT)
       for (const a of rest) {
         if (LOG_FLAGS.has(a) || a === 'HEAD' || SHA.test(a)) continue
         if (a === `--format=${LOG_FORMAT}`) continue
@@ -152,7 +170,7 @@ export function assertReadOnlyGit(args: readonly string[]): void {
       return
     }
     case 'show': {
-      needs(rest, '--no-ext-diff', '--no-textconv', '--format=')
+      needs(rest, '--no-ext-diff', '--no-textconv', '--format=', SUBMODULE_SHORT)
       const sep = rest.indexOf('--')
       const opts = sep >= 0 ? rest.slice(0, sep) : rest
       const paths = sep >= 0 ? rest.slice(sep + 1) : []

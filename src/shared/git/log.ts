@@ -151,6 +151,25 @@ export function branchName(ref: string): string | undefined {
   return undefined
 }
 
+/**
+ * Is the repo a partial clone? `git config --null --get-regexp` output for the
+ * partial clone settings (each entry `key\nvalue\0`, or `key\0` for a bare
+ * key; a remote's name may hold spaces): `extensions.partialclone <remote>`,
+ * or a remote's `promisor` that isn't false.
+ */
+export function isPartialClone(configOutput: string): boolean {
+  for (const entry of configOutput.split('\0')) {
+    if (!entry.trim()) continue
+    const nl = entry.indexOf('\n')
+    const key = (nl < 0 ? entry : entry.slice(0, nl)).trim().toLowerCase()
+    const value = nl < 0 ? '' : entry.slice(nl + 1).trim()
+    if (key === 'extensions.partialclone') {
+      if (value) return true
+    } else if (key.endsWith('.promisor') && !/^(false|no|off|0)$/i.test(value)) return true
+  }
+  return false
+}
+
 /** `git rev-parse --show-toplevel --git-common-dir --git-dir` output. */
 export function parseRevParse(
   out: string

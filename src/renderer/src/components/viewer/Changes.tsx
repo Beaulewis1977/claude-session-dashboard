@@ -569,6 +569,7 @@ function Changes({ session, className }: { session: SessionSummary; className?: 
           </Notice>
         )}
         {view.repo?.note && <Notice tone="info">{view.repo.note}</Notice>}
+        {view.repo?.error && <Notice tone="warning">{view.repo.error}</Notice>}
         {view.repo?.truncated && (
           <Notice tone="info">
             This repo has a lot of history: only the latest 5,000 commits of its sessions' time were

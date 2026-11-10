@@ -163,6 +163,8 @@ export interface SessionGitView {
     /** Matched in another folder than the session's own (its folder is gone). */
     note?: string
     truncated?: boolean
+    /** The repo couldn't be read this time (what was read before still shows). */
+    error?: string
   }
   branches: string[]
   commits: CommitView[]

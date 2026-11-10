@@ -69,6 +69,8 @@ interface Repo {
   folders: string[]
   remote?: string
   email?: string
+  /** A partial clone (a promisor remote). */
+  partial?: boolean
   refs: RefTip[]
   commits: CommitInfo[]
 }
@@ -106,6 +108,10 @@ function fakeBackend(repos: Repo[]) {
     },
     async remoteUrl(e, root) {
       return byRoot(e, root)?.remote
+    },
+    async partialClone(e, root) {
+      calls.push({ op: 'partialClone', env: key(e), arg: root })
+      return !!byRoot(e, root)?.partial
     },
     async refs(e, root) {
       calls.push({ op: 'refs', env: key(e), arg: root })
@@ -490,6 +496,31 @@ describe('the git links service', () => {
     expect([...svc.filter(parseGitQuery('commit:abc1234'))]).toEqual(['p'])
   })
 
+  it('a partial clone is never read past its settings (and says why); its diffs are refused', async () => {
+    const repo: Repo = { ...ACME, partial: true }
+    const f = fakeBackend([repo])
+    const { svc } = service([input('a', { signals: sig({ branches: ['fix/login'] }) })], f.backend)
+    await svc.start()
+    await svc.schedule({ force: false })
+    expect(f.count('partialClone')).toBeGreaterThan(0)
+    expect(f.count('refs') + f.count('log') + f.count('show')).toBe(0)
+    const v = svc.view('a', { refresh: false })!
+    expect(v.repo?.error).toMatch(/partial clone/)
+    expect(v.commits).toEqual([])
+
+    // Read while it was a full clone, then made partial: its diffs aren't shown.
+    const later: Repo = { ...ACME }
+    const g = fakeBackend([later])
+    const s2 = service([input('a', { signals: sig({ branches: ['fix/login'] }) })], g.backend)
+    await s2.svc.start()
+    await s2.svc.schedule({ force: false })
+    const sha = s2.svc.view('a', { refresh: false })!.commits[0].sha
+    later.partial = true
+    const d = await s2.svc.diff('a', sha)
+    expect(d.error).toMatch(/partial clone/)
+    expect(g.count('show')).toBe(0)
+  })
+
   it("a copy is its ancestor's even when the parent in between has nothing of its own", async () => {
     const gpPr = {
       owner: 'beau',
@@ -607,6 +638,10 @@ describe('the git links service', () => {
           }
         }
         return base.resolve(e, dir)
+      },
+      async partialClone(e, root) {
+        if (root === wtRoot) return wtGone ? undefined : false
+        return base.partialClone(e, root)
       },
       async refs(e, root) {
         if (root === wtRoot) return wtGone ? undefined : ACME.refs.map((x) => ({ ...x }))

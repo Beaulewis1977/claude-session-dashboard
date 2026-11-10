@@ -8,6 +8,7 @@ import {
   GH_AUTH_ARGS,
   GIT_PREFIX,
   GuardError,
+  SUBMODULE_SHORT,
   assertReadOnlyGh,
   assertReadOnlyGit,
   gitArgs,
@@ -63,6 +64,7 @@ describe('the read-only guard', () => {
     const env = { kind: 'windows' as const }
     await b.version(env)
     await b.resolve(env, dir)
+    await b.partialClone(env, dir)
     await b.userEmail(env, dir)
     await b.remoteUrl(env, dir)
     await b.refs(env, dir)
@@ -77,7 +79,7 @@ describe('the read-only guard', () => {
     await b.ghAuth()
     await b.ghPrs('beau/acme-web', { head: 'fix/login-redirect' })
     await b.ghPrs('beau/acme-web', { search: 'abc1234' })
-    expect(r.git.length).toBeGreaterThanOrEqual(10)
+    expect(r.git.length).toBeGreaterThanOrEqual(11)
     expect(r.gh).toEqual([
       [...GH_AUTH_ARGS],
       ghPrListArgs('beau/acme-web', { head: 'fix/login-redirect' }),
@@ -142,33 +144,60 @@ describe('the read-only guard', () => {
     ['config set', gitArgs(dir, ['config', 'user.email', 'x@y'])],
     ['config --unset', gitArgs(dir, ['config', '--unset', 'user.email'])],
     ['config --get of another key', gitArgs(dir, ['config', '--get', 'core.sshCommand'])],
+    ['config --get-regexp of another pattern', gitArgs(dir, ['config', '--get-regexp', '.*'])],
     ['worktree add', gitArgs(dir, ['worktree', 'add', 'x'])],
     ['worktree prune', gitArgs(dir, ['worktree', 'prune'])],
-    ['log --output', gitArgs(dir, ['log', '--no-ext-diff', '--no-textconv', '--output=C:\\x.txt'])],
-    ['log without --no-ext-diff', gitArgs(dir, ['log', '--no-textconv', '--numstat'])],
+    [
+      'log --output',
+      gitArgs(dir, ['log', '--no-ext-diff', '--no-textconv', SUBMODULE_SHORT, '--output=C:\\x.txt'])
+    ],
+    [
+      'log without --no-ext-diff',
+      gitArgs(dir, ['log', '--no-textconv', SUBMODULE_SHORT, '--numstat'])
+    ],
+    [
+      'log that may read a submodule',
+      gitArgs(dir, ['log', '--no-ext-diff', '--no-textconv', '--numstat'])
+    ],
+    [
+      'show that may read a submodule',
+      gitArgs(dir, ['show', '--format=', '--no-ext-diff', '--no-textconv', SHA])
+    ],
+    [
+      'log with another submodule format',
+      gitArgs(dir, ['log', '--no-ext-diff', '--no-textconv', SUBMODULE_SHORT, '--submodule=log'])
+    ],
     [
       'log with an external diff',
-      gitArgs(dir, ['log', '--no-ext-diff', '--no-textconv', '--ext-diff'])
+      gitArgs(dir, ['log', '--no-ext-diff', '--no-textconv', SUBMODULE_SHORT, '--ext-diff'])
     ],
     [
       'log with a ref option value',
-      gitArgs(dir, ['log', '--no-ext-diff', '--no-textconv', '--exec=sh'])
+      gitArgs(dir, ['log', '--no-ext-diff', '--no-textconv', SUBMODULE_SHORT, '--exec=sh'])
     ],
     [
       'log with a made-up format',
-      gitArgs(dir, ['log', '--no-ext-diff', '--no-textconv', '--format=%H'])
+      gitArgs(dir, ['log', '--no-ext-diff', '--no-textconv', SUBMODULE_SHORT, '--format=%H'])
     ],
     [
       'show without a commit',
-      gitArgs(dir, ['show', '--format=', '--no-ext-diff', '--no-textconv'])
+      gitArgs(dir, ['show', '--format=', '--no-ext-diff', '--no-textconv', SUBMODULE_SHORT])
     ],
     [
       'show with two commits',
-      gitArgs(dir, ['show', '--format=', '--no-ext-diff', '--no-textconv', SHA, SHA])
+      gitArgs(dir, [
+        'show',
+        '--format=',
+        '--no-ext-diff',
+        '--no-textconv',
+        SUBMODULE_SHORT,
+        SHA,
+        SHA
+      ])
     ],
     [
       'show of a ref name',
-      gitArgs(dir, ['show', '--format=', '--no-ext-diff', '--no-textconv', 'HEAD'])
+      gitArgs(dir, ['show', '--format=', '--no-ext-diff', '--no-textconv', SUBMODULE_SHORT, 'HEAD'])
     ],
     [
       'show with pathspec magic',
@@ -177,6 +206,7 @@ describe('the read-only guard', () => {
         '--format=',
         '--no-ext-diff',
         '--no-textconv',
+        SUBMODULE_SHORT,
         SHA,
         '--',
         ':(exclude)x'
@@ -261,9 +291,10 @@ describe('the processes', () => {
       GIT_OPTIONAL_LOCKS: '0',
       GIT_TERMINAL_PROMPT: '0',
       // A partial clone never fetches (and writes) a missing object for a read, also
-      // with a git that ignores GIT_NO_LAZY_FETCH: no transport is allowed.
+      // with a git that ignores GIT_NO_LAZY_FETCH: no transport is allowed (not even
+      // one with an empty name, which an empty list would allow).
       GIT_NO_LAZY_FETCH: '1',
-      GIT_ALLOW_PROTOCOL: 'none'
+      GIT_ALLOW_PROTOCOL: '_'
     })
     // No automatic maintenance or gc on any call.
     expect(GIT_PREFIX).toEqual(expect.arrayContaining(['maintenance.auto=false', 'gc.auto=0']))
@@ -284,7 +315,7 @@ describe('the processes', () => {
       'GIT_TERMINAL_PROMPT=0',
       'GIT_LITERAL_PATHSPECS=1',
       'GIT_NO_LAZY_FETCH=1',
-      'GIT_ALLOW_PROTOCOL=none',
+      'GIT_ALLOW_PROTOCOL=_',
       'LC_ALL=C',
       'git',
       '--no-pager',

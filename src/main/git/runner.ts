@@ -57,10 +57,13 @@ export const GIT_ENV: Record<string, string> = {
   // maintenance) when a read needs it. The read fails instead.
   GIT_NO_LAZY_FETCH: '1',
   // Not every git honours GIT_NO_LAZY_FETCH (upstream 2.43 and older, unless patched),
-  // so no transport is allowed at all ("none" names none): any fetch git tries, a lazy
-  // one too, fails before it connects. Every git that can lazy-fetch knows this variable
-  // (it's older than partial clones).
-  GIT_ALLOW_PROTOCOL: 'none',
+  // so partial clones aren't read at all (the service checks first), and on top of
+  // that no transport is allowed. Git splits this list at ':', so an empty value still
+  // allows a helper with an empty name, and any name a repo's own config can pick
+  // (remote.<name>.vcs plus an alias.remote-<name>) would run that alias. "_" is no
+  // transport git has, and no alias can be called remote-_ (config names are letters,
+  // digits and -). Git has known this variable since long before partial clones.
+  GIT_ALLOW_PROTOCOL: '_',
   LC_ALL: 'C'
 }
 

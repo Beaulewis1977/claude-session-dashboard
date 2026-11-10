@@ -993,8 +993,17 @@ Every git call starts with `--no-pager -c core.fsmonitor=false -c core.quotePath
 log.showSignature=false -c color.ui=false -c diff.external= -c core.pager=cat
 -c maintenance.auto=false -c gc.auto=0`, plus
 `--no-ext-diff --no-textconv` for log and show, with `GIT_OPTIONAL_LOCKS=0`,
-`GIT_TERMINAL_PROMPT=0`, `GIT_LITERAL_PATHSPECS=1`, `GIT_NO_LAZY_FETCH=1` and `GIT_ALLOW_PROTOCOL=none` (a partial clone never fetches a missing object for a read: no transport is allowed at all, so this holds also for a git that predates `GIT_NO_LAZY_FETCH`, such as upstream 2.43). Merge commits are compared with their first parent (`--diff-merges=first-parent`), and diffs always use the `a/` / `b/` prefixes. Anything else is refused before a process
+`GIT_TERMINAL_PROMPT=0`, `GIT_LITERAL_PATHSPECS=1`, `GIT_NO_LAZY_FETCH=1` and `GIT_ALLOW_PROTOCOL=_`. Merge commits are compared with their first parent (`--diff-merges=first-parent`), submodules are shown as their commit id only (`--submodule=short`: their own objects are never read), and diffs always use the `a/` / `b/` prefixes. Anything else is refused before a process
 starts (see `src/shared/git/guard.ts` and its tests).
+
+- **Partial clones aren't read.** A repo with a promisor remote (`extensions.partialClone`, or a
+  remote's `promisor` setting: `git config --null --get-regexp`) would make git fetch what's
+  missing, and older git (upstream 2.43 and before, unless patched) ignores `GIT_NO_LAZY_FETCH`.
+  So its settings are checked before anything else of it is read (and again before each diff),
+  and the Changes tab says why it isn't read. On top of that no transport is allowed:
+  `GIT_ALLOW_PROTOCOL=_` names no transport git has, and no alias can be called `remote-_`.
+  An empty value would not do: git reads it as one empty name, and a repo's own config could pick
+  a helper with that name (`remote.<name>.vcs` plus `alias.remote-`); tested with git 2.43 and 2.51.
 
 - **Where:** Windows folders with Windows git (found on PATH, never in the project folder); WSL
   folders with the distro's own git, as the home's user; `/mnt/<drive>` folders mapped by the

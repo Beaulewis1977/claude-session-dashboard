@@ -48,6 +48,10 @@ import { envKey, envLabel, type GitEnv } from './runner'
 const CACHE_VERSION = 1
 /** Commits read per repo at most (older ones aren't read; exact matches still are). */
 export const MAX_COMMITS = 5000
+
+/** Why a partial clone isn't read. */
+export const PARTIAL_CLONE =
+  "This repo is a partial clone: some of its history is only on the server, and git would fetch it to read it. The app never fetches, so it doesn't read this repo."
 /** Read from this long before a repo's earliest session. */
 const WINDOW_SLACK_MS = 24 * 3600_000
 /** A folder that wasn't a repo, or was gone, is checked again after this. */
@@ -487,8 +491,21 @@ export class GitLinksService extends EventEmitter<{ changed: [] }> {
       .map((s) => s.signals?.spans[0]?.[0])
       .filter((x): x is number => x !== undefined)
     const need = (starts.length ? Math.min(...starts) : now()) - WINDOW_SLACK_MS
+    // Before anything that reads its objects: a partial clone isn't read (git would
+    // fetch what's missing). That worktree may have been removed: another of the
+    // repo's worktrees still answers.
+    let partial = await backend.partialClone(repo.env, repo.root)
+    for (const alt of repo.roots ?? []) {
+      if (partial !== undefined) break
+      if (alt === repo.root) continue
+      partial = await backend.partialClone(repo.env, alt)
+      if (partial !== undefined) repo.root = alt
+    }
+    if (partial !== false) {
+      repo.error = partial ? PARTIAL_CLONE : "Couldn't read this repo's settings."
+      return
+    }
     let refs = await backend.refs(repo.env, repo.root)
-    // That worktree may have been removed: another of the repo's worktrees still reads it.
     for (const alt of repo.roots ?? []) {
       if (refs) break
       if (alt === repo.root) continue
@@ -850,7 +867,8 @@ export class GitLinksService extends EventEmitter<{ changed: [] }> {
               ...(repo.remote ? { remote: safeRemote(repo.remote) } : {}),
               ...(repo.github ? { github: repo.github } : {}),
               ...(f?.note ? { note: f.note } : {}),
-              ...(repo.truncated ? { truncated: true } : {})
+              ...(repo.truncated ? { truncated: true } : {}),
+              ...(repo.error ? { error: repo.error } : {})
             }
           }
         : {}),
@@ -929,6 +947,16 @@ export class GitLinksService extends EventEmitter<{ changed: [] }> {
         truncated: false,
         bytes: 0,
         error: `${envLabel(repo.env)} isn't running, so its git isn't asked.`
+      }
+    // Asked again: the repo may have become a partial clone since it was read.
+    const partial = await this.deps.backend.partialClone(repo.env, repo.root)
+    if (partial !== false)
+      return {
+        sha,
+        files: [],
+        truncated: false,
+        bytes: 0,
+        error: partial ? PARTIAL_CLONE : "Couldn't read this repo's settings."
       }
     const r = await this.deps.backend.show(
       repo.env,

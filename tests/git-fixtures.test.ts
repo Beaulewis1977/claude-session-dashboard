@@ -17,16 +17,21 @@ import { createCodexProvider } from '../src/main/providers/codex'
 import { SessionService } from '../src/main/services/sessions'
 import { LineageService } from '../src/main/services/lineage'
 import { appPaths, createMetadataStore, createSettingsStore } from '../src/main/services/store'
-import { FIXTURES } from './helpers'
+import { FIXTURES, retireSaves } from './helpers'
 
 let root: string
 const busy: SessionService[] = []
+const retire: (() => Promise<void>)[] = []
 beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), 'csd-git-fx-'))
 })
 afterEach(async () => {
-  for (const s of busy.splice(0)) await s.idle()
-  await rm(root, { recursive: true, force: true, maxRetries: 5 })
+  try {
+    for (const s of busy.splice(0)) await s.idle()
+    for (const r of retire.splice(0)) await r()
+  } finally {
+    await rm(root, { recursive: true, force: true, maxRetries: 5 })
+  }
 })
 
 async function setup(gh: 'ask' | 'on' = 'ask', before?: (sessions: SessionService) => void) {
@@ -60,6 +65,7 @@ async function setup(gh: 'ask' | 'on' = 'ask', before?: (sessions: SessionServic
     dataDir: paths.dataDir,
     settings: () => ({ git: sanitizeGitSettings({ gh }), scanStoppedDistros: false })
   })
+  retire.push(retireSaves(git))
   sessions.gitBadgeResolver = (k) => git.badge(k)
   sessions.gitFilter = (q) => git.filter(q)
   await git.start()

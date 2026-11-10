@@ -109,8 +109,11 @@ beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), 'csd-codex-'))
 })
 afterEach(async () => {
-  for (const s of busy.splice(0)) await s.idle()
-  await rm(root, { recursive: true, force: true, maxRetries: 5 })
+  try {
+    for (const s of busy.splice(0)) await s.idle()
+  } finally {
+    await rm(root, { recursive: true, force: true, maxRetries: 5 })
+  }
 })
 
 async function setup(

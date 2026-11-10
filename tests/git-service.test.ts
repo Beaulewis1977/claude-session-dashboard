@@ -15,6 +15,7 @@ import type { GitEnv } from '../src/main/git/runner'
 import { GitLinksService, safeRemote } from '../src/main/git/service'
 import { phoneGitView } from '../src/main/mobile/rpc'
 import type { GitInput } from '../src/main/services/sessions'
+import { retireSaves } from './helpers'
 
 const MIN = 60_000
 const T0 = Date.UTC(2026, 9, 21, 13, 0)
@@ -160,8 +161,13 @@ let dataDir: string
 beforeEach(async () => {
   dataDir = await mkdtemp(join(tmpdir(), 'csd-git-svc-'))
 })
+const retire: (() => Promise<void>)[] = []
 afterEach(async () => {
-  await rm(dataDir, { recursive: true, force: true, maxRetries: 5 })
+  try {
+    for (const r of retire.splice(0)) await r()
+  } finally {
+    await rm(dataDir, { recursive: true, force: true, maxRetries: 5 })
+  }
 })
 
 function service(
@@ -195,6 +201,7 @@ function service(
     dataDir,
     settings: () => ({ git: settings, scanStoppedDistros: false })
   })
+  retire.push(retireSaves(svc))
   return { svc, settings, unlinked, touched: () => touched }
 }
 

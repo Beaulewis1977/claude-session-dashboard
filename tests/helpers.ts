@@ -93,3 +93,27 @@ export function shellPath(shell: string): string {
     ? `${dirname(shell)}${delimiter}${process.env.PATH ?? ''}`
     : (process.env.PATH ?? '')
 }
+
+/**
+ * Keep a service's cache saves (`flush`, e.g. the git links cache, saved 10 s
+ * after a pass) inside its test. A pass or PR lookup the test started without
+ * waiting can still finish after it, and its save would make the removed temp
+ * folder again. Call the returned function when the test ends, before the
+ * folder goes: it waits for a save under way and skips any later one (it
+ * would only write into the removed folder).
+ */
+export function retireSaves(svc: { flush(): Promise<void> }): () => Promise<void> {
+  const flush = svc.flush.bind(svc)
+  const underWay = new Set<Promise<void>>()
+  let retired = false
+  svc.flush = () => {
+    if (retired) return Promise.resolve()
+    const p = flush().finally(() => underWay.delete(p))
+    underWay.add(p)
+    return p
+  }
+  return async () => {
+    retired = true
+    await Promise.allSettled([...underWay])
+  }
+}

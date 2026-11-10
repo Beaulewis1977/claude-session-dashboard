@@ -19,6 +19,10 @@ export default defineConfig({
           name: 'node',
           include: ['tests/**/*.test.ts'],
           exclude: [BROWSER_TESTS],
+          // Every csd-* folder a test makes in %TEMP% is removed (even after a
+          // late store save), and the run fails if any is left behind.
+          setupFiles: ['tests/temp-cleanup.ts'],
+          globalSetup: ['tests/temp-global-setup.ts'],
           sequence: { groupOrder: 0 },
           // The fixture tests copy and scan sample homes: well under a second
           // alone, but several seconds on a loaded machine (two suites at once

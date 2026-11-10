@@ -33,7 +33,7 @@ import { ago, formatBytes, formatDateTime, formatDuration, formatInt } from '@sh
 import { PROVIDER_LABEL, type ProviderId } from '@shared/provider'
 import { localTimeZone } from '@shared/usage/time'
 import { api } from '@/lib/api'
-import { openCitation, useAsk } from '@/lib/ask-sessions'
+import { cancelAsk, openCitation, sendAsk, useAsk } from '@/lib/ask-sessions'
 import { useEnabledProviders } from '@/lib/scope'
 import { useApp } from '@/lib/store'
 import { cn, MOD } from '@/lib/utils'
@@ -416,8 +416,9 @@ export function AskView() {
   const [scope, setScope] = useState<AskScope | null>(null)
   const [busy, setBusy] = useState(false)
   const [preview, setPreview] = useState<AskPreview | null>(null)
-  // The question being answered (kept apart from the preview: opening history while it runs keeps Cancel).
-  const [running, setRunning] = useState<{ id: string; question: string } | null>(null)
+  // The question being answered: kept apart from the preview (and from this
+  // screen), so opening history or leaving Ask while it runs keeps Cancel.
+  const running = useAsk((s) => s.running)
   const [blocked, setBlocked] = useState<string | null>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const shown = items.find((i) => i.id === askItem)
@@ -462,21 +463,14 @@ export function AskView() {
 
   const send = async (keep: string[], model: AskModel, effort: AskEffort): Promise<void> => {
     if (!preview || running) return
-    const id = preview.id
-    setRunning({ id, question: preview.question })
+    const p = preview
     try {
-      const item = await api.askSessionsSend(id, { keep, model, effort })
-      useAsk.setState((s) => ({ items: [item, ...s.items.filter((x) => x.id !== item.id)] }))
-      set({
-        askItem: item.id,
-        settings: { ...settings, askSessions: { ...ask, lastModel: model, lastEffort: effort } }
-      })
-      setPreview((p) => (p?.id === id ? null : p))
-      if (item.ok && !preview.phone) setQuestion('')
+      // The run's state lives in the Ask store, so it outlives this screen.
+      const item = await sendAsk(p, { keep, model, effort })
+      setPreview((cur) => (cur?.id === p.id ? null : cur))
+      if (item.ok && !p.phone) setQuestion('')
     } catch (err) {
       toast.error("Couldn't ask Claude", { description: (err as Error).message })
-    } finally {
-      setRunning(null)
     }
   }
 
@@ -587,11 +581,7 @@ export function AskView() {
                 <span className="font-medium">Sending to Claude…</span>{' '}
                 <span className="text-muted-foreground">“{running.question}”</span>
               </span>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => void api.askSessionsCancel(running.id)}
-              >
+              <Button variant="ghost" size="sm" onClick={cancelAsk}>
                 Cancel
               </Button>
             </div>
@@ -603,7 +593,7 @@ export function AskView() {
               preview={preview}
               running={running?.id === preview.id}
               onSend={(keep, m, e) => void send(keep, m, e)}
-              onCancel={() => void api.askSessionsCancel(preview.id)}
+              onCancel={cancelAsk}
               onClose={() => setPreview(null)}
             />
           ) : shown ? (

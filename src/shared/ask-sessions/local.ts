@@ -856,6 +856,56 @@ function costAnswer(c: Ctx, tokensOnly: boolean): LocalAnswer {
   }
 }
 
+/** Each hit's model: its session's last response at or before it (undefined: none). */
+function modelsAtHits(records: UsageRecord[], hits: LimitHit[]): Map<LimitHit, string | undefined> {
+  const keys = new Set(hits.map((h) => h.key))
+  const byKey = new Map<string, { ts: number; model: string }[]>()
+  for (const r of records) {
+    if (!keys.has(r.key)) continue
+    const list = byKey.get(r.key) ?? []
+    list.push({ ts: r.ts, model: r.model })
+    byKey.set(r.key, list)
+  }
+  for (const list of byKey.values()) list.sort((a, b) => a.ts - b.ts)
+  const out = new Map<LimitHit, string | undefined>()
+  for (const h of hits) {
+    const list = byKey.get(h.key) ?? []
+    let model: string | undefined
+    for (const r of list) {
+      if (r.ts > h.ts) break
+      model = r.model
+    }
+    out.set(h, model)
+  }
+  return out
+}
+
+/**
+ * Sessions where a model the question names answered at least once (by
+ * their usage records; a session without any, by the models it recorded).
+ */
+function modelPool(c: Ctx, pool: LocalSession[]): { pool: LocalSession[]; steps: string[] } {
+  const { q, d } = c
+  if (!q.models?.length) return { pool, steps: [] }
+  const withRecords = new Set<string>()
+  const matched = new Set<string>()
+  for (const r of d.records) {
+    withRecords.add(r.key)
+    if (recordMatches(r, q)) matched.add(r.key)
+  }
+  const kept = pool.filter(
+    (s) =>
+      matched.has(s.key) ||
+      (!withRecords.has(s.key) && s.models.some((m) => q.models!.some((n) => modelMatches(m, n))))
+  )
+  return {
+    pool: kept,
+    steps: [
+      `Kept the ${plural(kept.length, 'session')} where a model containing ${q.models.map((m) => `“${m}”`).join(' or ')} answered at least once.`
+    ]
+  }
+}
+
 function limitHitsAnswer(c: Ctx): LocalAnswer {
   const { q, d } = c
   const only = usageKeys(c, true)
@@ -864,7 +914,7 @@ function limitHitsAnswer(c: Ctx): LocalAnswer {
     (!q.window || (q.window === '5h' ? h.kind === 'five_hour' : h.kind === 'weekly')) &&
     (!only.keys || only.keys.has(h.key))
   const providers = q.providers?.length ? q.providers : (['claude', 'codex'] as ProviderId[])
-  const hits = [
+  let hits = [
     ...(providers.includes('claude')
       ? d.limitHits.filter(want).map((h) => ({ h, p: 'claude' as const }))
       : []),
@@ -872,15 +922,40 @@ function limitHitsAnswer(c: Ctx): LocalAnswer {
       ? d.codexLimitHits.filter(want).map((h) => ({ h, p: 'codex' as const }))
       : [])
   ].sort((a, b) => b.h.ts - a.h.ts)
+  // A model named: limits are shared by every model, so a hit is put down to
+  // the model the session was using when it happened (its last response
+  // before the hit). A hit with no response before it can't be put down to one.
+  const modelSteps: string[] = []
+  if (q.models?.length) {
+    const at = modelsAtHits(
+      d.records,
+      hits.map((x) => x.h)
+    )
+    let unknown = 0
+    hits = hits.filter(({ h }) => {
+      const m = at.get(h)
+      if (!m) unknown++
+      return !!m && q.models!.some((n) => modelMatches(m, n))
+    })
+    modelSteps.push(
+      `Limits are shared by every model, so a hit counts for ${q.models.map((m) => `“${m}”`).join(' or ')} when the session's last response before it came from a model containing that name.`
+    )
+    if (unknown)
+      modelSteps.push(
+        `${plural(unknown, 'hit')} with no response before it in its session ${unknown === 1 ? 'was' : 'were'} left out (its model isn't known).`
+      )
+  }
   const kind = q.window === '5h' ? '5-hour ' : q.window === '7d' ? 'weekly ' : ''
   const when = q.range ? ` ${q.range.label.replace(/ \(.*\)$/, '')}` : ''
+  const withModel = q.models?.length ? ` while using ${q.models.join(' or ')}` : ''
   return {
-    headline: `You hit a ${kind}limit **${plural(hits.length, 'time')}**${when}${hits[0] ? `, last on ${dt(hits[0].h.ts)}` : ''}.`,
-    interpretation: `${kind ? `${kind[0].toUpperCase()}${kind.slice(1)}` : ''}limit hits${q.providers?.length ? ` (${q.providers.map((p) => PROVIDER_NAME[p]).join(', ')})` : ''}${only.keys ? ` in sessions ${sessionFilterWords(q)}` : ''}${q.range ? `, ${q.range.label}` : ''}`,
+    headline: `You hit a ${kind}limit **${plural(hits.length, 'time')}**${withModel}${when}${hits[0] ? `, last on ${dt(hits[0].h.ts)}` : ''}.`,
+    interpretation: `${kind ? `${kind[0].toUpperCase()}${kind.slice(1)}` : ''}limit hits${q.providers?.length ? ` (${q.providers.map((p) => PROVIDER_NAME[p]).join(', ')})` : ''}${only.keys ? ` in sessions ${sessionFilterWords(q)}` : ''}${withModel}${q.range ? `, ${q.range.label}` : ''}`,
     steps: [
       'Claude Code: each "limit reached" message in the session files is one hit.',
       'Codex: each rate-limit reading where Codex said a limit was reached.',
       ...only.steps,
+      ...modelSteps,
       'Only what this PC saw: a limit reached on claude.ai or another computer is not in here.'
     ],
     table: {
@@ -929,7 +1004,12 @@ function limitsNowAnswer(c: Ctx): LocalAnswer {
     interpretation: 'Current plan limits',
     steps: [
       "Claude Code: the latest reading from the status line bridge (Usage & limits), plus the app's own summary and Ask runs since then.",
-      'Codex: the latest rate-limit reading in its rollouts.'
+      'Codex: the latest rate-limit reading in its rollouts.',
+      ...(q.models?.length
+        ? [
+            'Limits are shared by every model: these are the whole account’s, whatever model is used.'
+          ]
+        : [])
     ],
     table: { columns: ['Agent', 'Window', 'Used', 'Resets'], rows }
   }
@@ -1116,7 +1196,9 @@ function gitOff(): LocalAnswer {
 function commitsAnswer(c: Ctx): LocalAnswer {
   const { q, d } = c
   if (!d.git.enabled) return gitOff()
-  const { pool, notes } = sessionPool({ ...c, q: { ...q, commits: undefined } })
+  const base = sessionPool({ ...c, q: { ...q, commits: undefined } })
+  const { pool, steps: modelSteps } = modelPool(c, base.pool)
+  const notes = base.notes
   const allowed = new Map(pool.map((s) => [s.key, s]))
   const seen = new Set<string>()
   const list = d.git
@@ -1131,6 +1213,7 @@ function commitsAnswer(c: Ctx): LocalAnswer {
     interpretation: `Commits linked to your sessions${fw ? ` ${fw}` : ''}${q.range ? `, ${q.range.label}` : ''}`,
     steps: [
       'Git links: commits linked to a session (exact, high or medium links; “possible” ones are left out), by commit time.',
+      ...modelSteps,
       ...notes
     ],
     commits: list.slice(0, MAX_LIST).map((x) => ({
@@ -1146,7 +1229,7 @@ function commitsAnswer(c: Ctx): LocalAnswer {
 function prsAnswer(c: Ctx): LocalAnswer {
   const { q, d } = c
   if (!d.git.enabled) return gitOff()
-  const { pool } = sessionPool(c)
+  const { pool, steps: modelSteps } = modelPool(c, sessionPool(c).pool)
   const allowed = new Map(pool.map((s) => [s.key, s]))
   const byNum = new Map<string, LocalPr>()
   for (const p of d.git.prs()) {
@@ -1164,7 +1247,8 @@ function prsAnswer(c: Ctx): LocalAnswer {
     interpretation: `Pull requests linked to your sessions${q.range ? `, ${q.range.label}` : ''}`,
     steps: [
       'Git links: PRs a session opened (its own `gh pr create` output), PRs named in merge or squash commits, and GitHub CLI lookups if you turned them on.',
-      "Dated by when the session showed the PR, else by its merge commit's time, else by when the session started."
+      "Dated by when the session showed the PR, else by its merge commit's time, else by when the session started.",
+      ...modelSteps
     ],
     table: {
       columns: ['PR', 'Title', 'State', 'Session'],
@@ -1181,7 +1265,7 @@ function prsAnswer(c: Ctx): LocalAnswer {
 function filesAnswer(c: Ctx): LocalAnswer {
   const { q, d } = c
   if (!d.git.enabled) return gitOff()
-  const { pool } = sessionPool(c)
+  const { pool, steps: modelSteps } = modelPool(c, sessionPool(c).pool)
   const allowed = new Set(pool.map((s) => s.key))
   const by = new Map<string, Set<string>>()
   for (const f of d.git.files()) {
@@ -1198,7 +1282,8 @@ function filesAnswer(c: Ctx): LocalAnswer {
     headline: `**${plural(sorted.length, 'file')}** edited${filterWords(q) ? ` ${filterWords(q)}` : ''}${q.range ? ` ${q.range.label.replace(/ \(.*\)$/, '')}` : ''}${sorted[0] ? `; most often ${sorted[0][0]}` : ''}.`,
     interpretation: `Files your sessions edited${q.range ? `, ${q.range.label}` : ''}`,
     steps: [
-      "Files named by the sessions' own edit tool calls (Edit, Write, apply_patch…), by when each was last edited."
+      "Files named by the sessions' own edit tool calls (Edit, Write, apply_patch…), by when each was last edited.",
+      ...modelSteps
     ],
     table: {
       columns: ['File', 'Sessions'],

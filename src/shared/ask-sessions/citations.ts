@@ -44,14 +44,19 @@ function sentences(line: string): string[] {
   let start = 0
   // A full stop, ! or ? and a space, whatever comes next ("Done. npm passed"
   // is two sentences); a CJK, Arabic or Devanagari sentence end needs no space.
-  const re = /([.!?])(\s+)|([。！？؟।])(\s*)/g
+  // What closes the sentence stays with it: Markdown emphasis or code
+  // ("**Done.** Next"), quotes and brackets ("“Done.” Next"), and citations
+  // written right after the stop ("Done.[S1] Next").
+  const re =
+    /([.!?])((?:[*_~`'"”’»)]|\[S\d{1,3}\])*)(\s+)|([。！？؟।])((?:[*_~`'"”’»)」』）】]|\[S\d{1,3}\])*)(\s*)/gi
   for (let m = re.exec(line); m; m = re.exec(line)) {
-    const end = m.index + 1
-    const piece = line.slice(start, end)
+    const stop = m.index + 1
+    const closing = m[2] ?? m[5] ?? ''
     // "e.g. foo" or "J. Smith": not a sentence end.
-    if (m[1] && (ABBREV.test(piece) || /(?:^|[^\p{L}])\p{Lu}\.$/u.test(piece))) continue
-    out.push(piece)
-    start = end + (m[2] ?? m[4] ?? '').length
+    const upTo = line.slice(start, stop)
+    if (m[1] && (ABBREV.test(upTo) || /(?:^|[^\p{L}])\p{Lu}\.$/u.test(upTo))) continue
+    out.push(line.slice(start, stop + closing.length))
+    start = stop + closing.length + (m[3] ?? m[6] ?? '').length
   }
   out.push(line.slice(start))
   // Citations written after the full stop ("Done. [S2] Next…") belong to the sentence before.
@@ -68,12 +73,28 @@ function sentences(line: string): string[] {
   return merged
 }
 
+/** A dropped statement as listed: without citations or bold markers. */
 function strip(text: string): string {
   return text
     .replace(MARK, '')
+    .replace(/\*\*|__/g, '')
     .replace(/\s+([.,;:!?])/g, '$1')
     .replace(/\s{2,}/g, ' ')
     .trim()
+}
+
+/**
+ * What's left of a line after a sentence was dropped from it: bold or code
+ * the dropped sentence opened or closed would leave a stray marker, so an
+ * unpaired one is taken out.
+ */
+function balance(text: string): string {
+  let out = text
+  for (const mark of ['**', '__', '`']) {
+    const parts = out.split(mark)
+    if ((parts.length - 1) % 2) out = parts.join('')
+  }
+  return out
 }
 
 /** A table's |---|---| line. */
@@ -138,6 +159,7 @@ export function checkCitations(raw: string, valid: ReadonlySet<string>): Checked
     const prefix = m[1] ?? ''
     const body = m[2] ?? ''
     const kept: string[] = []
+    const droppedBefore = dropped.length
     if (body.trim().startsWith('|')) {
       // A table row: one statement (its own cells' citations).
       const ids = [...body.matchAll(MARK)].map((x) => x[1].toUpperCase())
@@ -170,7 +192,8 @@ export function checkCitations(raw: string, valid: ReadonlySet<string>): Checked
         )
       }
     }
-    lines.push({ raw: kept.length ? `${prefix}${kept.join(' ')}` : '', kept: kept.length > 0 })
+    const joined = dropped.length > droppedBefore ? balance(kept.join(' ')) : kept.join(' ')
+    lines.push({ raw: kept.length ? `${prefix}${joined}` : '', kept: kept.length > 0 })
   }
   // Headings and lead-in lines stay only if something under them stays; code
   // blocks only after a kept statement; table headers only with a kept row.

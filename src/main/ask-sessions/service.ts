@@ -101,6 +101,43 @@ export function createAskSessionsStore(dataDir: string): JsonStore<AskSessionsHi
   )
 }
 
+/** "owner/repo#8" for a GitHub PR link (any case, /pull/ or /pulls/), else the link itself. */
+export function prKey(url: string): string {
+  const m =
+    /^https?:\/\/(?:www\.)?github\.com\/([^/\s]+)\/([^/\s]+?)(?:\.git)?\/pulls?\/(\d+)/i.exec(
+      url.trim()
+    )
+  return m
+    ? `${m[1]}/${m[2]}#${Number(m[3])}`.toLowerCase()
+    : url
+        .trim()
+        .replace(/[?#].*$/, '')
+        .replace(/\/+$/, '')
+        .toLowerCase()
+}
+
+/**
+ * When a session's PR happened, for local questions: when the session showed
+ * it (its own `gh pr create`; the same repo and number, never just the same
+ * number, since a session can name another repo's #8), else, for a PR of the
+ * session's own repo (from a merge commit or the GitHub CLI), its earliest
+ * merge commit there. Undefined: no time of its own.
+ */
+export function prTime(
+  p: Pick<PrLink, 'number' | 'url' | 'via'>,
+  seen: { number: number; url: string; at: number }[],
+  merged: { at: number; pr?: number }[]
+): number | undefined {
+  const key = prKey(p.url)
+  const shown = seen.filter((x) => x.at > 0 && prKey(x.url) === key)
+  if (shown.length) return Math.min(...shown.map((x) => x.at))
+  // A merge commit's PR number is one of the session's own repo: so is a
+  // merge or gh link, while a `gh pr create` link may be any repo's.
+  if (p.via === 'session') return undefined
+  const times = merged.filter((c) => c.pr === p.number && c.at > 0).map((c) => c.at)
+  return times.length ? Math.min(...times) : undefined
+}
+
 export const MAX_HISTORY = 500
 const PREVIEW_TTL = 30 * 60_000
 /** A phone may ask a content question once per 30 seconds and 10 times an hour. */
@@ -465,16 +502,7 @@ export class AskSessionsService extends EventEmitter<{ changed: []; status: [Ask
             const seen = git?.seenPrs(s.key) ?? []
             const merged = git?.linkedCommits(s.key) ?? []
             return links.map((p) => {
-              // When the session showed it (its own `gh pr create`), else its merge commit's time.
-              const at =
-                seen.find((x) => x.url === p.url)?.at ||
-                seen.find((x) => x.number === p.number)?.at ||
-                merged
-                  .filter((c) => c.pr === p.number)
-                  .reduce<number | undefined>(
-                    (t, c) => (t === undefined || c.at < t ? c.at : t),
-                    undefined
-                  )
+              const at = prTime(p, seen, merged)
               return {
                 key: s.key,
                 number: p.number,

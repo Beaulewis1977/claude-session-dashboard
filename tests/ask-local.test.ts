@@ -468,3 +468,38 @@ describe('review fixes (PR #50)', () => {
     expect(l.mode === 'local' && l.query.sources).toEqual(['cowork'])
   })
 })
+
+describe('second review fixes (PR #50)', () => {
+  it('limit hits with a model: put down to the model the session was using then', () => {
+    const d = data({
+      limitHits: [
+        // w:a answered with Opus, w:b with Sonnet, before their hits.
+        { id: 'o', ts: day('2026-11-03') + 60_000, key: 'w:a', text: 'limit', kind: 'five_hour' },
+        { id: 's', ts: day('2026-11-04') + 60_000, key: 'w:b', text: 'limit', kind: 'five_hour' },
+        // w:c had no response before this hit: its model isn't known.
+        { id: 'u', ts: day('2026-10-03'), key: 'w:c', text: 'limit', kind: 'weekly' }
+      ]
+    })
+    expect(answer('how often did I hit my limit', d).headline).toContain('**3 times**')
+    const s = answer('how often did I hit my limit with Sonnet', d)
+    expect(s.headline).toContain('**1 time** while using sonnet')
+    expect(s.sessions?.map((x) => x.key)).toEqual(['w:b'])
+    expect(s.steps.join(' ')).toMatch(/shared by every model/)
+    expect(s.steps.join(' ')).toMatch(/1 hit with no response before it/)
+    const o = answer('how often did I hit my limit with opus', d)
+    expect(o.headline).toContain('**1 time**')
+    expect(o.sessions?.map((x) => x.key)).toEqual(['w:a'])
+  })
+
+  it('commits, PRs and files with a model: only sessions that model answered in', () => {
+    expect(answer('how many commits did I make with sonnet').commits).toEqual([])
+    const o = answer('how many commits did I make with opus')
+    expect(o.commits?.map((x) => x.sha)).toEqual(['abc1234def', 'fff0000111'])
+    expect(o.steps.join(' ')).toMatch(/Kept the \d+ sessions? where a model containing “opus”/)
+    expect(answer('which pull requests did I open with sonnet').table?.rows).toEqual([])
+    expect(answer('which files did I edit with sonnet').table?.rows).toEqual([])
+    expect(answer('which files did I edit with opus').table?.rows[0]?.[0]).toBe(
+      'src/main/bridge.ts'
+    )
+  })
+})

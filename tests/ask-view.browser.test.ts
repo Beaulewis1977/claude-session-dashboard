@@ -1,8 +1,11 @@
-// Browser test (Vite + Playwright, like back-nav.browser.test.ts): two Ask
+// Browser test (Vite + Playwright, like back-nav.browser.test.ts): Ask
 // review fixes that only show in the real UI.
-// - The Ask screen keeps a running answer's Cancel when I open a history item.
-// - A citation into a later message of a long assistant turn flashes that
-//   message's own bubble or tool group (not the whole turn) and opens its tool call.
+// - The Ask screen keeps a running answer's Cancel when I open a history item,
+//   and when I leave the screen and come back (the run's state isn't the screen's).
+// - A citation into a long assistant turn lands on the cited message itself:
+//   its own bubble, or its own part of a long tool group, never a later
+//   message of its passage; it opens the cited tool call once, and I can
+//   close it again.
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import type { Browser, Page } from 'playwright'
@@ -66,29 +69,41 @@ useApp.setState({
 })
 useAsk.setState({ items: [old], status, pending: [], loaded: true })
 
-// One long assistant turn: text, a tool call, then many messages, then the cited one.
+// A long session: a prompt, many text replies, then one long tool group of
+// 40 tool-only messages (the last one is cited), then another prompt and reply.
+const tool = (id, label) => ({ type: 'tool_use', id, name: 'Bash', label, input: { command: label },
+  result: { text: 'Output of ' + label, isError: false } })
 const msgs = [{ id: 'u1', role: 'user', kind: 'prompt', blocks: [{ type: 'text', text: 'Fix the loop' }], timestamp: '2026-11-03T10:00:00Z' }]
-for (let i = 0; i < 40; i++)
+for (let i = 0; i < 20; i++)
   msgs.push({ id: 'a' + i, role: 'assistant', kind: 'response', timestamp: '2026-11-03T10:01:00Z',
     blocks: [{ type: 'text', text: 'Step ' + i + ' of the work, with enough words to take up some room on the screen.' }] })
-msgs.push({ id: 'cited', role: 'assistant', kind: 'response', timestamp: '2026-11-03T10:30:00Z',
-  blocks: [{ type: 'tool_use', id: 'tu-cited', name: 'Bash', label: 'npm test -- redirect', input: { command: 'npm test -- redirect' },
-    result: { text: 'All tests passed', isError: false } }] })
+for (let i = 0; i < 40; i++)
+  msgs.push({ id: 't' + i, role: 'assistant', kind: 'response', timestamp: '2026-11-03T10:10:00Z',
+    blocks: [tool('tu' + i, 'npm run step-' + i)] })
+msgs.push({ id: 'u2', role: 'user', kind: 'prompt', blocks: [{ type: 'text', text: 'Now ship it' }], timestamp: '2026-11-03T11:00:00Z' })
+msgs.push({ id: 'afinal', role: 'assistant', kind: 'response', timestamp: '2026-11-03T11:01:00Z',
+  blocks: [{ type: 'text', text: 'Shipped.' }] })
 
 const h = React.createElement
 function Viewer() {
   useFocusMessage('w:a', true, 'conversation')
   const cited = useCitedMessages('w:a')
   return h('div', { style: { height: '600px', overflow: 'auto' }, id: 'scroller' },
-    h(Transcript, { messages: msgs, findQuery: '', openMessages: cited }))
+    h(Transcript, { messages: msgs, findQuery: '', cited }))
+}
+function Screens() {
+  const view = useApp((s) => s.view)
+  // Another screen in place of Ask: AskView unmounts, as in the app.
+  return view === 'ask' ? h(AskView) : h('div', null, 'Settings screen')
 }
 function Host() {
-  const view = location.hash === '#viewer' ? 'viewer' : 'ask'
-  return h(TooltipProvider, null, view === 'viewer' ? h(Viewer) : h('div', { style: { height: '700px' } }, h(AskView)))
+  const viewer = location.hash === '#viewer'
+  return h(TooltipProvider, null, viewer ? h(Viewer) : h('div', { style: { height: '700px' } }, h(Screens)))
 }
 createRoot(document.getElementById('root')).render(h(Host))
 window.__ask = {
   calls: () => calls,
+  go: (view) => useApp.getState().set({ view }),
   focus: (ids) => useApp.getState().set({ focusMessage: { key: 'w:a', ids, nonce: Date.now() } })
 }
 `
@@ -123,21 +138,33 @@ async function open(hash: string, loadTimeout = 15_000): Promise<Page> {
   return page
 }
 
+/** Ask a content question and Send it: the stand-in never answers until Cancel. */
+async function sendOne(page: Page): Promise<void> {
+  await page.getByLabel('Your question').fill('Where did I fix the redirect loop?')
+  await page.getByRole('button', { name: 'Ask', exact: true }).click()
+  await page.getByRole('button', { name: 'Send' }).click()
+  await expect.poll(() => page.evaluate('window.__ask.calls().send')).toBe(1)
+  // The preview's own Cancel while it's on screen.
+  await page.getByRole('button', { name: 'Cancel' }).waitFor()
+}
+
+const runningBar = (page: Page) =>
+  page.getByRole('status').filter({ hasText: 'Sending to Claude…' })
+
+/** The open/closed toggle of the cited message's tool call (not its menu button). */
+const toggleOf = (page: Page, id: string) =>
+  page.locator(`[data-msg-id="${id}"] button[aria-expanded]:not([aria-haspopup])`)
+
 describe('Ask review fixes in the real UI', () => {
   it('opening a history item while an answer runs keeps Cancel', async ({ skip }) => {
     if (!browser) skip(unavailableReason)
     const page = await open('')
     try {
-      await page.getByLabel('Your question').fill('Where did I fix the redirect loop?')
-      await page.getByRole('button', { name: 'Ask', exact: true }).click()
-      await page.getByRole('button', { name: 'Send' }).click()
-      await expect.poll(() => page.evaluate('window.__ask.calls().send')).toBe(1)
-      // The preview's own Cancel while it's on screen.
-      await page.getByRole('button', { name: 'Cancel' }).waitFor()
+      await sendOne(page)
       // Open the history item: the preview goes, Cancel stays.
       await page.getByText('How many sessions last week?').first().click()
       await page.getByText('3 sessions').waitFor()
-      const bar = page.getByRole('status').filter({ hasText: 'Sending to Claude…' })
+      const bar = runningBar(page)
       await bar.waitFor()
       await bar.getByRole('button', { name: 'Cancel' }).click()
       await expect.poll(() => page.evaluate('window.__ask.calls().cancel')).toEqual(['p1'])
@@ -147,29 +174,71 @@ describe('Ask review fixes in the real UI', () => {
     }
   })
 
-  it("a citation flashes the cited message's own group and opens its tool call", async ({
+  it('leaving Ask while an answer runs, and coming back, keeps Cancel', async ({ skip }) => {
+    if (!browser) skip(unavailableReason)
+    const page = await open('')
+    try {
+      await sendOne(page)
+      await page.evaluate('window.__ask.go("settings")')
+      await page.getByText('Settings screen').waitFor()
+      await page.evaluate('window.__ask.go("ask")')
+      const bar = runningBar(page)
+      await bar.waitFor()
+      // A new question can't start while one is being answered.
+      await expect(
+        page.getByRole('button', { name: 'Ask', exact: true }).isDisabled()
+      ).resolves.toBe(true)
+      await bar.getByRole('button', { name: 'Cancel' }).click()
+      await expect.poll(() => page.evaluate('window.__ask.calls().cancel')).toEqual(['p1'])
+      await bar.waitFor({ state: 'detached' })
+    } finally {
+      await page.close()
+    }
+  })
+
+  it('a citation lands on its own message in a long tool group, opens it once, and lets me close it', async ({
     skip
   }) => {
     if (!browser) skip(unavailableReason)
     const page = await open('#viewer')
     try {
       // Far below the first screen (off-screen turns skip layout, so attributes, not visibility).
-      const toggle = page.locator(
-        '[data-msg-id="cited"] button[aria-expanded]:not([aria-haspopup])'
-      )
+      const toggle = toggleOf(page, 't39')
       await toggle.waitFor({ state: 'attached' })
       expect(await toggle.getAttribute('aria-expanded')).toBe('false')
-      await page.evaluate('window.__ask.focus(["cited"])')
-      // The tool group of that one message flashes, not the whole turn.
+      await page.evaluate('window.__ask.focus(["t39"])')
+      // That message's own part of the 40-message tool group flashes.
       const flashed = page.locator('.cite-flash')
       await flashed.waitFor()
-      expect(await flashed.getAttribute('data-msg-id')).toBe('cited')
-      expect(await flashed.getAttribute('data-msg-ids')).toBeNull()
-      // And its tool call is open, on screen.
+      expect(await flashed.getAttribute('data-msg-id')).toBe('t39')
       await expect.poll(() => toggle.getAttribute('aria-expanded')).toBe('true')
-      await page.getByText('All tests passed').waitFor()
+      await page.getByText('Output of npm run step-39').waitFor()
+      // On screen, though the group starts screens above it.
       const box = await flashed.boundingBox()
-      expect(box && box.y >= 0 && box.y < 700).toBe(true)
+      expect(box && box.y >= 0 && box.y + box.height <= 700).toBe(true)
+      const first = await page.locator('[data-msg-id="t0"]').boundingBox()
+      expect(first && first.y < 0).toBe(true)
+      // Opened once: I can close it again.
+      await toggle.click()
+      await expect.poll(() => toggle.getAttribute('aria-expanded')).toBe('false')
+      // A new citation of it opens it again.
+      await page.evaluate('window.__ask.focus(["t39"])')
+      await expect.poll(() => toggle.getAttribute('aria-expanded')).toBe('true')
+    } finally {
+      await page.close()
+    }
+  })
+
+  it("the cited message wins over its passage's other messages", async ({ skip }) => {
+    if (!browser) skip(unavailableReason)
+    const page = await open('#viewer')
+    try {
+      // The user's prompt is cited; the reply after it (with its own anchor) is only context.
+      await page.evaluate('window.__ask.focus(["u2", "afinal"])')
+      const flashed = page.locator('.cite-flash')
+      await flashed.waitFor()
+      expect(await flashed.getAttribute('data-msg-ids')).toBe('u2')
+      await expect(flashed.textContent()).resolves.toContain('Now ship it')
     } finally {
       await page.close()
     }

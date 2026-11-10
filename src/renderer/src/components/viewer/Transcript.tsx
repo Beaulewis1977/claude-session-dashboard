@@ -31,6 +31,8 @@ import { blocksToMarkdown, blocksToPlainText } from '@/lib/copy'
 import { Markdown } from './Markdown'
 import { ErrorBoundary, RenderFailed } from '../ErrorBoundary'
 import { Collapsible, OrphanResult, ToolCall } from './ToolCall'
+import { useOpenState } from '@/lib/open-state'
+import type { CitedMessages } from '@/lib/focus-message'
 import { BranchMarks, type BranchMark } from './Branches'
 import { ClaudeMark } from '../brand'
 import { PROVIDER_SHORT, type ProviderId } from '@shared/provider'
@@ -288,14 +290,16 @@ function AgentMessage({
   author,
   recipient,
   text,
-  forceOpen
+  forceOpen,
+  openSignal
 }: {
   author: string
   recipient: string
   text: string
   forceOpen?: boolean
+  openSignal?: number
 }) {
-  const [open, setOpen] = useState(false)
+  const [open, setOpen] = useOpenState(openSignal)
   const [copied, setCopied] = useState(false)
   const preview = text.replace(/\s+/g, ' ').slice(0, 140)
   const shown = open || !!forceOpen
@@ -420,17 +424,36 @@ function UserBubble({ msg, onBranch }: { msg: ChatMessage; onBranch?: OnBranch }
   )
 }
 
+type TurnItem = { m: ChatMessage; b: ContentBlock; i: number }
+
+/** A tool group's blocks split into runs of the same message, in order. */
+function runsByMessage(g: TurnItem[]): TurnItem[][] {
+  const runs: TurnItem[][] = []
+  for (const it of g) {
+    const last = runs[runs.length - 1]
+    if (last && last[0].m.id === it.m.id) last.push(it)
+    else runs.push([it])
+  }
+  return runs
+}
+
 function AssistantTurn({
   msgs,
   cwd,
   open,
+  citedOpen,
+  citeNonce,
   findQuery,
   onBranch,
   agent = 'claude'
 }: {
   msgs: ChatMessage[]
   cwd?: string
+  /** Blocks find keeps open. */
   open: Set<string>
+  /** Blocks an Ask citation opens once (citeNonce: which citation). */
+  citedOpen?: Set<string>
+  citeNonce?: number
   findQuery?: string
   onBranch?: OnBranch
   agent?: ProviderId
@@ -438,7 +461,7 @@ function AssistantTurn({
   const first = msgs[0]
   const model = msgs.find((m) => m.model)?.model
   // Flatten blocks so consecutive tool calls form one group.
-  const items: { m: ChatMessage; b: ContentBlock; i: number }[] = []
+  const items: TurnItem[] = []
   for (const m of msgs) m.blocks.forEach((b, i) => items.push({ m, b, i }))
   const groups: (typeof items)[] = []
   for (const it of items) {
@@ -506,11 +529,7 @@ function AssistantTurn({
                 blocks={groupBlocks}
                 onBranch={onBranch}
               >
-                <div
-                  // The messages its tool calls came from (a citation scrolls here).
-                  data-msg-id={[...new Set(g.map((x) => x.m.id))].join(' ')}
-                  className="max-w-full overflow-clip rounded-xl border border-border bg-background/50 p-1"
-                >
+                <div className="max-w-full overflow-clip rounded-xl border border-border bg-background/50 p-1">
                   <MessageActions
                     id={at.id}
                     blocks={groupBlocks}
@@ -518,57 +537,67 @@ function AssistantTurn({
                     layout="inline"
                     onBranch={onBranch}
                   />
-                  {g.map(({ m, b, i }) => {
-                    const id = blockId(m, b, i)
-                    if (b.type === 'tool_use')
-                      return (
-                        <ToolCall
-                          key={id}
-                          tool={b}
-                          cwd={cwd}
-                          forceOpen={open.has(id)}
-                          findQuery={findQuery}
-                        />
-                      )
-                    if (b.type === 'thinking')
-                      return (
-                        <Thinking
-                          key={id}
-                          text={b.text}
-                          redacted={b.redacted}
-                          forceOpen={open.has(id)}
-                        />
-                      )
-                    if (b.type === 'agent_message')
-                      return (
-                        <AgentMessage
-                          key={id}
-                          author={b.author}
-                          recipient={b.recipient}
-                          text={b.text}
-                          forceOpen={open.has(id)}
-                        />
-                      )
-                    if (b.type === 'tool_result')
-                      return (
-                        <OrphanResult
-                          key={id}
-                          result={b.result}
-                          findQuery={findQuery}
-                          forceOpen={open.has(id)}
-                        />
-                      )
-                    if (b.type === 'image')
-                      return (
-                        <div
-                          key={id}
-                          className="flex items-center gap-2 px-2 py-1.5 text-[12.5px] text-muted-foreground"
-                        >
-                          <ImageIcon className="size-3.5" /> Image
-                        </div>
-                      )
-                    return null
-                  })}
+                  {runsByMessage(g).map((run) => (
+                    // Each message's own part of the group: a citation scrolls to
+                    // it, not to the whole group (which can be screens long).
+                    <div key={`${run[0].m.id}:${run[0].i}`} data-msg-id={run[0].m.id}>
+                      {run.map(({ m, b, i }) => {
+                        const id = blockId(m, b, i)
+                        const signal = citedOpen?.has(id) ? citeNonce : undefined
+                        if (b.type === 'tool_use')
+                          return (
+                            <ToolCall
+                              key={id}
+                              tool={b}
+                              cwd={cwd}
+                              forceOpen={open.has(id)}
+                              openSignal={signal}
+                              findQuery={findQuery}
+                            />
+                          )
+                        if (b.type === 'thinking')
+                          return (
+                            <Thinking
+                              key={id}
+                              text={b.text}
+                              redacted={b.redacted}
+                              forceOpen={open.has(id)}
+                            />
+                          )
+                        if (b.type === 'agent_message')
+                          return (
+                            <AgentMessage
+                              key={id}
+                              author={b.author}
+                              recipient={b.recipient}
+                              text={b.text}
+                              forceOpen={open.has(id)}
+                              openSignal={signal}
+                            />
+                          )
+                        if (b.type === 'tool_result')
+                          return (
+                            <OrphanResult
+                              key={id}
+                              result={b.result}
+                              findQuery={findQuery}
+                              forceOpen={open.has(id)}
+                              openSignal={signal}
+                            />
+                          )
+                        if (b.type === 'image')
+                          return (
+                            <div
+                              key={id}
+                              className="flex items-center gap-2 px-2 py-1.5 text-[12.5px] text-muted-foreground"
+                            >
+                              <ImageIcon className="size-3.5" /> Image
+                            </div>
+                          )
+                        return null
+                      })}
+                    </div>
+                  ))}
                   <MessageActions
                     id={at.id}
                     blocks={groupBlocks}
@@ -587,8 +616,16 @@ function AssistantTurn({
   )
 }
 
-function EventRow({ msg, forceOpen }: { msg: ChatMessage; forceOpen?: boolean }) {
-  const [open, setOpen] = useState(false)
+function EventRow({
+  msg,
+  forceOpen,
+  openSignal
+}: {
+  msg: ChatMessage
+  forceOpen?: boolean
+  openSignal?: number
+}) {
+  const [open, setOpen] = useOpenState(openSignal)
   const text = msg.blocks.map((b) => (b.type === 'text' ? b.text : '')).join('\n')
   if (msg.kind === 'command') {
     return (
@@ -656,7 +693,7 @@ export const Transcript = memo(function Transcript({
   marks,
   className,
   agent = 'claude',
-  openMessages
+  cited
 }: {
   messages: ChatMessage[]
   cwd?: string
@@ -668,8 +705,8 @@ export const Transcript = memo(function Transcript({
   marks?: Map<string, BranchMark[]>
   /** Overrides for the outer padding (narrower on a phone). */
   className?: string
-  /** Messages an Ask citation opened: their tool calls and agent messages are shown open. */
-  openMessages?: readonly string[]
+  /** The messages an Ask citation points at: their tool calls and agent messages open (once). */
+  cited?: CitedMessages
 }) {
   const turns = useMemo(() => groupTurns(messages), [messages])
   // Markers go after the turn that holds their message.
@@ -683,11 +720,11 @@ export const Transcript = memo(function Transcript({
     }
     return out
   }, [turns, marks])
-  const open = useMemo(() => {
-    const found = blocksMatching(messages, findQuery)
-    if (!openMessages?.length) return found
-    return new Set([...found, ...blocksOfMessages(messages, openMessages)])
-  }, [messages, findQuery, openMessages])
+  const open = useMemo(() => blocksMatching(messages, findQuery), [messages, findQuery])
+  const citedOpen = useMemo(
+    () => (cited ? blocksOfMessages(messages, cited.ids) : undefined),
+    [messages, cited]
+  )
   // Show a date separator before the first turn of each day.
   const dayStarts = useMemo(() => {
     const out = new Set<string>()
@@ -738,12 +775,20 @@ export const Transcript = memo(function Transcript({
                   msgs={t.msgs}
                   cwd={cwd}
                   open={open}
+                  citedOpen={citedOpen}
+                  citeNonce={cited?.nonce}
                   findQuery={findQuery}
                   onBranch={onBranch}
                   agent={agent}
                 />
               )}
-              {t.kind === 'event' && <EventRow msg={t.msg} forceOpen={open.has(t.msg.id)} />}
+              {t.kind === 'event' && (
+                <EventRow
+                  msg={t.msg}
+                  forceOpen={open.has(t.msg.id)}
+                  openSignal={citedOpen?.has(t.msg.id) ? cited?.nonce : undefined}
+                />
+              )}
               {marksByTurn.has(t.id) && <BranchMarks marks={marksByTurn.get(t.id)!} />}
             </div>
           </ErrorBoundary>

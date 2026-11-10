@@ -9,25 +9,38 @@ import { useApp } from './store'
 /** How long to wait for the transcript or the git links to show it (frames, ~5 s). */
 const MAX_FRAMES = 300
 
-function target(ids: string[], sha?: string): Element | null {
-  if (sha) return document.querySelector(`[data-sha="${CSS.escape(sha)}"]`)
-  // The message's own bubble or tool group first, else the turn that holds it.
-  for (const attr of ['data-msg-id', 'data-msg-ids'])
-    for (const id of ids) {
-      const el = document.querySelector(`[${attr}~="${CSS.escape(id)}"]`)
-      if (el) return el
-    }
+/**
+ * Where a citation lands. Its ids come in order (the cited message first,
+ * then the others of its passage): the first id found wins, at its own
+ * element (a message's bubble, or its part of a tool group) or else the turn
+ * that holds it, so a later message never wins over the cited one.
+ */
+export function citationTarget(root: ParentNode, ids: string[], sha?: string): Element | null {
+  if (sha) return root.querySelector(`[data-sha="${CSS.escape(sha)}"]`)
+  for (const id of ids) {
+    const v = CSS.escape(id)
+    const el =
+      root.querySelector(`[data-msg-id="${v}"]`) ?? root.querySelector(`[data-msg-ids~="${v}"]`)
+    if (el) return el
+  }
   return null
+}
+
+/** The messages an Ask citation opened, and which citation (a new one opens them again). */
+export interface CitedMessages {
+  ids: readonly string[]
+  nonce: number
 }
 
 /**
  * The messages the latest Ask citation into this session pointed at, kept
- * after the scroll (so their tool calls stay open). Adjusted during render
- * when a new citation arrives; another session's citation doesn't count.
+ * after the scroll so the transcript can open their tool calls once (they
+ * can be closed again). Adjusted during render when a new citation arrives;
+ * another session's citation doesn't count.
  */
-export function useCitedMessages(key: string): readonly string[] | undefined {
+export function useCitedMessages(key: string): CitedMessages | undefined {
   const focus = useApp((s) => s.focusMessage)
-  const [cited, setCited] = useState<{ key: string; nonce: number; ids: string[] } | null>(null)
+  const [cited, setCited] = useState<(CitedMessages & { key: string }) | null>(null)
   if (
     focus &&
     focus.key === key &&
@@ -36,7 +49,7 @@ export function useCitedMessages(key: string): readonly string[] | undefined {
     (cited?.key !== key || cited.nonce !== focus.nonce)
   )
     setCited({ key, nonce: focus.nonce, ids: focus.ids })
-  return cited?.key === key ? cited.ids : undefined
+  return cited?.key === key ? cited : undefined
 }
 
 export function useFocusMessage(
@@ -55,7 +68,7 @@ export function useFocusMessage(
     let frames = 0
     let raf = 0
     const find = (): void => {
-      const el = target(focus.ids, focus.sha)
+      const el = citationTarget(document, focus.ids, focus.sha)
       if (el) {
         el.scrollIntoView({ block: 'center' })
         // Turns above it take their real height once near the screen: aim again.

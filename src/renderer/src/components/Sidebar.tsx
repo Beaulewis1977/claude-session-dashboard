@@ -8,6 +8,7 @@ import {
   Folder,
   GitFork,
   Inbox,
+  LoaderCircle,
   MessageCircleQuestion,
   MessagesSquare,
   Monitor,
@@ -19,6 +20,7 @@ import {
 import { useLiveCounts } from '@/lib/live-sessions'
 import { facets, tagColor, type Facet, type Filters, type Visibility } from '@/lib/filters'
 import { useApp } from '@/lib/store'
+import { useAsk } from '@/lib/ask-sessions'
 import {
   hasSubagents,
   saveShowSubagents,
@@ -115,6 +117,8 @@ export function Sidebar() {
   const filters = useApp((s) => s.filters)
   const sources = useApp((s) => s.sources)
   const view = useApp((s) => s.view)
+  // A question being answered by Claude (it goes on while another screen is open).
+  const asking = useAsk((s) => !!s.running)
   const set = useApp((s) => s.set)
   const setFilters = useApp((s) => s.setFilters)
   const [allProjects, setAllProjects] = useState(false)
@@ -151,6 +155,14 @@ export function Sidebar() {
                 active={view === 'ask'}
                 icon={<MessageCircleQuestion />}
                 label="Ask"
+                badge={
+                  asking ? (
+                    <LoaderCircle
+                      aria-label="Answering a question"
+                      className="size-3.5 shrink-0 animate-spin text-primary"
+                    />
+                  ) : undefined
+                }
                 onClick={() => set({ view: view === 'ask' ? 'sessions' : 'ask' })}
               />
             </div>

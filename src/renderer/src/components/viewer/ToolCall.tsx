@@ -17,6 +17,7 @@ import type { ContentBlock, ToolResult } from '@shared/types'
 import { editItems, relativeTo, splitToolLabel, todoItems } from '@shared/tools'
 import { cn } from '@/lib/utils'
 import { truncateText } from '@/lib/transcript'
+import { useOpenState } from '@/lib/open-state'
 import { toolInputText, toolOutputText } from '@/lib/copy'
 import { ErrorBoundary, RenderFailed } from '../ErrorBoundary'
 import { CodeBlock, CopyButton } from './Markdown'
@@ -317,14 +318,17 @@ export const ToolCall = memo(function ToolCall({
   tool,
   cwd,
   forceOpen,
+  openSignal,
   findQuery
 }: {
   tool: ToolUse
   cwd?: string
   forceOpen?: boolean
+  /** A new value opens it (an Ask citation); see useOpenState. */
+  openSignal?: number
   findQuery?: string
 }) {
-  const [open, setOpen] = useState(false)
+  const [open, setOpen] = useOpenState(openSignal)
   const isError = tool.result?.isError
   const [verb, rest] = splitToolLabel(tool.label)
   return (
@@ -369,13 +373,15 @@ export const ToolCall = memo(function ToolCall({
 export const OrphanResult = memo(function OrphanResult({
   result,
   findQuery,
-  forceOpen
+  forceOpen,
+  openSignal
 }: {
   result: ToolResult
   findQuery?: string
   forceOpen?: boolean
+  openSignal?: number
 }) {
-  const [open, setOpen] = useState(false)
+  const [open, setOpen] = useOpenState(openSignal)
   return (
     <Collapsible
       open={open || !!forceOpen}

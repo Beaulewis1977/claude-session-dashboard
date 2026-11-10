@@ -421,7 +421,52 @@ describe('citations', () => {
     const cjk = checkCitations('备份被删除了。测试通过了[S1]。', valid)
     expect(cjk.answer).toBe('测试通过了[S1]。')
     expect(cjk.dropped).toEqual(['备份被删除了。'])
-    expect(checkCitations('修好了。[S2]然后发布了。', valid).answer).toBe('修好了。 [S2]')
+    expect(checkCitations('修好了。[S2]然后发布了。', valid).answer).toBe('修好了。[S2]')
+  })
+
+  it('a sentence ends after closing bold, code, quotes or brackets too (second review)', () => {
+    for (const [answer, kept, dropped] of [
+      [
+        '**The bug deleted all backups.** npm passed [S1].',
+        'npm passed [S1].',
+        'The bug deleted all backups.'
+      ],
+      [
+        '_The bug deleted all backups._ npm passed [S1].',
+        'npm passed [S1].',
+        '_The bug deleted all backups._'
+      ],
+      [
+        '"The bug deleted all backups." npm passed [S1].',
+        'npm passed [S1].',
+        '"The bug deleted all backups."'
+      ],
+      [
+        '“The bug deleted all backups.” npm passed [S1].',
+        'npm passed [S1].',
+        '“The bug deleted all backups.”'
+      ],
+      [
+        'It deleted backups (see the log.) npm passed [S1].',
+        'npm passed [S1].',
+        'It deleted backups (see the log.)'
+      ],
+      ['Run `rm -rf backups.` npm passed [S1].', 'npm passed [S1].', 'Run `rm -rf backups.`'],
+      // A citation right after the stop belongs to that sentence, not the next.
+      ['Done.[S1] Then it deleted all backups.', 'Done.[S1]', 'Then it deleted all backups.']
+    ]) {
+      const r = checkCitations(answer, valid)
+      expect(r.answer, answer).toBe(kept)
+      expect(r.dropped, answer).toEqual([dropped])
+    }
+    // Bold the dropped sentence opened doesn't leave a stray marker behind.
+    const half = checkCitations('**Fixed the parser. Then** shipped [S1].', valid)
+    expect(half.answer).toBe('Then shipped [S1].')
+    expect(half.dropped).toEqual(['Fixed the parser.'])
+    // A line that keeps everything keeps its formatting as written.
+    expect(checkCitations('**Fixed** the parser [S1]. Shipped [S2].', valid).answer).toBe(
+      '**Fixed** the parser [S1]. Shipped [S2].'
+    )
   })
 
   it('only the row right above |---| is a table header (review fix)', () => {

@@ -178,7 +178,7 @@ export function SessionScreen({ session }: { session: SessionSummary }) {
     setChangesOpen(true)
   }
   useFocusMessage(session.key, changesOpen || !!detail, changesOpen ? 'changes' : 'conversation')
-  const citedIds = useCitedMessages(session.key)
+  const cited = useCitedMessages(session.key)
   const viewOnly = isViewOnly(session)
   // What this session's agent can do (Codex: Resume and Fork, no Remote Control).
   const caps = capsOf(session)
@@ -437,7 +437,7 @@ export function SessionScreen({ session }: { session: SessionSummary }) {
               findQuery={findOpen ? findQuery : ''}
               onBranch={viewOnly || readOnly || !caps.branch ? undefined : onBranch}
               agent={providerOf(session)}
-              openMessages={citedIds}
+              cited={cited}
               className="px-3 pt-4 pb-28"
             />
           ) : error ? (

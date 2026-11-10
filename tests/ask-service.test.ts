@@ -21,6 +21,8 @@ import { InProcessHost } from '../src/main/ask-sessions/host'
 import {
   AskSessionsService,
   createAskSessionsStore,
+  prKey,
+  prTime,
   type AskGit
 } from '../src/main/ask-sessions/service'
 import { JsonStore } from '../src/main/core/json-store'
@@ -32,6 +34,7 @@ import { RPC } from '../src/main/mobile/rpc'
 import { MobileServer } from '../src/main/mobile/server'
 import { createFixturesPlatform } from '../src/main/platform'
 import type { AskRunner, RunResult } from '../src/main/services/ask'
+import { spawnRunner } from '../src/main/services/cli-process'
 import { PrintRunner } from '../src/main/services/print-runner'
 import { SessionService } from '../src/main/services/sessions'
 import { appPaths, createMetadataStore, createSettingsStore } from '../src/main/services/store'
@@ -86,8 +89,8 @@ async function setup(
   over: {
     settings?: Partial<AskSessionsSettings>
     answer?: () => string
-    /** No Claude Code found, or the subscription check refused. */
-    cli?: 'missing' | 'refused'
+    /** No Claude Code found, the subscription check refused, or the program couldn't be started. */
+    cli?: 'missing' | 'refused' | 'unstartable'
     git?: AskGit
     /** Each new index host (n counts from 1), e.g. to make the first one fail. */
     onHost?: (h: InProcessHost, n: number) => void
@@ -125,7 +128,21 @@ async function setup(
       over.cli === 'refused'
         ? { ok: false, reason: 'Not signed in with a Claude subscription.' }
         : { ok: true, method: 'claude.ai' },
-    runner: fake.runner
+    // "unstartable": the program found earlier is gone, so its process never starts.
+    runner:
+      over.cli === 'unstartable'
+        ? () => ({
+            done: Promise.resolve({
+              stdout: '',
+              stderr: 'spawn C:\\claude\\claude.exe ENOENT',
+              code: null,
+              timedOut: false,
+              cancelled: false,
+              notStarted: true
+            }),
+            cancel: () => undefined
+          })
+        : fake.runner
   })
   let ask: AskSessionsSettings = {
     ...DEFAULT_ASK_SESSIONS,
@@ -576,6 +593,104 @@ describe('review fixes (PR #50)', () => {
     const apr = await service.ask('which pull requests did I open in April 2025')
     if (apr.mode !== 'local') throw new Error('not local')
     expect(apr.item.local?.table?.rows).toEqual([])
+  })
+})
+
+describe('second review fixes (PR #50)', () => {
+  it('a Claude Code that could not be started sends nothing and is looked for again', async () => {
+    const { service, fake } = await setup({ cli: 'unstartable' })
+    const r = await service.ask('why did Safari users get stuck in a redirect loop?')
+    if (r.mode !== 'content' || !r.preview) throw new Error('no preview')
+    const item = await service.send(r.preview.id, {
+      keep: ['S1'],
+      model: 'sonnet',
+      effort: 'default'
+    })
+    expect(item.ok).toBe(false)
+    expect(item.sent).toBeUndefined()
+    expect(item.error).toMatch(/couldn't be started.*Nothing was sent/)
+    expect(fake.calls).toEqual([])
+
+    // The runner forgets the CLI it found, so the next run looks for it again.
+    let finds = 0
+    const runner = new PrintRunner({
+      findCli: async () => (
+        finds++,
+        { kind: 'native', path: 'C:\\gone\\claude.exe', label: 'Windows' }
+      ),
+      checkAuth: async () => ({ ok: true, method: 'claude.ai' }),
+      runner: () => ({
+        done: Promise.resolve({
+          stdout: '',
+          stderr: 'spawn ENOENT',
+          code: null,
+          timedOut: false,
+          cancelled: false,
+          notStarted: true
+        }),
+        cancel: () => undefined
+      })
+    })
+    const opts = {
+      cwd: join(root, 'ask'),
+      timeoutMs: 5000,
+      command: (): AskCommand => ({ command: 'claude', args: ['-p'], shell: false })
+    }
+    expect(await runner.run(runner.newRequest(), 'q', opts)).toMatchObject({ kind: 'refused' })
+    await runner.run(runner.newRequest(), 'q', opts)
+    expect(finds).toBe(2)
+  })
+
+  it('the real process runner says when a program never started', async () => {
+    const opts = { cwd: root, timeoutMs: 10_000 }
+    const missing = join(root, 'no-such-folder', 'claude.exe')
+    const exe = await spawnRunner({ command: missing, args: ['-p'], shell: false }, 'q', opts).done
+    expect(exe.notStarted).toBe(true)
+    // A .cmd shim runs through the shell, which would start anyway: the file is checked first.
+    const shim = join(root, 'no-such-folder', 'claude.cmd')
+    const cmd = await spawnRunner({ command: `"${shim}"`, args: ['-p'], shell: true }, 'q', opts)
+      .done
+    expect(cmd.notStarted).toBe(true)
+    // A program that runs: started, whatever its exit code.
+    const ran = await spawnRunner(
+      { command: process.execPath, args: ['-e', 'process.exit(3)'], shell: false },
+      '',
+      opts
+    ).done
+    expect(ran.notStarted).toBeUndefined()
+    expect(ran.code).toBe(3)
+  })
+
+  it("a PR's time comes from its own repo, never from another repo's PR with the same number", () => {
+    const shownA = Date.parse('2025-03-10T12:00:00Z')
+    const shownB = Date.parse('2025-05-01T12:00:00Z')
+    const merged = Date.parse('2025-03-20T12:00:00Z')
+    // The session printed repo-b's #8 (in May) and repo-a's #7.
+    const seen = [
+      { number: 7, url: 'https://github.com/o/repo-a/pull/7', at: shownA },
+      { number: 8, url: 'https://github.com/o/repo-b/pull/8', at: shownB }
+    ]
+    const commits = [{ at: merged, pr: 8 }]
+    // repo-a's #8 (from its merge commit): its merge time, not repo-b's #8's.
+    expect(
+      prTime({ number: 8, url: 'https://github.com/o/repo-a/pull/8', via: 'merge' }, seen, commits)
+    ).toBe(merged)
+    // The same PR written another way still matches.
+    expect(
+      prTime({ number: 7, url: 'https://GitHub.com/O/Repo-A/pull/7/', via: 'session' }, seen, [])
+    ).toBe(shownA)
+    expect(
+      prTime(
+        { number: 8, url: 'https://github.com/o/repo-b/pull/8', via: 'session' },
+        seen,
+        commits
+      )
+    ).toBe(shownB)
+    // A session PR of another repo never takes a merge commit's time (that number is this repo's).
+    expect(
+      prTime({ number: 8, url: 'https://github.com/x/other/pull/8', via: 'session' }, [], commits)
+    ).toBeUndefined()
+    expect(prKey('https://github.com/O/R/pulls/12')).toBe('o/r#12')
   })
 })
 

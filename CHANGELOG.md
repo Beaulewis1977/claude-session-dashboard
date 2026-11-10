@@ -1,5 +1,35 @@
 # Changelog
 
+## 1.16.0 (November 10, 2026)
+
+**Ask across all sessions.**
+
+### Ask across all sessions (PR #50)
+
+- Ask questions about your whole Claude Code, Codex and Claude desktop (and Cowork, when that
+  source is on) history from the new Ask screen (sidebar, Ctrl+Shift+K or the command palette).
+- **Local questions** about facts the app already has (counts, dates, models, usage, spend,
+  limits, plans, commits, PRs, files touched) are answered on your PC with nothing sent, and show
+  how they were computed. They work even while content questions are off.
+- **Content questions** are off until you turn them on in Settings → Ask. They search a local
+  keyword index (built in a background worker after you turn Ask on, saved in the app's cache) and
+  are answered by Claude through your own CLI:
+  - a preview of exactly which snippets are sent (untick any snippet or session, see the exact
+    text), with common secret shapes masked;
+  - the 5-hour limit guard (the preview warns above the pause line); usage is recorded as
+    "Ask (dashboard)";
+  - citations that open the exact message or commit; statements without a source are removed
+    and listed, and "Not found in your sessions" when nothing supports an answer.
+- Model and effort pickers next to Send (defaults in Settings → Ask, remembered for the next
+  question), scope filters (agents, sources, environment, dates, projects, subagents, hidden),
+  suggested questions, Copy with numbered sources, a searchable history you can delete from item by
+  item, and Back/Forward support.
+- Settings → Ask: on/off, default model and effort, snippet limits, index size limit, Rebuild and
+  Delete index.
+- **Phone:** an Ask tab with your past answers. Local questions are answered directly; content
+  questions are sent to the PC for approval and nothing goes to Claude until you review the
+  preview there and click Send (expires after 15 minutes).
+
 ## 1.15.2 (November 10, 2026)
 
 **Back and Forward.** (1.15.1 was built but not released: its title-bar buttons didn't take

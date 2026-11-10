@@ -2,7 +2,7 @@
 
 Ideas to build next, with the details and a ready-to-paste prompt for each.
 
-**Current state (Nov 10, 2026):** v1.15.2 installed. It includes:
+**Current state (Nov 10, 2026):** v1.16.0 installed. It includes:
 
 - session browsing, names synced from `/rename`, and per-session model and effort;
 - live limits, usage tracking, and limit-health detection;
@@ -12,9 +12,10 @@ Ideas to build next, with the details and a ready-to-paste prompt for each.
 - Codex support (sessions, usage and limits, Running now, summaries) and Open in Codex app;
 - git links (the commits, files and PRs each session produced);
 - remote continuity (no duplicate terminals between PC and phone) and Claude desktop sessions;
-- Back and Forward navigation on the desktop and the phone.
+- Back and Forward navigation on the desktop and the phone;
+- Ask across all sessions (local answers, and cited Claude answers from a local index).
 
-Next up: #7 Ask across all sessions (in review: PR #50).
+**All roadmap features (#1–#7) are complete.** What remains is the loose ends list at the end.
 
 ---
 
@@ -378,10 +379,10 @@ Run typecheck, lint, tests and the build. Commit, push the branch and open a PR 
   source, optional Cowork source) (PR #44, v1.15.0)
 - ✅ Back/forward navigation (title-bar buttons, Alt+arrows, Backspace, mouse side buttons, phone
   back gesture) (PRs #46, #48, v1.15.2)
+- ✅ #7 Ask across all sessions (PR #50, v1.16.0)
+- ✅ **All roadmap features (#1–#7) complete**
 
-**Next up:**
-
-1. #7 Ask across all sessions: in review (PR #50).
+**Next up:** no new features planned; the loose ends below.
 
 **#7 known limits:**
 
@@ -394,9 +395,13 @@ Run typecheck, lint, tests and the build. Commit, push the branch and open a PR 
 - Local questions are rule-based: one with words the router doesn't know goes to the content path
   (a preview, nothing sent without Send), and "Ask Claude instead" covers a misread local one.
 - A session that keeps growing is indexed again at most every 30 seconds.
+- The saved index is JSON with base64-packed text and postings: about 40 MB for a history of
+  ~2,500 sessions.
 
 **Loose ends:**
 
+- Tests: `summarize-dialog.browser.test.ts` (preparation progress) can hit its 15 s timeout under
+  full-suite load; it passes alone.
 - Startup (left after the loose-ends PR): the main process can still be busy for up to ~0.4 s at a
   time during the first scan (indexing one very big session, pure-JS zstd decompression). Moving
   parsing and indexing to a worker thread would remove that.

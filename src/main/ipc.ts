@@ -474,7 +474,7 @@ export function registerIpc(deps: IpcDeps): void {
   handle('launch:run', (_e, opts) => deps.launcher.launch(launchOpts(opts)))
   // Which Codex models offer fast mode (read only from Codex's models_cache.json; null: unknown).
   handle('launch:fastModels', async () => ({
-    codex: (await deps.launcher.codexFastModels?.get().catch(() => null)) ?? null
+    codex: (await deps.launcher.codexFastModels?.get().catch(() => undefined)) ?? {}
   }))
   handle('launch:openInAgentApp', async (_e, key) => {
     const s = sessions.get(str(key, 'key'))

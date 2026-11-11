@@ -98,7 +98,7 @@ useApp.setState({
   sessions: [start],
   loaded: true,
   resume,
-  codexFastModels: codex ? ['gpt-6-sol'] : null,
+  codexFastModels: codex ? { browser: ['gpt-6-sol'] } : null,
   codexLimits: codex ? { fiveHour: { pct: Number(q.get('pct') ?? 10), expired: false } } : null
 })
 window.store = useApp

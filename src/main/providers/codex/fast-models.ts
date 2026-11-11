@@ -44,33 +44,37 @@ interface Cached {
   models?: string[]
 }
 
+/** A Codex source (its id) and the home whose model list it uses. */
+export interface CodexHomeRef {
+  sourceId: string
+  home: string
+}
+
 /**
- * The Fast models of every Codex home given (one account's homes list the
- * same models; the union is used). Null when no home's list could be read:
- * then the app can't tell, and shows Fast with a note instead of hiding it.
+ * Per Codex source, the Fast models of its own home's list. Null for a home
+ * whose list can't be read: then the app can't tell for that home's sessions
+ * and shows Fast with a note instead of hiding it. Another home's list is
+ * never used in its place (homes can run different Codex versions or accounts).
  */
+export type CodexFastBySource = Record<string, string[] | null>
+
 export class CodexFastModels {
   private cache = new Map<string, Cached>()
-  private last: string[] | null = null
+  private last: CodexFastBySource | null = null
 
-  constructor(private readonly homes: () => string[]) {}
+  constructor(private readonly homes: () => CodexHomeRef[]) {}
 
-  /** The last answer, without reading anything. */
-  latest(): string[] | null {
+  /** The last answer, without reading anything (null: not read yet). */
+  latest(): CodexFastBySource | null {
     return this.last
   }
 
-  async get(): Promise<string[] | null> {
-    const all = new Set<string>()
-    let any = false
-    for (const home of new Set(this.homes())) {
-      const models = await this.read(join(home, MODELS_CACHE))
-      if (!models) continue
-      any = true
-      for (const m of models) all.add(m)
-    }
-    this.last = any ? [...all].sort() : null
-    return this.last
+  async get(): Promise<CodexFastBySource> {
+    const out: CodexFastBySource = {}
+    for (const { sourceId, home } of this.homes())
+      out[sourceId] = (await this.read(join(home, MODELS_CACHE))) ?? null
+    this.last = out
+    return out
   }
 
   private async read(path: string): Promise<string[] | undefined> {

@@ -424,8 +424,18 @@ export class Launcher {
     const model = launchModel(r, s, fresh)
     return withFastSupport(
       r,
-      fastSupport(p.id === 'codex' ? 'codex' : 'claude', model, this.codexFastModels?.latest())
+      fastSupport(
+        p.id === 'codex' ? 'codex' : 'claude',
+        model,
+        // Codex: this session's own home's list (unknown when that home's can't be read).
+        p.id === 'codex' ? (this.codexFastModels?.latest()?.[s.sourceId] ?? null) : null
+      )
     )
+  }
+
+  /** Fast mode chosen for this session (session → project → Settings), before the model check. */
+  private chosenFast(s: SessionSummary): boolean {
+    return resolveModelChoice(s.meta, s, this.modelSettings()).fast === true
   }
 
   /**
@@ -447,17 +457,14 @@ export class Launcher {
    * {"fastMode": true}) and, in WSL, found where the distro mounts the data
    * folder. `verify`: also check the distro can really read the file (a launch).
    */
-  private async prepareFast(
-    s: SessionSummary,
-    opts: Pick<LaunchOptions, 'newSession' | 'continueFresh'>,
-    verify = false
-  ): Promise<void> {
+  private async prepareFast(s: SessionSummary, verify = false): Promise<void> {
     const p = this.provider(s)
     if (p.id === 'codex') {
       await this.codexFastModels?.get().catch(() => null)
       return
     }
-    if (!this.modelChoice(s, opts).fast) return
+    // Fast chosen at all (whatever the model): a branch's own model is known only later.
+    if (!this.chosenFast(s)) return
     const key = this.fastKey(s)
     const set = (v: { path?: string; error?: string }): void => void this.fastFiles.set(key, v)
     const dataDir = this.dataDir
@@ -1119,7 +1126,7 @@ export class Launcher {
     const placed = await timed('preview: placement', this.place(found, opts))
     const s = placed.s
     const cwd = opts.cwdOverride ?? s.cwd
-    await timed('preview: fast mode', this.prepareFast(s, opts))
+    await timed('preview: fast mode', this.prepareFast(s))
     const tools = await timed('preview: terminal and Claude lookup', this.platform.launchTools())
     const { terminal, fellBack } = this.resolveTerminal(
       opts.terminal ?? this.defaultTerminal(),
@@ -1139,7 +1146,15 @@ export class Launcher {
       } catch (err) {
         branchError = (err as Error).message
       }
-      const target = branch ? this.derived(s, { sessionId: branch.newSessionId }) : s
+      // The branch holds the transcript only up to the cut: it resumes on the model of
+      // the last reply it keeps, not on the one the whole session used last.
+      const target = branch
+        ? this.derived(s, {
+            sessionId: branch.newSessionId,
+            lastModel: branch.lastModel,
+            models: branch.lastModel ? [branch.lastModel] : []
+          })
+        : s
       const branchOpts = { ...opts, fork: false, newSession: false }
       const { cmd, error } = this.tryCommand(
         target,
@@ -1168,7 +1183,7 @@ export class Launcher {
           branch ? { ...s, meta: { ...s.meta, name: s.meta.name || branch.name } } : s,
           opts
         )?.name,
-        modelChoice: this.modelChoice(s, branchOpts)
+        modelChoice: this.modelChoice(target, branchOpts)
       }
     }
     if (opts.continueFresh) {
@@ -1433,7 +1448,7 @@ export class Launcher {
     if (opts.remoteControl && opts.billingAccountId) return fail(REMOTE_CONTROL_API_ERROR)
     const cwd = opts.cwdOverride ?? s.cwd
     // A branch is launched by its own launch() below (checked there).
-    await this.prepareFast(s, opts, !opts.branch)
+    await this.prepareFast(s, !opts.branch)
     const tools = await this.platform.launchTools()
     // Create a branch without opening a terminal: the folder doesn't matter yet.
     if (opts.branch?.createOnly) {

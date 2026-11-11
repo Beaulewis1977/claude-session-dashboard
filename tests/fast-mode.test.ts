@@ -5,7 +5,7 @@
 
 import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { buildLaunchCommand, claudeArgs, type LaunchInput } from '../src/main/core/launch'
 import { codexArgs, codexContinueArgs } from '../src/main/providers/codex/launch'
@@ -42,7 +42,8 @@ import {
 } from '@shared/model-choice'
 import { CLAUDE_FAST_API, CLAUDE_FAST_CREDITS, fastNotes } from '@shared/fast-notes'
 import { MOBILE_SAFE_SETTINGS } from '@shared/mobile'
-import { analyzeEvents, parseJsonl } from '@shared/jsonl'
+import { analyzeEvents, buildMessages, parseJsonl } from '@shared/jsonl'
+import { planBranch } from '@shared/branch'
 import { analyzeCodex } from '../src/main/providers/codex/parse'
 import { FIXTURES, TOOLS } from './helpers'
 
@@ -335,6 +336,75 @@ describe('which models show fast mode', () => {
     expect(c.lastModel).toBe('gpt-6-sol')
   })
 
+  it('a branch plan names the model of the last reply it keeps', () => {
+    const ev = (o: Record<string, unknown>) => JSON.stringify({ sessionId: 's', ...o })
+    const text = [
+      ev({
+        type: 'user',
+        uuid: 'u1',
+        timestamp: '2026-11-10T10:00:00Z',
+        message: { role: 'user', content: 'a' }
+      }),
+      ev({
+        type: 'assistant',
+        uuid: 'a1',
+        parentUuid: 'u1',
+        timestamp: '2026-11-10T10:00:01Z',
+        message: {
+          id: 'm1',
+          role: 'assistant',
+          model: 'claude-opus-5-5',
+          content: [{ type: 'text', text: 'x' }]
+        }
+      }),
+      ev({
+        type: 'user',
+        uuid: 'u2',
+        parentUuid: 'a1',
+        timestamp: '2026-11-10T10:01:00Z',
+        message: { role: 'user', content: 'b' }
+      }),
+      ev({
+        type: 'assistant',
+        uuid: 'a2',
+        parentUuid: 'u2',
+        timestamp: '2026-11-10T10:01:01Z',
+        message: {
+          id: 'm2',
+          role: 'assistant',
+          model: 'claude-sonnet-5-5',
+          content: [{ type: 'text', text: 'y' }]
+        }
+      })
+    ].join('\n')
+    const events = parseJsonl(text).events
+    const msgs = buildMessages(events).filter((m) => m.role === 'assistant')
+    const first = planBranch(events, msgs[0].id, 'include')
+    expect(first).toMatchObject({ ok: true, lastModel: 'claude-opus-5-5' })
+    const all = planBranch(events, msgs[1].id, 'include')
+    expect(all).toMatchObject({ ok: true, lastModel: 'claude-sonnet-5-5' })
+    // Nothing but the first prompt kept: no reply, no model.
+    const before = planBranch(events, msgs[0].id, 'before')
+    expect(before.ok && before.lastModel).toBeFalsy()
+  })
+
+  it("keeps each Codex home's list apart; an unreadable one stays unknown", async () => {
+    const a = join(root, 'home-a')
+    const b = join(root, 'home-b')
+    await mkdir(a, { recursive: true })
+    await writeFile(
+      join(a, 'models_cache.json'),
+      JSON.stringify({ models: [{ slug: 'gpt-6-sol', service_tiers: [{ id: 'priority' }] }] })
+    )
+    const reader = new CodexFastModels(() => [
+      { sourceId: 'win', home: a },
+      { sourceId: 'wsl', home: b }
+    ])
+    expect(reader.latest()).toBeNull()
+    expect(await reader.get()).toEqual({ win: ['gpt-6-sol'], wsl: null })
+    expect(fastSupport('codex', 'gpt-6-sol', reader.latest()!.wsl)).toBe('unknown')
+  })
+
   it("reads Codex's models_cache.json shape", () => {
     expect(
       fastModelsFrom({
@@ -422,7 +492,7 @@ async function setup(opts: { codex?: boolean } = {}) {
   launcher.codexFastModels = new CodexFastModels(() =>
     sessions.sources
       .filter((s) => s.provider === 'codex' && s.status === 'ok')
-      .map((s) => codexHomeOf(s))
+      .map((s) => ({ sourceId: s.id, home: codexHomeOf(s) }))
   )
   await sessions.start()
   await sessions.idle()
@@ -655,5 +725,85 @@ describe('Launcher: every launch path passes fast mode', () => {
     })
     p = await launcher.preview({ key: s!.key, fork: false, skipPermissions: false })
     expect(p.commandLine).toContain('service_tier=fast')
+
+    // A home whose list can't be read (the WSL sample has none) is never judged by the
+    // Windows home's list: unknown there, so the flag stays even for a model that list lacks.
+    const w = sessions.list().find((x) => x.provider === 'codex' && x.env === 'wsl')
+    expect(w, 'a WSL Codex sample session').toBeDefined()
+    expect(launcher.codexFastModels!.latest()).toMatchObject({
+      [s!.sourceId]: ['gpt-6-sol'],
+      [w!.sourceId]: null
+    })
+    sessions.updateMeta(w!.key, { fast: 'on', model: 'gpt-5.3-codex-spark' })
+    const pw = await launcher.preview({ key: w!.key, fork: false, skipPermissions: false })
+    expect(pw.modelChoice?.fast).toBe(true)
+    expect(pw.claudeCommand).toContain('-m gpt-5.3-codex-spark -c service_tier=fast')
+  })
+
+  it('Branch from here: the branch keeps the Fast choice, and goes by the model it keeps', async () => {
+    const { sessions, launcher, metadata } = await setup()
+    const s = sessions.list().find((x) => x.sessionId === ID)!
+    // A session that ran on Opus 5.5, then moved to Sonnet 4.5 (no fast mode).
+    const id = 'f0f0f0f0-0000-4000-8000-0000000000aa'
+    const line = (o: Record<string, unknown>) =>
+      JSON.stringify({ sessionId: id, cwd: s.cwd, version: '2.1.322', ...o })
+    const say = (uuid: string, parent: string | null, t: string, text: string) =>
+      line({
+        type: 'user',
+        uuid,
+        parentUuid: parent,
+        timestamp: t,
+        message: { role: 'user', content: text }
+      })
+    const reply = (uuid: string, parent: string, t: string, model: string) =>
+      line({
+        type: 'assistant',
+        uuid,
+        parentUuid: parent,
+        timestamp: t,
+        message: {
+          id: `msg_${uuid}`,
+          role: 'assistant',
+          model,
+          content: [{ type: 'text', text: 'Done.' }]
+        }
+      })
+    const text = [
+      say('u1', null, '2026-11-10T10:00:00Z', 'Fix the login loop'),
+      reply('a1', 'u1', '2026-11-10T10:00:05Z', 'claude-opus-5-5'),
+      say('u2', 'a1', '2026-11-10T10:01:00Z', 'Now the tests'),
+      reply('a2', 'u2', '2026-11-10T10:01:05Z', 'claude-sonnet-4-5-20250929')
+    ].join('\n')
+    const path = join(dirname(s.originalPath), `${id}.jsonl`)
+    await writeFile(path, text + '\n')
+    const two = (await sessions.loadNew(s.sourceId, path))!
+    expect(two.lastModel).toBe('claude-sonnet-4-5-20250929')
+    sessions.updateMeta(two.key, { fast: 'on' })
+
+    // Resuming it continues on Sonnet: no flag.
+    const r = await launcher.preview({ key: two.key, fork: false, skipPermissions: false })
+    expect(r.claudeCommand).not.toContain('--settings')
+    // A branch at the Opus reply keeps only that part: it resumes on Opus 5.5, so fast applies.
+    const detail = await sessions.detail(two.key)
+    const opusReply = detail!.messages.find((m) => m.role === 'assistant')!.id
+    const at = { at: opusReply, mode: 'include' as const }
+    const b = await launcher.preview({
+      key: two.key,
+      fork: false,
+      skipPermissions: false,
+      branch: at
+    })
+    expect(b.branchError).toBeUndefined()
+    expect(b.branch?.lastModel).toBe('claude-opus-5-5')
+    expect(b.modelChoice?.fast).toBe(true)
+    expect(b.claudeCommand).toContain('fast-mode.json')
+
+    // Creating it: the new session keeps the parent's own Fast choice (On, then Off).
+    for (const fast of ['on', 'off'] as const) {
+      sessions.updateMeta(two.key, { fast })
+      const created = await launcher.branches.create(sessions.get(two.key)!, at)
+      expect(metadata.value.sessions[sessions.metaKeyOf(created)]?.fast, fast).toBe(fast)
+      expect(created.lastModel).toBe('claude-opus-5-5')
+    }
   })
 })

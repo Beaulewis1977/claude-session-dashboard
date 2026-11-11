@@ -602,7 +602,7 @@ async function main(): Promise<void> {
   launcher.codexFastModels = new CodexFastModels(() =>
     sessions.sources
       .filter((src) => src.provider === 'codex' && src.status === 'ok')
-      .map((src) => codexHomeOf(src))
+      .map((src) => ({ sourceId: src.id, home: codexHomeOf(src) }))
   )
   // "Open in Codex app" (Windows): reads the app's project list, opens codex:// links.
   launcher.codexApp = {

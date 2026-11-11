@@ -88,7 +88,7 @@ export interface State {
   /** Codex's plan limits, from its logs (null until loaded, or when Codex is off). */
   codexLimits: CodexLimitsState | null
   /** Codex models that offer fast mode (null: not known, Fast is then shown with a note). */
-  codexFastModels: string[] | null
+  codexFastModels: Record<string, string[] | null> | null
   credits: CreditsState | null
   /** Running now (null until loaded). */
   live: LiveSnapshot | null

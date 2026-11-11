@@ -48,7 +48,7 @@ export function useLiveData(enabled = true): void {
         // Which Codex models offer fast mode (cheap: the file is read again only when it changed).
         Promise.resolve()
           .then(() => api.getFastModels())
-          .catch(() => ({ codex: null }))
+          .catch(() => ({ codex: null }) as const)
       ])
       set({ limits, codexLimits, codexFastModels: fast.codex })
     }

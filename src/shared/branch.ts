@@ -32,6 +32,11 @@ export interface BranchPlanOk {
   snapTools: string[]
   keptMessages: number
   totalMessages: number
+  /**
+   * The model of the last reply the branch keeps (main thread only): what
+   * resuming the branch runs on without --model. Undefined: no reply kept.
+   */
+  lastModel?: string
 }
 
 export type BranchPlan = BranchPlanOk | { ok: false; error: string }
@@ -210,9 +215,17 @@ export function planBranch(
     }
   }
   if (!at) return { ok: false, error: 'There is nothing to keep before this point.' }
+  let lastModel: string | undefined
+  for (let i = 0; i <= end; i++) {
+    const e = events[i]
+    if (str(e.type) !== 'assistant' || e.isSidechain === true) continue
+    const model = str(rec(e.message)?.model)
+    if (model && model !== '<synthetic>') lastModel = model
+  }
   return {
     ok: true,
     endIndex: end,
+    ...(lastModel ? { lastModel } : {}),
     atMessageId: at.id,
     atRole: at.role as 'user' | 'assistant',
     atPreview: messagePreview(at),

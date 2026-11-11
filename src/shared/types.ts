@@ -633,6 +633,8 @@ export interface BranchPreview {
   keptMessages: number
   totalMessages: number
   name: string
+  /** The model of the last reply the branch keeps (undefined: none). */
+  lastModel?: string
 }
 
 export interface LaunchPreview {

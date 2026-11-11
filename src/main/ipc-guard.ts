@@ -5,6 +5,7 @@
 
 import { BrowserWindow, ipcMain, type IpcMainInvokeEvent } from 'electron'
 import { isAppPage } from './core/app-url'
+import { timedCall } from './timing'
 
 let page: { indexFile: string; devUrl?: string } | undefined
 
@@ -33,7 +34,7 @@ export function handle(channel: string, listener: Listener): void {
   listeners.set(channel, listener)
   ipcMain.handle(channel, (e, ...args) => {
     if (!trusted(e)) throw new Error(`Refused ${channel}: not from the app's own page`)
-    return listener(e, ...args)
+    return timedCall(channel, () => listener(e, ...args))
   })
 }
 

@@ -12,10 +12,11 @@ export function mark(label: string): void {
 }
 
 /**
- * For the first `forMs` after start: every second in which the main process's
- * event loop was held up by more than 100 ms (synchronous work), how long.
+ * For the first `forMs` after start (CSD_TIMING_LOOP_MS, default a minute):
+ * every second in which the main process's event loop was held up by more
+ * than 50 ms (synchronous work), how long.
  */
-export function watchEventLoop(forMs = 60_000): void {
+export function watchEventLoop(forMs = Number(process.env.CSD_TIMING_LOOP_MS) || 60_000): void {
   if (!ON) return
   let last = performance.now()
   let worst = 0
@@ -25,7 +26,7 @@ export function watchEventLoop(forMs = 60_000): void {
     last = now
   }, 50)
   const report = setInterval(() => {
-    if (worst > 100)
+    if (worst > 50)
       console.log(
         `[timing] event loop held up to ${Math.round(worst)} ms (at ${Math.round(performance.now() - T0)} ms)`
       )
@@ -71,4 +72,39 @@ export async function timed<T>(label: string, work: Promise<T>): Promise<T> {
   } finally {
     console.log(`[timing] ${label}: ${Math.round(performance.now() - t)} ms`)
   }
+}
+
+/** IPC answers bigger than this are logged (with CSD_TIMING=1). */
+const BIG_ANSWER = 256 * 1024
+
+/**
+ * With CSD_TIMING=1: an IPC handler's time (the synchronous part, which holds
+ * up the main process, and the whole call) and the size of its answer, when it
+ * took more than 50 ms or answered more than 256 KB. Only the channel name and
+ * the numbers are printed. Off: the handler is called as is.
+ */
+export function timedCall(channel: string, call: () => unknown): unknown {
+  if (!ON) return call()
+  const t = performance.now()
+  const res = call()
+  const sync = performance.now() - t
+  const report = (value: unknown): void => {
+    const total = performance.now() - t
+    let size = 0
+    try {
+      size = value === undefined ? 0 : (JSON.stringify(value)?.length ?? 0)
+    } catch {
+      // Not JSON (structured clone only): size unknown.
+    }
+    if (total > 50 || sync > 50 || size > BIG_ANSWER)
+      console.log(
+        `[timing] ipc ${channel}: ${Math.round(total)} ms (sync ${Math.round(sync)} ms), ${Math.round(size / 1024)} KB`
+      )
+  }
+  if (res instanceof Promise) {
+    void res.then(report, () => undefined)
+    return res
+  }
+  report(res)
+  return res
 }

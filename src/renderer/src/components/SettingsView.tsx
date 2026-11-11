@@ -347,20 +347,23 @@ export function SettingsView() {
             />
           </Row>
           <Row
-            label="Model and effort"
+            label="Model, effort and fast mode"
             hint={
               <>
-                <span className="font-mono">--model</span> and{' '}
-                <span className="font-mono">--effort</span> for every launch. A session&apos;s own
-                choice wins, then its project&apos;s. Default adds no flag.
+                <span className="font-mono">--model</span>,{' '}
+                <span className="font-mono">--effort</span> and fast mode for every launch. A
+                session&apos;s own choice wins, then its project&apos;s. Default and Off add no
+                flag.
               </>
             }
           >
             <DefaultModelPickers
               model={settings.defaultModel}
               effort={settings.defaultEffort}
+              fast={settings.defaultFast}
               onModel={(defaultModel) => void update({ defaultModel })}
               onEffort={(defaultEffort) => void update({ defaultEffort })}
+              onFast={(defaultFast) => void update({ defaultFast })}
             />
           </Row>
           {Object.keys(settings.projectModels).length > 0 && (
@@ -376,7 +379,8 @@ export function SettingsView() {
                   <span>
                     {choiceLabel({
                       model: d.model !== DEFAULT_CHOICE ? d.model : undefined,
-                      effort: isEffortLevel(d.effort) ? d.effort : undefined
+                      effort: isEffortLevel(d.effort) ? d.effort : undefined,
+                      fast: d.fast === 'on'
                     }) || "Claude Code's default"}
                   </span>
                   <Button

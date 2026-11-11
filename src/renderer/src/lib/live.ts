@@ -40,13 +40,17 @@ export function useLiveData(enabled = true): void {
     if (!enabled) return
     // Claude Code's and Codex's limits, loaded together (one change event for both).
     const loadLimits = async (): Promise<void> => {
-      const [limits, codexLimits] = await Promise.all([
+      const [limits, codexLimits, fast] = await Promise.all([
         api.getLimits(),
         Promise.resolve()
           .then(() => api.getCodexLimits())
-          .catch(() => null)
+          .catch(() => null),
+        // Which Codex models offer fast mode (cheap: the file is read again only when it changed).
+        Promise.resolve()
+          .then(() => api.getFastModels())
+          .catch(() => ({ codex: null }))
       ])
-      set({ limits, codexLimits })
+      set({ limits, codexLimits, codexFastModels: fast.codex })
     }
     const loadCredits = async (): Promise<void> => set({ credits: await api.getCredits() })
     void loadLimits()

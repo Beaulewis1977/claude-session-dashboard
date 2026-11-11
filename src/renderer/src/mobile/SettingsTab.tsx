@@ -181,7 +181,7 @@ export function SettingsTab() {
           />
         </Line>
         <div className="px-4 py-2.5">
-          <div className="text-[15px]">Model and effort</div>
+          <div className="text-[15px]">Model, effort and fast mode</div>
           <div className="mt-0.5 mb-2 text-[12px] leading-snug text-muted-foreground">
             For sessions without their own choice (or a project default). Default lets Claude Code
             decide.
@@ -189,8 +189,10 @@ export function SettingsTab() {
           <DefaultModelPickers
             model={settings.defaultModel}
             effort={settings.defaultEffort}
+            fast={settings.defaultFast}
             onModel={(defaultModel) => void update({ defaultModel })}
             onEffort={(defaultEffort) => void update({ defaultEffort })}
+            onFast={(defaultFast) => void update({ defaultFast })}
           />
         </div>
       </Card>

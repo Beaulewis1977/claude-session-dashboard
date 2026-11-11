@@ -780,7 +780,7 @@
      "abs": "<ROOT>/.fixtures-data/appdata/usage/index.json",
      "mtimeMs": "<file-time>",
      "rel": "usage/index.json",
-     "size": 35817
+     "size": 35828
     },
     {
      "abs": "<ROOT>/.fixtures-data/appdata/usage/limit-hits.ndjson",
@@ -983,7 +983,7 @@
    "limits-history.ndjson": "de42daad517e2271",
    "metadata.json": "fdd54053fefa4ef4",
    "settings.json": "0041b0049aeb49c1",
-   "usage/index.json": "7d7a32cf9e9e66df",
+   "usage/index.json": "a69b3e7b53708894",
    "usage/limit-hits.ndjson": "68ac78f76abe281a",
    "usage/records-2026-07.ndjson": "7fd633480c62ef13",
    "usage/records-2026-08.ndjson": "ebde7921c00ff503",

@@ -263,6 +263,43 @@ describe('UsageService', () => {
     expect(again.allRecords()).toHaveLength(n)
   })
 
+  it('still replaces old records after a restart interrupted the re-read', async () => {
+    const { make, paths, sessions } = await setup()
+    const usage = make()
+    await usage.start()
+    await usage.idle()
+    const n = usage.allRecords().length
+    const live = usage.allRecords()[0]
+    const dir = join(paths.dataDir, 'usage')
+    const idx = JSON.parse(await readFile(join(dir, 'index.json'), 'utf8'))
+    await writeFile(join(dir, 'index.json'), JSON.stringify({ ...idx, version: 1 }))
+    // An old-style id that a new read of the session won't produce again.
+    const old = JSON.stringify({ ...live, id: 'msg_old_style', mid: undefined, sid: undefined })
+    await appendFile(join(dir, 'records-2026-10.ndjson'), `${old}\n`)
+    // First start after the update: that session can't be read; the others can.
+    const file = sessions.get(live.key)!.filePath
+    const first = make()
+    const svc = first as unknown as { readUsage: (p: string, s: unknown) => Promise<unknown> }
+    const read = svc.readUsage
+    svc.readUsage = function (this: unknown, p: string, s: unknown) {
+      return p === file ? Promise.resolve(undefined) : read.call(this, p, s)
+    }
+    await first.start()
+    await first.idle()
+    expect(first.allRecords().map((r) => r.id)).toContain('msg_old_style')
+    const saved = JSON.parse(await readFile(join(dir, 'index.json'), 'utf8'))
+    expect(saved.stale).toContain(live.key)
+    // Restart: the session is read now, and its old record is replaced, not kept.
+    const second = make()
+    await second.start()
+    await second.idle()
+    const ids = second.allRecords().map((r) => r.id)
+    expect(ids).not.toContain('msg_old_style')
+    expect(ids).toHaveLength(n)
+    const after = JSON.parse(await readFile(join(dir, 'index.json'), 'utf8'))
+    expect(after.stale).not.toContain(live.key)
+  })
+
   it('loads the generated usage history for fixtures mode', async () => {
     const { make } = await setup(true)
     const usage = make()

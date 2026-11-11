@@ -57,6 +57,12 @@ interface IndexFile {
   version: number
   /** Keyed by session key: the signature of what was parsed last. */
   sessions: Record<string, string>
+  /**
+   * Sessions whose saved records an older parser made and that haven't been
+   * read again yet: saved, so a restart in the middle of the re-read still
+   * replaces their records (instead of adding to them) when they are read.
+   */
+  stale?: string[]
 }
 
 export interface UsageSettings {
@@ -351,8 +357,12 @@ export class UsageService extends EventEmitter<{ changed: []; 'codex-progress': 
     let current = true
     try {
       const idx = JSON.parse(await readFile(join(dir, 'index.json'), 'utf8')) as IndexFile
-      if (idx.version === INDEX_VERSION && idx.sessions) this.index = idx
-      else current = false
+      if (idx.version === INDEX_VERSION && idx.sessions) {
+        this.index = { version: idx.version, sessions: idx.sessions }
+        // A re-read that a restart interrupted: those sessions are still stale.
+        if (Array.isArray(idx.stale))
+          for (const k of idx.stale) if (typeof k === 'string') this.stale.add(k)
+      } else current = false
     } catch {
       // first run
     }
@@ -365,7 +375,11 @@ export class UsageService extends EventEmitter<{ changed: []; 'codex-progress': 
     this.records = new UsageDeduper(loaded)
     // Records from an older parser are replaced session by session as each
     // session is parsed again. Sessions whose files are gone keep theirs.
-    if (!current) for (const r of loaded) this.stale.add(r.key)
+    if (!current) {
+      for (const r of loaded) this.stale.add(r.key)
+      // Save the list with the new version at once (see IndexFile.stale).
+      this.indexDirty = true
+    }
     for (const f of await listFiles(dir, /^turns-\d{4}-\d{2}\.ndjson$/)) {
       for (const t of await readNdjson<TurnSample>(join(dir, f))) {
         if (t && typeof t.id === 'string' && typeof t.ts === 'number') this.turns.set(t.id, t)
@@ -471,7 +485,10 @@ export class UsageService extends EventEmitter<{ changed: []; 'codex-progress': 
         const main = await this.readUsage(s.filePath, s)
         const subs = await Promise.all(subagents.map((f) => this.readUsage(f, s)))
         const ok = main !== undefined && subs.every((a) => a !== undefined)
-        if (ok && this.stale.delete(s.key)) this.purge(s.key)
+        if (ok && this.stale.delete(s.key)) {
+          this.purge(s.key)
+          this.indexDirty = true
+        }
         if (main) this.apply(main)
         for (const a of subs) if (a) this.apply(a)
         if (s.availability === 'live') await this.archiveSubagents(s, subagents)
@@ -649,7 +666,8 @@ export class UsageService extends EventEmitter<{ changed: []; 'codex-progress': 
       }
       if (this.indexDirty) {
         this.indexDirty = false
-        await writeFileAtomic(join(dir, 'index.json'), JSON.stringify(this.index), dataDir)
+        const index: IndexFile = { ...this.index, stale: [...this.stale].sort() }
+        await writeFileAtomic(join(dir, 'index.json'), JSON.stringify(index), dataDir)
       }
       await this.codex.flush(dir, dataDir)
     } catch (err) {

@@ -39,11 +39,24 @@ export function thinkingTokens(r: UsageRecord): number {
 
 /** A response's output speed in tokens per second, or undefined when it says nothing. */
 export function outputSpeed(r: UsageRecord): number | undefined {
+  const v = outputSpeedOrNone(r)
+  return v === NO_SPEED ? undefined : v
+}
+
+/**
+ * "No speed" for outputSpeedOrNone. A real speed never is: it's worked out
+ * from an output of at least SPEED_MIN_OUTPUT (or one that isn't a number,
+ * giving NaN, which is passed on as it is).
+ */
+export const NO_SPEED = -Infinity
+
+/** outputSpeed, NO_SPEED for none (always a number: a hot loop gets it without a box). */
+export function outputSpeedOrNone(r: UsageRecord): number {
   const ms = r.genMs
-  if (ms === undefined || !Number.isFinite(ms)) return undefined
-  if (r.output < SPEED_MIN_OUTPUT || ms < SPEED_MIN_MS || ms > SPEED_MAX_MS) return undefined
+  if (ms === undefined || !Number.isFinite(ms)) return NO_SPEED
+  if (r.output < SPEED_MIN_OUTPUT || ms < SPEED_MIN_MS || ms > SPEED_MAX_MS) return NO_SPEED
   const tps = r.output / (ms / 1000)
-  return tps > SPEED_MAX_TPS ? undefined : tps
+  return tps > SPEED_MAX_TPS ? NO_SPEED : tps
 }
 
 /** Speed without thinking / reasoning tokens (same time, same responses as outputSpeed). */

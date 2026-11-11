@@ -12,6 +12,7 @@ import { buildReport, breakdown, emptyTotals, addRecord, toCsv } from '@shared/u
 import { UsageDeduper } from '@shared/usage/dedupe'
 import { estimateCost, type ModelPrice } from '@shared/usage/pricing'
 import { localTimeZone } from '@shared/usage/time'
+import { mergeByTime } from '@shared/usage/merge'
 import {
   buildSpeedTrends,
   speedSignal,
@@ -237,7 +238,7 @@ export class UsageService extends EventEmitter<{ changed: []; 'codex-progress': 
     const codex = this.codexRecords()
     const m = this.merged
     if (m && m.claude === claude && m.codex === codex) return m.list
-    const list = [...claude, ...codex].sort((a, b) => a.ts - b.ts)
+    const list = mergeByTime(claude, codex)
     this.merged = { claude, codex, list }
     return list
   }
@@ -542,6 +543,8 @@ export class UsageService extends EventEmitter<{ changed: []; 'codex-progress': 
       }
     } finally {
       this.parsing = false
+      // The parser thread's heap (big rollouts leave a big one) goes soon after a scan.
+      this.parser.rest?.()
     }
     if (changed || force) {
       this.invalidate()

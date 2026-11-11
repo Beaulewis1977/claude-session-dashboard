@@ -72,16 +72,20 @@ export type OnBranch = (messageId: string, mode: 'include' | 'before') => void
 
 /**
  * Blocks with every cut tool output filled in (see transcript-cut.ts): what
- * a message's Copy actions copy, never the viewer's shortened outputs.
+ * a message's Copy actions copy, never the viewer's shortened outputs. Each
+ * output is asked for by its block's own id in the viewer (a tool call's id,
+ * else message id and position: an orphan result's tool call id can be empty
+ * or shared, so it never identifies one).
  */
-function useFullBlocks(): (blocks: ContentBlock[]) => Promise<ContentBlock[]> {
+function useFullBlocks(): (blocks: ContentBlock[], ids?: string[]) => Promise<ContentBlock[]> {
   const { sessionKey } = useContext(TranscriptContext)
-  return async (blocks) => {
+  return async (blocks, ids) => {
     if (!sessionKey || !blocks.some((b) => cutResultOf(b))) return blocks
     return Promise.all(
-      blocks.map(async (b) => {
+      blocks.map(async (b, j) => {
         if (!cutResultOf(b)) return b
-        const id = b.type === 'tool_use' ? b.id : b.type === 'tool_result' ? b.toolUseId : ''
+        const id = b.type === 'tool_use' ? b.id : ids?.[j]
+        if (!id) return b
         const full = await api.getToolResult(sessionKey, id).catch(() => null)
         return full ? ({ ...b, result: full } as ContentBlock) : b
       })
@@ -116,6 +120,7 @@ const noHover = (): boolean =>
 function MessageActions({
   id,
   blocks,
+  blockIds,
   side,
   layout = 'pill',
   rowClassName,
@@ -124,6 +129,8 @@ function MessageActions({
 }: {
   id: string
   blocks: ContentBlock[]
+  /** Each block's id in the viewer (to ask for a cut output in full). */
+  blockIds?: string[]
   side: 'left' | 'right'
   layout?: 'pill' | 'inline' | 'row'
   /** Touch row background, matching what it sits on, so text scrolls under it cleanly. */
@@ -134,8 +141,10 @@ function MessageActions({
   const [copied, setCopied] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
   const full = useFullBlocks()
-  const copyMarkdown = async (): Promise<boolean> => copyText(blocksToMarkdown(await full(blocks)))
-  const copyPlain = (): void => void full(blocks).then((b) => copyText(blocksToPlainText(b)))
+  const copyMarkdown = async (): Promise<boolean> =>
+    copyText(blocksToMarkdown(await full(blocks, blockIds)))
+  const copyPlain = (): void =>
+    void full(blocks, blockIds).then((b) => copyText(blocksToPlainText(b)))
   const btn =
     'inline-flex h-6 items-center justify-center gap-1 rounded-full px-1.5 text-muted-foreground hover:bg-hover hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring touch:h-10 touch:min-w-10 touch:rounded-lg touch:px-3 touch:text-[13px] touch:text-foreground touch:active:bg-hover [&_svg]:touch:size-4'
   const touchRow = cn(
@@ -231,12 +240,14 @@ function MessageActions({
 function MessageMenu({
   id,
   blocks,
+  blockIds,
   onBranch,
   canBranchBefore,
   children
 }: {
   id: string
   blocks: ContentBlock[]
+  blockIds?: string[]
   onBranch?: OnBranch
   canBranchBefore?: boolean
   children: ReactElement
@@ -246,7 +257,7 @@ function MessageMenu({
   const copy = (): void => {
     const selected = window.getSelection()?.toString()
     if (selected) void copyText(selected)
-    else void full(blocks).then((b) => copyText(blocksToMarkdown(b)))
+    else void full(blocks, blockIds).then((b) => copyText(blocksToMarkdown(b)))
   }
   return (
     <ContextMenu>
@@ -264,12 +275,12 @@ function MessageMenu({
           <Copy /> Copy
         </ContextMenuItem>
         <ContextMenuItem
-          onSelect={() => void full(blocks).then((b) => copyText(blocksToPlainText(b)))}
+          onSelect={() => void full(blocks, blockIds).then((b) => copyText(blocksToPlainText(b)))}
         >
           <Type /> Copy as plain text
         </ContextMenuItem>
         <ContextMenuItem
-          onSelect={() => void full(blocks).then((b) => copyText(blocksToMarkdown(b)))}
+          onSelect={() => void full(blocks, blockIds).then((b) => copyText(blocksToMarkdown(b)))}
         >
           <FileCode /> Copy as Markdown
         </ContextMenuItem>
@@ -413,6 +424,7 @@ function AgentMessage({
 }
 
 function UserBubble({ msg, onBranch }: { msg: ChatMessage; onBranch?: OnBranch }) {
+  const ids = msg.blocks.map((b, i) => blockIdOf(msg, b, i))
   const ref = useRef<HTMLDivElement>(null)
   const [expanded, setExpanded] = useState(false)
   const [overflows, setOverflows] = useState(false)
@@ -426,7 +438,13 @@ function UserBubble({ msg, onBranch }: { msg: ChatMessage; onBranch?: OnBranch }
         <span className="font-medium text-muted-foreground">You</span>
         {msg.timestamp && <span>{formatTime(msg.timestamp)}</span>}
       </div>
-      <MessageMenu id={msg.id} blocks={msg.blocks} onBranch={onBranch} canBranchBefore>
+      <MessageMenu
+        id={msg.id}
+        blocks={msg.blocks}
+        blockIds={ids}
+        onBranch={onBranch}
+        canBranchBefore
+      >
         <div className="group/msg relative max-w-[82%] rounded-2xl rounded-tr-md border border-user-bubble-border bg-user-bubble px-4 py-2.5 shadow-xs touch:min-w-40">
           <div className="relative">
             <div ref={ref} className={cn(!expanded && 'max-h-[340px] overflow-hidden')}>
@@ -465,6 +483,7 @@ function UserBubble({ msg, onBranch }: { msg: ChatMessage; onBranch?: OnBranch }
           <MessageActions
             id={msg.id}
             blocks={msg.blocks}
+            blockIds={ids}
             side="right"
             rowClassName="touch:bg-user-bubble"
             onBranch={onBranch}
@@ -547,12 +566,14 @@ function AssistantTurn({
             const at = g[g.length - 1].m
             // Copy takes what this bubble shows, not the whole message it came from.
             const groupBlocks = g.map((x) => x.b)
+            const groupIds = g.map((x) => blockIdOf(x.m, x.b, x.i))
             if (head.b.type === 'text') {
               return (
                 <MessageMenu
                   key={`${head.m.id}:${head.i}`}
                   id={at.id}
                   blocks={groupBlocks}
+                  blockIds={groupIds}
                   onBranch={onBranch}
                 >
                   <div
@@ -564,6 +585,7 @@ function AssistantTurn({
                     <MessageActions
                       id={at.id}
                       blocks={groupBlocks}
+                      blockIds={groupIds}
                       side="left"
                       rowClassName="touch:bg-assistant-bubble"
                       onBranch={onBranch}
@@ -580,12 +602,14 @@ function AssistantTurn({
                 key={`${head.m.id}:${head.i}`}
                 id={at.id}
                 blocks={groupBlocks}
+                blockIds={groupIds}
                 onBranch={onBranch}
               >
                 <div className="max-w-full overflow-clip rounded-xl border border-border bg-background/50 p-1">
                   <MessageActions
                     id={at.id}
                     blocks={groupBlocks}
+                    blockIds={groupIds}
                     side="right"
                     layout="inline"
                     onBranch={onBranch}
@@ -657,6 +681,7 @@ function AssistantTurn({
                     <MessageActions
                       id={at.id}
                       blocks={groupBlocks}
+                      blockIds={groupIds}
                       side="right"
                       layout="row"
                       rowClassName="touch:mx-0 touch:-mb-1 touch:bg-background"

@@ -48,6 +48,20 @@ for (let i = 0; i < TURNS; i++) {
       }
     ]
   })
+  // Two long Codex outputs without a call id (toolUseId ''), each its own result.
+  if (i === 250 || i === 260)
+    messages.push({
+      id: `o${i}`,
+      role: 'user',
+      kind: 'prompt',
+      blocks: [
+        {
+          type: 'tool_result',
+          toolUseId: '',
+          result: { text: `${'z'.repeat(9_000)} orphan-${i}-end`, isError: false }
+        }
+      ]
+    })
 }
 
 const session: SessionSummary = {
@@ -232,6 +246,32 @@ describe('a long session in the viewer', { timeout: 30_000 }, () => {
       await page.close()
     }
   })
+  it('copying an orphan output copies that one, not another without a call id', async ({
+    skip
+  }) => {
+    if (!browser) skip(unavailableReason)
+    const page = await open()
+    try {
+      const turn = page.locator('[data-msg-ids~="o260"]')
+      for (let i = 0; i < 80 && !(await turn.count()); i++) {
+        await page.evaluate(`document.querySelector('${scroller}').scrollTop += 2500`)
+        await page.waitForTimeout(50)
+      }
+      await turn.scrollIntoViewIfNeeded()
+      await turn
+        .locator('[data-message-actions]')
+        .last()
+        .getByRole('button', { name: 'Copy message' })
+        .click()
+      await expect
+        .poll(() => page.evaluate<string>('window.copied || ""'))
+        .toContain('orphan-260-end')
+      expect(await page.evaluate<string>('window.copied')).not.toContain('orphan-250-end')
+    } finally {
+      await page.close()
+    }
+  })
+
   it('copying a tool group puts its cut outputs on the clipboard in full', async ({ skip }) => {
     if (!browser) skip(unavailableReason)
     const page = await open()

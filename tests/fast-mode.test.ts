@@ -1,0 +1,552 @@
+// Fast mode as a launch option: the flags per agent and platform, where the
+// choice comes from (session → project → Settings), which models hide it,
+// the app's own --settings file, Codex's model list, and every launch path
+// (desktop, copied command, WSL, Remote Control, phone, API billing).
+
+import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { buildLaunchCommand, claudeArgs, type LaunchInput } from '../src/main/core/launch'
+import { codexArgs, codexContinueArgs } from '../src/main/providers/codex/launch'
+import { CodexFastModels, fastModelsFrom } from '../src/main/providers/codex/fast-models'
+import { ensureFastModeFile, fastModeFilePath } from '../src/main/core/fast-mode-file'
+import { prepareFixtures, seedFixtureData, fixturesLayout } from '../src/main/fixtures'
+import { createFixturesPlatform } from '../src/main/platform'
+import { Launcher } from '../src/main/services/launcher'
+import { SessionService } from '../src/main/services/sessions'
+import { ProviderRegistry } from '../src/main/providers/registry'
+import { claudeProvider } from '../src/main/providers/claude'
+import { createCodexProvider } from '../src/main/providers/codex'
+import { codexHomeOf } from '../src/main/providers/codex/sessions'
+import {
+  appPaths,
+  cleanMetaPatch,
+  createMetadataStore,
+  createSettingsStore
+} from '../src/main/services/store'
+import { remoteLaunchOptions } from '../src/main/mobile/remote-launch'
+import { phoneMetaPatch, phoneSettingsPatch } from '../src/main/mobile/rpc'
+import {
+  choiceLabel,
+  claudeFastArgs,
+  codexModelArgs,
+  FAST_MODE_SETTINGS,
+  fastSupport,
+  launchModel,
+  projectModelKey,
+  promoteToProject,
+  resolveModelChoice,
+  sanitizeProjectModels,
+  withFastSupport
+} from '@shared/model-choice'
+import { CLAUDE_FAST_API, CLAUDE_FAST_CREDITS, fastNotes } from '@shared/fast-notes'
+import { MOBILE_SAFE_SETTINGS } from '@shared/mobile'
+import { FIXTURES, TOOLS } from './helpers'
+
+const ID = '7f3c9a12-4b8e-4d21-9c6a-1e2f3a4b5c6d'
+const FILE = 'C:\\Users\\alex\\AppData\\Roaming\\ClaudeSessionDashboard\\launch\\fast-mode.json'
+const SPACES_FILE =
+  'C:\\Users\\Alex Smith\\AppData\\Roaming\\ClaudeSessionDashboard\\launch\\fast-mode.json'
+const SPACES = 'C:\\Users\\alex\\My Projects\\desktop app'
+
+const launch = (o: Partial<LaunchInput> & Pick<LaunchInput, 'env' | 'cwd' | 'terminal'>) =>
+  buildLaunchCommand({ sessionId: ID, fork: false, skipPermissions: false, tools: TOOLS, ...o })
+
+describe('fast-mode flags', () => {
+  it('Claude Code: --settings with the app file, before --resume and the other flags', () => {
+    expect(
+      claudeArgs(ID, true, true, false, undefined, false, {
+        model: 'opus',
+        effort: 'high',
+        fast: true,
+        fastSettingsFile: FILE
+      })
+    ).toEqual([
+      '--model',
+      'opus',
+      '--effort',
+      'high',
+      '--settings',
+      FILE,
+      '--resume',
+      ID,
+      '--dangerously-skip-permissions',
+      '--fork-session'
+    ])
+    // Off / unset: nothing.
+    expect(claudeArgs(ID, false, false, false, undefined, false, { fast: false })).toEqual([
+      '--resume',
+      ID
+    ])
+    // New session, Remote Control + the asking mode (phone launches) first.
+    expect(
+      claudeArgs(ID, false, false, true, { name: 'My session' }, true, {
+        fast: true,
+        fastSettingsFile: FILE
+      })
+    ).toEqual([
+      '--remote-control',
+      'My session',
+      '--permission-mode',
+      'default',
+      '--settings',
+      FILE
+    ])
+  })
+
+  it('Continue fresh: the first message stays first', () => {
+    const args = claudeArgs(
+      'x',
+      false,
+      false,
+      false,
+      undefined,
+      false,
+      { fast: true, fastSettingsFile: FILE },
+      { newSessionId: ID, prompt: '@C:\\x\\handoffs\\a.md' }
+    )
+    expect(args[0]).toBe('@C:\\x\\handoffs\\a.md')
+    expect(args.slice(1, 3)).toEqual(['--settings', FILE])
+    expect(args).toContain('--session-id')
+  })
+
+  it('refuses a missing or unsafe settings path', () => {
+    expect(() => claudeFastArgs(undefined)).toThrow(/isn't ready/)
+    for (const bad of ['-x', 'C:\\a"b\\f.json', 'C:\\a&b\\f.json', 'C:\\%TEMP%\\f.json', 'a;b'])
+      expect(() => claudeFastArgs(bad), bad).toThrow(/safely/)
+    expect(claudeFastArgs(SPACES_FILE)).toEqual(['--settings', SPACES_FILE])
+    expect(() => claudeArgs(ID, false, false, false, undefined, false, { fast: true })).toThrow()
+  })
+
+  it('Codex: -c service_tier=fast after the model and effort', () => {
+    expect(codexModelArgs('gpt-6-sol', 'high', true)).toEqual([
+      '-m',
+      'gpt-6-sol',
+      '-c',
+      'model_reasoning_effort=high',
+      '-c',
+      'service_tier=fast'
+    ])
+    expect(codexModelArgs(undefined, undefined, false)).toEqual([])
+    expect(
+      codexArgs({ sessionId: ID, fork: false, bypass: false, modelChoice: { fast: true } })
+    ).toEqual(['resume', '-c', 'service_tier=fast', ID])
+    expect(
+      codexArgs({ sessionId: ID, fork: true, bypass: true, modelChoice: { fast: true } })
+    ).toEqual(['fork', '-c', 'service_tier=fast', '--dangerously-bypass-approvals-and-sandbox', ID])
+    const cont = codexContinueArgs({
+      prompt: 'Read C:\\x\\handoffs\\codex\\a.md',
+      bypass: false,
+      modelChoice: { fast: true }
+    })
+    expect(cont.slice(0, 2)).toEqual(['-c', 'service_tier=fast'])
+    expect(cont[cont.length - 1]).toBe('Read C:\\x\\handoffs\\codex\\a.md')
+  })
+})
+
+describe('fast-mode launch commands per terminal', () => {
+  const fast = { fast: true, fastSettingsFile: SPACES_FILE }
+
+  it('Windows Terminal + cmd: the path with spaces is quoted for cmd', () => {
+    const c = launch({ env: 'windows', cwd: SPACES, terminal: 'wt', modelChoice: fast })
+    expect(c.claudeArgs).toEqual(['--settings', SPACES_FILE, '--resume', ID])
+    expect(c.args.join(' ')).toContain(`--settings "${SPACES_FILE}" --resume ${ID}`)
+    expect(c.claudeCommand).toBe(`claude --settings '${SPACES_FILE}' --resume ${ID}`)
+  })
+
+  it('PowerShell and cmd', () => {
+    for (const terminal of ['powershell', 'cmd'] as const) {
+      const c = launch({ env: 'windows', cwd: SPACES, terminal, modelChoice: fast })
+      expect(c.commandLine, terminal).toContain('--settings')
+      expect(c.commandLine, terminal).toContain('fast-mode.json')
+    }
+  })
+
+  it('WSL: the file as the distro sees it, quoted for bash', () => {
+    const linux =
+      '/mnt/c/Users/Alex Smith/AppData/Roaming/ClaudeSessionDashboard/launch/fast-mode.json'
+    for (const terminal of ['wt', 'powershell', 'cmd'] as const) {
+      const c = launch({
+        env: 'wsl',
+        distro: 'Ubuntu',
+        cwd: '/home/alex/my app',
+        terminal,
+        modelChoice: { fast: true, fastSettingsFile: linux }
+      })
+      expect(c.claudeCommand, terminal).toBe(`claude --settings '${linux}' --resume ${ID}`)
+      expect(c.command, terminal).not.toBe('')
+    }
+  })
+})
+
+describe('where the fast-mode choice comes from', () => {
+  const cwd = 'C:\\Code\\App'
+  const win = { env: 'windows' as const, cwd }
+  const key = cwd.toLowerCase()
+
+  it('session → project → Settings; "off" stops the search', () => {
+    expect(resolveModelChoice({ fast: 'on' }, win, { defaultFast: 'off' })).toMatchObject({
+      fast: true,
+      fastFrom: 'session'
+    })
+    expect(
+      resolveModelChoice({}, win, { projectModels: { [key]: { fast: 'on' } }, defaultFast: 'off' })
+    ).toMatchObject({ fast: true, fastFrom: 'project' })
+    expect(resolveModelChoice({}, win, { defaultFast: 'on' })).toMatchObject({
+      fast: true,
+      fastFrom: 'settings'
+    })
+    // An explicit Off on the session beats an On project default.
+    const off = resolveModelChoice({ fast: 'off' }, win, {
+      projectModels: { [key]: { fast: 'on' } },
+      defaultFast: 'on'
+    })
+    expect(off.fast).toBeUndefined()
+    expect(off.fastFrom).toBe('session')
+    // A project Off beats Settings' On.
+    expect(
+      resolveModelChoice({}, win, { projectModels: { [key]: { fast: 'off' } }, defaultFast: 'on' })
+        .fast
+    ).toBeUndefined()
+    // Nothing set (or Settings off): no fast mode, from nowhere.
+    const none = resolveModelChoice({}, win, {})
+    expect(none.fast).toBeUndefined()
+    expect(none.fastFrom).toBeUndefined()
+    expect(resolveModelChoice({}, win, { defaultFast: 'off' }).fast).toBeUndefined()
+    // Junk is skipped.
+    expect(resolveModelChoice({ fast: 'yes' }, win, { defaultFast: 'on' })).toMatchObject({
+      fast: true,
+      fastFrom: 'settings'
+    })
+  })
+
+  it('saving: metadata, project defaults, promote, phone', () => {
+    expect(cleanMetaPatch({ fast: 'on' })).toEqual({ fast: 'on' })
+    expect(cleanMetaPatch({ fast: 'maybe' as never })).toEqual({ fast: undefined })
+    expect(cleanMetaPatch({ fast: '' as never })).toEqual({ fast: undefined })
+    expect(sanitizeProjectModels({ 'C:\\A': { fast: 'on' }, 'C:\\B': { fast: 'x' } })).toEqual({
+      'c:\\a': { fast: 'on' }
+    })
+    expect(promoteToProject({ model: 'opus' }, { fast: 'on' })).toEqual({
+      model: 'opus',
+      fast: 'on'
+    })
+    expect(phoneMetaPatch({ fast: 'on', path: 'x' })).toEqual({ fast: 'on' })
+    expect(MOBILE_SAFE_SETTINGS).toContain('defaultFast')
+    expect(phoneSettingsPatch({ defaultFast: 'on', codexDefaultFast: 'on' })).toEqual({
+      defaultFast: 'on'
+    })
+    expect(choiceLabel({ model: 'opus', effort: 'high', fast: true })).toBe('Opus · High · Fast')
+    expect(choiceLabel({ fast: true })).toBe('Fast')
+  })
+})
+
+describe('which models show fast mode', () => {
+  it('Claude: Fable 5.2, Opus 5.5 and Opus 5 (and their aliases), nothing else', () => {
+    for (const m of [
+      'opus',
+      'fable',
+      'opus[1m]',
+      'claude-opus-5-5',
+      'claude-opus-5-5[1m]',
+      'claude-fable-5-2',
+      'claude-opus-5',
+      'claude-opus-5-20260301'
+    ])
+      expect(fastSupport('claude', m), m).toBe('yes')
+    for (const m of [
+      'sonnet',
+      'haiku',
+      'opusplan',
+      'claude-sonnet-5-5',
+      'claude-haiku-5-5',
+      'claude-opus-4-8',
+      'claude-opus-4-7',
+      'us.anthropic.claude-opus-5-5-v1:0'
+    ])
+      expect(fastSupport('claude', m), m).toBe('no')
+    expect(fastSupport('claude', undefined)).toBe('unknown')
+    expect(fastSupport('claude', 'default')).toBe('unknown')
+  })
+
+  it("Codex: the models whose entry in Codex's list offers Fast; unknown without the list", () => {
+    expect(fastSupport('codex', 'gpt-6-sol', ['gpt-6-sol'])).toBe('yes')
+    expect(fastSupport('codex', 'gpt-5.3-codex-spark', ['gpt-6-sol'])).toBe('no')
+    expect(fastSupport('codex', 'gpt-6-sol', null)).toBe('unknown')
+  })
+
+  it('the model a launch runs on, and dropping fast where it has none', () => {
+    expect(launchModel({ model: 'opus' }, { models: ['sonnet'] })).toBe('opus')
+    expect(launchModel({}, { models: ['opus', 'sonnet'] })).toBe('sonnet')
+    expect(launchModel({}, { models: ['opus'] }, true)).toBeUndefined()
+    const r = { fast: true, fastFrom: 'settings' as const }
+    expect(withFastSupport(r, 'no').fast).toBeUndefined()
+    expect(withFastSupport(r, 'unknown').fast).toBe(true)
+    expect(withFastSupport(r, 'yes').fast).toBe(true)
+  })
+
+  it("reads Codex's models_cache.json shape", () => {
+    expect(
+      fastModelsFrom({
+        models: [
+          { slug: 'gpt-6-sol', service_tiers: [{ id: 'priority', name: 'Fast' }] },
+          { slug: 'gpt-6-luna', additional_speed_tiers: ['fast'] },
+          { slug: 'gpt-5.3-codex-spark', service_tiers: [] },
+          { slug: '-x', service_tiers: [{ id: 'priority' }] },
+          null
+        ]
+      })
+    ).toEqual(['gpt-6-luna', 'gpt-6-sol'])
+    expect(fastModelsFrom({})).toBeUndefined()
+    expect(fastModelsFrom(null)).toBeUndefined()
+  })
+})
+
+describe('fast-mode notes', () => {
+  const base = { fast: true, pauseAbovePct: 80 }
+  it('Claude: usage credits (subscription) or API prices; none when off', () => {
+    expect(fastNotes({ ...base, agent: 'claude' })).toEqual([
+      { tone: 'info', text: CLAUDE_FAST_CREDITS }
+    ])
+    expect(fastNotes({ ...base, agent: 'claude', api: true })[0].text).toBe(CLAUDE_FAST_API)
+    expect(fastNotes({ ...base, fast: false, agent: 'claude' })).toEqual([])
+  })
+
+  it('Codex: warns above the pause line (2.5×), not at or below it', () => {
+    const at = (pct: number, expired = false) =>
+      fastNotes({
+        ...base,
+        agent: 'codex',
+        codexLimits: { fiveHour: { pct, expired } as never }
+      })
+    expect(at(85)[0]).toMatchObject({ tone: 'warn' })
+    expect(at(85)[0].text).toContain('85%')
+    expect(at(85)[0].text).toContain('2.5×')
+    expect(at(80)[0].tone).toBe('info')
+    expect(at(95, true)[0].tone).toBe('info')
+    expect(fastNotes({ ...base, agent: 'codex', codexLimits: null })[0].tone).toBe('info')
+  })
+
+  it("opened in the agent's own app: not passed", () => {
+    expect(fastNotes({ ...base, agent: 'claude', inApp: 'claude-app' })[0].text).toContain(
+      "isn't passed"
+    )
+    expect(fastNotes({ ...base, agent: 'codex', inApp: 'codex-app' })[0].text).toContain(
+      "isn't passed"
+    )
+  })
+})
+
+// --------------------------------------------- every launch path (fixtures)
+
+let root: string
+let busy: { idle(): Promise<void> }[] = []
+
+async function setup(opts: { codex?: boolean } = {}) {
+  await cp(FIXTURES, join(root, 'fixtures'), { recursive: true })
+  await prepareFixtures(root, opts)
+  const layout = fixturesLayout(root)
+  const platform = createFixturesPlatform(layout.fixturesDir, layout.sourcesDir)
+  const paths = appPaths(layout.dataDir)
+  const metadata = createMetadataStore(paths)
+  const settings = createSettingsStore(paths)
+  await metadata.load()
+  await settings.load()
+  await seedFixtureData(root, paths.archiveDir, metadata)
+  const providers = new ProviderRegistry([claudeProvider, createCodexProvider()])
+  const sessions = new SessionService(platform, paths, metadata, settings, providers)
+  busy.push(sessions)
+  const launcher = new Launcher(
+    platform,
+    sessions,
+    () => settings.value.terminal,
+    {
+      keyFor: () => 'sk-ant-api03-test-key-not-real',
+      label: () => 'API · Test',
+      subscriptionLabel: () => 'Subscription',
+      launched: () => undefined
+    },
+    () => settings.value,
+    paths.dataDir
+  )
+  launcher.codexFastModels = new CodexFastModels(() =>
+    sessions.sources
+      .filter((s) => s.provider === 'codex' && s.status === 'ok')
+      .map((s) => codexHomeOf(s))
+  )
+  await sessions.start()
+  await sessions.idle()
+  return { sessions, launcher, settings, paths, metadata }
+}
+
+beforeEach(async () => {
+  root = await mkdtemp(join(tmpdir(), 'csd-fast-'))
+})
+afterEach(async () => {
+  await Promise.all(busy.map((b) => b.idle().catch(() => undefined)))
+  busy = []
+  await rm(root, { recursive: true, force: true, maxRetries: 5 })
+})
+
+describe("the app's fast-mode settings file", () => {
+  it('holds only {"fastMode": true}, and is put back when anything else is in it', async () => {
+    const dataDir = join(root, 'data')
+    const path = await ensureFastModeFile(dataDir)
+    expect(path).toBe(fastModeFilePath(dataDir))
+    expect(await readFile(path, 'utf8')).toBe(FAST_MODE_SETTINGS)
+    expect(JSON.parse(FAST_MODE_SETTINGS)).toEqual({ fastMode: true })
+    // Someone added a setting: the next launch's file has only fast mode again.
+    await writeFile(path, '{"fastMode": true, "permissions": {"allow": ["Bash"]}}')
+    await ensureFastModeFile(dataDir)
+    expect(await readFile(path, 'utf8')).toBe(FAST_MODE_SETTINGS)
+  })
+})
+
+describe('Launcher: every launch path passes fast mode', () => {
+  it('desktop preview, the copied command and the launch (Windows)', async () => {
+    const { sessions, launcher, paths } = await setup()
+    const s = sessions.list().find((x) => x.sessionId === ID)!
+    sessions.updateMeta(s.key, { fast: 'on' })
+    const file = fastModeFilePath(paths.dataDir)
+    const p = await launcher.preview({ key: s.key, fork: false, skipPermissions: false })
+    expect(p.modelChoice).toMatchObject({ model: 'opus', fast: true, fastFrom: 'session' })
+    expect(p.launchError).toBeUndefined()
+    expect(p.claudeCommand).toContain(`--settings `)
+    expect(p.claudeCommand).toContain('fast-mode.json')
+    expect(p.commandLine).toContain(file.replace(/\\/g, '\\'))
+    expect(await readFile(file, 'utf8')).toBe(FAST_MODE_SETTINGS)
+    const r = await launcher.launch({ key: s.key, fork: true, skipPermissions: false })
+    expect(r.ok).toBe(true)
+    expect(r.commandLine).toContain('--fork-session')
+    expect(r.commandLine).toContain('fast-mode.json')
+  })
+
+  it('project and Settings defaults; Off on the session wins', async () => {
+    const { sessions, launcher, settings } = await setup()
+    const s = sessions.list().find((x) => x.sessionId === ID)!
+    settings.update((st) => {
+      st.defaultFast = 'on'
+    })
+    let p = await launcher.preview({ key: s.key, fork: false, skipPermissions: false })
+    expect(p.modelChoice).toMatchObject({ fast: true, fastFrom: 'settings' })
+    settings.update((st) => {
+      st.defaultFast = 'off'
+      st.projectModels = { [projectModelKey(s)!]: { fast: 'on' } }
+    })
+    p = await launcher.preview({ key: s.key, fork: false, skipPermissions: false })
+    expect(p.modelChoice).toMatchObject({ fast: true, fastFrom: 'project' })
+    sessions.updateMeta(s.key, { fast: 'off' })
+    p = await launcher.preview({ key: s.key, fork: false, skipPermissions: false })
+    expect(p.modelChoice?.fast).toBeUndefined()
+    expect(p.claudeCommand).not.toContain('--settings')
+  })
+
+  it('a model without fast mode gets no flag', async () => {
+    const { sessions, launcher } = await setup()
+    const s = sessions.list().find((x) => x.sessionId === ID)!
+    sessions.updateMeta(s.key, { fast: 'on', model: 'sonnet' })
+    const p = await launcher.preview({ key: s.key, fork: false, skipPermissions: false })
+    expect(p.modelChoice?.fast).toBeUndefined()
+    expect(p.claudeCommand).toBe(`claude --model sonnet --effort high --resume ${ID}`)
+  })
+
+  it('WSL: the file where the distro mounts the data folder', async () => {
+    const { sessions, launcher } = await setup()
+    const s = sessions.list().find((x) => x.env === 'wsl' && x.availability === 'live')!
+    sessions.updateMeta(s.key, { fast: 'on', model: 'opus' })
+    const p = await launcher.preview({ key: s.key, fork: false, skipPermissions: false })
+    expect(p.launchError).toBeUndefined()
+    expect(p.claudeCommand).toMatch(
+      new RegExp(`^claude --model opus --settings '?/mnt/[a-z]/\\S*fast-mode\\.json'? --resume `)
+    )
+    // The sample's folder isn't in the sample distro, so only the command is built here.
+    expect(p.commandLine).toContain('wsl.exe')
+    expect(p.commandLine).toContain('/launch/fast-mode.json')
+  })
+
+  it('phone launches (Remote Control, asking mode) and API billing', async () => {
+    const { sessions, launcher } = await setup()
+    const s = sessions.list().find((x) => x.sessionId === ID)!
+    // Set from the phone like any other edit.
+    sessions.updateMeta(s.key, phoneMetaPatch({ fast: 'on' }))
+    const opts = remoteLaunchOptions({ key: s.key, kind: 'resume' }, 'wt')
+    const r = await launcher.launch(opts, { via: 'phone', device: 'Test phone' })
+    expect(r.ok).toBe(true)
+    expect(r.commandLine).toContain('--remote-control')
+    expect(r.commandLine).toMatch(
+      /--permission-mode default --model opus --effort high --settings .*fast-mode\.json/
+    )
+    const api = await launcher.launch({
+      key: s.key,
+      fork: false,
+      skipPermissions: false,
+      billingAccountId: 'acct-test'
+    })
+    expect(api.ok).toBe(true)
+    expect(api.commandLine).toContain('fast-mode.json')
+    expect(api.commandLine).not.toContain('sk-ant')
+  })
+
+  it('New session and Continue fresh pass it too; a branch inherits it', async () => {
+    const { sessions, launcher, metadata } = await setup()
+    const s = sessions.list().find((x) => x.sessionId === ID)!
+    sessions.updateMeta(s.key, { fast: 'on' })
+    const n = await launcher.preview({
+      key: s.key,
+      fork: false,
+      skipPermissions: false,
+      newSession: true
+    })
+    expect(n.claudeCommand).toMatch(
+      /^claude --model opus --effort high --settings \S*fast-mode\.json/
+    )
+    sessions.recordBranch(
+      'b0b0b0b0-0000-4000-8000-000000000001',
+      { parentSessionId: ID, parentKey: s.key, via: 'continue', createdAt: '2026-11-10T00:00:00Z' },
+      'Continued',
+      { model: 'opus', fast: 'on' }
+    )
+    expect(metadata.value.sessions['b0b0b0b0-0000-4000-8000-000000000001']?.fast).toBe('on')
+  })
+
+  it("Codex: -c service_tier=fast on a model in Codex's list, nothing on one that isn't", async () => {
+    const { sessions, launcher, settings } = await setup({ codex: true })
+    settings.update((st) => {
+      st.providers = { claude: true, codex: true }
+    })
+    const s = sessions.list().find((x) => x.provider === 'codex' && x.env === 'windows')
+    expect(s, 'a Windows Codex sample session').toBeDefined()
+    const home = codexHomeOf(sessions.source(s!.sourceId)!)
+    await mkdir(home, { recursive: true })
+    await writeFile(
+      join(home, 'models_cache.json'),
+      JSON.stringify({
+        models: [
+          { slug: 'gpt-6-sol', service_tiers: [{ id: 'priority', name: 'Fast' }] },
+          { slug: 'gpt-5.3-codex-spark', service_tiers: [] }
+        ]
+      })
+    )
+    sessions.updateMeta(s!.key, { fast: 'on', model: 'gpt-6-sol' })
+    let p = await launcher.preview({ key: s!.key, fork: false, skipPermissions: false })
+    expect(p.modelChoice).toMatchObject({ fast: true })
+    expect(p.commandLine).toContain('-m gpt-6-sol -c service_tier=fast')
+    sessions.updateMeta(s!.key, { model: 'gpt-5.3-codex-spark' })
+    p = await launcher.preview({ key: s!.key, fork: false, skipPermissions: false })
+    expect(p.modelChoice?.fast).toBeUndefined()
+    expect(p.commandLine).not.toContain('service_tier')
+    // Codex's defaults are its own: Claude Code's Settings default doesn't apply.
+    sessions.updateMeta(s!.key, { fast: '' as never, model: 'gpt-6-sol' })
+    settings.update((st) => {
+      st.defaultFast = 'on'
+    })
+    p = await launcher.preview({ key: s!.key, fork: false, skipPermissions: false })
+    expect(p.commandLine).not.toContain('service_tier')
+    settings.update((st) => {
+      st.codexDefaultFast = 'on'
+    })
+    p = await launcher.preview({ key: s!.key, fork: false, skipPermissions: false })
+    expect(p.commandLine).toContain('service_tier=fast')
+  })
+})

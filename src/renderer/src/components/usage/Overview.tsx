@@ -20,7 +20,8 @@ import type {
   UsageReport
 } from '@shared/usage/types'
 import { formatInt, formatTokens, formatUsd } from '@shared/format'
-import { bucketLabel } from '@/lib/usage-format'
+import { SPEED_CAVEAT } from '@shared/usage/speed'
+import { bucketLabel, formatTps } from '@/lib/usage-format'
 import { cn } from '@/lib/utils'
 import {
   modelColor,
@@ -93,8 +94,19 @@ export function SummaryCards({
                 <CountUp value={c.total} format={formatTokens} />
               </div>
             </Tooltip>
-            <div className="text-[11px] text-subtle-foreground tabular-nums">
-              ≈ {formatUsd(c.cost)} at API prices
+            <div className="flex items-center gap-1 text-[11px] text-subtle-foreground tabular-nums">
+              <span>≈ {formatUsd(c.cost)} at API prices</span>
+              {c.tps !== undefined && (
+                <Tooltip
+                  content={
+                    <span className="block max-w-[260px] leading-relaxed">
+                      Median output speed in normal mode. {SPEED_CAVEAT}
+                    </span>
+                  }
+                >
+                  <span className="whitespace-nowrap">· {formatTps(c.tps)}</span>
+                </Tooltip>
+              )}
             </div>
             <Sparkline
               values={c.spark}
@@ -423,7 +435,10 @@ export function ModelShare({
         label: 'Other',
         total,
         share: rest.reduce((a, r) => a + r.share, 0),
-        cost: rest.reduce((a, r) => a + r.cost, 0)
+        cost: rest.reduce((a, r) => a + r.cost, 0),
+        // "Other" mixes models: no one speed.
+        tps: undefined,
+        tpsSamples: undefined
       })
     }
     return main
@@ -495,6 +510,20 @@ export function ModelShare({
                 <span className="min-w-0 flex-1 truncate" title={r.detail}>
                   {r.label}
                 </span>
+                {r.tps !== undefined && (
+                  <Tooltip
+                    content={
+                      <span className="block max-w-[260px] leading-relaxed">
+                        Median output speed, from {formatInt(r.tpsSamples ?? 0)} responses.{' '}
+                        {SPEED_CAVEAT}
+                      </span>
+                    }
+                  >
+                    <span className="text-[11px] whitespace-nowrap text-subtle-foreground tabular-nums">
+                      {formatTps(r.tps)}
+                    </span>
+                  </Tooltip>
+                )}
                 <span className="text-muted-foreground tabular-nums">{formatTokens(r.total)}</span>
                 <span className="w-10 text-right font-medium tabular-nums">
                   {Math.round(r.share * 100)}%

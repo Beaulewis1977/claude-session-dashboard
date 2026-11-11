@@ -40,7 +40,21 @@ export function formatMetric(
       return v.toFixed(2)
     case 'chars':
       return Math.round(v).toLocaleString('en-US')
+    case 'tps':
+      return formatTps(v)
   }
+}
+
+/** "89 tok/s" (one decimal below 10). */
+export function formatTps(v: number | undefined): string {
+  if (v === undefined || !Number.isFinite(v)) return '—'
+  return `${v.toFixed(v < 10 ? 1 : 0)} tok/s`
+}
+
+/** "1.6s" or "850 ms": a time to first token. */
+export function formatTtft(ms: number | undefined): string {
+  if (ms === undefined || !Number.isFinite(ms)) return 'n/a'
+  return ms < 1000 ? `${Math.round(ms)} ms` : `${(ms / 1000).toFixed(1)}s`
 }
 
 const timeFmt = new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' })

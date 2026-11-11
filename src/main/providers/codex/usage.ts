@@ -349,6 +349,8 @@ class TurnTracker {
       c.id = `codex-turn:${rec.id}`
       if (rec.model !== 'unknown') c.model = rec.model
     }
+    // Fast mode switched on after the turn's context: the turn is a fast one.
+    if (c.model && rec.model === `${c.model}-fast`) c.model = rec.model
     c.responses++
     c.outputTokens += rec.output
     c.reasoningTokens += rec.reasoning ?? 0
@@ -380,6 +382,110 @@ class TurnTracker {
   }
 }
 
+/**
+ * When each response was generated (for token speed, see shared/usage/speed.ts),
+ * from the rollout's timestamps only:
+ * - request sent: the last input before the response's first output item
+ *   (the turn's start, a message, a tool's output, or the previous
+ *   response's token_count, written after its tools ran);
+ * - response end: its token_usage_record (newer Codex, written right after
+ *   the response), else its last output item before a tool output. Never
+ *   the token_count: Codex writes it after the response's tools have run,
+ *   so tool time would count as generation time.
+ */
+export class ResponseTimer {
+  private lastInput?: number
+  private start?: number
+  private end?: number
+  private recordEnd?: number
+  /** A tool output came after this response's items: its end is known. */
+  private closed = false
+
+  private clear(): void {
+    this.start = this.end = this.recordEnd = undefined
+    this.closed = false
+  }
+
+  /** A turn starts (at its time) or ends (no time). */
+  turn(ts?: number): void {
+    this.clear()
+    this.lastInput = ts
+  }
+
+  /** Something the next request sends: a message, a tool's output. */
+  input(ts: number): void {
+    if (!Number.isFinite(ts)) return
+    if (this.start !== undefined) this.closed = true
+    this.lastInput = ts
+  }
+
+  /** One of the response's own items: reasoning, a message, a tool call. */
+  output(ts: number): void {
+    if (!Number.isFinite(ts)) return
+    // An output after this response's tools ran is the next response (its token_count was missing).
+    if (this.closed) this.clear()
+    if (this.start === undefined) {
+      if (this.lastInput === undefined) return
+      this.start = this.lastInput
+    }
+    this.end = ts
+  }
+
+  /** Newer Codex: the response's usage record, right after it ended. */
+  recorded(ts: number): void {
+    if (Number.isFinite(ts) && this.start !== undefined && this.recordEnd === undefined)
+      this.recordEnd = ts
+  }
+
+  /** A token_count with new usage: the response's generation time, if known. */
+  finish(ts: number): number | undefined {
+    const end = this.recordEnd ?? this.end
+    const start = this.start
+    this.clear()
+    this.lastInput = ts
+    return start !== undefined && end !== undefined && end >= start ? end - start : undefined
+  }
+
+  /** A token_count without new usage (e.g. only the limits changed). */
+  idle(ts: number): void {
+    if (this.start === undefined && Number.isFinite(ts)) this.lastInput = ts
+  }
+}
+
+/**
+ * A thread with inherited history (a fork, or a subagent started with its
+ * parent's history) begins with a copy of those events, written in one burst
+ * right after its own meta (often all with the same time). Their timing is
+ * the copy's, not the responses': the burst ends at the first gap longer than
+ * this, and nothing in it gets a generation time.
+ */
+const COPY_BURST_GAP_MS = 100
+
+/** Inherited history: a fork, or a subagent that starts from its parent's history. */
+function inheritsHistory(meta: Record<string, unknown> | undefined): boolean {
+  if (!meta) return false
+  return (
+    !!str(meta.forked_from_id) ||
+    meta.inherits_history === true ||
+    typeof meta.subagent_history_start_ordinal === 'number'
+  )
+}
+
+/** When the copied burst after the own meta (line `at`) ends, or -Infinity. */
+function copiedUntil(ls: Line[], at: number): number {
+  const meta = ls[at]
+  if (!meta || !inheritsHistory(meta.payload)) return -Infinity
+  let prev = meta.timestamp ? Date.parse(meta.timestamp) : Number.NaN
+  if (!Number.isFinite(prev)) return -Infinity
+  for (let i = at + 1; i < ls.length; i++) {
+    const t = ls[i].timestamp ? Date.parse(ls[i].timestamp!) : Number.NaN
+    if (!Number.isFinite(t)) continue
+    if (t - prev > COPY_BURST_GAP_MS) break
+    prev = t
+  }
+  return prev
+}
+
 /** Token usage (one record per response) and limit readings of one rollout. */
 export function analyzeCodexUsage(text: string, ctx: CodexUsageContext): UsageAnalysis {
   const records: UsageRecord[] = []
@@ -406,33 +512,57 @@ export function analyzeCodexUsage(text: string, ctx: CodexUsageContext): UsageAn
   const metas = ls.filter((l) => l.type === 'session_meta')
   const ownMeta = metas.find((l) => l.payload.id === sessionId) ?? metas[0]
   const turns = new TurnTracker(ctx, sessionId, ownMeta?.payload.subagent === true)
+  const timer = new ResponseTimer()
+  const copiesUntil = ownMeta ? copiedUntil(ls, ls.indexOf(ownMeta)) : -Infinity
+  // Fast mode (Codex's /fast, the "priority" service tier): its responses are
+  // counted under "<model>-fast" (priced and charted apart, like Claude Code's).
+  let fast = false
+  const as = (m: string | undefined): string | undefined =>
+    m && fast && m !== 'unknown' && !m.endsWith('-fast') ? `${m}-fast` : m
   for (const l of ls) {
     if (l.type === 'turn_context') {
       model = str(l.payload.model) ?? model
-      turns.context(str(l.payload.model))
+      turns.context(as(str(l.payload.model)))
       continue
     }
     const p = l.payload
     const at = l.timestamp ? Date.parse(l.timestamp) : Number.NaN
+    if (l.type === 'event_msg' && p.type === 'thread_settings_applied') {
+      // A settings event without a tier says nothing about fast mode: not fast.
+      fast = obj(p.thread_settings)?.service_tier === 'priority'
+      continue
+    }
     if (l.type === 'response_item') {
       if (p.type === 'message') {
-        if (isPrompt(p) && Number.isFinite(at)) turns.prompt(at, model)
-      } else if (p.type === 'function_call_output' || p.type === 'custom_tool_call_output')
+        if (isPrompt(p) && Number.isFinite(at)) turns.prompt(at, as(model))
+        if (p.role === 'user') timer.input(at)
+        else if (p.role === 'assistant') timer.output(at)
+      } else if (p.type === 'function_call_output' || p.type === 'custom_tool_call_output') {
         turns.toolOutput(typeof p.exit === 'number' ? p.exit : undefined)
-      else if (TOOL_CALL_TYPES.has(String(p.type))) turns.toolCall()
+        timer.input(at)
+      } else if (TOOL_CALL_TYPES.has(String(p.type))) {
+        turns.toolCall()
+        timer.output(at)
+      } else if (p.type === 'reasoning') timer.output(at)
       continue
     }
     if (l.type === 'event_msg' && p.type === 'task_started') {
-      if (Number.isFinite(at)) turns.started(p, at, model)
+      if (Number.isFinite(at)) turns.started(p, at, as(model))
+      timer.turn(Number.isFinite(at) ? at : undefined)
       continue
     }
     if (l.type === 'event_msg' && (p.type === 'task_complete' || p.type === 'turn_aborted')) {
       turns.ended(p, p.type === 'turn_aborted')
+      timer.turn()
       continue
     }
     if (l.type === 'event_msg' && p.type === 'item_completed') {
       // Only tool calls (a plain rollout also has messages and reasoning as items).
       if (isToolItemType(obj(p.item)?.type)) turns.toolItem(str(obj(p.item)?.status))
+      continue
+    }
+    if (l.type === 'token_usage_record') {
+      timer.recorded(at)
       continue
     }
     if (l.type !== 'event_msg' || l.payload.type !== 'token_count') continue
@@ -462,6 +592,7 @@ export function analyzeCodexUsage(text: string, ctx: CodexUsageContext): UsageAn
     const n = occurrences.get(base) ?? 0
     occurrences.set(base, n + 1)
     const id = codexEventId(root, base, n)
+    if (!used || !hasUsage) timer.idle(ts)
     if (used && hasUsage) {
       const cached = Math.min(used.cached_input_tokens, used.input_tokens)
       const cw = Math.min(used.cache_write_input_tokens, used.input_tokens - cached)
@@ -471,7 +602,7 @@ export function analyzeCodexUsage(text: string, ctx: CodexUsageContext): UsageAn
         key: ctx.key,
         project: ctx.project,
         env: ctx.env,
-        model: model ?? 'unknown',
+        model: as(model) ?? 'unknown',
         provider: 'codex',
         input: used.input_tokens - cached - cw,
         output: used.output_tokens,
@@ -482,6 +613,9 @@ export function analyzeCodexUsage(text: string, ctx: CodexUsageContext): UsageAn
       if (used.reasoning_output_tokens)
         rec.reasoning = Math.min(used.reasoning_output_tokens, used.output_tokens)
       if (ctx.version) rec.version = ctx.version
+      const gen = timer.finish(ts)
+      // A fork's copy of its parent's history has the copy's times, not the response's.
+      if (gen !== undefined && ts > copiesUntil) rec.genMs = gen
       records.push(rec)
       // Context use after this response: what its next request sends, of the window.
       const window = num(info?.model_context_window)

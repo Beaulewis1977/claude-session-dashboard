@@ -16,7 +16,7 @@ import {
   type ElsewhereRange,
   type HealthSettings
 } from './health'
-import { DEFAULT_CODEX_PRICES, sanitizePrices, type ModelPrice } from './pricing'
+import { DEFAULT_CODEX_PRICES, fillExtras, sanitizePrices, type ModelPrice } from './pricing'
 
 export interface CodexUsageSettings {
   codexPlan: CodexPlanSetting
@@ -58,7 +58,7 @@ export function codexUsageSettings(s: Partial<AppSettings>): CodexUsageSettings 
     codexHealth: s.codexHealth ? sanitizeHealth(s.codexHealth) : { ...DEFAULT_HEALTH },
     codexElsewhere: sanitizeElsewhere(s.codexElsewhere),
     codexPrices: prices
-      ? withSnapshotModels(prices, DEFAULT_CODEX_PRICES)
+      ? fillExtras(withSnapshotModels(prices, DEFAULT_CODEX_PRICES), DEFAULT_CODEX_PRICES)
       : DEFAULT_CODEX_PRICES.map((p) => ({ ...p })),
     meterProvider: isMeterProvider(s.meterProvider) ? s.meterProvider : 'claude',
     usageSplit: isUsageSplit(s.usageSplit) ? s.usageSplit : 'stacked'

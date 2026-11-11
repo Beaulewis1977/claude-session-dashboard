@@ -194,6 +194,8 @@ export const RPC: Record<string, RpcMethod> = {
     kind: 'read',
     args: ([a, b]) => [a, b]
   },
+  getSpeedTrends: { channel: 'usage:speedTrends', kind: 'read', args: none },
+  getSpeedSignal: { channel: 'usage:speedSignal', kind: 'read', args: ([v]) => [str(v, 10)] },
   getLimits: {
     channel: 'limits:state',
     kind: 'read',

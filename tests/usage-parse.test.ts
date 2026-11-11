@@ -312,7 +312,14 @@ describe('pricing', () => {
     const saved = sanitizePrices([
       { model: 'claude-opus-5-5', label: 'Mine', input: 3, output: 20 }
     ])!
-    expect(addSnapshotExtras(saved)[0]).toMatchObject({ label: 'Mine', input: 3, fast: 2 })
+    const filled = addSnapshotExtras(saved)
+    expect(filled.find((p) => p.model === 'claude-opus-5-5')).toMatchObject({
+      label: 'Mine',
+      input: 3,
+      fast: 2
+    })
+    // Officially priced models the saved table didn't have yet are added.
+    expect(filled.map((p) => p.model)).toContain('claude-fable-5-2')
   })
 
   it('bills a whole request at the long-context tier above its threshold', () => {
@@ -326,7 +333,7 @@ describe('pricing', () => {
   })
 
   it('makes short model labels', () => {
-    expect(modelLabel('claude-opus-5-5-fast')).toBe('Opus 5.5 (fast)')
+    expect(modelLabel('claude-opus-5-5-fast')).toBe('Opus 5.5 · fast')
     expect(modelLabel('claude-sonnet-4-5-20250929')).toBe('Sonnet 4.5')
     expect(modelLabel('claude-opus-4-20250514')).toBe('Opus 4')
     expect(modelLabel('claude-opus-5-5')).toBe('Opus 5.5')

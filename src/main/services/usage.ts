@@ -12,12 +12,20 @@ import { buildReport, breakdown, emptyTotals, addRecord, toCsv } from '@shared/u
 import { UsageDeduper } from '@shared/usage/dedupe'
 import { estimateCost, type ModelPrice } from '@shared/usage/pricing'
 import { localTimeZone } from '@shared/usage/time'
+import {
+  buildSpeedTrends,
+  speedSignal,
+  speedStats,
+  type SpeedSignal,
+  type SpeedTrendsReport
+} from '@shared/usage/speed'
 import type { UsageCommandReading } from '@shared/usage/usage-command'
 import type {
   LimitHit,
   SessionUsage,
   TurnSample,
   CodexTurnSample,
+  UsageAnalysis,
   UsageQuery,
   UsageRecord,
   UsageReport,
@@ -39,7 +47,8 @@ import type { SessionProvider } from '../providers/types'
 
 // 2: dedupe follows ccusage (session-scoped requestless ids, sidechain replays).
 // 3: /usage output is read as limit readings (backfill).
-const INDEX_VERSION = 3
+// 4: each response's generation time and time to first token (token speed).
+const INDEX_VERSION = 4
 
 /** Usage of the app's own runs (session summaries), see addDashboardRecords. */
 const DASHBOARD_FILE = 'dashboard-runs.ndjson'
@@ -48,6 +57,12 @@ interface IndexFile {
   version: number
   /** Keyed by session key: the signature of what was parsed last. */
   sessions: Record<string, string>
+  /**
+   * Sessions whose saved records an older parser made and that haven't been
+   * read again yet: saved, so a restart in the middle of the re-read still
+   * replaces their records (instead of adding to them) when they are read.
+   */
+  stale?: string[]
 }
 
 export interface UsageSettings {
@@ -298,8 +313,26 @@ export class UsageService extends EventEmitter<{ changed: []; 'codex-progress': 
         now: now()
       }),
       firstAt: recs[0]?.ts,
-      lastAt: recs[recs.length - 1]?.ts
+      lastAt: recs[recs.length - 1]?.ts,
+      speed: speedStats(
+        recs,
+        view === 'codex' ? this.codexTurns().filter((t) => t.key === key) : undefined
+      )
     }
+  }
+
+  /** Weekly output speed per model, Claude Code's and Codex's together. */
+  speedTrends(): SpeedTrendsReport {
+    return buildSpeedTrends({
+      records: this.recordsOf('all'),
+      timeZone: localTimeZone(),
+      weekStart: this.settings().weekStart
+    })
+  }
+
+  /** Recent output speed against the weeks before (limit health's extra signal). */
+  speedSignal(view: ProviderView): SpeedSignal {
+    return speedSignal(this.recordsOf(view), now())
   }
 
   csv(query: UsageQuery, perRecord: boolean): string {
@@ -324,8 +357,12 @@ export class UsageService extends EventEmitter<{ changed: []; 'codex-progress': 
     let current = true
     try {
       const idx = JSON.parse(await readFile(join(dir, 'index.json'), 'utf8')) as IndexFile
-      if (idx.version === INDEX_VERSION && idx.sessions) this.index = idx
-      else current = false
+      if (idx.version === INDEX_VERSION && idx.sessions) {
+        this.index = { version: idx.version, sessions: idx.sessions }
+        // A re-read that a restart interrupted: those sessions are still stale.
+        if (Array.isArray(idx.stale))
+          for (const k of idx.stale) if (typeof k === 'string') this.stale.add(k)
+      } else current = false
     } catch {
       // first run
     }
@@ -338,7 +375,11 @@ export class UsageService extends EventEmitter<{ changed: []; 'codex-progress': 
     this.records = new UsageDeduper(loaded)
     // Records from an older parser are replaced session by session as each
     // session is parsed again. Sessions whose files are gone keep theirs.
-    if (!current) for (const r of loaded) this.stale.add(r.key)
+    if (!current) {
+      for (const r of loaded) this.stale.add(r.key)
+      // Save the list with the new version at once (see IndexFile.stale).
+      this.indexDirty = true
+    }
     for (const f of await listFiles(dir, /^turns-\d{4}-\d{2}\.ndjson$/)) {
       for (const t of await readNdjson<TurnSample>(join(dir, f))) {
         if (t && typeof t.id === 'string' && typeof t.ts === 'number') this.turns.set(t.id, t)
@@ -435,9 +476,21 @@ export class UsageService extends EventEmitter<{ changed: []; 'codex-progress': 
         if (!provider.capabilities.usage || provider.id === 'codex') continue
         const { sig, subagents } = await this.signature(s)
         if (!force && this.index.sessions[s.key] === sig) continue
-        if (this.stale.delete(s.key)) this.purge(s.key)
-        const ok = await this.parseFile(s.filePath, s)
-        for (const file of subagents) await this.parseFile(file, s)
+        // Read everything first: a session's saved records (stale after a
+        // parser update) are replaced only once all its files were read, so
+        // a file that can't be read right now never loses saved usage. The
+        // session counts as read (its signature saved) only then too, so an
+        // unreadable file (the main one or a subagent's) is tried again at
+        // the next sync.
+        const main = await this.readUsage(s.filePath, s)
+        const subs = await Promise.all(subagents.map((f) => this.readUsage(f, s)))
+        const ok = main !== undefined && subs.every((a) => a !== undefined)
+        if (ok && this.stale.delete(s.key)) {
+          this.purge(s.key)
+          this.indexDirty = true
+        }
+        if (main) this.apply(main)
+        for (const a of subs) if (a) this.apply(a)
         if (s.availability === 'live') await this.archiveSubagents(s, subagents)
         if (ok) {
           this.index.sessions[s.key] = sig
@@ -491,20 +544,24 @@ export class UsageService extends EventEmitter<{ changed: []; 'codex-progress': 
     return true
   }
 
-  private async parseFile(path: string, s: SessionSummary): Promise<boolean> {
+  /** Read and analyze one file of a session (nothing is changed yet); undefined if unreadable. */
+  private async readUsage(path: string, s: SessionSummary): Promise<UsageAnalysis | undefined> {
     let text: string
     try {
       text = await readFile(path, 'utf8')
     } catch {
-      return false
+      return undefined
     }
-    const a = sessionProvider(this.sessions, s).usage.analyze(text, {
+    return sessionProvider(this.sessions, s).usage.analyze(text, {
       key: s.key,
       project: s.projectName,
       env: s.env,
       sessionId: s.sessionId,
       file: basename(path)
     })
+  }
+
+  private apply(a: UsageAnalysis): void {
     for (const r of a.records) {
       // New, or a copy with more tokens (it was still streaming last time).
       const { result, stored, previous } = this.records.add(r)
@@ -532,7 +589,6 @@ export class UsageService extends EventEmitter<{ changed: []; 'codex-progress': 
         this.hitsDirty = true
       }
     }
-    return true
   }
 
   /**
@@ -610,7 +666,8 @@ export class UsageService extends EventEmitter<{ changed: []; 'codex-progress': 
       }
       if (this.indexDirty) {
         this.indexDirty = false
-        await writeFileAtomic(join(dir, 'index.json'), JSON.stringify(this.index), dataDir)
+        const index: IndexFile = { ...this.index, stale: [...this.stale].sort() }
+        await writeFileAtomic(join(dir, 'index.json'), JSON.stringify(index), dataDir)
       }
       await this.codex.flush(dir, dataDir)
     } catch (err) {

@@ -525,8 +525,14 @@ Every token, forever: read from your session logs and the archive, so history su
 Code's cleanup. Today / week / month / all-time cards, a stacked chart by day, week or month with
 a date range and model filter, a model share donut, the top sessions, and a raw table by model,
 session, project, environment, version, billing or source, with **CSV export**. Costs are
-estimates at API list prices from an editable price table (Settings → **Usage**). Per-session usage
-shows at the top of each session.
+estimates at API list prices from an editable price table (Settings → **Usage**), fast mode
+included. Per-session usage shows at the top of each session.
+
+**Token speed:** each card and each model in the Models card shows the median output speed
+(tokens per second), and each session shows its own, with its time to first token and a **Fast**
+badge when it used fast mode. It's an estimate from log timestamps (from when a request was sent
+to when the reply's last part was written, tool time left out), so waiting, thinking, network and
+server load all count. Fast mode is always counted apart from normal mode.
 
 ![Token charts and the model share](docs/images/usage-charts.webp)
 
@@ -623,16 +629,19 @@ Weekly charts, **all together, by model or by Claude Code version**, with marker
 Claude Code updates, plan changes and score changes:
 
 - **Output:** output per response and per message you sent.
-- **Speed:** median response time (gaps over 10 minutes ignored).
+- **Speed:** median response time (gaps over 10 minutes ignored), output speed in tokens per
+  second (also without thinking tokens), and time to first token (an estimate, from replies that
+  start with thinking; the ⓘ says how many). Fast mode gets its own dashed line.
 - **Reliability:** tool error rate, and API errors and retries.
 - **Effort:** assistant turns and tool calls per message you sent.
 - **Your corrections:** interruptions, and messages that start with "no", "wrong" or "that's not".
 - **Caching and thinking:** cache read ratio, thinking blocks per response and their length.
 - **Context:** how much of the context window sessions use.
 
-Codex gets its own set: output and reasoning per response, turn time, time to first token, tool
-error rate, interrupted or failed turns, responses and tool calls per prompt, cached input ratio
-and context use.
+Codex gets its own set: output and reasoning per response, turn time, time to first token (Codex's
+own), output speed (also without reasoning), tool error rate, interrupted or failed turns,
+responses and tool calls per prompt, cached input ratio and context use. With the switch on
+**All**, one more chart puts every Claude Code and Codex model's output speed side by side.
 
 ![Trends per model](docs/images/trends.webp)
 
@@ -653,6 +662,8 @@ for the score itself (as measured, per plan, and the token mix).
   Smaller unexplained parts are shown as a warning, since a real cut looks the same.
 - **Older readings count too:** if you ran `/usage` in Claude Code before turning on live limits,
   the percentages it printed are read from your transcripts.
+- **Speed is a side signal:** the Limit health card shows each busy model's output speed in the
+  last 7 days against the 4 weeks before, clearly apart from the score; it never changes it.
 - **Indicators, not proof:** trends depend on what you were working on. Look for big, lasting
   changes that line up with a new model or version.
 

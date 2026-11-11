@@ -258,6 +258,8 @@ export const webApi: CsdApi = {
   compareTrends: (a, b) => rpc('compareTrends', a, b),
   getCodexTrends: (g) => rpc('getCodexTrends', g),
   compareCodexTrends: (a, b) => rpc('compareCodexTrends', a, b),
+  getSpeedTrends: () => rpc('getSpeedTrends'),
+  getSpeedSignal: (view) => rpc('getSpeedSignal', view),
 
   getLimits: () => rpc('getLimits'),
   compareHealth: (k, a, b) => rpc('compareHealth', k, a, b),

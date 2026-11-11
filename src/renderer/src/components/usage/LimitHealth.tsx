@@ -12,9 +12,12 @@ import {
   YAxis
 } from 'recharts'
 import {
+  ArrowDownRight,
   ArrowLeftRight,
+  ArrowUpRight,
   CalendarRange,
   CircleCheck,
+  Gauge,
   Hourglass,
   MapPinned,
   Plus,
@@ -49,7 +52,9 @@ import { Input } from '../ui/input'
 import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover'
 import { Segmented } from '../ui/segmented'
 import { Tooltip } from '../ui/tooltip'
-import { Card, CardHeader, Skeleton } from './primitives'
+import { Card, CardHeader, InfoTip, Skeleton } from './primitives'
+import { SPEED_CAVEAT, type SpeedSignal } from '@shared/usage/speed'
+import { formatTps } from '@/lib/usage-format'
 
 type Kind = 'five_hour' | 'seven_day'
 
@@ -653,6 +658,7 @@ export function LimitHealthCard({
               </div>
             )}
             {compare && <CompareBox kind={kind} report={report} />}
+            <SpeedSignalRow provider={isCodex ? 'codex' : 'claude'} />
           </>
         ) : (
           <div className="px-6 py-8 text-center text-sm leading-relaxed text-muted-foreground">
@@ -661,6 +667,78 @@ export function LimitHealthCard({
         )}
       </Card>
     </HealthOf.Provider>
+  )
+}
+
+// ------------------------------------------------- speed: an extra signal
+
+/**
+ * Output speed in the last week against the four weeks before, per busiest
+ * model: an extra signal next to the score, never part of it.
+ */
+function SpeedSignalRow({ provider }: { provider: 'claude' | 'codex' }) {
+  const [sig, setSig] = useState<SpeedSignal | null>(null)
+  const [version, setVersion] = useState(0)
+  useEffect(() => api.onUsageChanged(() => setVersion((v) => v + 1)), [])
+  useEffect(() => {
+    let cancelled = false
+    void api.getSpeedSignal(provider).then((r) => !cancelled && setSig(r))
+    return () => {
+      cancelled = true
+    }
+  }, [provider, version])
+  if (!sig?.rows.length) return null
+  return (
+    <div className="mt-3 rounded-lg border border-dashed border-border px-3 py-2 text-xs">
+      <div className="flex items-center gap-1.5 text-muted-foreground">
+        <Gauge className="size-3.5" />
+        <span className="font-medium text-foreground">Speed</span>
+        <span>· extra signal, not part of the score</span>
+        <InfoTip>
+          Median output speed of the last {sig.recentDays} days against the {sig.beforeDays} days
+          before, per model (fast mode on its own row). Slower answers can hint at a busy or
+          throttled service, but it never changes the limit-health score. {SPEED_CAVEAT}
+        </InfoTip>
+      </div>
+      <div className="mt-1.5 flex flex-wrap gap-x-5 gap-y-1">
+        {sig.rows.map((r) => {
+          const c = r.changePct
+          return (
+            <Tooltip
+              key={r.model}
+              content={`${r.recentSamples} responses in the last ${sig.recentDays} days, ${r.beforeSamples} in the ${sig.beforeDays} days before`}
+            >
+              <span className="inline-flex items-center gap-1.5 tabular-nums">
+                <span className="text-muted-foreground">{r.label}</span>
+                <span className="font-medium">{formatTps(r.recent)}</span>
+                {r.before !== undefined && (
+                  <span className="text-subtle-foreground">vs {formatTps(r.before)}</span>
+                )}
+                {c !== undefined && Math.abs(c) >= 1 && (
+                  <span
+                    className={cn(
+                      'inline-flex items-center',
+                      Math.abs(c) >= 15
+                        ? c < 0
+                          ? 'text-[var(--gauge-warn-text)]'
+                          : 'text-good'
+                        : 'text-muted-foreground'
+                    )}
+                  >
+                    {c < 0 ? (
+                      <ArrowDownRight className="size-3" />
+                    ) : (
+                      <ArrowUpRight className="size-3" />
+                    )}
+                    {Math.round(Math.abs(c))}%
+                  </span>
+                )}
+              </span>
+            </Tooltip>
+          )
+        })}
+      </div>
+    </div>
   )
 }
 

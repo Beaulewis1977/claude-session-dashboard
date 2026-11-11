@@ -209,6 +209,11 @@ export function registerUsageIpc(deps: UsageIpcDeps): void {
 
   handle('usage:report', (_e, q) => usage.report(cleanQuery(q), deps.billingOf, deps.sourceOf))
   handle('usage:session', (_e, key) => usage.sessionUsage(String(key)))
+  // Token speed: both agents' models in one chart, and limit health's extra signal.
+  handle('usage:speedTrends', () => usage.speedTrends())
+  handle('usage:speedSignal', (_e, view) =>
+    usage.speedSignal(view === 'codex' ? 'codex' : view === 'all' ? 'all' : 'claude')
+  )
   handle('usage:status', () => usage.status())
   handle('usage:recalculate', async () => {
     await usage.recalculate()

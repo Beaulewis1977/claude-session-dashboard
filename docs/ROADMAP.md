@@ -444,8 +444,14 @@ Run typecheck, lint, tests and the build. Commit, push the branch and open a PR 
     rollouts older than Codex's turn events (no `task_started`) are split at each prompt, without
     turn time or time to first token; tool errors before `item_completed` statuses come only from
     exit codes in tool output (about 12% of outputs have one).
-  - The first start after updating re-reads every Codex rollout once (CODEX_USAGE_VERSION 6), in the
+  - The first start after updating re-reads every Codex rollout once (CODEX_USAGE_VERSION 7), in the
     background.
+- Token speed (known limits):
+  - The first start after updating also re-reads every Claude Code session once (usage index 4), in
+    the background, for each response's timing; until then speeds fill in as sessions are read.
+  - Claude Code's time to first token is an estimate, only for replies that start with thinking.
+  - Codex fast mode is read from `thread_settings_applied` (`service_tier: "priority"`); older
+    rollouts without that event count as normal mode.
 
 ---
 

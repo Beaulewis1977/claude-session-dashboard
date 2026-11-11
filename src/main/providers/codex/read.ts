@@ -376,7 +376,17 @@ export function readBytesOf(text: string): number {
 
 /** Line types the usage reader keeps (everything else is skipped unparsed). */
 const USAGE_TYPES_RE =
-  /"type":"(?:session_meta|turn_context|compacted|token_count|task_started|task_complete|turn_aborted|user_message)"/
+  /"type":"(?:session_meta|turn_context|compacted|token_count|task_started|task_complete|turn_aborted|user_message|thread_settings_applied)"/
+
+/**
+ * For token speed, only by their type and time (never parsed: they can be
+ * large): the model's reasoning items, and newer Codex's usage record of each
+ * response (written right after it ended).
+ */
+const REASONING_RE =
+  /^\{"timestamp":"[^"]{10,40}",(?:"ordinal":\d+,)?"type":"response_item","payload":\{"type":"reasoning"/
+const USAGE_RECORD_RE =
+  /^\{"timestamp":"[^"]{10,40}",(?:"ordinal":\d+,)?"type":"token_usage_record"/
 
 /** Tool calls, counted for trends by their type only (never parsed: their input can be large). */
 const TOOL_CALL_RE =
@@ -410,7 +420,9 @@ export function isToolItemType(type: unknown): boolean {
 const MESSAGE_RE = /"payload":\{"type":"message"/
 
 /** The version of the usage text: bumped when it keeps more (see CODEX_USAGE_VERSION). */
-export const USAGE_TEXT_FORMAT = 3
+// 4: reasoning items, the model's messages and token_usage_record by type and time (token
+//    speed), and the service tier of thread_settings_applied (fast mode).
+export const USAGE_TEXT_FORMAT = 4
 
 /**
  * Only what token usage, plan limits and trends need, from the whole file
@@ -420,7 +432,9 @@ export const USAGE_TEXT_FORMAT = 3
  * `task_complete`, `turn_aborted`), and for trends: each tool call by its
  * type only, each tool output as "failed or not", each finished tool item's
  * status, and each user message as "a prompt I wrote or context Codex
- * added". Never any text. Small even for huge rollouts. Read-only.
+ * added"; for token speed, the times of the model's reasoning items, its
+ * messages and its usage records, and the service tier (fast mode). Never any
+ * text. Small even for huge rollouts. Read-only.
  */
 export async function readCodexUsageText(path: string): Promise<string> {
   refuseCredentials(path)
@@ -432,6 +446,17 @@ export async function readCodexUsageText(path: string): Promise<string> {
     (line) => {
       const head = line.slice(0, 400)
       const ts = TIMESTAMP_RE.exec(head)?.[1]
+      if (REASONING_RE.test(head) || USAGE_RECORD_RE.test(head)) {
+        const reasoning = REASONING_RE.test(head)
+        out.push(
+          JSON.stringify(
+            reasoning
+              ? { timestamp: ts, type: 'response_item', payload: { type: 'reasoning' } }
+              : { timestamp: ts, type: 'token_usage_record', payload: {} }
+          )
+        )
+        return
+      }
       const call = TOOL_CALL_RE.exec(head)
       if (call) {
         out.push(
@@ -472,6 +497,10 @@ export async function readCodexUsageText(path: string): Promise<string> {
           id: p.id,
           timestamp: p.timestamp,
           forked_from_id: p.forked_from_id,
+          // A subagent that starts from its parent's history (copied events: no timing).
+          ...(typeof p.subagent_history_start_ordinal === 'number'
+            ? { inherits_history: true }
+            : {}),
           cli_version: p.cli_version,
           // A subagent's thread (its "prompts" are the main agent's instructions).
           ...((src && typeof src === 'object' && 'subagent' in src) ||
@@ -515,6 +544,16 @@ export async function readCodexUsageText(path: string): Promise<string> {
           return typeof t === 'string' && t.trim() !== '' && !isContextItem(p, i, t)
         })
         keep.payload = { type: 'message', role: 'user', prompt: mine }
+      } else if (o.type === 'response_item' && p.type === 'message' && p.role === 'assistant') {
+        // The model's own message, by its time only (token speed).
+        keep.payload = { type: 'message', role: 'assistant' }
+      } else if (o.type === 'event_msg' && p.type === 'thread_settings_applied') {
+        // Fast mode: Codex's /fast is the "priority" service tier.
+        const tier = (p.thread_settings as Record<string, unknown> | undefined)?.service_tier
+        keep.payload = {
+          type: p.type,
+          thread_settings: typeof tier === 'string' ? { service_tier: tier.slice(0, 20) } : {}
+        }
       } else if (o.type === 'event_msg' && p.type === 'user_message') {
         // Older Codex: the prompt as an event.
         const t = typeof p.message === 'string' ? p.message : ''

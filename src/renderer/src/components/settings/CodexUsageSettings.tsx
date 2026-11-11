@@ -282,7 +282,8 @@ export function CodexUsageSettings({
             day: 'numeric',
             year: 'numeric'
           })}
-          . Prices are never downloaded. A model matches its own row or a dated copy of it.
+          ; fast-mode multipliers from OpenAI&apos;s pricing page. Prices are never downloaded. A
+          model matches its own row or a dated copy of it.
         </div>
         <UnpricedCodexModels
           prices={prices}
@@ -306,6 +307,11 @@ export function CodexUsageSettings({
                   <td className="px-2 py-1">
                     <div className="font-medium">{p.label}</div>
                     <div className="text-2xs text-subtle-foreground">{p.model}</div>
+                    {p.fast && (
+                      <div className="text-2xs text-subtle-foreground">
+                        Fast mode ×{p.fast} (OpenAI&apos;s Fast / Priority prices)
+                      </div>
+                    )}
                   </td>
                   {COLS.map((c) => (
                     <td key={c.key} className="px-1 py-1">

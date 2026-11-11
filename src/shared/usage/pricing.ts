@@ -35,7 +35,58 @@ interface SnapshotRow extends PriceTier {
   longContext?: PriceTier & { above: number }
 }
 
-export const DEFAULT_PRICES: ModelPrice[] = (snapshot.models as SnapshotRow[]).map((r) => {
+/**
+ * Prices taken from the providers' own pricing pages, for models (and fast
+ * modes) the bundled snapshots don't have yet. Never from third-party sites.
+ */
+export const OFFICIAL_PRICES_CHECKED = '2026-11-10'
+export const ANTHROPIC_PRICING_URL = 'https://platform.claude.com/docs/en/about-claude/pricing'
+export const OPENAI_PRICING_URL = 'https://developers.openai.com/api/docs/pricing'
+
+/** Anthropic's pricing page: rows the LiteLLM snapshot doesn't have. */
+const OFFICIAL_CLAUDE_ROWS: SnapshotRow[] = [
+  // Fast mode: $16 input / $80 output, 2x (caching multipliers apply on top).
+  {
+    model: 'claude-fable-5-2',
+    input: 8,
+    output: 40,
+    cacheWrite5m: 10,
+    cacheWrite1h: 16,
+    cacheRead: 0.2,
+    fast: 2
+  },
+  {
+    model: 'claude-mythos-5-2',
+    input: 8,
+    output: 40,
+    cacheWrite5m: 10,
+    cacheWrite1h: 16,
+    cacheRead: 0.2,
+    fast: 2
+  }
+]
+
+/**
+ * OpenAI's pricing page: Fast mode (formerly Priority processing, which
+ * Codex's /fast uses) as a multiple of Standard, the same for every token type.
+ */
+const OFFICIAL_CODEX_FAST: Record<string, number> = {
+  'gpt-6.1-sol': 2,
+  'gpt-6.1-terra': 2,
+  'gpt-6-astra': 2,
+  'gpt-6-sol': 2,
+  'gpt-5.6-sol': 2,
+  'gpt-5.6-terra': 2,
+  'gpt-5.5': 2.5,
+  'gpt-5.3-codex': 2
+}
+
+const snapshotIds = new Set((snapshot.models as SnapshotRow[]).map((r) => r.model))
+
+export const DEFAULT_PRICES: ModelPrice[] = [
+  ...OFFICIAL_CLAUDE_ROWS.filter((r) => !snapshotIds.has(r.model)),
+  ...(snapshot.models as SnapshotRow[])
+].map((r) => {
   const p: ModelPrice = {
     model: r.model,
     label: `Claude ${modelLabel(r.model)}${r.model.endsWith('-preview') ? ' Preview' : ''}`,
@@ -79,6 +130,8 @@ export const DEFAULT_CODEX_PRICES: ModelPrice[] = (openaiSnapshot.models as Snap
       cacheRead: r.cacheRead
     }
     if (r.longContext) p.longContext = { ...r.longContext }
+    const fast = OFFICIAL_CODEX_FAST[r.model]
+    if (fast) p.fast = fast
     return p
   }
 )
@@ -86,6 +139,8 @@ export const DEFAULT_CODEX_PRICES: ModelPrice[] = (openaiSnapshot.models as Snap
 /** OpenAI rows ("gpt-5.6") match only their own id or a dated copy of it, never a sized variant ("gpt-5.6-luna"). */
 const OPENAI_ROW = /^(?:gpt-|codex-|o\d)/
 const DATE_SUFFIX = /^-(?:\d{4}-\d{2}-\d{2}|\d{8})$/
+/** A newer minor version ("claude-fable-5" + "-2") is another model, never priced by the older row. */
+const MINOR_VERSION = /^-\d{1,2}(?:$|[-@[])/
 
 /** Find the price entry for a model id: exact match first, then the longest prefix. */
 export function findPrice(model: string, table: ModelPrice[]): ModelPrice | undefined {
@@ -96,6 +151,7 @@ export function findPrice(model: string, table: ModelPrice[]): ModelPrice | unde
     if (id === m) return row
     if (id.startsWith(m + '-') || id.startsWith(m + '@') || id.startsWith(m + '[')) {
       if (OPENAI_ROW.test(m) && !DATE_SUFFIX.test(id.slice(m.length))) continue
+      if (MINOR_VERSION.test(id.slice(m.length))) continue
       if (!best || m.length > best.model.length) best = row
     }
   }
@@ -151,11 +207,11 @@ export function recordCost(r: CostInput & { loggedCost?: number }, table: ModelP
 
 /** Short, friendly model name: "claude-sonnet-4-5-20250929" → "Sonnet 4.5". */
 export function modelLabel(model: string): string {
+  if (model.endsWith('-fast')) return `${modelLabel(model.slice(0, -5))} · fast`
   const gpt = openAiModelLabel(model)
   if (gpt) return gpt
   const m = /^claude-(?:(\d)-(\d)-)?([a-z]+)(?:-(\d{1,2})(?!\d))?(?:-(\d)(?!\d))?/i.exec(model)
   if (!m) return model
-  if (model.endsWith('-fast')) return `${modelLabel(model.slice(0, -5))} (fast)`
   if (m[1]) return `${cap(m[3])} ${m[1]}.${m[2]}`
   const major = m[4]
   const minor = m[5]
@@ -210,13 +266,30 @@ export function unpricedModels(models: Iterable<string>, table: ModelPrice[]): s
   return [...out].sort()
 }
 
+/** A fast-mode model id: Claude Code's `usage.speed: "fast"`, Codex's priority tier. */
+export function isFastModel(model: string): boolean {
+  return model.endsWith('-fast')
+}
+
 /**
  * Tables saved before the snapshot had no fast-mode or long-context prices:
- * add them from the snapshot for the same model id. Edited values are kept.
+ * add them from the defaults for the same model id, and add the officially
+ * priced models (OFFICIAL_CLAUDE_ROWS) the table has no row for yet. Edited
+ * values are kept.
  */
 export function addSnapshotExtras(table: ModelPrice[]): ModelPrice[] {
+  const have = new Set(table.map((p) => p.model.toLowerCase()))
+  const official = new Set(OFFICIAL_CLAUDE_ROWS.map((r) => r.model))
+  const added = DEFAULT_PRICES.filter(
+    (d) => official.has(d.model) && !have.has(d.model.toLowerCase())
+  ).map((d) => ({ ...d }))
+  return [...added, ...fillExtras(table, DEFAULT_PRICES)]
+}
+
+/** Fast-mode multipliers and long-context prices from the defaults, where a saved row has none. */
+export function fillExtras(table: ModelPrice[], defaults: ModelPrice[]): ModelPrice[] {
   return table.map((row) => {
-    const d = DEFAULT_PRICES.find((p) => p.model === row.model)
+    const d = defaults.find((p) => p.model === row.model)
     if (!d) return row
     const out = { ...row }
     if (out.fast === undefined && d.fast) out.fast = d.fast

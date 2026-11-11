@@ -1047,7 +1047,11 @@ function emptyAcc() {
     prompts: 0,
     promptResponses: 0,
     promptToolCalls: 0,
-    contexts: []
+    contexts: [],
+    speeds: [],
+    visibleSpeeds: [],
+    fastSpeeds: [],
+    fastFirstTokens: []
   }
 }
 
@@ -1463,7 +1467,7 @@ describe('second review fixes', { timeout: 30_000 }, () => {
   })
 
   it('a cache from the previous parser (version 5) is read again, not reused', async () => {
-    expect(CODEX_USAGE_VERSION).toBe(6)
+    expect(CODEX_USAGE_VERSION).toBe(7)
     const dir = join(root, 'usage-v5')
     await mkdir(dir, { recursive: true })
     await writeFile(

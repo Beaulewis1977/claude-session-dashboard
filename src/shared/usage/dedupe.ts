@@ -48,6 +48,38 @@ export function shouldReplace(candidate: UsageRecord, existing: UsageRecord): bo
   return candidate.speed !== undefined && existing.speed === undefined
 }
 
+type Timing = Pick<UsageRecord, 'genMs' | 'ttftMs'>
+
+/**
+ * The timing (see speed.ts) a response keeps when it's logged again
+ * (`replaced`: the candidate's line is the one kept).
+ * - Only a line of the same chain as the kept record can give it its timing:
+ *   a /btw sidechain replay (even in another file of the same session) has
+ *   the replay's times, never the main response's.
+ * - A copy in another session (a fork, a resume, a branch) never changes the
+ *   original's: its lines can carry other times. Its timing counts only when
+ *   the original has none.
+ * - Reading the same session again does change it (the response may have
+ *   been still streaming).
+ */
+export function keptTiming(c: UsageRecord, e: UsageRecord, replaced: boolean): Timing {
+  const own = (r: UsageRecord): Timing => ({ genMs: r.genMs, ttftMs: r.ttftMs })
+  if (!!c.sc !== !!e.sc) return own(replaced ? c : e)
+  if (c.key === e.key) return own(c.genMs !== undefined ? c : e)
+  return own(e.genMs !== undefined ? e : c)
+}
+
+const sameTiming = (t: Timing, r: UsageRecord): boolean =>
+  t.genMs === r.genMs && t.ttftMs === r.ttftMs
+
+function withTiming(r: UsageRecord, t: Timing): UsageRecord {
+  if (t.genMs !== undefined) r.genMs = t.genMs
+  else delete r.genMs
+  if (t.ttftMs !== undefined) r.ttftMs = t.ttftMs
+  else delete r.ttftMs
+  return r
+}
+
 export type DedupeResult = 'added' | 'replaced' | 'duplicate'
 
 /** A set of usage records with ccusage's dedupe rules. */
@@ -91,10 +123,13 @@ export class UsageDeduper {
       e.aka = [...(e.aka ?? []), c.id]
     }
     if (c.sid && c.mid) this.index(c.sid, c.mid, e.id)
-    if (!shouldReplace(c, e)) {
-      // Same tokens: only pick up a stop reason that wasn't known yet.
-      if (c.stop && !e.stop && total(c) === total(e)) {
-        const stored = { ...e, stop: c.stop }
+    const replaced = shouldReplace(c, e)
+    const timing = keptTiming(c, e, replaced)
+    if (!replaced) {
+      // Same tokens: only pick up a stop reason that wasn't known yet, or new timing.
+      const stop = !!c.stop && !e.stop && total(c) === total(e)
+      if (stop || !sameTiming(timing, e)) {
+        const stored = withTiming(stop ? { ...e, stop: c.stop } : { ...e }, timing)
         this.records.set(e.id, stored)
         return { result: 'replaced', stored, previous: e }
       }
@@ -109,6 +144,7 @@ export class UsageDeduper {
       ...(e.aka ? { aka: e.aka } : {})
     }
     if (!stored.stop && e.stop) stored.stop = e.stop
+    withTiming(stored, timing)
     this.records.set(e.id, stored)
     if (stored.sid && stored.mid) this.index(stored.sid, stored.mid, e.id)
     return { result: 'replaced', stored, previous: e }

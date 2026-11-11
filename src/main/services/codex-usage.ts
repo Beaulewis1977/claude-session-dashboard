@@ -24,7 +24,8 @@ import { listFiles, readNdjson, writeNdjson } from '../core/ndjson'
 // 5: a turn's model from its own turn_context, failed turns without a response, every tool item,
 //    prompt-split turn ids per session (a fork's copies left out).
 // 6: prompt-split turns take their first response's identity and model (5 numbered them).
-export const CODEX_USAGE_VERSION = 6
+// 7: each response's generation time (token speed); fast mode (priority tier) as "<model>-fast".
+export const CODEX_USAGE_VERSION = 7
 
 const RECORDS_RE = /^codex-records-\d{4}-\d{2}\.ndjson$/
 const LIMITS_RE = /^codex-limits-\d{4}-\d{2}\.ndjson$/

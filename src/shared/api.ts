@@ -47,6 +47,8 @@ import type { SummaryBatchEstimate, SummaryPreview, SummaryQueueState } from './
 import type { Account, CreditGrant, CreditsState } from './usage/credits'
 import type { CompareResult, CompareSide, TrendGroupBy, TrendsReport } from './usage/trends'
 import type { CodexMetricId, CodexTrendsReport } from './usage/codex-trends'
+import type { SpeedSignal, SpeedTrendsReport } from './usage/speed'
+import type { ProviderView } from './provider'
 import type {
   ActivityEntry,
   ClaudeCheck,
@@ -165,6 +167,10 @@ export interface CsdApi {
   /** Codex trends, kept apart from Claude Code's (per model and Codex CLI version). */
   getCodexTrends(groupBy: TrendGroupBy): Promise<CodexTrendsReport>
   compareCodexTrends(a: CompareSide, b: CompareSide): Promise<CompareResult<CodexMetricId>>
+  /** Weekly output speed per model, Claude Code's and Codex's together. */
+  getSpeedTrends(): Promise<SpeedTrendsReport>
+  /** Recent output speed against the weeks before (an extra signal next to limit health). */
+  getSpeedSignal(view: ProviderView): Promise<SpeedSignal>
 
   // Live limits and the status line bridge
   getLimits(): Promise<LimitsState>

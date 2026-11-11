@@ -29,6 +29,7 @@
     "src/shared/**/*",
     "tests/clipboard.test.ts",
     "tests/ui-names.test.ts",
-    "tests/credits-empty.test.ts"
+    "tests/credits-empty.test.ts",
+    "tests/speed-chip.test.ts"
   ]
 }

@@ -600,15 +600,19 @@ describe('Codex usage on the sample homes', () => {
   it('exports CSV with a provider column', async () => {
     const { usage } = await pipeline()
     const csv = usage.csv({ period: 'day', provider: 'all' }, false).split('\r\n')
-    expect(csv[0].split(',').slice(-2)).toEqual(['reasoning', 'provider'])
-    expect(csv.some((l) => l.endsWith(',codex'))).toBe(true)
-    expect(csv.some((l) => l.endsWith(',claude'))).toBe(true)
+    const head = csv[0].split(',')
+    const col = head.indexOf('provider')
+    expect(head.slice(col - 1, col + 1)).toEqual(['reasoning', 'provider'])
+    const providerOf = (l: string): string => l.split(',')[col]
+    expect(csv.some((l) => providerOf(l) === 'codex')).toBe(true)
+    expect(csv.some((l) => providerOf(l) === 'claude')).toBe(true)
     const perRecord = usage.csv({ period: 'day', provider: 'codex' }, true).split('\r\n')
+    const recCol = perRecord[0].split(',').indexOf('provider')
     expect(
       perRecord
         .slice(1)
         .filter(Boolean)
-        .every((l) => l.endsWith(',codex'))
+        .every((l) => l.split(',')[recCol] === 'codex')
     ).toBe(true)
     const rec: UsageRecord = { ...usage.codexRecords()[0] }
     expect(toCsv([rec], { timeZone: 'UTC', prices: DEFAULT_CODEX_PRICES })).toContain(',codex')

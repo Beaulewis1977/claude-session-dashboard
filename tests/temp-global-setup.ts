@@ -9,12 +9,19 @@
 
 import { readdirSync } from 'node:fs'
 import { tmpdir } from 'node:os'
+import { BROWSER_TEMP_PREFIX } from './browser-temp'
 
 export function tempFolders(): string[] {
-  return readdirSync(tmpdir(), { withFileTypes: true })
-    .filter((d) => d.isDirectory() && d.name.startsWith('csd-'))
-    .map((d) => d.name)
-    .sort()
+  return (
+    readdirSync(tmpdir(), { withFileTypes: true })
+      // The browser tests' own temp folder is checked by browser-global-setup.ts.
+      .filter(
+        (d) =>
+          d.isDirectory() && d.name.startsWith('csd-') && !d.name.startsWith(BROWSER_TEMP_PREFIX)
+      )
+      .map((d) => d.name)
+      .sort()
+  )
 }
 
 export default function setup(): () => void {

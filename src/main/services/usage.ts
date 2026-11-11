@@ -43,6 +43,7 @@ import { copyShared } from '../core/shared-copy'
 import { sessionProvider } from '../providers/registry'
 import type { SessionService } from './sessions'
 import { CodexUsageStore } from './codex-usage'
+import { InProcessParser, type UsageParser } from './usage-parse'
 import type { SessionProvider } from '../providers/types'
 
 // 2: dedupe follows ccusage (session-scoped requestless ids, sidechain replays).
@@ -124,7 +125,9 @@ export class UsageService extends EventEmitter<{ changed: []; 'codex-progress': 
   constructor(
     private readonly sessions: SessionService,
     private readonly paths: UsagePaths,
-    private readonly settings: () => UsageSettings
+    private readonly settings: () => UsageSettings,
+    /** Where session files are read and parsed (the app: a worker thread). */
+    private readonly parser: UsageParser = new InProcessParser()
   ) {
     super()
   }
@@ -557,15 +560,7 @@ export class UsageService extends EventEmitter<{ changed: []; 'codex-progress': 
   ): Promise<boolean> {
     const sig = [s.filePath, s.sizeBytes, s.lastActivityAt ?? '', root].join('|')
     if (!force && this.codex.index[s.key] === sig) return false
-    let text: string
-    try {
-      text = provider.usage.readText
-        ? await provider.usage.readText(s.filePath)
-        : await readFile(s.filePath, 'utf8')
-    } catch {
-      return false
-    }
-    const a = provider.usage.analyze(text, {
+    const ctx = {
       key: s.key,
       project: s.projectName,
       env: s.env,
@@ -574,7 +569,23 @@ export class UsageService extends EventEmitter<{ changed: []; 'codex-progress': 
       lineageRoot: root,
       source: s.sourceId,
       ...(s.version ? { version: s.version } : {})
-    })
+    }
+    let a: UsageAnalysis | undefined
+    if (provider.id === 'codex') {
+      // Read and parsed off this thread (the app's parser is a worker).
+      a = await this.parser.parse({ provider: 'codex', path: s.filePath, ctx })
+      if (!a) return false
+    } else {
+      let text: string
+      try {
+        text = provider.usage.readText
+          ? await provider.usage.readText(s.filePath)
+          : await readFile(s.filePath, 'utf8')
+      } catch {
+        return false
+      }
+      a = provider.usage.analyze(text, ctx)
+    }
     this.codex.set(s.key, a.records, a.codexLimits ?? [], sig, a.codexTurns ?? [])
     // Let other work (IPC) run between files on big histories.
     await new Promise((r) => setImmediate(r))
@@ -583,6 +594,19 @@ export class UsageService extends EventEmitter<{ changed: []; 'codex-progress': 
 
   /** Read and analyze one file of a session (nothing is changed yet); undefined if unreadable. */
   private async readUsage(path: string, s: SessionSummary): Promise<UsageAnalysis | undefined> {
+    const provider = sessionProvider(this.sessions, s)
+    if (provider.id === 'claude')
+      return this.parser.parse({
+        provider: 'claude',
+        path,
+        ctx: {
+          key: s.key,
+          project: s.projectName,
+          env: s.env,
+          sessionId: s.sessionId,
+          file: basename(path)
+        }
+      })
     let text: string
     try {
       text = await readFile(path, 'utf8')

@@ -16,6 +16,73 @@ export interface SessionsDelta {
   keys?: string[]
   sources: SessionsPayload['sources']
   scan: SessionsPayload['scan']
+  /** The list version it applies to, and the version it makes (set when it's sent). */
+  base?: number
+  version?: number
+}
+
+/**
+ * A window's session list kept in step with the main process: a full list
+ * (with a version) is taken only if it's newer than what the window has, and
+ * a delta only on top of the version it was made for. Anything else (a delta
+ * that came before the list it applies to, or after a list it missed) asks
+ * for the full list again.
+ */
+export class SessionsSync {
+  private version: number | undefined
+  private resyncing = false
+  /** Deltas that came before the list they apply to (replayed once it is here). */
+  private pending: SessionsDelta[] = []
+
+  constructor(
+    private readonly get: () => SessionSummary[],
+    private readonly put: (p: Omit<SessionsPayload, 'version'>) => void,
+    private readonly fetchFull: () => Promise<SessionsPayload>
+  ) {}
+
+  /** A full list: getSessions() or a full push. */
+  full(p: SessionsPayload): void {
+    if (p.version !== undefined && this.version !== undefined && p.version < this.version) return
+    this.version = p.version
+    this.put({ sessions: p.sessions, sources: p.sources, scan: p.scan })
+    // Deltas made from this list (or after it) that came early.
+    const early = this.pending
+    this.pending = []
+    for (
+      let d = early.find((x) => x.base === this.version);
+      d;
+      d = early.find((x) => x.base === this.version)
+    )
+      this.apply(d)
+  }
+
+  delta(d: SessionsDelta): void {
+    if (d.base === undefined || this.version === undefined || d.base !== this.version) {
+      if (d.base !== undefined && this.pending.length < 100) this.pending.push(d)
+      this.resync()
+      return
+    }
+    this.apply(d)
+  }
+
+  private apply(d: SessionsDelta): void {
+    this.version = d.version
+    this.put({ sessions: applySessionsDelta(this.get(), d), sources: d.sources, scan: d.scan })
+  }
+
+  /** The list version the window has (tests). */
+  get current(): number | undefined {
+    return this.version
+  }
+
+  private resync(): void {
+    if (this.resyncing) return
+    this.resyncing = true
+    void this.fetchFull()
+      .then((p) => this.full(p))
+      .catch(() => undefined)
+      .finally(() => (this.resyncing = false))
+  }
 }
 
 /**

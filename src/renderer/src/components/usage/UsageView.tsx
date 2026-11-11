@@ -341,6 +341,9 @@ export function UsageView() {
   // In the store, so Back / Forward can return to it.
   const tab = useApp((s) => s.usageTab)
   const rawTab = tab === 'raw'
+  // The local day: rolling ranges (Last 7 days …) start a day later after midnight,
+  // within 30 s (the clock above ticks every 30 s).
+  const today = new Date(t).toDateString()
   const query: UsageQuery = useMemo(() => {
     const r = rangeOf(range, report?.cards, custom)
     const q: UsageQuery = { ...r, period, models, groupBy }
@@ -349,7 +352,7 @@ export function UsageView() {
     if (!rawTab) q.raw = false
     return q
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [range, custom, period, models, groupBy, view, cardFrom, rawTab])
+  }, [range, custom, period, models, groupBy, view, cardFrom, rawTab, today])
 
   useEffect(() => {
     let cancelled = false

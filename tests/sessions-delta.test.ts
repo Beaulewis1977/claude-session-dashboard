@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { applySessionsDelta, sentOf, sessionsDelta } from '@shared/sessions-delta'
+import { applySessionsDelta, sentOf, sessionsDelta, SessionsSync } from '@shared/sessions-delta'
 import type { SessionsPayload, SessionSummary } from '@shared/types'
 
 function rng(seed: number): () => number {
@@ -74,5 +74,74 @@ describe('session list deltas', () => {
       sent = after
       expect(window).toEqual(list)
     }
+  })
+})
+
+describe('the window keeping its list in step (SessionsSync)', () => {
+  /** A main process for one window: full lists and deltas with versions, as ipc.ts sends them. */
+  function mainSide() {
+    let v = 0
+    let sent = sentOf(payload([]))
+    let base = 0
+    return {
+      full(list: SessionSummary[]): SessionsPayload {
+        sent = sentOf(payload(list))
+        base = ++v
+        return { ...payload(list), version: base }
+      },
+      delta(list: SessionSummary[]) {
+        const { delta, next } = sessionsDelta(sent, payload(list))
+        sent = next
+        const out = { ...delta, base, version: ++v }
+        base = out.version
+        return out
+      }
+    }
+  }
+  function windowSide(fetchFull: () => Promise<SessionsPayload>) {
+    let sessions: SessionSummary[] = []
+    const sync = new SessionsSync(
+      () => sessions,
+      (p) => (sessions = p.sessions),
+      fetchFull
+    )
+    return { sync, list: () => sessions }
+  }
+
+  it('applies a delta that follows the first list, even if other startup calls are slower', async () => {
+    const main = mainSide()
+    const a = [session(1), session(2)]
+    const b = [session(1, { title: 'Renamed' }), session(2), session(3)]
+    const w = windowSide(async () => main.full(b))
+    // getSessions() answers, then a change goes out at once: both reach the window in order.
+    w.sync.full(main.full(a))
+    w.sync.delta(main.delta(b))
+    expect(w.list()).toEqual(b)
+  })
+
+  it('never lets an older full list replace a newer state', () => {
+    const main = mainSide()
+    const w = windowSide(async () => main.full([]))
+    const old = main.full([session(1)])
+    const fresh = main.full([session(1), session(2)])
+    w.sync.full(fresh)
+    w.sync.full(old)
+    expect(w.list()).toEqual([session(1), session(2)])
+  })
+
+  it('asks for the full list when a delta does not apply to what it has, and replays early ones', async () => {
+    const main = mainSide()
+    const start = [session(1)]
+    const firstList = main.full(start)
+    const w = windowSide(async () => firstList)
+    // A delta before any list: kept, and the full list is asked for.
+    const d1 = main.delta([session(1), session(2)])
+    w.sync.delta(d1)
+    await Promise.resolve()
+    await Promise.resolve()
+    await Promise.resolve()
+    // The full list came; the early delta (made from it) is replayed on top.
+    expect(w.list()).toEqual([session(1), session(2)])
+    expect(w.sync.current).toBe(d1.version)
   })
 })

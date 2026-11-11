@@ -708,6 +708,8 @@ export interface SessionsPayload {
   sessions: SessionSummary[]
   sources: SourceInfo[]
   scan: ScanState
+  /** Which list this is for the window that got it (deltas name the one they apply to). */
+  version?: number
 }
 
 /** Settings → "Start with Windows (minimized to tray)", as Windows reports it now. */

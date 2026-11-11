@@ -239,13 +239,20 @@ export function registerIpc(deps: IpcDeps): void {
   // The session list goes to each window as changes to what it has (see
   // sessions-delta.ts): at most one a half second, one a second while a
   // scan runs. A window that loaded (or asked for the list) gets it in full.
-  const sent = new Map<number, { list: SentList; sources: string; scan: string }>()
-  const remember = (id: number, p: SessionsPayload): void => {
+  // Every list a window gets has a version, and each delta says which version
+  // it applies to: the window applies it only to that one (else it asks for
+  // the full list), so no change is ever lost or applied to the wrong list.
+  const sent = new Map<number, { list: SentList; sources: string; scan: string; version: number }>()
+  let versions = 0
+  const remember = (id: number, p: SessionsPayload): SessionsPayload => {
+    const version = ++versions
     sent.set(id, {
       list: sentOf(p),
       sources: JSON.stringify(p.sources),
-      scan: JSON.stringify(p.scan)
+      scan: JSON.stringify(p.scan),
+      version
     })
+    return { ...p, version }
   }
   const pushSessions = coalesce(
     () => {
@@ -254,23 +261,22 @@ export function registerIpc(deps: IpcDeps): void {
         const wc = w.webContents
         const prev = sent.get(wc.id)
         if (!prev) {
-          wc.send('sessions:changed', p)
-          remember(wc.id, p)
+          wc.send('sessions:changed', remember(wc.id, p))
           continue
         }
         const { delta, next } = sessionsDelta(prev.list, p)
         const sources = JSON.stringify(p.sources)
         const scan = JSON.stringify(p.scan)
-        sent.set(wc.id, { list: next, sources, scan })
-        if (
+        const same =
           !delta.upserts.length &&
           !delta.removed.length &&
           !delta.keys &&
           sources === prev.sources &&
           scan === prev.scan
-        )
-          continue
-        wc.send('sessions:delta', delta)
+        if (same) continue
+        const version = ++versions
+        sent.set(wc.id, { list: next, sources, scan, version })
+        wc.send('sessions:delta', { ...delta, base: prev.version, version })
       }
     },
     () => (sessions.scanning ? 1000 : 500)
@@ -303,8 +309,7 @@ export function registerIpc(deps: IpcDeps): void {
   handle('sessions:list', (e) => {
     const p = sessions.payload()
     // What this window has now: later changes are sent as a delta from it.
-    if (e.sender?.id !== undefined) remember(e.sender.id, p)
-    return p
+    return e.sender?.id !== undefined ? remember(e.sender.id, p) : p
   })
   // The viewer asks for its transcript with long tool outputs cut (see
   // transcript-cut.ts); the full one is kept a little while for Show all,

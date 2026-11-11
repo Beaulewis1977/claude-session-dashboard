@@ -192,3 +192,34 @@ describe('the Usage view and the provider switch', () => {
     }
   })
 })
+
+describe('rolling ranges', () => {
+  it('move to the new day after midnight (Last 30 days)', async ({ skip }) => {
+    if (!browser) return skip(unavailableReason)
+    const page = trackPage(
+      await browser.newPage({ viewport: { width: 1400, height: 1000 } }),
+      origin
+    )
+    try {
+      // Two minutes before local midnight (loading the page takes some of them).
+      await page.clock.install({ time: new Date(2026, 11, 20, 23, 58, 0) })
+      await page.goto(`${origin}/?view=claude`)
+      await waitReady(page, page.getByRole('heading', { name: 'Usage & limits' }))
+      const froms = async () =>
+        [...new Set((await queries(page)).map((q) => (q as { from?: number }).from))].filter(
+          (x): x is number => typeof x === 'number'
+        )
+      await expect.poll(async () => (await froms()).length).toBeGreaterThan(0)
+      const before = Math.max(...(await froms()))
+      // As the screen works it out: local midnight 29 days back (no DST change in between here).
+      expect(before).toBe(new Date(2026, 10, 21).getTime())
+      // Past midnight (and the screen's 30 s clock tick): the range starts a day later.
+      await page.clock.fastForward('03:00')
+      await expect
+        .poll(async () => Math.max(...(await froms())))
+        .toBe(new Date(2026, 10, 22).getTime())
+    } finally {
+      await page.close()
+    }
+  })
+})

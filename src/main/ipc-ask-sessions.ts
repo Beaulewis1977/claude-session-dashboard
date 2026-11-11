@@ -3,6 +3,7 @@
 import { BrowserWindow } from 'electron'
 import { isAskEffort, isAskModel, type AskEffort, type AskModel } from '@shared/ask-sessions/types'
 import { handle } from './ipc-guard'
+import { toRenderer } from './outgoing'
 import type { AskSessionsService } from './ask-sessions/service'
 
 const text = (v: unknown, max: number, what = 'Type a question first.'): string => {
@@ -21,7 +22,7 @@ const sids = (v: unknown): string[] =>
 export function registerAskSessionsIpc(ask: AskSessionsService): void {
   const send = (channel: string, payload?: unknown): void => {
     for (const w of BrowserWindow.getAllWindows())
-      if (!w.isDestroyed()) w.webContents.send(channel, payload)
+      if (!w.isDestroyed()) w.webContents.send(channel, toRenderer(payload))
   }
   ask.on('changed', () => send('askSessions:changed'))
   ask.on('status', (s) => send('askSessions:status', s))

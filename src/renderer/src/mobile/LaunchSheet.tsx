@@ -38,6 +38,7 @@ import { Sheet, SheetContent } from '@/components/ui/sheet'
 import { SessionModelControls } from '@/components/ModelPicker'
 import { FastModeNotes } from '@/components/FastModeNote'
 import { fastNotes } from '@shared/fast-notes'
+import { asBranch } from '@/lib/model-choice'
 
 export type LaunchTarget =
   | { kind: 'resume' }
@@ -369,7 +370,12 @@ export function LaunchSheet({
                       </span>
                     )}
                     <SessionModelControls
-                      session={session}
+                      // A branch resumes on the model of the last reply it keeps.
+                      session={
+                        target.kind === 'branch' && preview.branch
+                          ? asBranch(session, preview.branch.lastModel)
+                          : session
+                      }
                       write={write}
                       disabled={readOnly}
                       className="mt-2"

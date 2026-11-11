@@ -164,6 +164,8 @@ export interface RemoteLaunchPreview {
   modelChoice?: ResolvedModel
   /** Continue fresh: new messages since the summary was written. */
   newSinceSummary?: number
+  /** Branch: the model of the last reply the branch keeps (absent: none kept). */
+  branch?: { lastModel?: string }
   /** Resume / Fork: the context size and what reloading it would cost (estimate). */
   context?: ResumeEstimate
   /** It (or a fork / continuation of it) is already running on the PC. */

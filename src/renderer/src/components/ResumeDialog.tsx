@@ -41,6 +41,7 @@ import { BranchPointCard } from './viewer/Branches'
 import { SessionModelControls } from './ModelPicker'
 import { FastModeNotes } from './FastModeNote'
 import { fastNotes } from '@shared/fast-notes'
+import { asBranch } from '@/lib/model-choice'
 import { choiceLabel } from '@shared/model-choice'
 import { projectDefault, projectDefaultKey, withProjectDefault } from '@shared/project-key'
 import type { AcceptedProject, CodexAppKind, OpenIn } from '@shared/codex-app'
@@ -821,7 +822,15 @@ function ResumeDialogBody({ resume }: { resume: ResumeRequest }) {
                     />
                   </Tooltip>
                 </div>
-                <SessionModelControls session={session} newSession={newSession || continueFresh} />
+                <SessionModelControls
+                  // A branch resumes on the model of the last reply it keeps (once the preview knows it).
+                  session={
+                    branchAt && preview?.branch
+                      ? asBranch(session, preview.branch.lastModel)
+                      : session
+                  }
+                  newSession={newSession || continueFresh}
+                />
                 <FastModeNotes
                   className="mt-2"
                   notes={fastNotes({

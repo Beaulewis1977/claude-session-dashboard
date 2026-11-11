@@ -55,6 +55,15 @@ export function fastSupportOf(
   return fastSupport(codex ? 'codex' : 'claude', launchModel(r, s, newSession), list)
 }
 
+/**
+ * The session as a branch of it resumes: with only the transcript up to the
+ * cut, so on the model of the last reply it keeps (none kept: the model isn't
+ * known). The same rule the launch command uses (see Launcher.previewInner).
+ */
+export function asBranch<T extends Subject>(s: T, keptModel: string | undefined): T {
+  return { ...s, lastModel: keptModel, models: keptModel ? [keptModel] : [] }
+}
+
 /** The model, effort and fast mode a session launches with (session → project → Settings). */
 export function useModelChoice(s: Subject | undefined): ResolvedModel {
   const settings = useApp((st) => st.settings)

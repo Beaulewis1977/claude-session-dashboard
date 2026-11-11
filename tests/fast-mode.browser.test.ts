@@ -56,10 +56,23 @@ const q = new URLSearchParams(location.search)
 const codex = q.has('codex')
 window.metas = []
 window.csd = {
-  previewLaunch: async () => {
+  previewLaunch: async (o) => {
     const s = useApp.getState().sessions[0]
     const fast = s.meta.fast === 'on'
+    // ?kept=<model>: a branch that keeps the replies up to one on that model.
+    const kept = q.get('kept')
+    const branch = o.branch
+      ? {
+          branch: {
+            newSessionId: 'b1', targetPath: 'C:/fixture/b1.jsonl', atMessageId: o.branch.at,
+            atRole: 'assistant', atPreview: 'Done.', snapped: 'none', snapTools: [],
+            keptMessages: 2, totalMessages: 4, name: 'Fast session (branch)',
+            ...(kept ? { lastModel: kept } : {})
+          }
+        }
+      : {}
     return {
+      ...branch,
       commandLine: 'Start-Process wt.exe', claudeCommand: 'claude --resume s0', terminal: 'wt',
       fellBack: false, cwd: 'C:/fixture', cwdExists: true, willRestore: false,
       restoreImpossible: false, originalPath: 'C:/fixture/s0.jsonl', billingLabel: 'Subscription',
@@ -90,6 +103,7 @@ const kind = q.get('launch')
 const resume = { key: 'browser:s0', fork: false }
 if (kind === 'new') resume.newSession = true
 if (kind === 'continue') resume.continueFresh = true
+if (kind === 'branch') resume.branch = { at: 'm1', mode: 'include' }
 if (codex) {
   start.provider = 'codex'
   start.models = ['gpt-6-sol']
@@ -195,6 +209,28 @@ describe('Fast picker', () => {
       } finally {
         await page.close()
       }
+    }
+  }, 60_000)
+
+  it('Branch: goes by the model of the last reply the branch keeps', async ({ skip }) => {
+    if (!browser) skip(unavailableReason)
+    // The session ended on Sonnet 4.5, but the branch keeps only the Opus 5.5 part: shown.
+    let page = await open(
+      15_000,
+      '?last=claude-sonnet-4-5-20250929&launch=branch&kept=claude-opus-5-5'
+    )
+    try {
+      await fastButton(page).waitFor()
+    } finally {
+      await page.close()
+    }
+    // The session ended on Opus 5.5, but the branch keeps only a Sonnet 4.5 part: hidden.
+    page = await open(15_000, '?last=claude-opus-5-5&launch=branch&kept=claude-sonnet-4-5-20250929')
+    try {
+      await page.getByRole('button', { name: /^Effort: / }).waitFor()
+      await expect.poll(() => fastButton(page).count()).toBe(0)
+    } finally {
+      await page.close()
     }
   }, 60_000)
 

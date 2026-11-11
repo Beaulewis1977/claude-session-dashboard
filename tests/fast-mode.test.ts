@@ -25,7 +25,7 @@ import {
   createMetadataStore,
   createSettingsStore
 } from '../src/main/services/store'
-import { remoteLaunchOptions } from '../src/main/mobile/remote-launch'
+import { remoteLaunchOptions, RemoteLauncher } from '../src/main/mobile/remote-launch'
 import { phoneMetaPatch, phoneSettingsPatch } from '../src/main/mobile/rpc'
 import {
   choiceLabel,
@@ -738,6 +738,57 @@ describe('Launcher: every launch path passes fast mode', () => {
     const pw = await launcher.preview({ key: w!.key, fork: false, skipPermissions: false })
     expect(pw.modelChoice?.fast).toBe(true)
     expect(pw.claudeCommand).toContain('-m gpt-5.3-codex-spark -c service_tier=fast')
+  })
+
+  it("the phone's branch preview names the kept model, and nothing else of the branch", async () => {
+    const s = { key: 'windows:s1', sessionId: 's1', title: 'T', availability: 'live', meta: {} }
+    const rl = new RemoteLauncher({
+      session: (k) => (k === s.key ? (s as never) : undefined),
+      preview: async () => ({
+        commandLine: 'x',
+        claudeCommand: 'claude',
+        terminal: 'wt',
+        fellBack: false,
+        cwd: 'C:\\code',
+        cwdExists: true,
+        willRestore: false,
+        restoreImpossible: false,
+        originalPath: 'C:\\x.jsonl',
+        billingLabel: 'Subscription',
+        modelChoice: { modelFrom: 'none', effortFrom: 'none', fast: true, fastFrom: 'session' },
+        branch: {
+          newSessionId: 'b1',
+          targetPath: 'C:\\Users\\alex\\.claude\\projects\\x\\b1.jsonl',
+          atMessageId: 'm1',
+          atRole: 'assistant',
+          atPreview: 'Done.',
+          snapped: 'none',
+          snapTools: [],
+          keptMessages: 2,
+          totalMessages: 4,
+          name: 'T (branch)',
+          lastModel: 'claude-opus-5-5'
+        }
+      }),
+      launch: async () => ({ ok: true, restored: false, commandLine: 'x' }),
+      settings: () => ({
+        terminal: 'wt',
+        readOnly: false,
+        confirmOnPc: false,
+        branchConfirmed: true
+      }),
+      confirm: async () => true,
+      deviceActive: () => true,
+      log: () => undefined,
+      now: () => Date.now()
+    })
+    const p = await rl.preview({
+      key: s.key,
+      kind: 'branch',
+      branch: { at: 'm1', mode: 'include' }
+    })
+    expect(p.branch).toEqual({ lastModel: 'claude-opus-5-5' })
+    expect(JSON.stringify(p)).not.toContain('.claude')
   })
 
   it('Branch from here: the branch keeps the Fast choice, and goes by the model it keeps', async () => {

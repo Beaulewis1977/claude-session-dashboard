@@ -228,6 +228,8 @@ export class RemoteLauncher {
       willRestore: p.willRestore,
       modelChoice: p.modelChoice,
       ...(p.continueFresh ? { newSinceSummary: p.continueFresh.newSince } : {}),
+      // Model names only: what the Fast picker goes by for this branch.
+      ...(p.branch ? { branch: p.branch.lastModel ? { lastModel: p.branch.lastModel } : {} } : {}),
       ...(p.context ? { context: p.context } : {}),
       ...(p.running ? { running: this.titled(p.running) } : {})
     }

@@ -88,7 +88,7 @@ const messages = ${JSON.stringify(messages)}
 const session = ${JSON.stringify(session)}
 window.calls = []
 window.csd = {
-  copyText: async () => true,
+  copyText: async (text) => { window.copied = text; return true },
   getSession: async (key, opts) => {
     window.calls.push(['getSession', !!(opts && opts.cut)])
     return { summary: session, messages: opts && opts.cut ? cutTranscript(messages) : messages }
@@ -228,6 +228,28 @@ describe('a long session in the viewer', { timeout: 30_000 }, () => {
       expect(await showAll.innerText()).toContain(`${longOutput.length.toLocaleString()} chars`)
       await showAll.click()
       await expect.poll(() => turn.locator('pre').last().innerText()).toContain('needle')
+    } finally {
+      await page.close()
+    }
+  })
+  it('copying a tool group puts its cut outputs on the clipboard in full', async ({ skip }) => {
+    if (!browser) skip(unavailableReason)
+    const page = await open()
+    try {
+      const turn = page.locator('[data-msg-ids="a200"]')
+      for (let i = 0; i < 60 && !(await turn.count()); i++) {
+        await page.evaluate(`document.querySelector('${scroller}').scrollTop += 2500`)
+        await page.waitForTimeout(50)
+      }
+      await turn.scrollIntoViewIfNeeded()
+      // The tool group's own Copy (not Copy output): the whole group, outputs in full.
+      await turn
+        .locator('[data-message-actions]')
+        .last()
+        .getByRole('button', { name: 'Copy message' })
+        .click()
+      await expect.poll(() => page.evaluate<string>('window.copied || ""')).toContain('needle')
+      expect((await page.evaluate<string>('window.copied')).length).toBeGreaterThan(20_000)
     } finally {
       await page.close()
     }

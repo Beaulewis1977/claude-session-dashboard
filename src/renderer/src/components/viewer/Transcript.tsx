@@ -1,5 +1,6 @@
 import {
   memo,
+  useContext,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -24,7 +25,7 @@ import {
   Type,
   Undo2
 } from 'lucide-react'
-import type { ChatMessage, ContentBlock } from '@shared/types'
+import type { ChatMessage, ContentBlock, ToolResult } from '@shared/types'
 import { blockIdOf } from '@shared/transcript-cut'
 import {
   blockId,
@@ -39,6 +40,8 @@ import {
 import { formatTime } from '@shared/format'
 import { cn } from '@/lib/utils'
 import { copyText } from '@/lib/actions'
+import { api } from '@/lib/api'
+import { TranscriptContext } from './transcript-context'
 import { blocksToMarkdown, blocksToPlainText } from '@/lib/copy'
 import { Markdown } from './Markdown'
 import { ErrorBoundary, RenderFailed } from '../ErrorBoundary'
@@ -66,6 +69,31 @@ import { Tooltip } from '../ui/tooltip'
 import { SpriteIcon } from '../ui/sprite-icon'
 
 export type OnBranch = (messageId: string, mode: 'include' | 'before') => void
+
+/**
+ * Blocks with every cut tool output filled in (see transcript-cut.ts): what
+ * a message's Copy actions copy, never the viewer's shortened outputs.
+ */
+function useFullBlocks(): (blocks: ContentBlock[]) => Promise<ContentBlock[]> {
+  const { sessionKey } = useContext(TranscriptContext)
+  return async (blocks) => {
+    if (!sessionKey || !blocks.some((b) => cutResultOf(b))) return blocks
+    return Promise.all(
+      blocks.map(async (b) => {
+        if (!cutResultOf(b)) return b
+        const id = b.type === 'tool_use' ? b.id : b.type === 'tool_result' ? b.toolUseId : ''
+        const full = await api.getToolResult(sessionKey, id).catch(() => null)
+        return full ? ({ ...b, result: full } as ContentBlock) : b
+      })
+    )
+  }
+}
+
+/** A block's tool output when it was sent cut. */
+function cutResultOf(b: ContentBlock): ToolResult | undefined {
+  const r = b.type === 'tool_use' ? b.result : b.type === 'tool_result' ? b.result : undefined
+  return r?.cut ? r : undefined
+}
 
 // ---------------------------------------------------------------------------
 // Message actions: Copy and a ⋯ menu on each message (shown on hover on a
@@ -105,8 +133,9 @@ function MessageActions({
 }) {
   const [copied, setCopied] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
-  const copyMarkdown = (): Promise<boolean> => copyText(blocksToMarkdown(blocks))
-  const copyPlain = (): void => void copyText(blocksToPlainText(blocks))
+  const full = useFullBlocks()
+  const copyMarkdown = async (): Promise<boolean> => copyText(blocksToMarkdown(await full(blocks)))
+  const copyPlain = (): void => void full(blocks).then((b) => copyText(blocksToPlainText(b)))
   const btn =
     'inline-flex h-6 items-center justify-center gap-1 rounded-full px-1.5 text-muted-foreground hover:bg-hover hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring touch:h-10 touch:min-w-10 touch:rounded-lg touch:px-3 touch:text-[13px] touch:text-foreground touch:active:bg-hover [&_svg]:touch:size-4'
   const touchRow = cn(
@@ -213,9 +242,11 @@ function MessageMenu({
   children: ReactElement
 }) {
   const [touch, setTouch] = useState(noHover)
+  const full = useFullBlocks()
   const copy = (): void => {
     const selected = window.getSelection()?.toString()
-    void copyText(selected || blocksToMarkdown(blocks))
+    if (selected) void copyText(selected)
+    else void full(blocks).then((b) => copyText(blocksToMarkdown(b)))
   }
   return (
     <ContextMenu>
@@ -232,10 +263,14 @@ function MessageMenu({
         <ContextMenuItem onSelect={copy}>
           <Copy /> Copy
         </ContextMenuItem>
-        <ContextMenuItem onSelect={() => void copyText(blocksToPlainText(blocks))}>
+        <ContextMenuItem
+          onSelect={() => void full(blocks).then((b) => copyText(blocksToPlainText(b)))}
+        >
           <Type /> Copy as plain text
         </ContextMenuItem>
-        <ContextMenuItem onSelect={() => void copyText(blocksToMarkdown(blocks))}>
+        <ContextMenuItem
+          onSelect={() => void full(blocks).then((b) => copyText(blocksToMarkdown(b)))}
+        >
           <FileCode /> Copy as Markdown
         </ContextMenuItem>
         {onBranch && (

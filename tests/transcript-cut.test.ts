@@ -67,6 +67,8 @@ describe('cut transcripts', () => {
     expect(toolResultOf(messages, blockIdOf(messages[2], messages[2].blocks[0], 0))?.text).toBe(
       long
     )
+    // A tool_result by its tool call id (a group's Copy asks that way).
+    expect(toolResultOf(messages, 'tx')?.text).toBe(long)
     expect(toolResultOf(messages, 'nope')).toBeUndefined()
   })
 

@@ -43,15 +43,17 @@ export function cutTranscript(messages: ChatMessage[], max = CUT_CHARS): ChatMes
   })
 }
 
-/** A tool result, in full, by its block id. */
+/** A tool result, in full, by its block id (a tool_result's tool call id works too). */
 export function toolResultOf(messages: ChatMessage[], id: string): ToolResult | undefined {
+  let byCall: ToolResult | undefined
   for (const m of messages)
     for (let i = 0; i < m.blocks.length; i++) {
       const b = m.blocks[i]
       if ((b.type === 'tool_use' || b.type === 'tool_result') && blockIdOf(m, b, i) === id)
         return b.result
+      if (b.type === 'tool_result' && b.toolUseId === id) byCall ??= b.result
     }
-  return undefined
+  return byCall
 }
 
 /** Blocks whose result holds `query` only in the part a cut leaves out (case-insensitive). */

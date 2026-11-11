@@ -25,6 +25,7 @@ import type {
   SessionUsage,
   TurnSample,
   CodexTurnSample,
+  UsageAnalysis,
   UsageQuery,
   UsageRecord,
   UsageReport,
@@ -461,9 +462,15 @@ export class UsageService extends EventEmitter<{ changed: []; 'codex-progress': 
         if (!provider.capabilities.usage || provider.id === 'codex') continue
         const { sig, subagents } = await this.signature(s)
         if (!force && this.index.sessions[s.key] === sig) continue
-        if (this.stale.delete(s.key)) this.purge(s.key)
-        const ok = await this.parseFile(s.filePath, s)
-        for (const file of subagents) await this.parseFile(file, s)
+        // Read everything first: a session's saved records (stale after a
+        // parser update) are replaced only once all its files were read, so
+        // a file that can't be read right now never loses saved usage.
+        const main = await this.readUsage(s.filePath, s)
+        const subs = await Promise.all(subagents.map((f) => this.readUsage(f, s)))
+        const ok = main !== undefined
+        if (ok && subs.every((a) => a !== undefined) && this.stale.delete(s.key)) this.purge(s.key)
+        if (main) this.apply(main)
+        for (const a of subs) if (a) this.apply(a)
         if (s.availability === 'live') await this.archiveSubagents(s, subagents)
         if (ok) {
           this.index.sessions[s.key] = sig
@@ -517,20 +524,24 @@ export class UsageService extends EventEmitter<{ changed: []; 'codex-progress': 
     return true
   }
 
-  private async parseFile(path: string, s: SessionSummary): Promise<boolean> {
+  /** Read and analyze one file of a session (nothing is changed yet); undefined if unreadable. */
+  private async readUsage(path: string, s: SessionSummary): Promise<UsageAnalysis | undefined> {
     let text: string
     try {
       text = await readFile(path, 'utf8')
     } catch {
-      return false
+      return undefined
     }
-    const a = sessionProvider(this.sessions, s).usage.analyze(text, {
+    return sessionProvider(this.sessions, s).usage.analyze(text, {
       key: s.key,
       project: s.projectName,
       env: s.env,
       sessionId: s.sessionId,
       file: basename(path)
     })
+  }
+
+  private apply(a: UsageAnalysis): void {
     for (const r of a.records) {
       // New, or a copy with more tokens (it was still streaming last time).
       const { result, stored, previous } = this.records.add(r)
@@ -558,7 +569,6 @@ export class UsageService extends EventEmitter<{ changed: []; 'codex-progress': 
         this.hitsDirty = true
       }
     }
-    return true
   }
 
   /**

@@ -195,6 +195,34 @@ describe('UsageService', () => {
     expect(ids).toHaveLength(n + 1)
   })
 
+  it('keeps saved usage from an older parser when the session file can’t be read', async () => {
+    const { make, paths, sessions } = await setup()
+    const usage = make()
+    await usage.start()
+    await usage.idle()
+    const n = usage.allRecords().length
+    const live = usage.allRecords()[0]
+    const dir = join(paths.dataDir, 'usage')
+    const idx = JSON.parse(await readFile(join(dir, 'index.json'), 'utf8'))
+    await writeFile(join(dir, 'index.json'), JSON.stringify({ ...idx, version: 1 }))
+    const again = make()
+    // The session's file can't be read during the re-read (locked, offline share…).
+    const file = sessions.get(live.key)!.filePath
+    const read = (again as unknown as { readUsage: (p: string, s: unknown) => Promise<unknown> })
+      .readUsage
+    ;(again as unknown as { readUsage: unknown }).readUsage = function (
+      this: unknown,
+      p: string,
+      s: unknown
+    ) {
+      return p === file ? Promise.resolve(undefined) : read.call(this, p, s)
+    }
+    await again.start()
+    await again.idle()
+    expect(again.allRecords().map((r) => r.id)).toContain(live.id)
+    expect(again.allRecords()).toHaveLength(n)
+  })
+
   it('loads the generated usage history for fixtures mode', async () => {
     const { make } = await setup(true)
     const usage = make()

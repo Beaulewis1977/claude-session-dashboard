@@ -1,5 +1,56 @@
 # Changelog
 
+## 1.16.3 (November 11, 2026)
+
+**Performance: a fast Usage screen, a smoother viewer, and smaller installers.**
+
+### Performance (PR #58)
+
+- **The Usage & limits screen no longer freezes.** Opening it and switching ranges, Day/Week/Month
+  or sub-tabs now takes a fraction of a second instead of several seconds. **Every number is the
+  same as before**, to the last digit (a test compares the new code against the old calculation).
+- **How:** each usage report used to re-add every raw record (163k on a big history) on the main
+  process, twice. Now the records are indexed once, each report is fetched once, results that
+  can't have changed are kept, and change notices are batched. Session files are read for usage in
+  a background thread that ends when idle.
+- **The screen itself:** charts don't redraw or re-animate when nothing in them changed (the gauges
+  keep their fill animation), the main chart shows at most 400 points (totals unchanged), and the
+  Raw table only draws the rows you can see. The Usage, Settings and Ask screens load on demand, so
+  startup loads 1.3 MB of code instead of 4.3 MB.
+- **Big sessions in the viewer:** tool outputs over 8,000 characters arrive cut, with their real
+  size; **Show all**, **Copy output**, **Copy conversation** and Find past the cut still get the
+  full text. Long sessions only draw the turns near the screen; Find still counts and reaches every
+  match. The phone still gets transcripts in full.
+- **Session list:** windows get only what changed, not the whole list, on every update.
+- **Smaller installers:** only the built app is packed (a build check now fails if anything else
+  gets in), no `node_modules` ship, and only the English locale.
+
+| | Before (1.16.2) | After (1.16.3) |
+|---|---|---|
+| Open Usage: Claude / Codex / All | 0.8 / 5.7 / 6.0 s | 0.05–0.2 / 0.33 / 0.34 s |
+| Range switch: Claude | 0.6–4.2 s | 85–103 ms |
+| Range switch: Codex / All | 2.3–11.9 s | 72–197 ms |
+| Day / Week / Month | 0.6–3.5 s | 43–87 ms |
+| Sub-tabs | 40–1,290 ms | 23–192 ms |
+| Longest freeze on Usage (renderer) | 423 ms | 51 ms |
+| Main-process stalls over 50 ms / over 500 ms / worst | 98 / 49 / 3.9 s | 16 / 0 / 465 ms |
+| Installer / portable | 108.9 / 108.6 MB | 100.4 / 100.1 MB |
+| Installed size | 365.5 MB (75 files) | 315.2 MB (21 files) |
+
+Measured on a real history (148k Codex + 15k Claude Code responses, 2,593 sessions), built app,
+same steps. Startup time is unchanged (the session scan dominates).
+
+**Known limits:** memory on the Usage screen (All) is still about 1.75 GB at peak (most of it
+garbage that is collected later), and the biggest transcripts are still large because of long tool
+*inputs* (for example whole written files). These are on the roadmap.
+
+### Also in this release
+
+- Builds from v1.10.0 to v1.16.2 accidentally packed a few leftover development files (a build log
+  and PR description drafts) into the installer. They're gone from 1.16.3, and the build now
+  refuses to pack anything outside the app itself.
+- `CSD_TIMING=1` also logs slow or big IPC calls and stalls over 50 ms.
+
 ## 1.16.2 (November 10, 2026)
 
 **Fast mode as a launch option.**

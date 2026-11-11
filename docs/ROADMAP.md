@@ -388,12 +388,14 @@ Run typecheck, lint, tests and the build. Commit, push the branch and open a PR 
 - ✅ Fast mode as a launch option: a Fast picker next to Model and Effort for Claude Code
   (`--settings` fastMode) and Codex (`service_tier=fast`), with usage-credit and limits warnings;
   Claude Console personal API keys accepted (PR #56, v1.16.2)
+- ✅ Performance: a fast Usage & limits screen (exact record index, one fetch per report, a parser
+  thread), a virtualized viewer with cut tool outputs, session list deltas, smaller installers
+  with a build check (PR #58, v1.16.3)
 
 **Next up:**
 
-1. Performance PR: the Usage & limits screen is slow and can freeze.
-2. README rewrite.
-3. Cleanup audit.
+1. README rewrite.
+2. Cleanup audit.
 
 Then the loose ends below.
 
@@ -413,6 +415,8 @@ Then the loose ends below.
 
 **Loose ends:**
 
+- Memory & big sessions follow-up: trim large tool inputs, virtualize shorter sessions, reduce
+  main-process memory churn.
 - Tests: `summarize-dialog.browser.test.ts` (preparation progress) can hit its 15 s timeout under
   full-suite load; it passes alone.
 - Startup (left after the loose-ends PR): the main process can still be busy for up to ~0.4 s at a

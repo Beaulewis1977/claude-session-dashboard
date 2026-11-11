@@ -278,6 +278,24 @@ choice is saved for that session. **Project default** sets one for a whole proje
 Settings → **Resume** sets the global default (Codex has its own). **Default** adds no flag, so
 Claude Code decides. The Resume button shows the result ("Resume · Opus · High").
 
+#### Fast mode
+
+**Fast** sits next to Model and Effort (Default, On or Off; off unless you turn it on), on the
+desktop and the phone, and is remembered the same way: session, then project, then Settings. It's
+offered only for models that have it: Claude's Fable 5.2, Opus 5.5 and Opus 5, and the Codex models
+whose entry in Codex's own model list (`models_cache.json`, read only) offers the Fast tier.
+
+- **Claude Code** gets `--settings <the app's launch\fast-mode.json>`, a file in the app's data
+  folder holding only `{"fastMode": true}`, so none of your other Claude Code settings change. On
+  the subscription, fast mode is billed to usage credits (not your plan limits) and only works if
+  usage credits are turned on in your Claude account.
+- **Codex** gets `-c service_tier=fast`. It uses your plan's limits at 2.5×, so the launch dialog
+  warns when Codex's 5-hour window is above the pause line in Settings → Summaries.
+
+**Off** adds no flag (your own `/fast` setting or `service_tier` applies). The flag is in **Copy
+resume command**, the Resume button and badges say "Fast", and it isn't passed when a session opens
+in the Claude desktop app or the Codex app (turn it on there).
+
 #### Skip permission prompts
 
 `--dangerously-skip-permissions` (Codex: `--dangerously-bypass-approvals-and-sandbox`) is **on by

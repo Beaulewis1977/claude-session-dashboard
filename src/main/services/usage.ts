@@ -191,6 +191,11 @@ export class UsageService extends EventEmitter<{ changed: []; 'codex-progress': 
 
   // ---------------------------------------------------------------- queries
 
+  /** Reading the logs (or loading the saved data) right now. */
+  get busy(): boolean {
+    return this.parsing || !this.loaded
+  }
+
   status(): UsageStatus {
     const codex = this.codex.size
     return {

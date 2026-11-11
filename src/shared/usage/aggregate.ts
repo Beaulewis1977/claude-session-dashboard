@@ -695,7 +695,7 @@ export function buildReport(
     if (r.extra) for (const k in r.extra) extra.add(k)
   }
   const models = [...modelsOf(all)]
-  const raw = newestFirst(inRange, 500)
+  const raw = query.raw === false ? [] : newestFirst(inRange, 500)
   let first: number | undefined
   let last: number | undefined
   if (indexOf(all).sorted && all.length) {

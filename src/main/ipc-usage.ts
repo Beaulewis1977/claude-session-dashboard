@@ -16,6 +16,7 @@ import {
 import { buildCodexTrends, compareCodexTrends } from '@shared/usage/codex-trends'
 import type { CcusageComparison, Dimension, Period, UsageQuery } from '@shared/usage/types'
 import { isProviderView } from '@shared/provider'
+import { coalesce } from './core/coalesce'
 import { assertUserWrite } from './core/safe-paths'
 import { handle } from './ipc-guard'
 import type { Platform } from './platform'
@@ -50,6 +51,7 @@ export function cleanQuery(v: unknown): UsageQuery {
       : undefined,
     groupBy: DIMENSIONS.includes(o.groupBy as Dimension) ? (o.groupBy as Dimension) : undefined,
     sessionKey: typeof o.sessionKey === 'string' ? o.sessionKey : undefined,
+    ...(o.raw === false ? { raw: false as const } : {}),
     // Absent: Claude Code's usage, as before Codex.
     ...(isProviderView(o.provider) && o.provider !== 'claude' ? { provider: o.provider } : {})
   }
@@ -95,15 +97,18 @@ export function registerUsageIpc(deps: UsageIpcDeps): void {
   const { usage } = deps
   const win = (): BrowserWindow | undefined => BrowserWindow.getAllWindows()[0]
 
-  usage.on('changed', () => {
-    for (const w of BrowserWindow.getAllWindows()) w.webContents.send('usage:changed')
-  })
-  deps.limits.on('changed', () => {
-    for (const w of BrowserWindow.getAllWindows()) w.webContents.send('limits:changed')
-  })
-  deps.codexLimits?.on('changed', () => {
-    for (const w of BrowserWindow.getAllWindows()) w.webContents.send('limits:changed')
-  })
+  // Each notice makes the open views ask again (reports, trends, limits): at
+  // most one a second, and one every few seconds while the logs are being read.
+  const wait = (): number => (usage.busy ? 3000 : 1000)
+  const tell = (channel: string) =>
+    coalesce(() => {
+      for (const w of BrowserWindow.getAllWindows()) w.webContents.send(channel)
+    }, wait)
+  const usageChanged = tell('usage:changed')
+  const limitsChanged = tell('limits:changed')
+  usage.on('changed', usageChanged)
+  deps.limits.on('changed', limitsChanged)
+  deps.codexLimits?.on('changed', limitsChanged)
 
   const action = (v: unknown): 'install' | 'uninstall' =>
     v === 'uninstall' ? 'uninstall' : 'install'

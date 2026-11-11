@@ -160,6 +160,22 @@ describe('indexed usage reports equal the raw calculation', () => {
       )
   })
 
+  it('leaves only the raw records out when asked to (raw: false)', () => {
+    const list = records(6, 1500)
+    const ctx = {
+      timeZone: 'Europe/Berlin',
+      weekStart: 'monday' as const,
+      prices: DEFAULT_PRICES,
+      now: NOW
+    }
+    const q: UsageQuery = { period: 'day', from: NOW - 30 * DAY }
+    const full = buildReport(list, q, ctx)
+    const lean = buildReport(list, { ...q, raw: false }, ctx)
+    expect(full.raw.length).toBeGreaterThan(0)
+    expect(lean.raw).toEqual([])
+    expect(JSON.stringify({ ...lean, raw: full.raw })).toBe(JSON.stringify(full))
+  })
+
   it('handles an empty list', () => {
     const ctx = { timeZone: 'UTC', weekStart: 'monday' as const, prices: DEFAULT_PRICES, now: NOW }
     for (const q of queries('UTC'))

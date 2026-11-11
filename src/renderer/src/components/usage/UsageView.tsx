@@ -269,8 +269,6 @@ export function UsageView() {
   const models = useMemo(() => modelsBy[view] ?? [], [modelsBy, view])
   const setModels = (m: string[]): void => setModelsBy((p) => ({ ...p, [view]: m }))
   const [groupBy, setGroupBy] = useState<Dimension>('model')
-  // In the store, so Back / Forward can return to it.
-  const tab = useApp((s) => s.usageTab)
   const setTab = (usageTab: Tab): void => set({ usageTab })
   // In the All view: whose trends the Trends tab shows.
   const [trendsOf, setTrendsOf] = useState<'claude' | 'codex'>('claude')
@@ -283,13 +281,24 @@ export function UsageView() {
 
   useEffect(() => api.onUsageChanged(() => setVersion((v) => v + 1)), [])
 
+  // Today / This week / This month start where the report's cards say (the
+  // user's week start); other ranges don't depend on the report, so a new
+  // report never asks for another one.
+  const cardFrom = ['today', 'week', 'month'].includes(range)
+    ? report?.cards?.find((c) => c.id === range)?.from
+    : undefined
+  // In the store, so Back / Forward can return to it.
+  const tab = useApp((s) => s.usageTab)
+  const rawTab = tab === 'raw'
   const query: UsageQuery = useMemo(() => {
     const r = rangeOf(range, report?.cards, custom)
     const q: UsageQuery = { ...r, period, models, groupBy }
     if (view !== 'claude') q.provider = view
+    // The raw records (the biggest part of a report) only for the Raw table tab.
+    if (!rawTab) q.raw = false
     return q
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [range, custom, period, models, groupBy, view, report?.cards?.[0]?.from])
+  }, [range, custom, period, models, groupBy, view, cardFrom, rawTab])
 
   useEffect(() => {
     let cancelled = false
@@ -305,7 +314,7 @@ export function UsageView() {
     if (!wantSplit) return
     let cancelled = false
     // The same model filter as the chips above (a Claude model leaves Codex's chart empty).
-    const base = { ...query, groupBy: 'model' as Dimension }
+    const base = { ...query, groupBy: 'model' as Dimension, raw: false as const }
     void Promise.all([
       api.getUsageReport({ ...base, provider: undefined }),
       api.getUsageReport({ ...base, provider: 'codex' })

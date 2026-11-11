@@ -710,3 +710,49 @@ describe('combined speed chart', () => {
     expect(r.groups.map((g) => g.key)).toEqual(['claude-opus-5-5'])
   })
 })
+
+describe('Codex copied history', () => {
+  it("gives a subagent's inherited history no timing (one burst after its meta)", () => {
+    total = 0
+    const a = analyzeCodexUsage(
+      [
+        L(50, 'session_meta', {
+          id: 's1',
+          parent_thread_id: 'p',
+          subagent_history_start_ordinal: 9
+        }),
+        // The parent's history, all written at once.
+        L(50, 'event_msg', { type: 'task_started', turn_id: 'old' }),
+        L(50, 'response_item', { type: 'reasoning' }),
+        L(50, 'response_item', { type: 'custom_tool_call' }),
+        L(50, 'response_item', { type: 'custom_tool_call_output' }),
+        usage(50, 300),
+        L(50.05, 'response_item', { type: 'reasoning' }),
+        usage(50.06, 300),
+        // Its own work.
+        L(50.1, 'event_msg', { type: 'task_started', turn_id: 'own' }),
+        L(53, 'response_item', { type: 'reasoning' }),
+        L(54, 'token_usage_record', {}),
+        usage(54.1, 300)
+      ].join('\n'),
+      cctx
+    )
+    expect(a.records.map((r) => r.genMs)).toEqual([undefined, undefined, 3900])
+  })
+
+  it('a new session (no inherited history) keeps even a quick first response', () => {
+    total = 0
+    const a = analyzeCodexUsage(
+      [
+        meta(0),
+        L(0.01, 'event_msg', { type: 'task_started', turn_id: 'a' }),
+        L(0.05, 'response_item', { type: 'message', role: 'user', content: [{ text: 'hi' }] }),
+        L(0.09, 'response_item', { type: 'message', role: 'assistant' }),
+        L(0.1, 'token_usage_record', {}),
+        usage(0.11, 60)
+      ].join('\n'),
+      cctx
+    )
+    expect(a.records[0].genMs).toBe(50)
+  })
+})

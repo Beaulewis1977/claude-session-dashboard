@@ -497,6 +497,10 @@ export async function readCodexUsageText(path: string): Promise<string> {
           id: p.id,
           timestamp: p.timestamp,
           forked_from_id: p.forked_from_id,
+          // A subagent that starts from its parent's history (copied events: no timing).
+          ...(typeof p.subagent_history_start_ordinal === 'number'
+            ? { inherits_history: true }
+            : {}),
           cli_version: p.cli_version,
           // A subagent's thread (its "prompts" are the main agent's instructions).
           ...((src && typeof src === 'object' && 'subagent' in src) ||

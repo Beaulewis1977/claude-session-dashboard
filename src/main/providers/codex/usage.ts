@@ -453,10 +453,38 @@ export class ResponseTimer {
 }
 
 /**
- * A fork's rollout begins with a copy of its parent's events, written when
- * the fork was made (see COPY_MS in codex-usage.ts): no timing for those.
+ * A thread with inherited history (a fork, or a subagent started with its
+ * parent's history) begins with a copy of those events, written in one burst
+ * right after its own meta (often all with the same time). Their timing is
+ * the copy's, not the responses': the burst ends at the first gap longer than
+ * this, and nothing in it gets a generation time.
  */
-const FORK_COPY_MS = 1000
+const COPY_BURST_GAP_MS = 100
+
+/** Inherited history: a fork, or a subagent that starts from its parent's history. */
+function inheritsHistory(meta: Record<string, unknown> | undefined): boolean {
+  if (!meta) return false
+  return (
+    !!str(meta.forked_from_id) ||
+    meta.inherits_history === true ||
+    typeof meta.subagent_history_start_ordinal === 'number'
+  )
+}
+
+/** When the copied burst after the own meta (line `at`) ends, or -Infinity. */
+function copiedUntil(ls: Line[], at: number): number {
+  const meta = ls[at]
+  if (!meta || !inheritsHistory(meta.payload)) return -Infinity
+  let prev = meta.timestamp ? Date.parse(meta.timestamp) : Number.NaN
+  if (!Number.isFinite(prev)) return -Infinity
+  for (let i = at + 1; i < ls.length; i++) {
+    const t = ls[i].timestamp ? Date.parse(ls[i].timestamp!) : Number.NaN
+    if (!Number.isFinite(t)) continue
+    if (t - prev > COPY_BURST_GAP_MS) break
+    prev = t
+  }
+  return prev
+}
 
 /** Token usage (one record per response) and limit readings of one rollout. */
 export function analyzeCodexUsage(text: string, ctx: CodexUsageContext): UsageAnalysis {
@@ -485,11 +513,7 @@ export function analyzeCodexUsage(text: string, ctx: CodexUsageContext): UsageAn
   const ownMeta = metas.find((l) => l.payload.id === sessionId) ?? metas[0]
   const turns = new TurnTracker(ctx, sessionId, ownMeta?.payload.subagent === true)
   const timer = new ResponseTimer()
-  const metaTs = ownMeta?.timestamp ? Date.parse(ownMeta.timestamp) : Number.NaN
-  const copiesUntil =
-    str(ownMeta?.payload.forked_from_id) && Number.isFinite(metaTs)
-      ? metaTs + FORK_COPY_MS
-      : -Infinity
+  const copiesUntil = ownMeta ? copiedUntil(ls, ls.indexOf(ownMeta)) : -Infinity
   // Fast mode (Codex's /fast, the "priority" service tier): its responses are
   // counted under "<model>-fast" (priced and charted apart, like Claude Code's).
   let fast = false

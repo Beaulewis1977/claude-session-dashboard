@@ -1127,7 +1127,8 @@ dropped?", "Why did I hit my limit Tuesday?" or "Compare this month to last mont
     `token_count`: Codex writes that after the response's tools ran. Time to first token is Codex's
     own per-turn `time_to_first_token_ms`.
   - Left out of the medians: replies under 50 tokens, times under 0.25 s or over 10 minutes, over
-    1,500 tok/s, a reply cut short or after an API error, and a Codex fork's copied history. A
+    1,500 tok/s, a reply cut short or after an API error, and copied Codex history (a fork, or a
+    subagent started from its parent's history: the burst of copied events after its own meta). A
     response copied into another session (fork, resume, branch) keeps its original's timing. A
     median needs 5 responses.
   - _Fast mode_ (Claude Code's `usage.speed: "fast"`, Codex's `service_tier: "priority"`) is

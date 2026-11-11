@@ -1,5 +1,44 @@
 # Changelog
 
+## 1.16.2 (November 10, 2026)
+
+**Fast mode as a launch option.**
+
+### Fast mode (PR #56)
+
+- **A Fast picker next to Model and Effort** (Default, On or Off; off unless you turn it on) in
+  Resume, Fork, Branch, Continue fresh and New session, under the session's title, and on the phone
+  (session screen and launch sheet). A short note says "Faster replies, uses limits faster / costs
+  more"; the ⓘ has the details and prices.
+- **Remembered like the model and effort:** per session, per project (**Project default**), and in
+  Settings (Claude Code: Settings → **Resume**, also on the phone; Codex: Settings → **Providers**,
+  kept apart). A branch or a Continue fresh keeps the parent's choice.
+- **Only for models that have it:** Claude's Opus 5.5, Fable 5.2 and Opus 5 (and the `opus` and
+  `fable` aliases), and the Codex models whose entry in Codex's own `models_cache.json` (read only,
+  each home's own list) offers the Fast tier. The model that counts is the one you picked, else the
+  model of the session's last reply (for a branch, the last reply it keeps). New session and
+  Continue fresh run on the agent's default model, so Fast is shown there with a note.
+- **Claude Code** gets `--settings` with the app's own `launch\fast-mode.json`, holding only
+  `{"fastMode": true}` and checked before every launch, so none of your other Claude Code settings
+  change (WSL sessions get the same file as the distro sees it). On the subscription the dialog
+  says it's billed to usage credits (not your plan limits) and needs them turned on in your Claude
+  account; on an API key, that it's billed at the fast prices.
+- **Codex** gets `-c service_tier=fast`. It uses your limits at 2.5×, so the launch dialog and the
+  phone warn when Codex's 5-hour window is above the pause line in Settings → **Summaries**.
+- **Every launch path:** Windows Terminal, PowerShell, cmd, WSL, Remote Control, phone launches and
+  API billing, and **Copy resume command**. The Resume button and the session badges say "Fast".
+- **Open in Claude desktop app / Codex app:** fast mode isn't passed there; the dialog says to turn
+  it on in the app.
+
+### Also in this release
+
+- **Claude Console personal API keys** (`sk-ant-usr-…`, what the Console creates now) are accepted
+  in Settings → **Accounts & API credits**; they were refused as "Not a valid key". The dialog says
+  to scope a personal key to a workspace when you create it.
+- Sessions now record the model of their last reply. **After updating,** the app re-reads its
+  session list once at startup.
+- README: a **Token speed** section (what 1.16.1 added) and **Fast mode**.
+
 ## 1.16.1 (November 10, 2026)
 
 **Token speed: how fast Claude and Codex answer.**

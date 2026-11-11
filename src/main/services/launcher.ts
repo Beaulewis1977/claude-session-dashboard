@@ -407,15 +407,21 @@ export class Launcher {
    * project's default, else Settings. Read here for every launch path
    * (desktop, phone, copied command), so they all match.
    */
-  modelChoice(s: SessionSummary, opts?: Pick<LaunchOptions, 'newSession'>): ResolvedModel {
+  modelChoice(
+    s: SessionSummary,
+    opts?: Pick<LaunchOptions, 'newSession' | 'continueFresh'>
+  ): ResolvedModel {
     const p = this.provider(s)
     // Codex has its own defaults and levels, kept apart from Claude Code's.
     const r =
       p.id === 'codex'
         ? resolveModelChoice(s.meta, s, codexModelSettings(this.modelSettings()), p.effortLevels)
         : resolveModelChoice(s.meta, s, this.modelSettings())
-    // Fast mode only on a model that has it (unknown: passed, the agent decides).
-    const model = launchModel(r, s, opts?.newSession === true)
+    // Fast mode only on a model that has it (unknown: passed, the agent decides). New
+    // session and Continue fresh start a new session: without --model it runs on the
+    // agent's own default, not on the model this session used last.
+    const fresh = opts?.newSession === true || opts?.continueFresh !== undefined
+    const model = launchModel(r, s, fresh)
     return withFastSupport(
       r,
       fastSupport(p.id === 'codex' ? 'codex' : 'claude', model, this.codexFastModels?.latest())
@@ -443,7 +449,7 @@ export class Launcher {
    */
   private async prepareFast(
     s: SessionSummary,
-    opts: Pick<LaunchOptions, 'newSession'>,
+    opts: Pick<LaunchOptions, 'newSession' | 'continueFresh'>,
     verify = false
   ): Promise<void> {
     const p = this.provider(s)
@@ -476,7 +482,10 @@ export class Launcher {
   }
 
   /** The choice with Claude Code's fast-mode file (throws why fast mode can't be passed). */
-  private launchChoice(s: SessionSummary, opts: Pick<LaunchOptions, 'newSession'>): ModelChoice {
+  private launchChoice(
+    s: SessionSummary,
+    opts: Pick<LaunchOptions, 'newSession' | 'continueFresh'>
+  ): ModelChoice {
     const r = this.modelChoice(s, opts)
     if (!r.fast || this.provider(s).id === 'codex') return r
     const f = this.fastFiles.get(this.fastKey(s))

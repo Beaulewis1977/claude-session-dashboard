@@ -821,7 +821,7 @@ function ResumeDialogBody({ resume }: { resume: ResumeRequest }) {
                     />
                   </Tooltip>
                 </div>
-                <SessionModelControls session={session} />
+                <SessionModelControls session={session} newSession={newSession || continueFresh} />
                 <FastModeNotes
                   className="mt-2"
                   notes={fastNotes({

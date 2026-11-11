@@ -846,7 +846,7 @@
    "skipped": []
   },
   "cacheFiles": [
-   "sessions-v14.json"
+   "sessions-v15.json"
   ],
   "files": {
    ".bridge-seeded": "8a1f7ec1cc0401ae",
@@ -978,7 +978,7 @@
    "archive/wsl-Ubuntu-alex/fc447aae-bc98-48be-aa94-68a262bbb29d.jsonl": "703bbf8b8fd24364",
    "archive/wsl-Ubuntu-root/a0b1c2d3-e4f5-4a6b-9c8d-7e6f5a4b3c2d.jsonl": "013db8fa7fa949c2",
    "bridge.json": "fab0666e52b6c76c",
-   "cache/sessions-v14.json": "a339f665542360c0",
+   "cache/sessions-v15.json": "717a5b422b0df1ac",
    "hooks.json": "d609fb7530b497a9",
    "limits-history.ndjson": "de42daad517e2271",
    "metadata.json": "fdd54053fefa4ef4",
@@ -10169,503 +10169,503 @@
     "sessions": [
      {
       "key": "windows:03af4726-fe06-4498-acda-7cb130c8a291",
-      "sha": "733dad5dd57ba37a"
+      "sha": "09a67a3e2c82d68b"
      },
      {
       "key": "windows:05b1d7e2-a9e8-4da8-a53f-a904f3e79509",
-      "sha": "83cd273eb2f69f28"
+      "sha": "6eba7e3e720d3853"
      },
      {
       "key": "windows:0b4a7194-bc5c-4b0e-ad81-21238715c3d1",
-      "sha": "c11d6796b01bd3f5"
+      "sha": "33dc2d5621babfdf"
      },
      {
       "key": "windows:0bd0774e-1f6c-406f-ad77-33a5f619f9bf",
-      "sha": "0216341a1794c1ac"
+      "sha": "038521b79005b853"
      },
      {
       "key": "windows:1b5a0457-160c-4a9c-ac60-c4046ffbf112",
-      "sha": "2e98a52544c56b32"
+      "sha": "cc77155fd9504d7e"
      },
      {
       "key": "windows:1d2029ac-b813-41e8-a12e-b8251f506e49",
-      "sha": "c71026e992a96c6a"
+      "sha": "38c06b77713561ba"
      },
      {
       "key": "windows:25ffb9c0-5a1d-4bd7-af25-94b612f9364b",
-      "sha": "80fba33d5709d7df"
+      "sha": "4a1d6e2445d479b2"
      },
      {
       "key": "windows:283322d3-37f0-403f-a6e9-d5ecb8551da9",
-      "sha": "82d1c30cd036c875"
+      "sha": "817da3c504017542"
      },
      {
       "key": "windows:28441b61-b4ba-499e-a245-34f75f0d3ca6",
-      "sha": "5ad9e483c2c76c99"
+      "sha": "37b78ca75d97090a"
      },
      {
       "key": "windows:2b6d8e4f-1a3c-4e5f-8a7b-9c0d1e2f3a4b",
-      "sha": "03fd7d80fb7c058a"
+      "sha": "b4fbca1ce4c294ea"
      },
      {
       "key": "windows:2ba84862-c746-4f70-a69b-707573e2f4ad",
-      "sha": "81e292c1d7bc7255"
+      "sha": "0c44c857233519f5"
      },
      {
       "key": "windows:2f599238-ab13-4a24-a6b2-a9f4644caad9",
-      "sha": "8993097341e5b4b1"
+      "sha": "24323da36e207213"
      },
      {
       "key": "windows:32fcd8c5-a18c-4d75-adcd-903838f331e5",
-      "sha": "8e69913377152ce1"
+      "sha": "15fe4cdebc40b2dc"
      },
      {
       "key": "windows:375beb56-69d5-48ee-ae38-a2a12c7db009",
-      "sha": "777960e9e0b38a15"
+      "sha": "4a8b156cdff6798c"
      },
      {
       "key": "windows:39c164a8-0fff-456b-ab45-bedaeaf0b617",
-      "sha": "272b6ff09133235d"
+      "sha": "a165966b86a4ddfc"
      },
      {
       "key": "windows:3c13dfd2-e282-4189-af50-ef42c872d48a",
-      "sha": "6ebcda684129aa3d"
+      "sha": "c4de2c5a6111e5ff"
      },
      {
       "key": "windows:4419e41b-8093-44e5-a3c7-1261ed03fab9",
-      "sha": "945c0c12f7ce3701"
+      "sha": "af81c687e4a0f11b"
      },
      {
       "key": "windows:47671321-1b64-47c3-a662-fbbe723c31fb",
-      "sha": "74da52c89527a4d8"
+      "sha": "d4fcedf2e2330c10"
      },
      {
       "key": "windows:493b6bbe-63df-48b0-a695-2c75ab17f4eb",
-      "sha": "122e08784eef841a"
+      "sha": "38ac712334541d83"
      },
      {
       "key": "windows:4bade2ba-bae8-4725-aea3-49a40ea93fab",
-      "sha": "fbc490ecbdf5b733"
+      "sha": "3073d7d5e3bd98b4"
      },
      {
       "key": "windows:50fce3c0-a253-403c-aec1-1e0000c5a30c",
-      "sha": "8684956cc550ff45"
+      "sha": "d9edec1734d7a7c1"
      },
      {
       "key": "windows:579354bc-c5e7-40cb-af38-47b7691d4063",
-      "sha": "a4c29a71a25a8563"
+      "sha": "fd94a7d645c10b7f"
      },
      {
       "key": "windows:5bfb7504-a5bb-4170-a5e3-5f3c9725d2f1",
-      "sha": "a827d9f141dd22d6"
+      "sha": "b32850f70c83f98f"
      },
      {
       "key": "windows:5f804f19-373c-4d50-a32a-73d455c2a529",
-      "sha": "c6b263826ca3eb26"
+      "sha": "f54b1bc1eefec684"
      },
      {
       "key": "windows:616714c2-aa31-497c-a84e-3699b413affe",
-      "sha": "032dea176852a48f"
+      "sha": "111ec99a7baa2e7f"
      },
      {
       "key": "windows:66bed699-f16d-4c79-a021-6b788a2ab058",
-      "sha": "ad97fe454067d8e3"
+      "sha": "470695391cef593a"
      },
      {
       "key": "windows:670eb582-7e7f-45b4-a6ee-d0693bca4256",
-      "sha": "495378a95b49d32f"
+      "sha": "34c7eda50db55168"
      },
      {
       "key": "windows:6c8c2efe-bb26-433d-ade6-0f367144a591",
-      "sha": "0bc7e52c99abbf86"
+      "sha": "bf94c8a8cc3be3eb"
      },
      {
       "key": "windows:6da2b6ba-08ff-4e24-a969-dce20ae98d1d",
-      "sha": "c3a3e64dcbedf717"
+      "sha": "247fc1989fc12d19"
      },
      {
       "key": "windows:6df702f1-dfdb-4fe2-a0af-372addbdeba2",
-      "sha": "ade7fdb0218567ff"
+      "sha": "60f8c6850b1faa1b"
      },
      {
       "key": "windows:6e8a2809-1ef1-48ec-a6f5-832593682111",
-      "sha": "26bf9bd66e136bd6"
+      "sha": "1d8510296ac06295"
      },
      {
       "key": "windows:705e21b8-44b0-429e-a7c7-95086060a823",
-      "sha": "0ef74690c524573b"
+      "sha": "b594a6c4ce232162"
      },
      {
       "key": "windows:7200924f-c6ee-45d0-a4c8-afd9b54d697e",
-      "sha": "5cb7ac52757f167a"
+      "sha": "35ab022e9d21b31a"
      },
      {
       "key": "windows:72d378b1-11e1-4747-af6b-e7b702698591",
-      "sha": "afe41b16837b79fb"
+      "sha": "01a10d46ce8f01ce"
      },
      {
       "key": "windows:78375987-8c14-4146-acf8-3308b4f2132c",
-      "sha": "237f08f52282cf8b"
+      "sha": "dcd3f97878de4915"
      },
      {
       "key": "windows:7e5e606d-ee8a-4b7c-adc7-e2bc3cfbe3b5",
-      "sha": "c9ea8d812ccaf5ec"
+      "sha": "8ad8f75bea50f3c3"
      },
      {
       "key": "windows:7f3c9a12-4b8e-4d21-9c6a-1e2f3a4b5c6d",
-      "sha": "8a966c43892c3c29"
+      "sha": "1035edd0058c26b7"
      },
      {
       "key": "windows:82b5af01-bb06-4f00-ae5f-298ae14fb5f7",
-      "sha": "5973ab86ccfcd964"
+      "sha": "e36ae57e536948f6"
      },
      {
       "key": "windows:8650952a-8a41-463f-ae63-edfe9dcea613",
-      "sha": "7dd856a612756b63"
+      "sha": "3d232664dd48fc12"
      },
      {
       "key": "windows:87c7d949-6bb7-4d25-aa4c-83cfb1c4ad19",
-      "sha": "f1743cafee084bc6"
+      "sha": "9655d6033af00a89"
      },
      {
       "key": "windows:8a71c843-636e-43f1-a5fd-e9bfad3f46a4",
-      "sha": "07223bf5e9bd7592"
+      "sha": "478573936a6d8b34"
      },
      {
       "key": "windows:8c25dca9-1f7a-4c2b-a0d6-54742698330d",
-      "sha": "14549c54c218c609"
+      "sha": "ebb724ff914942bc"
      },
      {
       "key": "windows:92ee473b-1320-47fe-a8e6-452e4a90b2d4",
-      "sha": "9fe4e1c16c0f6766"
+      "sha": "127ea29fcc695a24"
      },
      {
       "key": "windows:962fe351-6095-4d3c-af4b-ac61d082b4d2",
-      "sha": "6a4bd65ddcde8c87"
+      "sha": "d2caff2f94044c6d"
      },
      {
       "key": "windows:97365346-bd7d-426f-a216-2dcb39ad8cd1",
-      "sha": "49c97fb8d75b233e"
+      "sha": "6afa2d4c06b324cb"
      },
      {
       "key": "windows:9e8d7c6b-5a4f-4e3d-8c2b-1a0f9e8d7c6b",
-      "sha": "94a89a4bf9dc363a"
+      "sha": "1b9a15530db1e4ff"
      },
      {
       "key": "windows:a1ed03bc-9e43-45c4-a650-6847c5b3ec76",
-      "sha": "11d5dbf9b786301e"
+      "sha": "dbbc92e9664be0bc"
      },
      {
       "key": "windows:a53c2566-f262-46f9-a757-cfa4542ded6b",
-      "sha": "03189f92b45d27ea"
+      "sha": "a1092309ed73031b"
      },
      {
       "key": "windows:a5896bcb-a1ec-43be-a3c2-20ca5318c3d5",
-      "sha": "8f5b4adf35ebce36"
+      "sha": "ae4e69d881347203"
      },
      {
       "key": "windows:a903efff-0d8d-4126-a4de-594e7e411b18",
-      "sha": "bae8f7f27acbc6b3"
+      "sha": "0df1eb7d8dd53df5"
      },
      {
       "key": "windows:aca95441-ef59-4b42-a853-ddf6abe8fa3c",
-      "sha": "b59e012e0db23b52"
+      "sha": "025cf26ff40f6b28"
      },
      {
       "key": "windows:b33670f4-135f-4983-aa5e-74f2b4906baa",
-      "sha": "375120b07039577c"
+      "sha": "7186cc282d93764f"
      },
      {
       "key": "windows:b490d0d2-0908-40d1-aa37-518f031ba4d1",
-      "sha": "312fd51c87e8829a"
+      "sha": "a33de7db3b09c79d"
      },
      {
       "key": "windows:b5db9aea-2f00-4960-a5c4-40f98404e5bf",
-      "sha": "48984b5086739cd4"
+      "sha": "30e707c2b8b20eb9"
      },
      {
       "key": "windows:b7a1c2d3-e4f5-4a6b-8c7d-9e0f1a2b3c4d",
-      "sha": "33213ef9542f0079"
+      "sha": "f01c759b964ae724"
      },
      {
       "key": "windows:b8610ea3-725d-467d-ae23-003b96858d9e",
-      "sha": "6808d6bc98b1e478"
+      "sha": "c9c83989ccb3a395"
      },
      {
       "key": "windows:c407ed9a-21fe-49f6-a84f-e56c78d12c9d",
-      "sha": "bb3191b4095210a9"
+      "sha": "5a20e317ecd712e3"
      },
      {
       "key": "windows:c41e2d7a-9b0f-4c3e-b5a6-7d8e9f0a1b2c",
-      "sha": "7acdb5ef560bc590"
+      "sha": "e3d505a3c803bf91"
      },
      {
       "key": "windows:d49a065a-b8f8-413c-a327-b89552abd81f",
-      "sha": "26d2c21ee6d37e50"
+      "sha": "04d76e776c808c9a"
      },
      {
       "key": "windows:d7b1217d-469d-43ef-a93a-5b4230eee097",
-      "sha": "14111a33c800c073"
+      "sha": "7eed11d07d9b06af"
      },
      {
       "key": "windows:d7df1b52-024c-42b8-a508-f2f005ad8f33",
-      "sha": "89a189fcf91ee304"
+      "sha": "11853f9a2beccbdf"
      },
      {
       "key": "windows:da2c64cf-d408-462d-a058-627a68191ecd",
-      "sha": "19b92327e824c880"
+      "sha": "dbcd04590f7d1989"
      },
      {
       "key": "windows:db7c015f-f333-4ba6-a57c-a98d521c4423",
-      "sha": "64f36f4fd2e2e88a"
+      "sha": "617ba50ba86956bb"
      },
      {
       "key": "windows:e3330a9b-1e91-45f1-af0d-00847ec49cc8",
-      "sha": "8990126f92dda7ea"
+      "sha": "a760b393fc8310c0"
      },
      {
       "key": "windows:ea18454d-a334-49b9-ac0d-db286a232808",
-      "sha": "5169b9cea173a53d"
+      "sha": "4bb07f7c309541ea"
      },
      {
       "key": "windows:ef8a8bbf-b789-4880-a837-34948d7397a5",
-      "sha": "e952fa11b3f86d6c"
+      "sha": "e93a56335a41d228"
      },
      {
       "key": "windows:f07c1a2b-3c4d-4e5f-8a6b-7c8d9e0f1a2b",
-      "sha": "f7dcdce37d71600b"
+      "sha": "9fd46a2ed9f1208a"
      },
      {
       "key": "windows:f19cf363-ba9d-47d2-aa52-1457cc2f96b7",
-      "sha": "28aa9ecd4d35c5da"
+      "sha": "28e1bc09b3eef12e"
      },
      {
       "key": "windows:f25d04b1-67ee-42c8-a39f-b3f757943448",
-      "sha": "89cd2fa6fac3c815"
+      "sha": "497dad8e518e001e"
      },
      {
       "key": "windows:f76775ce-788d-467c-a693-d84a18d65e75",
-      "sha": "a062754a5b2195bc"
+      "sha": "63f32bb3c82341b4"
      },
      {
       "key": "windows:fe83acf1-6a46-4e4f-ad48-65439708bea5",
-      "sha": "306862d4dcf55176"
+      "sha": "a376f14e2cefd4f4"
      },
      {
       "key": "wsl-Ubuntu-alex:1ab21fbc-ed68-467b-a5f4-0a8d40b5b3a5",
-      "sha": "55f0387a165095fa"
+      "sha": "800945c9d0292083"
      },
      {
       "key": "wsl-Ubuntu-alex:1ae904ea-e262-45f3-aab7-1e36a78e530d",
-      "sha": "de75b1194b17daee"
+      "sha": "c36562f7b8ff85bc"
      },
      {
       "key": "wsl-Ubuntu-alex:22017e0f-7c1a-4021-a651-3ffcfe456f27",
-      "sha": "f1bd7b54121ec474"
+      "sha": "fc176dabe423fe66"
      },
      {
       "key": "wsl-Ubuntu-alex:24cc337e-584c-4d6e-a02b-89728ced576d",
-      "sha": "51f0134d615b1e8c"
+      "sha": "253bdbf48332a125"
      },
      {
       "key": "wsl-Ubuntu-alex:302e272e-e86b-468e-adba-adb53520c13d",
-      "sha": "efcdbd99c8b59949"
+      "sha": "b0c1a9e9734494f0"
      },
      {
       "key": "wsl-Ubuntu-alex:3280b904-6a52-4f96-a5e6-66fe8fa7f549",
-      "sha": "46e0e8541b91a93e"
+      "sha": "5ef193af25c2a689"
      },
      {
       "key": "wsl-Ubuntu-alex:35fc8bec-5dc5-428b-ab8c-598c32b87342",
-      "sha": "138e14d8f757d4e8"
+      "sha": "91f9f45b0d1f2228"
      },
      {
       "key": "wsl-Ubuntu-alex:41460e8e-3077-4352-afaf-63603b9cc48c",
-      "sha": "697fd0df32f71d73"
+      "sha": "03379367384fbd20"
      },
      {
       "key": "wsl-Ubuntu-alex:43864d18-8265-48a8-a727-f1a1f6376d2a",
-      "sha": "46e2e7ea246e13e4"
+      "sha": "86b72e4bae86bae2"
      },
      {
       "key": "wsl-Ubuntu-alex:49970658-fdb7-4610-a2f0-f06617b1b5e0",
-      "sha": "e96a38719518b69d"
+      "sha": "3b91f4668bbd8ba2"
      },
      {
       "key": "wsl-Ubuntu-alex:4ab5f631-fe26-41c2-a47a-868c58e80b0b",
-      "sha": "4314fac47210e532"
+      "sha": "054f7fb312b1522a"
      },
      {
       "key": "wsl-Ubuntu-alex:4d21ee47-fb21-457d-ab84-5e2334b5bce5",
-      "sha": "35150251b46d7724"
+      "sha": "e864571c59a5c3dd"
      },
      {
       "key": "wsl-Ubuntu-alex:4efe1a2e-0c58-46ac-a023-458e1e726d69",
-      "sha": "5f92a8359d418c89"
+      "sha": "31012cd0260aabc5"
      },
      {
       "key": "wsl-Ubuntu-alex:504c6ef4-fe73-448e-adb9-13c972120c88",
-      "sha": "fb9df19ee5aed170"
+      "sha": "a834567bc8c05266"
      },
      {
       "key": "wsl-Ubuntu-alex:51a4e764-1828-41a0-a0ed-55da322e5dbc",
-      "sha": "46e67c81b2607c42"
+      "sha": "557c0848b5069c75"
      },
      {
       "key": "wsl-Ubuntu-alex:52cab848-c634-4207-a6d7-44de4a5b8b0b",
-      "sha": "a5440031dab81d27"
+      "sha": "5c0baa066237f576"
      },
      {
       "key": "wsl-Ubuntu-alex:5a32694c-edea-48bb-a0c8-5186d7d49010",
-      "sha": "d52b0856a57e71f8"
+      "sha": "4cc1a176bc6001d4"
      },
      {
       "key": "wsl-Ubuntu-alex:5d4c3b2a-1f0e-4d9c-8b7a-6f5e4d3c2b1a",
-      "sha": "ccd74228d903532e"
+      "sha": "967bae143009f1ed"
      },
      {
       "key": "wsl-Ubuntu-alex:603b78a9-b303-42c3-a56f-8dcaf8a304bb",
-      "sha": "e5b56b6d5205722f"
+      "sha": "ede3f784b8b82502"
      },
      {
       "key": "wsl-Ubuntu-alex:6c8975d4-3fe2-4f41-a325-705f41c8dda5",
-      "sha": "1ca964b7ebb38600"
+      "sha": "081535c62a721e7d"
      },
      {
       "key": "wsl-Ubuntu-alex:7a8e738b-19bc-4fd3-abf7-363b2648a4a5",
-      "sha": "ab016c0b824cedb0"
+      "sha": "cb80bee37a598743"
      },
      {
       "key": "wsl-Ubuntu-alex:85b76686-3ab9-4950-a104-71862fe5bf07",
-      "sha": "9e22d6e1a0fe05af"
+      "sha": "f03790d672ea091e"
      },
      {
       "key": "wsl-Ubuntu-alex:8fd21a26-304e-4794-ad44-0c3f0d7c7c62",
-      "sha": "65b9ff15f773c9d8"
+      "sha": "04ffc5e12650908a"
      },
      {
       "key": "wsl-Ubuntu-alex:917fa8fd-d918-4ff2-ae83-8a418fd1bae6",
-      "sha": "ce85bf25dc0e54d3"
+      "sha": "9e7d0c57994685b8"
      },
      {
       "key": "wsl-Ubuntu-alex:99b3801b-2209-4803-a2d6-df2bbd2f8c96",
-      "sha": "1a074fde1d0dc1be"
+      "sha": "577c93dace71b97f"
      },
      {
       "key": "wsl-Ubuntu-alex:9e2f7b55-566e-437f-ab52-890d1ed9628f",
-      "sha": "04edb854c697e41c"
+      "sha": "7ba967e6a69674bd"
      },
      {
       "key": "wsl-Ubuntu-alex:a8e975ed-0c2a-4539-ab03-278cc561a996",
-      "sha": "9f6f2793c0d68779"
+      "sha": "60ff5925e1c74c84"
      },
      {
       "key": "wsl-Ubuntu-alex:ab2a6f5f-6f21-4b6d-a637-694b99a0914e",
-      "sha": "df685acecfca3874"
+      "sha": "b11b2284645c477f"
      },
      {
       "key": "wsl-Ubuntu-alex:aba00d23-2075-43c3-a680-dbf96a91ead6",
-      "sha": "4006ba754cb483e9"
+      "sha": "14886fcd2c709eeb"
      },
      {
       "key": "wsl-Ubuntu-alex:acfd02cc-47e2-46d1-a699-ae08e987433f",
-      "sha": "9bf99add49a62377"
+      "sha": "ccaedaed613845f2"
      },
      {
       "key": "wsl-Ubuntu-alex:b1bd1517-2980-4be3-ae9f-971d9f24a3e3",
-      "sha": "356d08eae48595a6"
+      "sha": "5edee835842475c7"
      },
      {
       "key": "wsl-Ubuntu-alex:b7f38aaf-252b-452d-a22b-a0c7c87c55c5",
-      "sha": "a964c8c0073549e2"
+      "sha": "67cdc244b2aeae16"
      },
      {
       "key": "wsl-Ubuntu-alex:bb2f4359-469b-4bde-ad3a-249e1ed0ca19",
-      "sha": "ef0d1b1545897a09"
+      "sha": "a0d08b1e94c7b64a"
      },
      {
       "key": "wsl-Ubuntu-alex:bc0aad5c-2f07-4ed0-a7b8-58d381425934",
-      "sha": "b3ee1b99621deb47"
+      "sha": "a4aafc8d26d10576"
      },
      {
       "key": "wsl-Ubuntu-alex:c49d393e-fdcd-4221-a375-3e2dea7762c2",
-      "sha": "0a603ec102b8e2e8"
+      "sha": "5be7ce5453ce6d08"
      },
      {
       "key": "wsl-Ubuntu-alex:c95cfbe4-514d-4be7-a16a-83b6f8ea099e",
-      "sha": "d35902e748647ecf"
+      "sha": "c249e826e3030ae5"
      },
      {
       "key": "wsl-Ubuntu-alex:ca0acc6d-7024-491b-a0db-0de94a5e2866",
-      "sha": "d124eabf8f22b4b4"
+      "sha": "c08acbfd8b4ccaf8"
      },
      {
       "key": "wsl-Ubuntu-alex:ca248ab6-637e-40fe-a6d8-3f42af2f5ea2",
-      "sha": "b334d29ab0fb7190"
+      "sha": "7007b6d70e0af3d9"
      },
      {
       "key": "wsl-Ubuntu-alex:cae6c27f-6187-49c1-a99b-010bf9d41747",
-      "sha": "a83c89c2ed4261ba"
+      "sha": "68e1383db7882aab"
      },
      {
       "key": "wsl-Ubuntu-alex:d8639ef0-66df-47bc-a293-84d14bef9b9e",
-      "sha": "2a8c744bc425cc7c"
+      "sha": "b25bb42d2d0300a1"
      },
      {
       "key": "wsl-Ubuntu-alex:d886a191-3711-4d12-ab4b-bf1bfb31672b",
-      "sha": "6db702407190bd8d"
+      "sha": "ed7b4def5cd40b38"
      },
      {
       "key": "wsl-Ubuntu-alex:d9ca25b5-0322-4333-a009-f93591bc5285",
-      "sha": "b7847690cfab29a6"
+      "sha": "539e90d0c8112908"
      },
      {
       "key": "wsl-Ubuntu-alex:e2681514-6806-4e4a-a7d5-b400e40a13dd",
-      "sha": "145bab3e02825f6a"
+      "sha": "40c88330148d0859"
      },
      {
       "key": "wsl-Ubuntu-alex:e66f7332-af3f-442b-ab05-f494d9c0f602",
-      "sha": "b874e9f440be8cd2"
+      "sha": "1dc424bd9991284a"
      },
      {
       "key": "wsl-Ubuntu-alex:e9a1b2c3-d4e5-4f60-8172-839405a6b7c8",
-      "sha": "58d06f7d3521aaff"
+      "sha": "4b3da65595c35aa2"
      },
      {
       "key": "wsl-Ubuntu-alex:ef8293b1-dd9c-46be-a666-9ea7b541deed",
-      "sha": "a76b8dff0ff7962f"
+      "sha": "b31dbb0c81a8a384"
      },
      {
       "key": "wsl-Ubuntu-alex:efddb615-d639-4df1-aedd-e247b69096c3",
-      "sha": "0f87d7cd9790f161"
+      "sha": "6ad29e1f67ebb879"
      },
      {
       "key": "wsl-Ubuntu-alex:f1e78a49-89fd-4151-a9e4-266bdf795d64",
-      "sha": "7c06a33b717a571e"
+      "sha": "147412261c2596ca"
      },
      {
       "key": "wsl-Ubuntu-alex:f322ef51-939a-490d-a97b-5f6b8cb795ba",
-      "sha": "293d5f87b7bf1df1"
+      "sha": "d422110fec592b13"
      },
      {
       "key": "wsl-Ubuntu-alex:f6e196b6-7a10-4503-a1d2-64bd95d20c11",
-      "sha": "89c301da544aaaba"
+      "sha": "9f92774a42fe94dc"
      },
      {
       "key": "wsl-Ubuntu-alex:f76bb94a-5da8-4a8b-a173-1fe3100b3b6f",
-      "sha": "2b361bac955e2e8f"
+      "sha": "cb763c191972d2b2"
      },
      {
       "key": "wsl-Ubuntu-alex:f90ca24f-1b2b-40aa-af5d-6a2ce7cb80ae",
-      "sha": "63c2a1b8ed189534"
+      "sha": "9b38325fd2790a3c"
      },
      {
       "key": "wsl-Ubuntu-alex:fc447aae-bc98-48be-aa94-68a262bbb29d",
-      "sha": "275672e62868f9fd"
+      "sha": "285bccd26c630744"
      },
      {
       "key": "wsl-Ubuntu-root:a0b1c2d3-e4f5-4a6b-9c8d-7e6f5a4b3c2d",
-      "sha": "8588e24f724e95f3"
+      "sha": "912f52c75971d0ac"
      }
     ],
     "sources": [
@@ -20596,39 +20596,39 @@
   "sessions": [
    {
     "key": "windows:03af4726-fe06-4498-acda-7cb130c8a291",
-    "sha": "fbdefb83ad062d29"
+    "sha": "1b83123675c5cf26"
    },
    {
     "key": "windows:05b1d7e2-a9e8-4da8-a53f-a904f3e79509",
-    "sha": "e4207a486ee824f5"
+    "sha": "e077c63837a1a254"
    },
    {
     "key": "windows:0b4a7194-bc5c-4b0e-ad81-21238715c3d1",
-    "sha": "3a269a4d46d286f3"
+    "sha": "c82b6754472f4848"
    },
    {
     "key": "windows:0bd0774e-1f6c-406f-ad77-33a5f619f9bf",
-    "sha": "9dd5c007f10ac839"
+    "sha": "f616bffe8312f9a5"
    },
    {
     "key": "windows:1b5a0457-160c-4a9c-ac60-c4046ffbf112",
-    "sha": "4dd0b5882476eb8c"
+    "sha": "61229029c6174c7c"
    },
    {
     "key": "windows:1d2029ac-b813-41e8-a12e-b8251f506e49",
-    "sha": "2e1343270bad7ce2"
+    "sha": "6c073b7cb08215d0"
    },
    {
     "key": "windows:25ffb9c0-5a1d-4bd7-af25-94b612f9364b",
-    "sha": "a6d72d22d4e67b54"
+    "sha": "d3d904f88614c2ad"
    },
    {
     "key": "windows:283322d3-37f0-403f-a6e9-d5ecb8551da9",
-    "sha": "6a61ff925333365e"
+    "sha": "0210b3612c79e1bb"
    },
    {
     "key": "windows:28441b61-b4ba-499e-a245-34f75f0d3ca6",
-    "sha": "a0fe4dd5eaec50a8"
+    "sha": "32d1b4a6936daecb"
    },
    {
     "archivePath": "<ROOT>/.fixtures-data/appdata/archive/windows/2b6d8e4f-1a3c-4e5f-8a7b-9c0d1e2f3a4b.jsonl",
@@ -20655,6 +20655,7 @@
     "gitBranch": "main",
     "key": "windows:2b6d8e4f-1a3c-4e5f-8a7b-9c0d1e2f3a4b",
     "lastActivityAt": "2026-10-22T08:47:08.000Z",
+    "lastModel": "claude-sonnet-4-5-20250929",
     "malformedLines": 2,
     "messageCount": 7,
     "meta": {
@@ -20692,107 +20693,107 @@
    },
    {
     "key": "windows:2ba84862-c746-4f70-a69b-707573e2f4ad",
-    "sha": "57d6b87971824e07"
+    "sha": "b5a211c46643e896"
    },
    {
     "key": "windows:2f599238-ab13-4a24-a6b2-a9f4644caad9",
-    "sha": "9c4e5202224d95b5"
+    "sha": "68925f2231c956be"
    },
    {
     "key": "windows:32fcd8c5-a18c-4d75-adcd-903838f331e5",
-    "sha": "e4facb34c649040b"
+    "sha": "e48a3494da55581c"
    },
    {
     "key": "windows:375beb56-69d5-48ee-ae38-a2a12c7db009",
-    "sha": "7f9962a0f5dc4824"
+    "sha": "59a4a5fe605901a7"
    },
    {
     "key": "windows:39c164a8-0fff-456b-ab45-bedaeaf0b617",
-    "sha": "b4ed70ca5ed2670e"
+    "sha": "47ff35c7bf9a1319"
    },
    {
     "key": "windows:3c13dfd2-e282-4189-af50-ef42c872d48a",
-    "sha": "b4a6ff903a8dbf64"
+    "sha": "e583e3dcc2d2b699"
    },
    {
     "key": "windows:4419e41b-8093-44e5-a3c7-1261ed03fab9",
-    "sha": "0fce2641a68838a4"
+    "sha": "e7813dc2480b7c5a"
    },
    {
     "key": "windows:47671321-1b64-47c3-a662-fbbe723c31fb",
-    "sha": "51dea69148de1c39"
+    "sha": "81a72fca4405d852"
    },
    {
     "key": "windows:493b6bbe-63df-48b0-a695-2c75ab17f4eb",
-    "sha": "705eb2264db3994d"
+    "sha": "edcb6cd233cd9122"
    },
    {
     "key": "windows:4bade2ba-bae8-4725-aea3-49a40ea93fab",
-    "sha": "826bb9dc1c1da97c"
+    "sha": "55d7b55fe95e59fe"
    },
    {
     "key": "windows:50fce3c0-a253-403c-aec1-1e0000c5a30c",
-    "sha": "1e2d9da6be51c1c0"
+    "sha": "76f9e2685f1e0032"
    },
    {
     "key": "windows:579354bc-c5e7-40cb-af38-47b7691d4063",
-    "sha": "662ee02161255cf3"
+    "sha": "765deca21078e0b4"
    },
    {
     "key": "windows:5bfb7504-a5bb-4170-a5e3-5f3c9725d2f1",
-    "sha": "6b7292990c3f3622"
+    "sha": "49c21938ae687b14"
    },
    {
     "key": "windows:5f804f19-373c-4d50-a32a-73d455c2a529",
-    "sha": "3f1a78d71f9d5638"
+    "sha": "03ff3cebd0a0dfc2"
    },
    {
     "key": "windows:616714c2-aa31-497c-a84e-3699b413affe",
-    "sha": "2c76b172aee0b11e"
+    "sha": "07882526323c5e3e"
    },
    {
     "key": "windows:66bed699-f16d-4c79-a021-6b788a2ab058",
-    "sha": "aa3cfcb88caacca7"
+    "sha": "40f05c0d4f51ada8"
    },
    {
     "key": "windows:670eb582-7e7f-45b4-a6ee-d0693bca4256",
-    "sha": "f29e4c6711abc3e4"
+    "sha": "ca76183429311839"
    },
    {
     "key": "windows:6c8c2efe-bb26-433d-ade6-0f367144a591",
-    "sha": "bd5f29fd9b1cbd76"
+    "sha": "84be4bf530bf053b"
    },
    {
     "key": "windows:6da2b6ba-08ff-4e24-a969-dce20ae98d1d",
-    "sha": "5de8caeae136c8ea"
+    "sha": "0f953f9d1a6a9440"
    },
    {
     "key": "windows:6df702f1-dfdb-4fe2-a0af-372addbdeba2",
-    "sha": "127bc4a631b8c2fc"
+    "sha": "ddfeb533cbb6273a"
    },
    {
     "key": "windows:6e8a2809-1ef1-48ec-a6f5-832593682111",
-    "sha": "81593460644cdf2e"
+    "sha": "d50211fe7d090dd4"
    },
    {
     "key": "windows:705e21b8-44b0-429e-a7c7-95086060a823",
-    "sha": "8875b354949a42bc"
+    "sha": "91ac7e5452cf0698"
    },
    {
     "key": "windows:7200924f-c6ee-45d0-a4c8-afd9b54d697e",
-    "sha": "0bfc5d7f86b45d50"
+    "sha": "dc4cdbeb2556ad66"
    },
    {
     "key": "windows:72d378b1-11e1-4747-af6b-e7b702698591",
-    "sha": "57800aded08b1bc4"
+    "sha": "9de99950a90b7398"
    },
    {
     "key": "windows:78375987-8c14-4146-acf8-3308b4f2132c",
-    "sha": "d05dd3cf0485cc15"
+    "sha": "cc3d2e7dfabc1f9f"
    },
    {
     "key": "windows:7e5e606d-ee8a-4b7c-adc7-e2bc3cfbe3b5",
-    "sha": "eec8933d9e3df655"
+    "sha": "97f4e80caee89d2b"
    },
    {
     "archivePath": "<ROOT>/.fixtures-data/appdata/archive/windows/7f3c9a12-4b8e-4d21-9c6a-1e2f3a4b5c6d.jsonl",
@@ -20819,6 +20820,7 @@
     "gitBranch": "fix/login-redirect",
     "key": "windows:7f3c9a12-4b8e-4d21-9c6a-1e2f3a4b5c6d",
     "lastActivityAt": "2026-10-21T13:05:36.000Z",
+    "lastModel": "claude-sonnet-4-5-20250929",
     "malformedLines": 0,
     "messageCount": 12,
     "meta": {
@@ -20866,35 +20868,35 @@
    },
    {
     "key": "windows:82b5af01-bb06-4f00-ae5f-298ae14fb5f7",
-    "sha": "59f82b626f6e1176"
+    "sha": "3d77a9ea5c074fcb"
    },
    {
     "key": "windows:8650952a-8a41-463f-ae63-edfe9dcea613",
-    "sha": "15dd613512d12f7e"
+    "sha": "7446776eb4479594"
    },
    {
     "key": "windows:87c7d949-6bb7-4d25-aa4c-83cfb1c4ad19",
-    "sha": "0b929d924af126ce"
+    "sha": "88fad842edc4a5e3"
    },
    {
     "key": "windows:8a71c843-636e-43f1-a5fd-e9bfad3f46a4",
-    "sha": "b0ff6daa6f7aa8e7"
+    "sha": "7bda0f6676607cbe"
    },
    {
     "key": "windows:8c25dca9-1f7a-4c2b-a0d6-54742698330d",
-    "sha": "1aeeeec484b20e77"
+    "sha": "8a080ebc4b8aa78c"
    },
    {
     "key": "windows:92ee473b-1320-47fe-a8e6-452e4a90b2d4",
-    "sha": "e4779f2b96e904c1"
+    "sha": "1fe770fae7523add"
    },
    {
     "key": "windows:962fe351-6095-4d3c-af4b-ac61d082b4d2",
-    "sha": "96c90bfdd42234aa"
+    "sha": "529595ffbe7bd030"
    },
    {
     "key": "windows:97365346-bd7d-426f-a216-2dcb39ad8cd1",
-    "sha": "4a3efa53acb590d1"
+    "sha": "f8e8f0f6960e131b"
    },
    {
     "archivePath": "<ROOT>/.fixtures-data/appdata/archive/windows/9e8d7c6b-5a4f-4e3d-8c2b-1a0f9e8d7c6b.jsonl",
@@ -20921,6 +20923,7 @@
     "gitBranch": "master",
     "key": "windows:9e8d7c6b-5a4f-4e3d-8c2b-1a0f9e8d7c6b",
     "lastActivityAt": "2026-08-03T10:00:28.000Z",
+    "lastModel": "claude-sonnet-4-5-20250929",
     "malformedLines": 0,
     "messageCount": 2,
     "meta": {
@@ -20957,35 +20960,35 @@
    },
    {
     "key": "windows:a1ed03bc-9e43-45c4-a650-6847c5b3ec76",
-    "sha": "8f8136327018b800"
+    "sha": "c0c851b955dec4dc"
    },
    {
     "key": "windows:a53c2566-f262-46f9-a757-cfa4542ded6b",
-    "sha": "41be16d61e4ab05c"
+    "sha": "2c933a16ae11d4aa"
    },
    {
     "key": "windows:a5896bcb-a1ec-43be-a3c2-20ca5318c3d5",
-    "sha": "c411a0581c8bf0b2"
+    "sha": "07e02f8b4b6cc94d"
    },
    {
     "key": "windows:a903efff-0d8d-4126-a4de-594e7e411b18",
-    "sha": "7b6246a5b48dd475"
+    "sha": "c77cfc68e4253a94"
    },
    {
     "key": "windows:aca95441-ef59-4b42-a853-ddf6abe8fa3c",
-    "sha": "d2bd7c84a8339364"
+    "sha": "f2f413fd69f9bea5"
    },
    {
     "key": "windows:b33670f4-135f-4983-aa5e-74f2b4906baa",
-    "sha": "54ea9785fc70f18e"
+    "sha": "e150ea990656f5df"
    },
    {
     "key": "windows:b490d0d2-0908-40d1-aa37-518f031ba4d1",
-    "sha": "10fbe6cd11d91dae"
+    "sha": "aaf9996f194853ca"
    },
    {
     "key": "windows:b5db9aea-2f00-4960-a5c4-40f98404e5bf",
-    "sha": "2aaa7ebaf2370329"
+    "sha": "5f2ec27f5d6a8bbb"
    },
    {
     "archivePath": "<ROOT>/.fixtures-data/appdata/archive/windows/b7a1c2d3-e4f5-4a6b-8c7d-9e0f1a2b3c4d.jsonl",
@@ -21017,6 +21020,7 @@
     "gitBranch": "main",
     "key": "windows:b7a1c2d3-e4f5-4a6b-8c7d-9e0f1a2b3c4d",
     "lastActivityAt": "2026-10-22T10:30:38.000Z",
+    "lastModel": "claude-sonnet-4-5-20250929",
     "lineage": {
      "atMessageId": "1ec8b537-0a08-4f05-afef-2372b39ad796",
      "atTime": "2026-10-22T08:41:51.000Z",
@@ -21067,11 +21071,11 @@
    },
    {
     "key": "windows:b8610ea3-725d-467d-ae23-003b96858d9e",
-    "sha": "317f427b4434016f"
+    "sha": "3731e68eecde80d3"
    },
    {
     "key": "windows:c407ed9a-21fe-49f6-a84f-e56c78d12c9d",
-    "sha": "03fc9b34b04a1f91"
+    "sha": "7405cd65ddd1ff65"
    },
    {
     "archivePath": "<ROOT>/.fixtures-data/appdata/archive/windows/c41e2d7a-9b0f-4c3e-b5a6-7d8e9f0a1b2c.jsonl",
@@ -21088,6 +21092,7 @@
     "firstUuid": "102518cc-063a-436e-a33e-f35e34d4ecec",
     "key": "windows:c41e2d7a-9b0f-4c3e-b5a6-7d8e9f0a1b2c",
     "lastActivityAt": "2026-09-28T19:17:12.000Z",
+    "lastModel": "claude-opus-4-1-20250805",
     "malformedLines": 0,
     "messageCount": 3,
     "meta": {
@@ -21123,35 +21128,35 @@
    },
    {
     "key": "windows:d49a065a-b8f8-413c-a327-b89552abd81f",
-    "sha": "8eaca30f12369102"
+    "sha": "b732daf2ca495307"
    },
    {
     "key": "windows:d7b1217d-469d-43ef-a93a-5b4230eee097",
-    "sha": "131f7ee22ec6b347"
+    "sha": "391802e1782b8aec"
    },
    {
     "key": "windows:d7df1b52-024c-42b8-a508-f2f005ad8f33",
-    "sha": "f7edc68c29aa71a7"
+    "sha": "fd777e0c7858cb50"
    },
    {
     "key": "windows:da2c64cf-d408-462d-a058-627a68191ecd",
-    "sha": "97ae60fb4b5cb390"
+    "sha": "45c99416448a616a"
    },
    {
     "key": "windows:db7c015f-f333-4ba6-a57c-a98d521c4423",
-    "sha": "71d9fdeebe166ec0"
+    "sha": "c24a94c33ab1b604"
    },
    {
     "key": "windows:e3330a9b-1e91-45f1-af0d-00847ec49cc8",
-    "sha": "d645b34443788969"
+    "sha": "3732d4fa1e3d23d4"
    },
    {
     "key": "windows:ea18454d-a334-49b9-ac0d-db286a232808",
-    "sha": "b0d8b1fcb51ccf07"
+    "sha": "28d7dc82cd9de11f"
    },
    {
     "key": "windows:ef8a8bbf-b789-4880-a837-34948d7397a5",
-    "sha": "1f40c0053239cd61"
+    "sha": "1ccb951f4016d5bd"
    },
    {
     "archivePath": "<ROOT>/.fixtures-data/appdata/archive/windows/f07c1a2b-3c4d-4e5f-8a6b-7c8d9e0f1a2b.jsonl",
@@ -21178,6 +21183,7 @@
     "gitBranch": "fix/login-redirect",
     "key": "windows:f07c1a2b-3c4d-4e5f-8a6b-7c8d9e0f1a2b",
     "lastActivityAt": "2026-10-22T08:40:48.000Z",
+    "lastModel": "claude-sonnet-4-5-20250929",
     "lineage": {
      "atMessageId": "4751c82d-d16f-4666-a40a-2498160facb3",
      "atTime": "2026-10-21T13:05:36.000Z",
@@ -21229,87 +21235,87 @@
    },
    {
     "key": "windows:f19cf363-ba9d-47d2-aa52-1457cc2f96b7",
-    "sha": "6151ac14e532ee94"
+    "sha": "8ed11b5a9639db8e"
    },
    {
     "key": "windows:f25d04b1-67ee-42c8-a39f-b3f757943448",
-    "sha": "fa94739e57a87ea3"
+    "sha": "45c72573998b5a68"
    },
    {
     "key": "windows:f76775ce-788d-467c-a693-d84a18d65e75",
-    "sha": "73a0dcb19ca784dd"
+    "sha": "75eb6aff6f2ba5d4"
    },
    {
     "key": "windows:fe83acf1-6a46-4e4f-ad48-65439708bea5",
-    "sha": "fd19fc9075c837f1"
+    "sha": "f1a9038f700bedbc"
    },
    {
     "key": "wsl-Ubuntu-alex:1ab21fbc-ed68-467b-a5f4-0a8d40b5b3a5",
-    "sha": "e494327565289181"
+    "sha": "1bd9f36052d95df2"
    },
    {
     "key": "wsl-Ubuntu-alex:1ae904ea-e262-45f3-aab7-1e36a78e530d",
-    "sha": "757ad40d3acedc9b"
+    "sha": "e32bef7ed19b3794"
    },
    {
     "key": "wsl-Ubuntu-alex:22017e0f-7c1a-4021-a651-3ffcfe456f27",
-    "sha": "4b6dc6f73a0506ad"
+    "sha": "f2d567ea13c3c341"
    },
    {
     "key": "wsl-Ubuntu-alex:24cc337e-584c-4d6e-a02b-89728ced576d",
-    "sha": "eee874ff3ad21697"
+    "sha": "51c71159f66ece59"
    },
    {
     "key": "wsl-Ubuntu-alex:302e272e-e86b-468e-adba-adb53520c13d",
-    "sha": "7c4541b75e0e3ed3"
+    "sha": "b1905379c283e455"
    },
    {
     "key": "wsl-Ubuntu-alex:3280b904-6a52-4f96-a5e6-66fe8fa7f549",
-    "sha": "ae636a1d2083f4c7"
+    "sha": "155c10d46e234d77"
    },
    {
     "key": "wsl-Ubuntu-alex:35fc8bec-5dc5-428b-ab8c-598c32b87342",
-    "sha": "f0f003e29e4e77b2"
+    "sha": "e4372e3fc72dea12"
    },
    {
     "key": "wsl-Ubuntu-alex:41460e8e-3077-4352-afaf-63603b9cc48c",
-    "sha": "2d55ea924c0f99d4"
+    "sha": "2a164aa69521947e"
    },
    {
     "key": "wsl-Ubuntu-alex:43864d18-8265-48a8-a727-f1a1f6376d2a",
-    "sha": "e19c10cf6b4b5cf7"
+    "sha": "e3317a22c548663a"
    },
    {
     "key": "wsl-Ubuntu-alex:49970658-fdb7-4610-a2f0-f06617b1b5e0",
-    "sha": "230c45af215f53ac"
+    "sha": "596f5302da07dcc8"
    },
    {
     "key": "wsl-Ubuntu-alex:4ab5f631-fe26-41c2-a47a-868c58e80b0b",
-    "sha": "f5a04e313b4e2419"
+    "sha": "af5b37a6bfef1244"
    },
    {
     "key": "wsl-Ubuntu-alex:4d21ee47-fb21-457d-ab84-5e2334b5bce5",
-    "sha": "213f469df1e197d7"
+    "sha": "c778edfdbff9680b"
    },
    {
     "key": "wsl-Ubuntu-alex:4efe1a2e-0c58-46ac-a023-458e1e726d69",
-    "sha": "8617a5fd46cfb56d"
+    "sha": "43e88687e80615d9"
    },
    {
     "key": "wsl-Ubuntu-alex:504c6ef4-fe73-448e-adb9-13c972120c88",
-    "sha": "85e51a1daf43afe0"
+    "sha": "4a293871dd4b531e"
    },
    {
     "key": "wsl-Ubuntu-alex:51a4e764-1828-41a0-a0ed-55da322e5dbc",
-    "sha": "9824eb1a1348ee89"
+    "sha": "9c986b4222561edf"
    },
    {
     "key": "wsl-Ubuntu-alex:52cab848-c634-4207-a6d7-44de4a5b8b0b",
-    "sha": "08b8952107bb21ec"
+    "sha": "9bee6a66e312c482"
    },
    {
     "key": "wsl-Ubuntu-alex:5a32694c-edea-48bb-a0c8-5186d7d49010",
-    "sha": "26a1372dc747ac40"
+    "sha": "23908f6b8ef0d918"
    },
    {
     "archivePath": "<ROOT>/.fixtures-data/appdata/archive/wsl-Ubuntu-alex/5d4c3b2a-1f0e-4d9c-8b7a-6f5e4d3c2b1a.jsonl",
@@ -21337,6 +21343,7 @@
     "gitBranch": "main",
     "key": "wsl-Ubuntu-alex:5d4c3b2a-1f0e-4d9c-8b7a-6f5e4d3c2b1a",
     "lastActivityAt": "2026-10-14T21:09:15.000Z",
+    "lastModel": "claude-sonnet-4-5-20250929",
     "malformedLines": 0,
     "messageCount": 8,
     "meta": {
@@ -21374,107 +21381,107 @@
    },
    {
     "key": "wsl-Ubuntu-alex:603b78a9-b303-42c3-a56f-8dcaf8a304bb",
-    "sha": "cda906bb1f58d13d"
+    "sha": "eacef8f134b53275"
    },
    {
     "key": "wsl-Ubuntu-alex:6c8975d4-3fe2-4f41-a325-705f41c8dda5",
-    "sha": "b4852ca0e9371ba7"
+    "sha": "01a4780a59639cb3"
    },
    {
     "key": "wsl-Ubuntu-alex:7a8e738b-19bc-4fd3-abf7-363b2648a4a5",
-    "sha": "db5294f672525afa"
+    "sha": "50a8541b95d0017a"
    },
    {
     "key": "wsl-Ubuntu-alex:85b76686-3ab9-4950-a104-71862fe5bf07",
-    "sha": "d096f348b2974432"
+    "sha": "de5c72044874c6b9"
    },
    {
     "key": "wsl-Ubuntu-alex:8fd21a26-304e-4794-ad44-0c3f0d7c7c62",
-    "sha": "c58b88f07a7744c3"
+    "sha": "4939a6059bd3c0b0"
    },
    {
     "key": "wsl-Ubuntu-alex:917fa8fd-d918-4ff2-ae83-8a418fd1bae6",
-    "sha": "e05658f27db5d438"
+    "sha": "0ce1b321fdeeb834"
    },
    {
     "key": "wsl-Ubuntu-alex:99b3801b-2209-4803-a2d6-df2bbd2f8c96",
-    "sha": "320a14f0a5b29dc3"
+    "sha": "458bd0a70cb72e88"
    },
    {
     "key": "wsl-Ubuntu-alex:9e2f7b55-566e-437f-ab52-890d1ed9628f",
-    "sha": "9bca8a9f7b65a37f"
+    "sha": "741e88983573a171"
    },
    {
     "key": "wsl-Ubuntu-alex:a8e975ed-0c2a-4539-ab03-278cc561a996",
-    "sha": "6b9bcd7885deb3ff"
+    "sha": "c7f98c3c48261390"
    },
    {
     "key": "wsl-Ubuntu-alex:ab2a6f5f-6f21-4b6d-a637-694b99a0914e",
-    "sha": "8b51ae2ff03dbaf5"
+    "sha": "e3b23d8639b5f735"
    },
    {
     "key": "wsl-Ubuntu-alex:aba00d23-2075-43c3-a680-dbf96a91ead6",
-    "sha": "7bca9469b7479dc7"
+    "sha": "d424956c9c6629f4"
    },
    {
     "key": "wsl-Ubuntu-alex:acfd02cc-47e2-46d1-a699-ae08e987433f",
-    "sha": "66835700bfe64b7d"
+    "sha": "393bc9bcf42dd37b"
    },
    {
     "key": "wsl-Ubuntu-alex:b1bd1517-2980-4be3-ae9f-971d9f24a3e3",
-    "sha": "6d4b00cc8ffd9927"
+    "sha": "9b44f70933fa0e86"
    },
    {
     "key": "wsl-Ubuntu-alex:b7f38aaf-252b-452d-a22b-a0c7c87c55c5",
-    "sha": "0e88064618d424c3"
+    "sha": "fe742028a81da3e2"
    },
    {
     "key": "wsl-Ubuntu-alex:bb2f4359-469b-4bde-ad3a-249e1ed0ca19",
-    "sha": "957d8201596fb025"
+    "sha": "87b218c12b1309c9"
    },
    {
     "key": "wsl-Ubuntu-alex:bc0aad5c-2f07-4ed0-a7b8-58d381425934",
-    "sha": "af827479e3237d7f"
+    "sha": "cf82449adac07bfb"
    },
    {
     "key": "wsl-Ubuntu-alex:c49d393e-fdcd-4221-a375-3e2dea7762c2",
-    "sha": "36954ac5a6fed417"
+    "sha": "d81f72baac2bc0a3"
    },
    {
     "key": "wsl-Ubuntu-alex:c95cfbe4-514d-4be7-a16a-83b6f8ea099e",
-    "sha": "23467dc9030ecc10"
+    "sha": "9fcf80445188b206"
    },
    {
     "key": "wsl-Ubuntu-alex:ca0acc6d-7024-491b-a0db-0de94a5e2866",
-    "sha": "febaba87b4bdd59a"
+    "sha": "a949b58c70ad5e18"
    },
    {
     "key": "wsl-Ubuntu-alex:ca248ab6-637e-40fe-a6d8-3f42af2f5ea2",
-    "sha": "d3163ce67ea01c53"
+    "sha": "03e7e0e81b7186b4"
    },
    {
     "key": "wsl-Ubuntu-alex:cae6c27f-6187-49c1-a99b-010bf9d41747",
-    "sha": "3eb7f698a8525f4b"
+    "sha": "a11995a8929eaccb"
    },
    {
     "key": "wsl-Ubuntu-alex:d8639ef0-66df-47bc-a293-84d14bef9b9e",
-    "sha": "4dd15bcc24c22dc3"
+    "sha": "ff894026189f0230"
    },
    {
     "key": "wsl-Ubuntu-alex:d886a191-3711-4d12-ab4b-bf1bfb31672b",
-    "sha": "1f5df93b4b97af85"
+    "sha": "3d5e37d4a084db80"
    },
    {
     "key": "wsl-Ubuntu-alex:d9ca25b5-0322-4333-a009-f93591bc5285",
-    "sha": "4c2d15b41650e326"
+    "sha": "e37b52489fa99ff6"
    },
    {
     "key": "wsl-Ubuntu-alex:e2681514-6806-4e4a-a7d5-b400e40a13dd",
-    "sha": "58663841475ead23"
+    "sha": "e2db642b9992cf89"
    },
    {
     "key": "wsl-Ubuntu-alex:e66f7332-af3f-442b-ab05-f494d9c0f602",
-    "sha": "b8a8c6b1f5581687"
+    "sha": "c5dfbe9077657ba9"
    },
    {
     "archivePath": "<ROOT>/.fixtures-data/appdata/archive/wsl-Ubuntu-alex/e9a1b2c3-d4e5-4f60-8172-839405a6b7c8.jsonl",
@@ -21502,6 +21509,7 @@
     "gitBranch": "feature/pagination",
     "key": "wsl-Ubuntu-alex:e9a1b2c3-d4e5-4f60-8172-839405a6b7c8",
     "lastActivityAt": "2026-10-20T15:31:59.000Z",
+    "lastModel": "claude-sonnet-4-5-20250929",
     "malformedLines": 0,
     "messageCount": 12,
     "meta": {
@@ -21544,35 +21552,35 @@
    },
    {
     "key": "wsl-Ubuntu-alex:ef8293b1-dd9c-46be-a666-9ea7b541deed",
-    "sha": "171d4b8ba5bea4eb"
+    "sha": "4975784adf8ab095"
    },
    {
     "key": "wsl-Ubuntu-alex:efddb615-d639-4df1-aedd-e247b69096c3",
-    "sha": "8de882e1878c1a15"
+    "sha": "3eadb3b5bca98547"
    },
    {
     "key": "wsl-Ubuntu-alex:f1e78a49-89fd-4151-a9e4-266bdf795d64",
-    "sha": "c9a83961cd24da35"
+    "sha": "d1d5585a70134ad4"
    },
    {
     "key": "wsl-Ubuntu-alex:f322ef51-939a-490d-a97b-5f6b8cb795ba",
-    "sha": "687e18c524706133"
+    "sha": "77cc7e0983c4dec4"
    },
    {
     "key": "wsl-Ubuntu-alex:f6e196b6-7a10-4503-a1d2-64bd95d20c11",
-    "sha": "cf84b14c1e2bdb2e"
+    "sha": "1a0e4aa00dba0cd8"
    },
    {
     "key": "wsl-Ubuntu-alex:f76bb94a-5da8-4a8b-a173-1fe3100b3b6f",
-    "sha": "95c07ada2f26fd5a"
+    "sha": "e23d7e383353ab8d"
    },
    {
     "key": "wsl-Ubuntu-alex:f90ca24f-1b2b-40aa-af5d-6a2ce7cb80ae",
-    "sha": "eaaaa3ae10118c1c"
+    "sha": "952d633449ea3edc"
    },
    {
     "key": "wsl-Ubuntu-alex:fc447aae-bc98-48be-aa94-68a262bbb29d",
-    "sha": "4bf3fbf86f0587cf"
+    "sha": "aab7a0c9a4d54667"
    },
    {
     "archivePath": "<ROOT>/.fixtures-data/appdata/archive/wsl-Ubuntu-root/a0b1c2d3-e4f5-4a6b-9c8d-7e6f5a4b3c2d.jsonl",
@@ -21600,6 +21608,7 @@
     "gitBranch": "ops/backups",
     "key": "wsl-Ubuntu-root:a0b1c2d3-e4f5-4a6b-9c8d-7e6f5a4b3c2d",
     "lastActivityAt": "2026-10-17T06:12:46.000Z",
+    "lastModel": "claude-sonnet-4-5-20250929",
     "malformedLines": 0,
     "messageCount": 4,
     "meta": {
@@ -23175,6 +23184,7 @@
      "gitBranch": "main",
      "key": "windows:0d1e2f3a-4b5c-4d6e-8f70-81920a1b2c3d",
      "lastActivityAt": "2026-10-22T08:41:51.000Z",
+     "lastModel": "claude-sonnet-4-5-20250929",
      "lineage": {
       "atMessageId": "1ec8b537-0a08-4f05-afef-2372b39ad796",
       "atTime": "2026-10-22T08:41:51.000Z",
@@ -23254,6 +23264,7 @@
      "gitBranch": "main",
      "key": "windows:2b6d8e4f-1a3c-4e5f-8a7b-9c0d1e2f3a4b",
      "lastActivityAt": "2026-10-22T08:47:08.000Z",
+     "lastModel": "claude-sonnet-4-5-20250929",
      "malformedLines": 2,
      "messageCount": 7,
      "meta": {
@@ -23315,6 +23326,7 @@
      "gitBranch": "fix/login-redirect",
      "key": "windows:7f3c9a12-4b8e-4d21-9c6a-1e2f3a4b5c6d",
      "lastActivityAt": "2026-10-21T13:05:36.000Z",
+     "lastModel": "claude-sonnet-4-5-20250929",
      "malformedLines": 0,
      "messageCount": 12,
      "meta": {
@@ -23391,6 +23403,7 @@
      "gitBranch": "master",
      "key": "windows:9e8d7c6b-5a4f-4e3d-8c2b-1a0f9e8d7c6b",
      "lastActivityAt": "2026-08-03T10:00:28.000Z",
+     "lastModel": "claude-sonnet-4-5-20250929",
      "malformedLines": 0,
      "messageCount": 2,
      "meta": {
@@ -23460,6 +23473,7 @@
      "gitBranch": "main",
      "key": "windows:b7a1c2d3-e4f5-4a6b-8c7d-9e0f1a2b3c4d",
      "lastActivityAt": "2026-10-22T10:30:38.000Z",
+     "lastModel": "claude-sonnet-4-5-20250929",
      "lineage": {
       "atMessageId": "1ec8b537-0a08-4f05-afef-2372b39ad796",
       "atTime": "2026-10-22T08:41:51.000Z",
@@ -23523,6 +23537,7 @@
      "firstUuid": "102518cc-063a-436e-a33e-f35e34d4ecec",
      "key": "windows:c41e2d7a-9b0f-4c3e-b5a6-7d8e9f0a1b2c",
      "lastActivityAt": "2026-09-28T19:17:12.000Z",
+     "lastModel": "claude-opus-4-1-20250805",
      "malformedLines": 0,
      "messageCount": 3,
      "meta": {
@@ -23593,6 +23608,7 @@
      "gitBranch": "fix/login-redirect",
      "key": "windows:f07c1a2b-3c4d-4e5f-8a6b-7c8d9e0f1a2b",
      "lastActivityAt": "2026-10-22T08:40:48.000Z",
+     "lastModel": "claude-sonnet-4-5-20250929",
      "lineage": {
       "atMessageId": "4751c82d-d16f-4666-a40a-2498160facb3",
       "atTime": "2026-10-21T13:05:36.000Z",
@@ -23668,6 +23684,7 @@
      "gitBranch": "main",
      "key": "wsl-Ubuntu-alex:5d4c3b2a-1f0e-4d9c-8b7a-6f5e4d3c2b1a",
      "lastActivityAt": "2026-10-14T21:09:15.000Z",
+     "lastModel": "claude-sonnet-4-5-20250929",
      "malformedLines": 0,
      "messageCount": 8,
      "meta": {
@@ -23729,6 +23746,7 @@
      "gitBranch": "feature/pagination",
      "key": "wsl-Ubuntu-alex:e9a1b2c3-d4e5-4f60-8172-839405a6b7c8",
      "lastActivityAt": "2026-10-20T15:31:59.000Z",
+     "lastModel": "claude-sonnet-4-5-20250929",
      "malformedLines": 0,
      "messageCount": 12,
      "meta": {
@@ -23815,6 +23833,7 @@
      "gitBranch": "ops/backups",
      "key": "wsl-Ubuntu-root:a0b1c2d3-e4f5-4a6b-9c8d-7e6f5a4b3c2d",
      "lastActivityAt": "2026-10-17T06:12:46.000Z",
+     "lastModel": "claude-sonnet-4-5-20250929",
      "malformedLines": 0,
      "messageCount": 4,
      "meta": {
@@ -24035,6 +24054,7 @@
     "gitBranch": "main",
     "key": "windows:0d1e2f3a-4b5c-4d6e-8f70-81920a1b2c3d",
     "lastActivityAt": "2026-10-22T08:41:51.000Z",
+    "lastModel": "claude-sonnet-4-5-20250929",
     "malformedLines": 0,
     "messageCount": 4,
     "meta": {

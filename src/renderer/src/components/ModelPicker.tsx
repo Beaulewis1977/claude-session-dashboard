@@ -501,13 +501,19 @@ export function SessionModelControls({
   session,
   write = (fn) => void fn(),
   disabled,
-  className
+  className,
+  newSession = false
 }: {
   session: SessionSummary
   /** Wraps each save (the phone checks read-only mode). */
   write?: (fn: () => Promise<void>) => void
   disabled?: boolean
   className?: string
+  /**
+   * The launch starts a new session (New session, Continue fresh): without a
+   * chosen model it runs on the agent's own default, not on this session's last.
+   */
+  newSession?: boolean
 }) {
   const inherited = useInherited(session)
   const codexFast = useApp((st) => st.codexFastModels)
@@ -516,9 +522,10 @@ export function SessionModelControls({
   const model = meta.model
   const effort = meta.effort
   const save = (patch: Partial<SessionMeta>): void => write(() => updateMeta(session.key, patch))
-  // The model it will run on: its own choice, else the inherited one, else the last it used.
+  // The model it will run on: its own choice, else the inherited one, else (resuming)
+  // the model of its last reply.
   const runModel = model && model !== DEFAULT_CHOICE ? model : model ? undefined : inherited.model
-  const support = fastSupportOf(session, { model: runModel }, codexFast)
+  const support = fastSupportOf(session, { model: runModel }, codexFast, newSession)
   return (
     <div className={cn('flex flex-wrap items-center gap-2', className)}>
       <ModelPicker

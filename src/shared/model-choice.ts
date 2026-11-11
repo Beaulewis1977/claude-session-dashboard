@@ -269,16 +269,20 @@ export function fastSupport(
 
 /**
  * The model a launch runs on, as far as the app knows: the chosen one, else
- * (resuming) the last model the session used; undefined for a new session on
- * the agent's own default.
+ * (resuming) the model of the session's last reply; undefined for a new
+ * session (New session, Continue fresh) on the agent's own default. `models`
+ * lists each model once, in the order it first appeared, so its last entry
+ * isn't the last one used (opus → sonnet → opus); it's only the fallback for
+ * a summary without `lastModel`.
  */
 export function launchModel(
   r: Pick<ResolvedModel, 'model'>,
-  s: { models?: readonly string[] } | undefined,
+  s: { models?: readonly string[]; lastModel?: string } | undefined,
   newSession = false
 ): string | undefined {
   if (r.model) return r.model
   if (newSession) return undefined
+  if (s?.lastModel) return s.lastModel
   const m = s?.models
   return m && m.length ? m[m.length - 1] : undefined
 }

@@ -18,6 +18,7 @@ import { useApp } from './store'
 type Subject = Pick<SessionSummary, 'meta' | 'cwd' | 'env' | 'distro'> & {
   provider?: SessionSummary['provider']
   models?: readonly string[]
+  lastModel?: string
 }
 
 /**
@@ -55,6 +56,6 @@ export function useModelChoice(s: Subject | undefined): ResolvedModel {
   return useMemo(
     () => modelChoiceOf(s, settings, fast),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [s?.meta, s?.cwd, s?.env, s?.distro, s?.provider, s?.models, settings, fast]
+    [s?.meta, s?.cwd, s?.env, s?.distro, s?.provider, s?.models, s?.lastModel, settings, fast]
   )
 }

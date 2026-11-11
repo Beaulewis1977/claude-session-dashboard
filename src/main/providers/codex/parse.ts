@@ -48,6 +48,8 @@ export interface CodexAnalysis {
   gitCommit?: string
   gitRemote?: string
   models: string[]
+  /** The model of the latest turn. */
+  lastModel?: string
   /** The reasoning effort of the latest turn. */
   effort?: string
   origin: CodexOrigin
@@ -279,7 +281,10 @@ export function analyzeCodex(text: string, fileSessionId?: string): CodexAnalysi
     }
     if (l.type === 'turn_context') {
       const m = str(p.model)
-      if (m) models.add(m)
+      if (m) {
+        models.add(m)
+        a.lastModel = m
+      }
       model = m ?? model
       a.effort = str(p.effort) ?? a.effort
       a.cwd ??= str(p.cwd)
@@ -288,7 +293,10 @@ export function analyzeCodex(text: string, fileSessionId?: string): CodexAnalysi
     if (l.type === 'event_msg' && p.type === 'thread_settings_applied') {
       const ts = (p.thread_settings ?? {}) as Record<string, unknown>
       const m = str(ts.model)
-      if (m) models.add(m)
+      if (m) {
+        models.add(m)
+        a.lastModel = m
+      }
       a.effort = str(ts.reasoning_effort) ?? a.effort
       continue
     }

@@ -66,7 +66,8 @@ import {
 // v13: when each claude.ai/code link was seen, and older Codex copies found more closely.
 // v14: cloud-link hints only for a real link outside Remote Control (local sessions were
 // labelled "Cloud" for an empty `remote_session_change` attachment).
-const CACHE_VERSION = 14
+// v15: the model of each session's last reply (what fast mode is offered for).
+const CACHE_VERSION = 15
 
 interface CacheFile {
   version: number

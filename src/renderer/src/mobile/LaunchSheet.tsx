@@ -373,6 +373,7 @@ export function LaunchSheet({
                       write={write}
                       disabled={readOnly}
                       className="mt-2"
+                      newSession={target.kind === 'continue'}
                     />
                     <FastModeNotes
                       className="mt-2"

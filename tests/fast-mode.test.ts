@@ -42,6 +42,8 @@ import {
 } from '@shared/model-choice'
 import { CLAUDE_FAST_API, CLAUDE_FAST_CREDITS, fastNotes } from '@shared/fast-notes'
 import { MOBILE_SAFE_SETTINGS } from '@shared/mobile'
+import { analyzeEvents, parseJsonl } from '@shared/jsonl'
+import { analyzeCodex } from '../src/main/providers/codex/parse'
 import { FIXTURES, TOOLS } from './helpers'
 
 const ID = '7f3c9a12-4b8e-4d21-9c6a-1e2f3a4b5c6d'
@@ -280,10 +282,57 @@ describe('which models show fast mode', () => {
     expect(launchModel({ model: 'opus' }, { models: ['sonnet'] })).toBe('opus')
     expect(launchModel({}, { models: ['opus', 'sonnet'] })).toBe('sonnet')
     expect(launchModel({}, { models: ['opus'] }, true)).toBeUndefined()
+    // opus → sonnet → opus: `models` lists each once (first seen), the last reply was opus.
+    expect(launchModel({}, { models: ['opus', 'sonnet'], lastModel: 'opus' })).toBe('opus')
+    expect(launchModel({}, { models: ['opus'], lastModel: 'opus' }, true)).toBeUndefined()
     const r = { fast: true, fastFrom: 'settings' as const }
     expect(withFastSupport(r, 'no').fast).toBeUndefined()
     expect(withFastSupport(r, 'unknown').fast).toBe(true)
     expect(withFastSupport(r, 'yes').fast).toBe(true)
+  })
+
+  it('the last model is the last reply, not the last new model', () => {
+    const reply = (model: string, i: number, extra: Record<string, unknown> = {}) =>
+      JSON.stringify({
+        type: 'assistant',
+        uuid: `u${i}`,
+        sessionId: 's',
+        timestamp: `2026-11-10T10:0${i}:00Z`,
+        message: { id: `m${i}`, role: 'assistant', model, content: [{ type: 'text', text: 'ok' }] },
+        ...extra
+      })
+    const text = [
+      reply('claude-opus-5-5', 1),
+      reply('claude-sonnet-5-5', 2),
+      reply('claude-opus-5-5', 3),
+      // A subagent's reply in the main file never counts as the session's model.
+      reply('claude-haiku-5-5', 4, { isSidechain: true })
+    ].join('\n')
+    const a = analyzeEvents(parseJsonl(text).events)
+    expect(a.models).toEqual(['claude-opus-5-5', 'claude-sonnet-5-5'])
+    expect(a.lastModel).toBe('claude-opus-5-5')
+    expect(fastSupport('claude', launchModel({}, a))).toBe('yes')
+
+    const turn = (model: string, i: number) =>
+      JSON.stringify({
+        timestamp: `2026-11-10T10:0${i}:00Z`,
+        type: 'turn_context',
+        payload: { model, cwd: 'C:\\x' }
+      })
+    const c = analyzeCodex(
+      [
+        JSON.stringify({
+          timestamp: '2026-11-10T10:00:00Z',
+          type: 'session_meta',
+          payload: { id: '019a0000-0000-7000-8000-000000000001', cwd: 'C:\\x' }
+        }),
+        turn('gpt-6-sol', 1),
+        turn('gpt-5.3-codex-spark', 2),
+        turn('gpt-6-sol', 3)
+      ].join('\n')
+    )
+    expect(c.models).toEqual(['gpt-6-sol', 'gpt-5.3-codex-spark'])
+    expect(c.lastModel).toBe('gpt-6-sol')
   })
 
   it("reads Codex's models_cache.json shape", () => {
@@ -508,6 +557,64 @@ describe('Launcher: every launch path passes fast mode', () => {
       { model: 'opus', fast: 'on' }
     )
     expect(metadata.value.sessions['b0b0b0b0-0000-4000-8000-000000000001']?.fast).toBe('on')
+  })
+
+  it("Continue fresh and New session go by the new session's model, not the last one used", async () => {
+    const { sessions, launcher, metadata } = await setup()
+    const s = sessions.list().find((x) => x.sessionId === ID)!
+    // The sample's replies are all Sonnet 4.5 (no fast mode); no model of its own.
+    expect(s.lastModel).toBe('claude-sonnet-4-5-20250929')
+    sessions.updateMeta(s.key, { fast: 'on', model: '' })
+    metadata.update((d) => {
+      const k = sessions.metaKeyOf(s)
+      d.sessions[k] = {
+        ...d.sessions[k],
+        aiSummary: {
+          done: ['Fixed the login loop'],
+          files: [],
+          decisions: [],
+          todos: [],
+          pickUp: 'Test it.',
+          generatedAt: '2026-11-10T10:00:00.000Z',
+          messageCount: 2
+        }
+      }
+    })
+    // Resume continues on Sonnet 4.5: no flag.
+    const r = await launcher.preview({ key: s.key, fork: false, skipPermissions: false })
+    expect(r.modelChoice?.fast).toBeUndefined()
+    expect(r.claudeCommand).not.toContain('--settings')
+    // A new session runs on Claude Code's own default: the model isn't known, so it's passed.
+    const c = await launcher.preview({
+      key: s.key,
+      fork: false,
+      skipPermissions: false,
+      continueFresh: {}
+    })
+    expect(c.continueError).toBeUndefined()
+    expect(c.modelChoice?.fast).toBe(true)
+    expect(c.claudeCommand).toContain('fast-mode.json')
+    const n = await launcher.preview({
+      key: s.key,
+      fork: false,
+      skipPermissions: false,
+      newSession: true
+    })
+    expect(n.modelChoice?.fast).toBe(true)
+    expect(n.claudeCommand).toContain('fast-mode.json')
+    // And from the phone.
+    const phoneOpts = remoteLaunchOptions({ key: s.key, kind: 'continue' }, 'wt')
+    const pc = await launcher.preview(phoneOpts)
+    expect(pc.claudeCommand).toContain('fast-mode.json')
+    // A chosen model without fast mode still drops it, new session or not.
+    sessions.updateMeta(s.key, { model: 'sonnet' })
+    const cs = await launcher.preview({
+      key: s.key,
+      fork: false,
+      skipPermissions: false,
+      continueFresh: {}
+    })
+    expect(cs.claudeCommand).not.toContain('--settings')
   })
 
   it("Codex: -c service_tier=fast on a model in Codex's list, nothing on one that isn't", async () => {

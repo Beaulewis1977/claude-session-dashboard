@@ -206,7 +206,10 @@ export interface SessionSummary {
   toolCallCount: number
   malformedLines: number
   sizeBytes: number
+  /** Every model the session used, in the order each first appeared. */
   models: string[]
+  /** The model of its last reply (what a resume continues on without --model). */
+  lastModel?: string
   meta: SessionMeta
   title: string
   titleSource: TitleSource

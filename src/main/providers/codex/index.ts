@@ -104,6 +104,7 @@ export function createCodexProvider(opts: { textCache?: CompactTextCache } = {})
         malformedLines: a.malformedLines,
         sizeBytes: file.size,
         models: a.models,
+        ...(a.lastModel ? { lastModel: a.lastModel } : {}),
         ...(a.effort ? { reasoningEffort: a.effort } : {}),
         ...(a.subagent ? { subagent: a.subagent } : {}),
         ...(a.forkedFromId ? { forkedFromId: a.forkedFromId } : {}),

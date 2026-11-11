@@ -80,6 +80,16 @@ window.csd = {
 }
 const start = ${JSON.stringify(base)}
 if (q.get('model')) start.meta = { ...start.meta, model: q.get('model') }
+// ?last=<model>: the session's last reply was on that model (after Opus 5.5 earlier).
+if (q.get('last')) {
+  start.models = ['claude-opus-5-5', q.get('last')]
+  start.lastModel = q.get('last')
+}
+// ?launch=new|continue: New session or Continue fresh instead of Resume.
+const kind = q.get('launch')
+const resume = { key: 'browser:s0', fork: false }
+if (kind === 'new') resume.newSession = true
+if (kind === 'continue') resume.continueFresh = true
 if (codex) {
   start.provider = 'codex'
   start.models = ['gpt-6-sol']
@@ -87,7 +97,7 @@ if (codex) {
 useApp.setState({
   sessions: [start],
   loaded: true,
-  resume: { key: 'browser:s0', fork: false },
+  resume,
   codexFastModels: codex ? ['gpt-6-sol'] : null,
   codexLimits: codex ? { fiveHour: { pct: Number(q.get('pct') ?? 10), expired: false } } : null
 })
@@ -155,6 +165,36 @@ describe('Fast picker', () => {
       expect(await fastButton(page).count()).toBe(0)
     } finally {
       await page.close()
+    }
+  }, 60_000)
+
+  it("goes by the launch: Resume continues on the last reply's model, a new session on the default", async ({
+    skip
+  }) => {
+    if (!browser) skip(unavailableReason)
+    // Last reply on Sonnet 4.5 (no fast mode): Resume hides Fast.
+    let page = await open(15_000, '?last=claude-sonnet-4-5-20250929')
+    try {
+      await page.getByRole('button', { name: /^Effort: / }).waitFor()
+      expect(await fastButton(page).count()).toBe(0)
+    } finally {
+      await page.close()
+    }
+    // Last reply back on Opus 5.5 (models lists Sonnet last): shown.
+    page = await open(15_000, '?last=claude-opus-5-5')
+    try {
+      await fastButton(page).waitFor()
+    } finally {
+      await page.close()
+    }
+    // New session and Continue fresh start on Claude Code's default: shown, with the note.
+    for (const launch of ['new', 'continue']) {
+      page = await open(15_000, `?last=claude-sonnet-4-5-20250929&launch=${launch}`)
+      try {
+        await fastButton(page).waitFor()
+      } finally {
+        await page.close()
+      }
     }
   }, 60_000)
 

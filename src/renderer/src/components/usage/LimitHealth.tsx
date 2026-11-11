@@ -381,7 +381,7 @@ function HealthChart({ report }: { report: HealthReport }) {
               ) : null
             }}
           />
-          <Bar dataKey="perPct" radius={[3, 3, 0, 0]} animationDuration={380}>
+          <Bar dataKey="perPct" radius={[3, 3, 0, 0]} isAnimationActive={false}>
             {rows.map((r) => (
               <Cell
                 key={r.i}

@@ -7,9 +7,11 @@ import {
   XAxis,
   YAxis
 } from 'recharts'
+import { useRef } from 'react'
+import { useVirtualizer } from '@tanstack/react-virtual'
 import { toast } from 'sonner'
 import { CalendarClock, Download, OctagonAlert } from 'lucide-react'
-import type { Dimension, UsageQuery, UsageReport } from '@shared/usage/types'
+import type { Dimension, UsageQuery, UsageRecord, UsageReport } from '@shared/usage/types'
 import type { LimitsState } from '@shared/usage/limits'
 import type { CodexLimitsState } from '@shared/usage/codex'
 import type { CreditsState } from '@shared/usage/credits'
@@ -325,7 +327,7 @@ export function CreditsTab({ credits }: { credits: CreditsState | null }) {
                     fill="var(--tok-input)"
                     radius={[4, 4, 0, 0]}
                     maxBarSize={20}
-                    animationDuration={380}
+                    isAnimationActive={false}
                   />
                 </BarChart>
               </ResponsiveContainer>
@@ -403,6 +405,87 @@ const DIMENSIONS: { value: Dimension; label: string }[] = [
   { value: 'billing', label: 'Billing' },
   { value: 'source', label: 'Source' }
 ]
+
+/** Height of one row of the responses table (they're one line each). */
+const RAW_ROW = 25
+/** Its header row, above the first response. */
+const RAW_HEAD = 28
+
+/**
+ * The responses table: only the rows in view (and a few around them) are in
+ * the page, the rest is padding of the same height.
+ */
+function RawRows({ rows }: { rows: UsageRecord[] }) {
+  const scroller = useRef<HTMLDivElement>(null)
+  // eslint-disable-next-line react-hooks/incompatible-library
+  const v = useVirtualizer({
+    count: rows.length,
+    getScrollElement: () => scroller.current,
+    estimateSize: () => RAW_ROW,
+    paddingStart: RAW_HEAD,
+    overscan: 12
+  })
+  const items = v.getVirtualItems()
+  const top = items.length ? items[0].start - RAW_HEAD : 0
+  const bottom = items.length ? v.getTotalSize() - items[items.length - 1].end : 0
+  return (
+    <div ref={scroller} className="mt-3 max-h-[420px] overflow-auto" data-testid="raw-rows">
+      <table className="w-full min-w-[760px] text-xs">
+        <thead className="sticky top-0 bg-card text-subtle-foreground">
+          <tr className="border-b border-border">
+            <th className="px-2 py-1.5 text-left font-medium">Time</th>
+            <th className="px-2 py-1.5 text-left font-medium">Project</th>
+            <th className="px-2 py-1.5 text-left font-medium">Model</th>
+            <th className="px-2 py-1.5 text-right font-medium">Input</th>
+            <th className="px-2 py-1.5 text-right font-medium">Output</th>
+            <th className="px-2 py-1.5 text-right font-medium">Cache write</th>
+            <th className="px-2 py-1.5 text-right font-medium">Cache read</th>
+            <th className="px-2 py-1.5 text-left font-medium">Stop</th>
+            <th className="px-2 py-1.5 text-left font-medium">Version</th>
+          </tr>
+        </thead>
+        <tbody>
+          {top > 0 && (
+            <tr aria-hidden style={{ height: top }}>
+              <td colSpan={9} />
+            </tr>
+          )}
+          {items.map((it) => {
+            const r = rows[it.index]
+            return (
+              <tr
+                key={r.id}
+                className="border-b border-border last:border-0 hover:bg-hover"
+                style={{ height: RAW_ROW }}
+              >
+                <td className="px-2 py-1 whitespace-nowrap tabular-nums">
+                  {formatDateTime(new Date(r.ts).toISOString())}
+                </td>
+                <td className="max-w-[140px] truncate px-2 py-1 whitespace-nowrap">{r.project}</td>
+                <td className="px-2 py-1 whitespace-nowrap">{modelLabel(r.model)}</td>
+                <td className="px-2 py-1 text-right tabular-nums">{formatInt(r.input)}</td>
+                <td className="px-2 py-1 text-right tabular-nums">{formatInt(r.output)}</td>
+                <td className="px-2 py-1 text-right tabular-nums">{formatInt(r.cacheWrite)}</td>
+                <td className="px-2 py-1 text-right tabular-nums">{formatInt(r.cacheRead)}</td>
+                <td className="px-2 py-1 whitespace-nowrap text-muted-foreground">
+                  {r.stop ?? ''}
+                </td>
+                <td className="px-2 py-1 whitespace-nowrap text-muted-foreground">
+                  {r.version ?? ''}
+                </td>
+              </tr>
+            )
+          })}
+          {bottom > 0 && (
+            <tr aria-hidden style={{ height: bottom }}>
+              <td colSpan={9} />
+            </tr>
+          )}
+        </tbody>
+      </table>
+    </div>
+  )
+}
 
 export function RawTableTab({
   report,
@@ -500,39 +583,8 @@ export function RawTableTab({
             </>
           }
         />
-        <div className="mt-3 max-h-[420px] overflow-auto">
-          <table className="w-full min-w-[760px] text-xs">
-            <thead className="sticky top-0 bg-card text-subtle-foreground">
-              <tr className="border-b border-border">
-                <th className="px-2 py-1.5 text-left font-medium">Time</th>
-                <th className="px-2 py-1.5 text-left font-medium">Project</th>
-                <th className="px-2 py-1.5 text-left font-medium">Model</th>
-                <th className="px-2 py-1.5 text-right font-medium">Input</th>
-                <th className="px-2 py-1.5 text-right font-medium">Output</th>
-                <th className="px-2 py-1.5 text-right font-medium">Cache write</th>
-                <th className="px-2 py-1.5 text-right font-medium">Cache read</th>
-                <th className="px-2 py-1.5 text-left font-medium">Stop</th>
-                <th className="px-2 py-1.5 text-left font-medium">Version</th>
-              </tr>
-            </thead>
-            <tbody>
-              {(report?.raw ?? []).map((r) => (
-                <tr key={r.id} className="border-b border-border last:border-0 hover:bg-hover">
-                  <td className="px-2 py-1 whitespace-nowrap tabular-nums">
-                    {formatDateTime(new Date(r.ts).toISOString())}
-                  </td>
-                  <td className="max-w-[140px] truncate px-2 py-1">{r.project}</td>
-                  <td className="px-2 py-1 whitespace-nowrap">{modelLabel(r.model)}</td>
-                  <td className="px-2 py-1 text-right tabular-nums">{formatInt(r.input)}</td>
-                  <td className="px-2 py-1 text-right tabular-nums">{formatInt(r.output)}</td>
-                  <td className="px-2 py-1 text-right tabular-nums">{formatInt(r.cacheWrite)}</td>
-                  <td className="px-2 py-1 text-right tabular-nums">{formatInt(r.cacheRead)}</td>
-                  <td className="px-2 py-1 text-muted-foreground">{r.stop ?? ''}</td>
-                  <td className="px-2 py-1 text-muted-foreground">{r.version ?? ''}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <RawRows rows={report?.raw ?? []} />
+        <div>
           {report && report.extraFields.length > 0 && (
             <div className="mt-2 text-[11px] text-subtle-foreground">
               Other usage fields seen: {report.extraFields.join(', ')}. They&apos;re kept with each

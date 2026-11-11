@@ -255,7 +255,7 @@ function MetricChart({
                   dot={false}
                   activeDot={{ r: 4, stroke: 'var(--card)', strokeWidth: 2 }}
                   connectNulls
-                  animationDuration={380}
+                  isAnimationActive={false}
                 />
               ))}
             </LineChart>

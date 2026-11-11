@@ -21,6 +21,7 @@ import type {
 } from '@shared/usage/types'
 import { formatInt, formatTokens, formatUsd } from '@shared/format'
 import { SPEED_CAVEAT } from '@shared/usage/speed'
+import { downsampleSeries, type ChartPoint } from '@shared/usage/downsample'
 import { bucketLabel, formatTps } from '@/lib/usage-format'
 import { cn } from '@/lib/utils'
 import {
@@ -176,6 +177,11 @@ export function ModelChips({
 // ----------------------------------------------------------- main chart
 
 const PROVIDERS = ['claude', 'codex'] as const
+/** Each provider's tokens in a point (one function per provider, so the chart can keep its work). */
+const PROVIDER_TOKENS = {
+  claude: (p: SeriesPoint) => p.byProvider?.claude ?? 0,
+  codex: (p: SeriesPoint) => p.byProvider?.codex ?? 0
+}
 
 function ChartTooltip({
   active,
@@ -190,11 +196,17 @@ function ChartTooltip({
   byProvider?: boolean
   provider?: 'claude' | 'codex'
 }) {
-  const p = payload?.[0]?.payload
+  const p = payload?.[0]?.payload as ChartPoint | undefined
   if (!active || !p) return null
   return (
     <div className="min-w-[210px] rounded-lg border border-border bg-popover px-3 py-2.5 text-xs text-popover-foreground shadow-xl">
-      <div className="mb-1.5 font-medium">{bucketLabel(p, period, true)}</div>
+      <div className="mb-1.5 font-medium">
+        {bucketLabel(p, period, true)}
+        {/* A point that adds up several buckets (a long range): from the first to the last. */}
+        {p.merged && p.merged > 1 && p.lastStart !== undefined && (
+          <> – {bucketLabel({ start: p.lastStart }, period, true)}</>
+        )}
+      </div>
       <div className="space-y-1">
         {byProvider
           ? [...PROVIDERS].reverse().map((id) => (
@@ -258,7 +270,8 @@ export function MainChart({
   /** More controls (the All view's stacked / split switch). */
   extraRight?: ReactNode
 }) {
-  const data = report?.series ?? []
+  // A chart has fewer pixels than a long range has days: at most 400 points (totals unchanged).
+  const data = useMemo(() => downsampleSeries(report?.series ?? []), [report?.series])
   const empty = report && !report.loading && data.every((p) => p.total === 0)
   return (
     <Card className="p-5">
@@ -332,7 +345,7 @@ export function MainChart({
                   <Area
                     key={id}
                     type="monotone"
-                    dataKey={(p: SeriesPoint) => p.byProvider?.[id] ?? 0}
+                    dataKey={PROVIDER_TOKENS[id]}
                     name={PROVIDER_LABEL[id]}
                     stackId="providers"
                     stroke="var(--card)"
@@ -340,7 +353,7 @@ export function MainChart({
                     fill={PROVIDER_COLOR[id]}
                     fillOpacity={0.88}
                     activeDot={false}
-                    animationDuration={380}
+                    isAnimationActive={false}
                   />
                 ))}
               {!byProvider &&
@@ -356,7 +369,7 @@ export function MainChart({
                     fill={TOKEN_META[t].color}
                     fillOpacity={0.88}
                     activeDot={false}
-                    animationDuration={380}
+                    isAnimationActive={false}
                   />
                 ))}
             </AreaChart>
@@ -470,7 +483,7 @@ export function ModelShare({
                   strokeWidth={2}
                   startAngle={90}
                   endAngle={-270}
-                  animationDuration={380}
+                  isAnimationActive={false}
                 >
                   {top.map((r) => (
                     <Cell key={r.key} fill={color(r.key)} />

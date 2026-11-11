@@ -43,7 +43,7 @@ function PaceLine({ g, pace, t }: { g: GaugeState; pace?: PaceState; t: number }
     >
       <div className="relative mt-3 h-1 w-full rounded-full bg-[var(--gauge-track)]">
         <div
-          className="absolute inset-y-0 left-0 rounded-full transition-[width] duration-300"
+          className="absolute inset-y-0 left-0 rounded-full transition-[width] duration-300 motion-reduce:transition-none"
           style={{ width: `${Math.min(100, g.pct)}%`, background: color }}
         />
         <div

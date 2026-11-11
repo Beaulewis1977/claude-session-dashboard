@@ -16,7 +16,7 @@ import { DEFAULT_PACE, type PaceSettings } from './usage/pace'
 import type { CodexPlan, CodexPlanSetting } from './usage/codex'
 import type { SourceHints, SourceLabel } from './source-label'
 import type { ProviderId, ProviderToggles, ProviderView } from './provider'
-import type { EffortChoice, ProjectModelDefault, ResolvedModel } from './model-choice'
+import type { EffortChoice, FastChoice, ProjectModelDefault, ResolvedModel } from './model-choice'
 import { DEFAULT_LIVE_ALERTS, type LiveAlertSettings } from './live-alerts'
 import { DEFAULT_SUMMARY_SETTINGS, type AiSummary, type SummarySettings } from './summary'
 import {
@@ -92,6 +92,8 @@ export interface SessionMeta {
   model?: string
   /** Effort for launches (`--effort`); unset = the project / Settings default. */
   effort?: EffortChoice
+  /** Fast mode for launches ("off": no flag); unset = the project / Settings default. */
+  fast?: FastChoice
   /** The AI summary of the session (written with `claude -p`, editable). */
   aiSummary?: AiSummary
   /** "Don't warn for this session": no large-context warning before Resume. */
@@ -347,8 +349,10 @@ export interface AppSettings {
   defaultModel: string
   /** Effort level for launches unless a session or project has its own. */
   defaultEffort: EffortChoice
-  /** Per-project model / effort defaults, keyed by lower-cased cwd. */
+  /** Per-project model / effort / fast-mode defaults, keyed by lower-cased cwd. */
   projectModels: Record<string, ProjectModelDefault>
+  /** Fast mode for launches unless a session or project has its own (absent: off). */
+  defaultFast?: FastChoice
   /** Running now: which session events alert, quiet hours, where. */
   liveAlerts: LiveAlertSettings
   /** Session summaries: model, auto-summarize, the limits guard. */
@@ -369,8 +373,10 @@ export interface AppSettings {
   codexDefaultModel?: string
   /** Codex launches: reasoning effort unless a session or project has its own. */
   codexDefaultEffort?: EffortChoice
-  /** Codex per-project model / effort defaults, keyed like projectModels. */
+  /** Codex per-project model / effort / fast-mode defaults, keyed like projectModels. */
   codexProjectModels?: Record<string, ProjectModelDefault>
+  /** Codex launches: fast mode unless a session or project has its own (absent: off). */
+  codexDefaultFast?: FastChoice
   /** Codex launches: open in a terminal or the Codex app unless a session or project has its own (absent: terminal). */
   codexOpenInDefault?: OpenIn
   /** Codex per-project "Open in" defaults, keyed like projectModels. */

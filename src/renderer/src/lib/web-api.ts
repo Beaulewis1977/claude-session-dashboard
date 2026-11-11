@@ -230,6 +230,7 @@ export const webApi: CsdApi = {
 
   previewLaunch: onPc('This launch dialog'),
   launch: onPc('This launch dialog'),
+  getFastModels: () => rpc('getFastModels'),
   pickCwd: onPc('Choosing a folder'),
   openInAgentApp: onPc('Opening the Codex app'),
 

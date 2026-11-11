@@ -17,6 +17,7 @@ import { sanitizePace } from '@shared/usage/pace'
 import {
   CODEX_EFFORT_LEVELS,
   cleanEffortChoice,
+  cleanFastChoice,
   cleanModelChoice,
   DEFAULT_CHOICE,
   sanitizeProjectModels
@@ -101,6 +102,7 @@ function publicSettings(s: SettingsFile): AppSettings {
     remoteControlDefault: s.remoteControlDefault === true,
     defaultModel: s.defaultModel,
     defaultEffort: s.defaultEffort,
+    defaultFast: cleanFastChoice(s.defaultFast) ?? 'off',
     projectModels: Object.fromEntries(
       Object.entries(s.projectModels ?? {}).map(([k, v]) => [k, { ...v }])
     ),
@@ -126,6 +128,7 @@ export function providerSettings(
     | 'showSubagents'
     | 'codexDefaultModel'
     | 'codexDefaultEffort'
+    | 'codexDefaultFast'
     | 'codexProjectModels'
     | 'codexOpenInDefault'
     | 'codexProjectOpenIn'
@@ -139,6 +142,7 @@ export function providerSettings(
     codexDefaultModel: cleanModelChoice(s.codexDefaultModel) ?? DEFAULT_CHOICE,
     codexDefaultEffort:
       cleanEffortChoice(s.codexDefaultEffort, CODEX_EFFORT_LEVELS) ?? DEFAULT_CHOICE,
+    codexDefaultFast: cleanFastChoice(s.codexDefaultFast) ?? 'off',
     codexProjectModels: sanitizeProjectModels(s.codexProjectModels, CODEX_EFFORT_LEVELS),
     codexOpenInDefault: isOpenIn(s.codexOpenInDefault) ? s.codexOpenInDefault : 'terminal',
     codexProjectOpenIn: sanitizeProjectOpenIn(s.codexProjectOpenIn)
@@ -284,6 +288,10 @@ export function registerIpc(deps: IpcDeps): void {
         const e = cleanEffortChoice(p.codexDefaultEffort, CODEX_EFFORT_LEVELS)
         if (e) s.codexDefaultEffort = e
       }
+      if ('codexDefaultFast' in p) {
+        const f = cleanFastChoice(p.codexDefaultFast)
+        if (f) s.codexDefaultFast = f
+      }
       if ('codexProjectModels' in p)
         s.codexProjectModels = sanitizeProjectModels(p.codexProjectModels, CODEX_EFFORT_LEVELS)
       if (isOpenIn(p.codexOpenInDefault)) s.codexOpenInDefault = p.codexOpenInDefault
@@ -347,6 +355,10 @@ export function registerIpc(deps: IpcDeps): void {
       if ('defaultEffort' in p) {
         const e = cleanEffortChoice(p.defaultEffort)
         if (e) s.defaultEffort = e
+      }
+      if ('defaultFast' in p) {
+        const f = cleanFastChoice(p.defaultFast)
+        if (f) s.defaultFast = f
       }
       if ('projectModels' in p) s.projectModels = sanitizeProjectModels(p.projectModels)
       // A partial change (one toggle) keeps the rest, quiet hours included.
@@ -460,6 +472,10 @@ export function registerIpc(deps: IpcDeps): void {
     timed('launch:preview (total)', deps.launcher.preview(launchOpts(opts)))
   )
   handle('launch:run', (_e, opts) => deps.launcher.launch(launchOpts(opts)))
+  // Which Codex models offer fast mode (read only from Codex's models_cache.json; null: unknown).
+  handle('launch:fastModels', async () => ({
+    codex: (await deps.launcher.codexFastModels?.get().catch(() => null)) ?? null
+  }))
   handle('launch:openInAgentApp', async (_e, key) => {
     const s = sessions.get(str(key, 'key'))
     if (!s) throw new Error('Session not found')

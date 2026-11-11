@@ -5,6 +5,7 @@
 //   codex fork   [OPTIONS] [SESSION_ID]   a new session with the same history
 //   -m, --model <MODEL>
 //   -c model_reasoning_effort=<level>     (a bare word is taken as a string)
+//   -c service_tier=fast                  fast mode (no flag of its own, 0.166)
 //   -a, --ask-for-approval on-request     the model decides when to ask (0.166 has only
 //                                         on-request and never: nothing asks for every command)
 //   -s, --sandbox workspace-write | read-only
@@ -46,7 +47,7 @@ export interface CodexArgsInput {
   askPermissions?: boolean
   /** With askPermissions: the read-only sandbox instead of workspace-write. */
   readOnly?: boolean
-  modelChoice?: { model?: string; effort?: string }
+  modelChoice?: { model?: string; effort?: string; fast?: boolean }
   /**
    * `-C <dir>`: the folder, given to Codex explicitly. For a session whose recorded
    * folder was translated (`/mnt/c/x` run as `C:\x`): without it Codex asks which
@@ -68,7 +69,7 @@ export interface CodexContinueInput {
   bypass: boolean
   askPermissions?: boolean
   readOnly?: boolean
-  modelChoice?: { model?: string; effort?: string }
+  modelChoice?: { model?: string; effort?: string; fast?: boolean }
   cd?: string
 }
 
@@ -82,7 +83,7 @@ export function codexContinueArgs(i: CodexContinueInput): string[] {
   return [
     ...(i.cd ? ['-C', i.cd] : []),
     ...(i.askPermissions ? (i.readOnly ? CODEX_READONLY_ARGS : CODEX_ASK_ARGS) : []),
-    ...codexModelArgs(i.modelChoice?.model, i.modelChoice?.effort),
+    ...codexModelArgs(i.modelChoice?.model, i.modelChoice?.effort, i.modelChoice?.fast === true),
     ...(i.bypass ? [CODEX_BYPASS_FLAG] : []),
     // The prompt last, after every option ("--" isn't needed: it never starts with "-").
     i.prompt
@@ -104,7 +105,7 @@ export function codexArgs(i: CodexArgsInput): string[] {
     i.fork ? 'fork' : 'resume',
     ...(i.cd ? ['-C', i.cd] : []),
     ...(i.askPermissions ? (i.readOnly ? CODEX_READONLY_ARGS : CODEX_ASK_ARGS) : []),
-    ...codexModelArgs(i.modelChoice?.model, i.modelChoice?.effort),
+    ...codexModelArgs(i.modelChoice?.model, i.modelChoice?.effort, i.modelChoice?.fast === true),
     ...(i.bypass ? [CODEX_BYPASS_FLAG] : []),
     i.sessionId
   ]

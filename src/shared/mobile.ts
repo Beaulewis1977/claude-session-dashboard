@@ -204,6 +204,7 @@ export const MOBILE_SAFE_SETTINGS = [
   'remoteControlDefault',
   'defaultModel',
   'defaultEffort',
+  'defaultFast',
   'alertsEnabled',
   'alertThresholds',
   'weekStart',

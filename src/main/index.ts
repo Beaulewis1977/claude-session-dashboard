@@ -119,10 +119,13 @@ import { UsageService, usagePaths } from './services/usage'
 import { SourceWatcher } from './services/watcher'
 import {
   cleanEffortChoice,
+  cleanFastChoice,
   cleanModelChoice,
   DEFAULT_CHOICE,
   sanitizeProjectModels
 } from '@shared/model-choice'
+import { CodexFastModels } from './providers/codex/fast-models'
+import { codexHomeOf } from './providers/codex/sessions'
 import { migrateLegacyKeys } from '@shared/project-key'
 import { sanitizeLiveAlerts } from '@shared/live-alerts'
 import { applyPendingRestore } from './core/backup-restore'
@@ -361,6 +364,7 @@ async function main(): Promise<void> {
     if (typeof s.remoteControlDefault !== 'boolean') s.remoteControlDefault = false
     s.defaultModel = cleanModelChoice(s.defaultModel) ?? DEFAULT_CHOICE
     s.defaultEffort = cleanEffortChoice(s.defaultEffort) ?? DEFAULT_CHOICE
+    s.defaultFast = cleanFastChoice(s.defaultFast) ?? 'off'
     s.projectModels = sanitizeProjectModels(s.projectModels)
     s.liveAlerts = sanitizeLiveAlerts(s.liveAlerts)
     s.summaries = sanitizeSummarySettings(s.summaries)
@@ -593,6 +597,13 @@ async function main(): Promise<void> {
     codex: { limits: codexLimits, prices: () => codexSettings().codexPrices }
   })
   launcher.contextEstimate = (s, l) => contextCost.estimate(s, l)
+  // Fast mode for Codex: which models offer it, from each Codex home's own
+  // models_cache.json (read only), for homes whose sessions were read this scan.
+  launcher.codexFastModels = new CodexFastModels(() =>
+    sessions.sources
+      .filter((src) => src.provider === 'codex' && src.status === 'ok')
+      .map((src) => codexHomeOf(src))
+  )
   // "Open in Codex app" (Windows): reads the app's project list, opens codex:// links.
   launcher.codexApp = {
     service: new CodexAppService({

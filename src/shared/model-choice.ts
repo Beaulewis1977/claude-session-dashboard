@@ -6,6 +6,12 @@
 // means no flag at all: Claude Code then uses its own choice (for a resumed
 // session, the model saved in the transcript).
 //
+// Fast mode (`fast`: on / off) is resolved the same way. Neither agent has a
+// flag of its own (claude 2.1.322, codex-cli 0.166): Claude Code takes it as
+// `--settings <file>` naming the app's own file that holds only
+// {"fastMode": true}; Codex as `-c service_tier=fast`. "Off" passes nothing,
+// so the agent's own setting applies.
+//
 // Order: the session's own choice → the project's default → Settings.
 
 import type { SessionSummary } from './types'
@@ -91,9 +97,17 @@ export function cleanEffortChoice(
   return isEffortLevel(v, levels) ? v : undefined
 }
 
+/** Fast mode for launches: "on" passes the agent's flag, "off" passes nothing. */
+export type FastChoice = 'on' | 'off'
+
+export function cleanFastChoice(v: unknown): FastChoice | undefined {
+  return v === 'on' || v === 'off' ? v : undefined
+}
+
 export interface ProjectModelDefault {
   model?: string
   effort?: EffortChoice
+  fast?: FastChoice
 }
 
 export interface ModelSettings {
@@ -102,6 +116,8 @@ export interface ModelSettings {
   defaultEffort: EffortChoice
   /** Per-project defaults, keyed by projectModelKey(). */
   projectModels: Record<string, ProjectModelDefault>
+  /** Fast mode unless a session or project has its own (absent: off). */
+  defaultFast?: FastChoice
 }
 
 /** Codex's launch defaults in the app's settings (kept apart from Claude Code's). */
@@ -109,6 +125,7 @@ export interface CodexModelSettings {
   codexDefaultModel?: string
   codexDefaultEffort?: EffortChoice
   codexProjectModels?: Record<string, ProjectModelDefault>
+  codexDefaultFast?: FastChoice
 }
 
 /** Codex's defaults in the shape resolveModelChoice takes. */
@@ -116,7 +133,8 @@ export function codexModelSettings(s: CodexModelSettings): Partial<ModelSettings
   return {
     defaultModel: s.codexDefaultModel,
     defaultEffort: s.codexDefaultEffort,
-    projectModels: s.codexProjectModels
+    projectModels: s.codexProjectModels,
+    defaultFast: s.codexDefaultFast
   }
 }
 
@@ -136,11 +154,13 @@ export function sanitizeProjectModels(
     const r = raw as Record<string, unknown>
     const model = cleanModelChoice(r.model)
     const effort = cleanEffortChoice(r.effort, levels)
+    const fast = cleanFastChoice(r.fast)
     const key = normalizeProjectKey(k)
-    if (!key || (model === undefined && effort === undefined)) continue
+    if (!key || (model === undefined && effort === undefined && fast === undefined)) continue
     out[key] = {
       ...(model !== undefined ? { model } : {}),
-      ...(effort !== undefined ? { effort } : {})
+      ...(effort !== undefined ? { effort } : {}),
+      ...(fast !== undefined ? { fast } : {})
     }
   }
   return out
@@ -155,6 +175,10 @@ export interface ResolvedModel {
   effort?: EffortLevel
   modelFrom: ChoiceFrom
   effortFrom: ChoiceFrom
+  /** True: launch in fast mode. Absent: no fast-mode flag. */
+  fast?: boolean
+  /** Where the fast-mode choice came from (absent: nothing set it). */
+  fastFrom?: ChoiceFrom
 }
 
 function pick<T extends string>(
@@ -171,7 +195,7 @@ function pick<T extends string>(
 
 /** Session → project → Settings. Invalid stored values are skipped. */
 export function resolveModelChoice(
-  meta: { model?: string; effort?: string } | undefined,
+  meta: { model?: string; effort?: string; fast?: string } | undefined,
   project: ProjectRef | undefined,
   settings: Partial<ModelSettings>,
   /** The provider's effort levels (Claude Code's by default). */
@@ -192,19 +216,102 @@ export function resolveModelChoice(
     ['project', cleanEffortChoice(projectDefault?.effort, levels)],
     ['settings', cleanEffortChoice(settings.defaultEffort, levels)]
   ])
+  // "off" stops the search like "default": no flag, whatever comes after.
+  const off = (v: FastChoice | undefined): 'on' | typeof DEFAULT_CHOICE | undefined =>
+    v === 'off' ? DEFAULT_CHOICE : v
+  const f = pick<'on' | typeof DEFAULT_CHOICE>([
+    ['session', off(cleanFastChoice(meta?.fast))],
+    ['project', off(cleanFastChoice(projectDefault?.fast))],
+    ['settings', off(cleanFastChoice(settings.defaultFast))]
+  ])
   return {
     model: m.value,
     effort: e.value as EffortLevel | undefined,
     modelFrom: m.from,
-    effortFrom: e.from
+    effortFrom: e.from,
+    ...(f.value === 'on' ? { fast: true } : {}),
+    ...(f.from !== 'none' ? { fastFrom: f.from } : {})
   }
 }
+
+// --------------------------------------------------------------- fast mode
+
+/**
+ * Claude models with fast mode (code.claude.com/docs/en/fast-mode, 2026-11):
+ * Fable 5.2, Opus 5.5 and Opus 5 (research preview), with or without the 1M
+ * context, and the aliases naming them (`opus` is Opus 5.5 from Claude Code
+ * 2.1.280). Opus 4.8's fast mode is deprecated (refused from 2026-11-30), so
+ * it's left out; Sonnet, Haiku and `opusplan` have none.
+ */
+const CLAUDE_FAST_RE =
+  /^(?:fable|opus|claude-fable-5-2|claude-opus-5-5|claude-opus-5)(?:-\d{8})?(?:\[1m\])?$/i
+
+/** yes / no, or unknown when the model isn't known (the agent's own default). */
+export type FastSupport = 'yes' | 'no' | 'unknown'
+
+/**
+ * Does this model have fast mode? Codex: the models whose entry in Codex's
+ * own model list (`models_cache.json`) offers the Fast tier; unknown when
+ * that list couldn't be read.
+ */
+export function fastSupport(
+  provider: 'claude' | 'codex' | undefined,
+  model: string | undefined,
+  codexFastModels?: readonly string[] | null
+): FastSupport {
+  if (!model || model === DEFAULT_CHOICE) return 'unknown'
+  if (provider === 'codex') {
+    if (!codexFastModels) return 'unknown'
+    return codexFastModels.includes(model) ? 'yes' : 'no'
+  }
+  return CLAUDE_FAST_RE.test(model) ? 'yes' : 'no'
+}
+
+/**
+ * The model a launch runs on, as far as the app knows: the chosen one, else
+ * (resuming) the last model the session used; undefined for a new session on
+ * the agent's own default.
+ */
+export function launchModel(
+  r: Pick<ResolvedModel, 'model'>,
+  s: { models?: readonly string[] } | undefined,
+  newSession = false
+): string | undefined {
+  if (r.model) return r.model
+  if (newSession) return undefined
+  const m = s?.models
+  return m && m.length ? m[m.length - 1] : undefined
+}
+
+/** The choice without fast mode when the model is known not to have it (no flag then). */
+export function withFastSupport<T extends Pick<ResolvedModel, 'fast'>>(
+  r: T,
+  support: FastSupport
+): T {
+  if (!r.fast || support !== 'no') return r
+  const out = { ...r }
+  delete out.fast
+  return out
+}
+
+/** Codex's fast mode: the Fast service tier (a bare word, read as a literal string). */
+export const CODEX_FAST_ARGS = ['-c', 'service_tier=fast'] as const
+
+/**
+ * The whole content of the app's own settings file for Claude Code's
+ * `--settings`: fast mode and nothing else, so no other setting of the user's
+ * is changed for the session.
+ */
+export const FAST_MODE_SETTINGS = '{"fastMode": true}\n'
+
+/** File name of that settings file, in the app's data folder (`launch/`). */
+export const FAST_MODE_FILE = 'fast-mode.json'
 
 /**
  * Codex's flags for a choice: `-m <model>` and `-c model_reasoning_effort=<level>`
  * (the value is a bare word, which Codex reads as a literal string). Nothing for "default".
  */
-export function codexModelArgs(model?: string, effort?: string): string[] {
+export function codexModelArgs(model?: string, effort?: string, fast = false): string[] {
   const out: string[] = []
   if (model !== undefined && model !== DEFAULT_CHOICE) {
     if (!isValidModel(model)) throw new Error(`Invalid model: ${model}`)
@@ -215,7 +322,23 @@ export function codexModelArgs(model?: string, effort?: string): string[] {
       throw new Error(`Invalid effort level: ${effort}`)
     out.push('-c', `model_reasoning_effort=${effort}`)
   }
+  if (fast) out.push(...CODEX_FAST_ARGS)
   return out
+}
+
+/**
+ * What the fast-mode settings file's path may hold: it reaches cmd,
+ * PowerShell, Windows Terminal and bash (the same characters as Continue
+ * fresh's handoff path), never starting with "-".
+ */
+const SETTINGS_PATH_RE = /^[\p{L}\p{N}_.,@\\/:~][\p{L}\p{N} _.,@\\/:~-]*$/u
+
+/** Claude Code's fast mode: `--settings <the app's fast-mode.json>`. */
+export function claudeFastArgs(settingsFile: string | undefined): string[] {
+  if (!settingsFile) throw new Error("The fast-mode settings file isn't ready.")
+  if (settingsFile.length > 1000 || !SETTINGS_PATH_RE.test(settingsFile))
+    throw new Error("The fast-mode settings file's location can't be passed to Claude Code safely.")
+  return ['--settings', settingsFile]
 }
 
 /** The `claude` flags for a choice. Nothing for "default". */
@@ -249,12 +372,16 @@ export function effortLabel(effort: EffortLevel, short = false): string {
   return (short ? EFFORT_SHORT : EFFORT_LABEL)[effort]
 }
 
-/** "Opus · High", "Opus", "High effort", or "" when both are default. */
-export function choiceLabel(r: Pick<ResolvedModel, 'model' | 'effort'>, short = true): string {
+/** "Opus · High · Fast", "Opus", "High effort", "Fast", or "" when all are default. */
+export function choiceLabel(
+  r: Pick<ResolvedModel, 'model' | 'effort' | 'fast'>,
+  short = true
+): string {
   const parts: string[] = []
   if (r.model) parts.push(modelLabel(r.model))
   if (r.effort)
     parts.push(r.model ? effortLabel(r.effort, short) : `${effortLabel(r.effort, short)} effort`)
+  if (r.fast) parts.push('Fast')
   return parts.join(' · ')
 }
 
@@ -289,11 +416,12 @@ export function modelsSeen(
  */
 export function promoteToProject(
   current: ProjectModelDefault | undefined,
-  own: { model?: string; effort?: EffortChoice }
+  own: { model?: string; effort?: EffortChoice; fast?: FastChoice }
 ): ProjectModelDefault {
   return {
     ...(current ?? {}),
     ...(own.model !== undefined ? { model: own.model } : {}),
-    ...(own.effort !== undefined ? { effort: own.effort } : {})
+    ...(own.effort !== undefined ? { effort: own.effort } : {}),
+    ...(own.fast !== undefined ? { fast: own.fast } : {})
   }
 }

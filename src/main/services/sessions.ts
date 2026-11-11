@@ -768,8 +768,8 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
     sessionId: string,
     branch: BranchRecord,
     name?: string,
-    /** The parent's own model / effort choice, kept by the branch. */
-    inherit: Pick<SessionMeta, 'model' | 'effort'> = {}
+    /** The parent's own model / effort / fast-mode choice, kept by the branch. */
+    inherit: Pick<SessionMeta, 'model' | 'effort' | 'fast'> = {}
   ): void {
     const kept = cleanMetaPatch(inherit)
     this.metadata.update((d) => {
@@ -780,6 +780,7 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
         ...(name && !prev.name ? { name, nameAt: new Date().toISOString() } : {}),
         ...(kept.model && !prev.model ? { model: kept.model } : {}),
         ...(kept.effort && !prev.effort ? { effort: kept.effort } : {}),
+        ...(kept.fast && !prev.fast ? { fast: kept.fast } : {}),
         updatedAt: new Date().toISOString()
       }
     })
@@ -838,7 +839,7 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
         createdAt: p.createdAt
       },
       p.name,
-      { model: p.model, effort: p.effort }
+      { model: p.model, effort: p.effort, fast: p.fast }
     )
   }
 

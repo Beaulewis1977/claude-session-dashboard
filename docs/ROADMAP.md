@@ -2,7 +2,7 @@
 
 Ideas to build next, with the details and a ready-to-paste prompt for each.
 
-**Current state (Nov 10, 2026):** v1.16.0 installed. It includes:
+**Current state (Nov 10, 2026):** v1.16.1 installed. It includes:
 
 - session browsing, names synced from `/rename`, and per-session model and effort;
 - live limits, usage tracking, and limit-health detection;
@@ -13,9 +13,10 @@ Ideas to build next, with the details and a ready-to-paste prompt for each.
 - git links (the commits, files and PRs each session produced);
 - remote continuity (no duplicate terminals between PC and phone) and Claude desktop sessions;
 - Back and Forward navigation on the desktop and the phone;
-- Ask across all sessions (local answers, and cited Claude answers from a local index).
+- Ask across all sessions (local answers, and cited Claude answers from a local index);
+- token speed (tokens per second, time to first token, fast mode) for Claude Code and Codex.
 
-**All roadmap features (#1–#7) are complete.** What remains is the loose ends list at the end.
+**All roadmap features (#1–#7) are complete.** What remains is the "Next up" list and the loose ends at the end.
 
 ---
 
@@ -381,8 +382,17 @@ Run typecheck, lint, tests and the build. Commit, push the branch and open a PR 
   back gesture) (PRs #46, #48, v1.15.2)
 - ✅ #7 Ask across all sessions (PR #50, v1.16.0)
 - ✅ **All roadmap features (#1–#7) complete**
+- ✅ Token speed: output speed (tok/s) and time to first token for Claude Code and Codex, fast mode
+  tracked apart, Fable 5.2 prices (PR #54, v1.16.1)
 
-**Next up:** no new features planned; the loose ends below.
+**Next up:**
+
+1. Performance PR: the Usage & limits screen is slow and can freeze.
+2. Fast mode as a launch option.
+3. README rewrite.
+4. Cleanup audit.
+
+Then the loose ends below.
 
 **#7 known limits:**
 

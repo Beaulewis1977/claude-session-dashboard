@@ -37,6 +37,7 @@ import {
   turnTime,
   type Turn
 } from '@/lib/transcript'
+import { estimateNodes } from '@/lib/dom-estimate'
 import { formatTime } from '@shared/format'
 import { cn } from '@/lib/utils'
 import { copyText } from '@/lib/actions'
@@ -71,8 +72,9 @@ import { SpriteIcon } from '../ui/sprite-icon'
 export type OnBranch = (messageId: string, mode: 'include' | 'before') => void
 
 /**
- * Blocks with every cut tool output filled in (see transcript-cut.ts): what
- * a message's Copy actions copy, never the viewer's shortened outputs. Each
+ * Blocks with every cut tool output and input filled in (see
+ * transcript-cut.ts): what a message's Copy actions copy, never the viewer's
+ * shortened ones. Each
  * output is asked for by its block's own id in the viewer (a tool call's id,
  * else message id and position: an orphan result's tool call id can be empty
  * or shared, so it never identifies one).
@@ -80,14 +82,23 @@ export type OnBranch = (messageId: string, mode: 'include' | 'before') => void
 function useFullBlocks(): (blocks: ContentBlock[], ids?: string[]) => Promise<ContentBlock[]> {
   const { sessionKey } = useContext(TranscriptContext)
   return async (blocks, ids) => {
-    if (!sessionKey || !blocks.some((b) => cutResultOf(b))) return blocks
+    const inputCut = (b: ContentBlock): boolean => b.type === 'tool_use' && !!b.inputCut
+    if (!sessionKey || !blocks.some((b) => cutResultOf(b) || inputCut(b))) return blocks
     return Promise.all(
       blocks.map(async (b, j) => {
-        if (!cutResultOf(b)) return b
+        let out = b
+        if (b.type === 'tool_use' && b.inputCut) {
+          const full = await api.getToolInput(sessionKey, b.id).catch(() => null)
+          if (full) {
+            const { inputCut: _cut, inputLazy: _lazy, ...rest } = b
+            out = { ...rest, input: full.input }
+          }
+        }
+        if (!cutResultOf(b)) return out
         const id = b.type === 'tool_use' ? b.id : ids?.[j]
-        if (!id) return b
+        if (!id) return out
         const full = await api.getToolResult(sessionKey, id).catch(() => null)
-        return full ? ({ ...b, result: full } as ContentBlock) : b
+        return full ? ({ ...out, result: full } as ContentBlock) : out
       })
     )
   }
@@ -780,8 +791,14 @@ function turnText(t: Turn): string {
     .toLowerCase()
 }
 
-/** Turns are drawn only near the screen when there are more than this. */
-const VIRTUAL_FROM = 40
+/**
+ * A transcript estimated to draw more DOM nodes than this draws only the
+ * turns near the screen (see dom-estimate.ts); a smaller one is drawn in
+ * full, so a selection can run across the whole conversation. Measured on
+ * real sessions: opening one takes about 100 ms plus 0.03 ms per node, with
+ * no long task under ~2,000 nodes and 50-70 ms ones at 2,200-2,400.
+ */
+export const VIRTUAL_NODES = 3000
 /** A turn's height before it's drawn (it's measured once it is). */
 const TURN_ESTIMATE = 240
 
@@ -854,7 +871,10 @@ export const Transcript = memo(function Transcript({
     return out
   }, [turns])
 
-  const virtual = !!scrollRef && turns.length > VIRTUAL_FROM
+  const virtual = useMemo(
+    () => !!scrollRef && estimateNodes(turns, VIRTUAL_NODES) > VIRTUAL_NODES,
+    [turns, scrollRef]
+  )
   // Which turn each message and block is in (to keep find matches and citations drawn).
   const where = useMemo(() => {
     const byMsg = new Map<string, number>()

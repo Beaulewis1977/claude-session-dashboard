@@ -201,6 +201,7 @@ export const webApi: CsdApi = {
   // The phone gets transcripts in full (nothing cut, so nothing to ask for later).
   getSession: (key) => rpc('getSession', key),
   getToolResult: async () => null,
+  getToolInput: async () => null,
   findInCut: async () => [],
   search: (q) => rpc('search', q),
   updateMeta: (key, patch) => rpc('updateMeta', key, patch),

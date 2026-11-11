@@ -547,11 +547,15 @@ export function SessionViewer({
   }
 
   const effectiveQuery = findOpen ? findQuery : ''
-  // Cut tool outputs that hold the query past the cut (asked for once typing pauses).
+  // Cut tool outputs and inputs that hold the query past the cut (asked for once typing pauses).
   const hasCut = useMemo(
     () =>
       !!detail?.messages.some((m) =>
-        m.blocks.some((b) => (b.type === 'tool_use' || b.type === 'tool_result') && !!b.result?.cut)
+        m.blocks.some(
+          (b) =>
+            (b.type === 'tool_use' && (!!b.inputCut || !!b.result?.cut)) ||
+            (b.type === 'tool_result' && !!b.result.cut)
+        )
       ),
     [detail]
   )
@@ -671,7 +675,7 @@ export function SessionViewer({
           onCopyConversation={
             detail
               ? () =>
-                  // Every tool output in full, not the viewer's cut ones.
+                  // Every tool output and input in full, not the viewer's cut ones.
                   void (hasCut ? api.getSession(session.key) : Promise.resolve(detail)).then(
                     (d) => d && copyConversation(d, session)
                   )

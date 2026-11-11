@@ -20,6 +20,7 @@ import { truncateText } from '@/lib/transcript'
 import { useOpenState } from '@/lib/open-state'
 import { toolInputText, toolOutputText } from '@/lib/copy'
 import { api } from '@/lib/api'
+import { CUT, cutInput } from '@shared/transcript-cut'
 import { ErrorBoundary, RenderFailed } from '../ErrorBoundary'
 import { TranscriptContext } from './transcript-context'
 import { SpriteIcon } from '../ui/sprite-icon'
@@ -130,8 +131,48 @@ function Todos({ todos }: { todos: { content: string; status: string }[] }) {
   )
 }
 
-function ToolInput({ tool, cwd }: { tool: ToolUse; cwd?: string }) {
+/** What a tool call's input view shows at first: whether it holds back part of the text, and how much there is. */
+function inputPreview(tool: ToolUse): { truncated: boolean; lines: number; chars: number } {
   const i = (tool.input ?? {}) as Record<string, unknown>
+  const of = (text: string, lines: number, chars: number) => {
+    const t = truncateText(text, lines, chars)
+    return { truncated: t.truncated, lines: t.totalLines, chars: text.length }
+  }
+  const none = { truncated: false, lines: 0, chars: 0 }
+  if (CODEX_SHELL.has(tool.name) && codexCommand(i)) return none
+  switch (tool.name) {
+    case 'Bash':
+    case 'PowerShell':
+    case 'Edit':
+    case 'MultiEdit':
+    case 'TodoWrite':
+      return none
+    case 'Write':
+      return of(s(i.content), WRITE_LINES, WRITE_CHARS)
+    case 'apply_patch': {
+      const patch = typeof tool.input === 'string' ? tool.input : s(i.input) || s(i.patch)
+      if (patch) return of(patch, JSON_LINES, JSON_CHARS)
+      break
+    }
+    case 'Task':
+    case 'Agent':
+      if (s(i.prompt)) return none
+      break
+  }
+  return of(JSON.stringify(tool.input, null, 2) ?? '', JSON_LINES, JSON_CHARS)
+}
+
+/** A file being written shows this much until "Show full". */
+const WRITE_LINES = 60
+const WRITE_CHARS = 6000
+/** A patch or a JSON input shows this much until "Show full". */
+const JSON_LINES = 200
+const JSON_CHARS = 20000
+
+function ToolInput({ tool, cwd, full }: { tool: ToolUse; cwd?: string; full?: boolean }) {
+  const i = (tool.input ?? {}) as Record<string, unknown>
+  const preview = (text: string, lines: number, chars: number): string =>
+    full ? text : truncateText(text, lines, chars).text
   const path = s(i.file_path) || s(i.notebook_path)
   if (CODEX_SHELL.has(tool.name) && codexCommand(i))
     return (
@@ -171,7 +212,7 @@ function ToolInput({ tool, cwd }: { tool: ToolUse; cwd?: string }) {
     case 'Write':
       return (
         <CodeBlock language={path ? relativeTo(path, cwd) : 'file'}>
-          <code>{truncateText(s(i.content), 60, 6000).text}</code>
+          <code>{preview(s(i.content), WRITE_LINES, WRITE_CHARS)}</code>
         </CodeBlock>
       )
     case 'TodoWrite':
@@ -182,7 +223,7 @@ function ToolInput({ tool, cwd }: { tool: ToolUse; cwd?: string }) {
       if (patch)
         return (
           <CodeBlock language="diff">
-            <code>{truncateText(patch, 200, 20000).text}</code>
+            <code>{preview(patch, JSON_LINES, JSON_CHARS)}</code>
           </CodeBlock>
         )
       break
@@ -199,8 +240,92 @@ function ToolInput({ tool, cwd }: { tool: ToolUse; cwd?: string }) {
   }
   return (
     <CodeBlock language="json">
-      <code>{truncateText(JSON.stringify(tool.input, null, 2) ?? '', 200, 20000).text}</code>
+      <code>{preview(JSON.stringify(tool.input, null, 2) ?? '', JSON_LINES, JSON_CHARS)}</code>
     </CodeBlock>
+  )
+}
+
+/** A tool call in full: its input as it is, or asked for when it was sent cut. */
+async function fullInputTool(tool: ToolUse, sessionKey: string | undefined): Promise<ToolUse> {
+  if (!tool.inputCut || !sessionKey) return tool
+  const r = await api.getToolInput(sessionKey, tool.id).catch(() => null)
+  if (!r) return tool
+  const { inputCut: _cut, inputLazy: _lazy, ...rest } = tool
+  return { ...rest, input: r.input }
+}
+
+/**
+ * A tool call's input: a preview (a long file, edit or patch sent cut, or
+ * held back by the view), with "Show full" for the rest, loaded when it was
+ * sent cut. A find match in the hidden part shows it in full.
+ */
+function InputView(props: { tool: ToolUse; cwd?: string; findQuery?: string }) {
+  const { sessionKey } = useContext(TranscriptContext)
+  const { tool } = props
+  // A very long transcript's placeholders: the input, cut as any other's, then shown as usual.
+  const shown = useLazy(
+    tool,
+    !!tool.inputLazy && !!sessionKey,
+    async () => {
+      const full = await fullInputTool(tool, sessionKey)
+      if (full === tool) return undefined
+      const c = cutInput(full.input, CUT)
+      return c ? { ...full, input: c.input, inputCut: c.cuts } : full
+    },
+    props.findQuery
+  )
+  if (!shown) return <Loading />
+  return <InputBody {...props} tool={shown} />
+}
+
+function InputBody({ tool, cwd, findQuery }: { tool: ToolUse; cwd?: string; findQuery?: string }) {
+  const { sessionKey, cutMatches, onMatchLoaded } = useContext(TranscriptContext)
+  const [showFull, setShowFull] = useState(false)
+  const [loaded, setLoaded] = useState<ToolUse>()
+  const cut = tool.inputCut
+  const view = inputPreview(tool)
+  const q = findQuery?.trim().toLowerCase()
+  // Cut, and find's match isn't in what was sent: it's past the cut.
+  const hiddenMatch =
+    !!q &&
+    !!cut &&
+    cutMatches.has(tool.id) &&
+    !(JSON.stringify(tool.input) ?? '').toLowerCase().includes(q)
+  const full = showFull || hiddenMatch
+  useEffect(() => {
+    if (!full || !cut || loaded) return
+    let gone = false
+    void fullInputTool(tool, sessionKey).then((t) => {
+      if (gone) return
+      setLoaded(t)
+      if (hiddenMatch) requestAnimationFrame(() => onMatchLoaded?.())
+    })
+    return () => {
+      gone = true
+    }
+  }, [full, cut, loaded, tool, sessionKey, hiddenMatch, onMatchLoaded])
+  const more = !!cut || view.truncated
+  // The size of what's held back: the cut strings' full sizes, else the previewed text.
+  const lines = cut ? cut.reduce((a, c) => a + c.lines, 0) : view.lines
+  const chars = cut ? cut.reduce((a, c) => a + c.chars, 0) : view.chars
+  const shown = full ? (loaded ?? tool) : tool
+  return (
+    <div>
+      <ToolInput tool={shown} cwd={cwd} full={full} />
+      {more && (
+        <div data-find-skip className="px-1 pt-1">
+          <button
+            type="button"
+            onClick={() => setShowFull((v) => !v)}
+            className="rounded px-1.5 py-0.5 text-2xs font-medium text-primary hover:bg-hover"
+          >
+            {full
+              ? 'Show less'
+              : `Show full (${lines.toLocaleString()} line${lines === 1 ? '' : 's'}, ${chars.toLocaleString()} chars)`}
+          </button>
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -215,14 +340,68 @@ async function fullOutput(
   return r?.text ?? toolOutputText(result)
 }
 
-export function ResultView({
+/** Loaded when shown: a lazy output (a placeholder, see transcript-cut.ts), else the value as it is. */
+function useLazy<T>(
+  value: T,
+  lazy: boolean,
+  load: () => Promise<T | undefined>,
+  findQuery?: string
+): T | undefined {
+  const { onMatchLoaded } = useContext(TranscriptContext)
+  const [loaded, setLoaded] = useState<{ from: T; value: T }>()
+  useEffect(() => {
+    if (!lazy || loaded?.from === value) return
+    let gone = false
+    void load().then((v) => {
+      if (gone || v === undefined) return
+      setLoaded({ from: value, value: v })
+      // Find counts again once what it may match is there.
+      if (findQuery?.trim()) requestAnimationFrame(() => onMatchLoaded?.())
+    })
+    return () => {
+      gone = true
+    }
+    // load is made each render; value and lazy say when to load again.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value, lazy])
+  if (!lazy) return value
+  return loaded?.from === value ? loaded.value : undefined
+}
+
+/** A placeholder line while a lazy output or input loads. */
+function Loading() {
+  return <div className="px-1 text-xs text-subtle-foreground italic">Loading…</div>
+}
+
+export function ResultView(props: {
+  result: ToolResult
+  findQuery?: string
+  /** Its block's id: a cut output is asked for in full by it. */
+  blockId?: string
+}) {
+  const { sessionKey } = useContext(TranscriptContext)
+  const { result, blockId } = props
+  // A very long transcript's placeholder: the whole output, then shown as usual.
+  const shown = useLazy(
+    result,
+    !!result.cut?.lazy && !!sessionKey && !!blockId,
+    async () => {
+      const r = await api.getToolResult(sessionKey!, blockId!).catch(() => null)
+      return r ?? undefined
+    },
+    props.findQuery
+  )
+  if (!shown) return <Loading />
+  return <ResultBody {...props} result={shown} />
+}
+
+function ResultBody({
   result,
   findQuery,
   blockId
 }: {
   result: ToolResult
   findQuery?: string
-  /** Its block's id: a cut output is asked for in full by it. */
   blockId?: string
 }) {
   const { sessionKey, cutMatches, onMatchLoaded } = useContext(TranscriptContext)
@@ -310,7 +489,7 @@ function CopyRow({
   output,
   blockId
 }: {
-  input?: () => string
+  input?: () => string | Promise<string>
   output?: ToolResult
   blockId?: string
 }) {
@@ -389,6 +568,7 @@ export const ToolCall = memo(function ToolCall({
   findQuery?: string
 }) {
   const [open, setOpen] = useOpenState(openSignal)
+  const { sessionKey } = useContext(TranscriptContext)
   const isError = tool.result?.isError
   const [verb, rest] = splitToolLabel(tool.label)
   return (
@@ -422,8 +602,12 @@ export const ToolCall = memo(function ToolCall({
       }
     >
       <ErrorBoundary fallback={<RenderFailed what="This tool call" />}>
-        <CopyRow input={() => toolInputText(tool)} output={tool.result} blockId={tool.id} />
-        <ToolInput tool={tool} cwd={cwd} />
+        <CopyRow
+          input={() => fullInputTool(tool, sessionKey).then(toolInputText)}
+          output={tool.result}
+          blockId={tool.id}
+        />
+        <InputView tool={tool} cwd={cwd} findQuery={findQuery} />
         {tool.result && <ResultView result={tool.result} findQuery={findQuery} blockId={tool.id} />}
       </ErrorBoundary>
     </Collapsible>

@@ -212,6 +212,10 @@ Click the title or description at the top of a session (or press <kbd>F2</kbd>, 
   **Agent → Agent** steps.
 - **Copy** buttons on every message, code block and tool call (the full input and output), and
   **Copy whole conversation** as Markdown. Text can be selected normally too.
+- **Big sessions stay quick.** A long tool input (a file Claude wrote, a big edit) shows its start
+  with **Show full**; Copy and Find still use the full text. A very large session (about 3,000
+  elements or more) is drawn only near the screen, so selecting text across all of it isn't possible
+  there; short and medium sessions are drawn in full.
 - **Find in session** (<kbd>Ctrl</kbd>+<kbd>F</kbd>) and **Export to Markdown**
   (<kbd>Ctrl</kbd>+<kbd>E</kbd>).
 - The header shows the session's usage, its context size and its **Branches** family; the

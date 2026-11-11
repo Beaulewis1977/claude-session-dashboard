@@ -2,7 +2,7 @@
 
 Ideas to build next, with the details and a ready-to-paste prompt for each.
 
-**Current state (Nov 10, 2026):** v1.16.2 installed. It includes:
+**Current state (Nov 11, 2026):** v1.16.4 installed. It includes:
 
 - session browsing, names synced from `/rename`, and per-session model and effort;
 - live limits, usage tracking, and limit-health detection;
@@ -10,6 +10,7 @@ Ideas to build next, with the details and a ready-to-paste prompt for each.
 - branching from any message;
 - live sessions and alerts, backups, summaries and Continue fresh, context size before resume;
 - Codex support (sessions, usage and limits, Running now, summaries) and Open in Codex app;
+- performance, memory and big sessions (v1.16.3, v1.16.4);
 - git links (the commits, files and PRs each session produced);
 - remote continuity (no duplicate terminals between PC and phone) and Claude desktop sessions;
 - Back and Forward navigation on the desktop and the phone;
@@ -395,10 +396,11 @@ Run typecheck, lint, tests and the build. Commit, push the branch and open a PR 
   sessions), virtualized by size so short sessions keep normal selection, fewer allocations in
   usage reports and the Codex fork check, the parser thread let go after a scan (PR #60, v1.16.4)
 
+- ✅ README rewrite (PR #52)
+
 **Next up:**
 
-1. README rewrite.
-2. Cleanup audit.
+1. Cleanup audit (PR from `chore/cleanup-audit`).
 
 Then the loose ends below.
 
@@ -423,8 +425,9 @@ Then the loose ends below.
 - Tests: `summarize-dialog.browser.test.ts` (preparation progress) can hit its 15 s timeout under
   full-suite load; it passes alone.
 - Startup (left after the loose-ends PR): the main process can still be busy for up to ~0.4 s at a
-  time during the first scan (indexing one very big session, pure-JS zstd decompression). Moving
-  parsing and indexing to a worker thread would remove that.
+  time during the first scan (indexing one very big session, pure-JS zstd decompression). Usage
+  parsing already runs in a worker thread (v1.16.3); moving the catalogue and search parsing there
+  too would remove the rest.
 - Notifications: the first-toast drop wasn't reproduced on demand. The fix (a fixed
   AppUserModelID and Toast Activator CLSID) targets the cause found (a new registration at each
   run's first toast). If one is still missed, `logs\notifications.jsonl` shows whether Windows

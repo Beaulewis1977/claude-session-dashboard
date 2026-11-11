@@ -13,7 +13,8 @@ function CopyButton({
   label = 'Copy',
   className
 }: {
-  getText: () => string
+  /** The text (or a promise of it, e.g. a cut tool output asked for in full). */
+  getText: () => string | Promise<string>
   label?: string
   className?: string
 }) {
@@ -29,11 +30,13 @@ function CopyButton({
       )}
       onClick={(e) => {
         e.stopPropagation()
-        void copyText(getText()).then((ok) => {
-          if (!ok) return
-          setCopied(true)
-          setTimeout(() => setCopied(false), 1200)
-        })
+        void Promise.resolve(getText())
+          .then((text) => copyText(text))
+          .then((ok) => {
+            if (!ok) return
+            setCopied(true)
+            setTimeout(() => setCopied(false), 1200)
+          })
       }}
     >
       {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}

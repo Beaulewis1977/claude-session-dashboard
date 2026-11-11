@@ -88,6 +88,7 @@ import { Transcript, type OnBranch } from './Transcript'
 import { ChangesPanel } from './Changes'
 import { badgeText } from '@shared/git/prs'
 import { useFind } from './useFind'
+import { TranscriptContext } from './transcript-context'
 import { useCitedMessages, useFocusMessage } from '@/lib/focus-message'
 
 function Fact({
@@ -487,6 +488,8 @@ function Header({
   )
 }
 
+const NO_IDS: ReadonlySet<string> = new Set()
+
 export function SessionViewer({
   session,
   allTags
@@ -517,7 +520,8 @@ export function SessionViewer({
   const version = `${session.sizeBytes}|${session.lastActivityAt}|${session.availability}`
   useEffect(() => {
     let cancelled = false
-    void api.getSession(session.key).then((d) => {
+    // Long tool outputs come cut; the parts that show them ask for the rest.
+    void api.getSession(session.key, { cut: true }).then((d) => {
       if (cancelled) return
       setError(!d)
       setDetail(d)
@@ -543,7 +547,54 @@ export function SessionViewer({
   }
 
   const effectiveQuery = findOpen ? findQuery : ''
-  const find = useFind(contentRef, scrollRef, effectiveQuery, detail)
+  // Cut tool outputs that hold the query past the cut (asked for once typing pauses).
+  const hasCut = useMemo(
+    () =>
+      !!detail?.messages.some((m) =>
+        m.blocks.some((b) => (b.type === 'tool_use' || b.type === 'tool_result') && !!b.result?.cut)
+      ),
+    [detail]
+  )
+  const [cutMatches, setCutMatches] = useState<{ q: string; ids: ReadonlySet<string> }>({
+    q: '',
+    ids: NO_IDS
+  })
+  useEffect(() => {
+    const q = effectiveQuery.trim()
+    if (!hasCut || !q) return
+    let gone = false
+    const timer = window.setTimeout(() => {
+      void api
+        .findInCut(session.key, q)
+        .catch(() => [])
+        .then((ids) => !gone && setCutMatches({ q, ids: new Set(ids) }))
+    }, 250)
+    return () => {
+      gone = true
+      window.clearTimeout(timer)
+    }
+  }, [hasCut, effectiveQuery, session.key, detail])
+  const extraOpen = cutMatches.q === effectiveQuery.trim() ? cutMatches.ids : NO_IDS
+  // Cut outputs loaded in full for a find match (find counts again after each).
+  const [loadedMatches, setLoadedMatches] = useState(0)
+  const onMatchLoaded = useCallback(() => setLoadedMatches((n) => n + 1), [])
+  const transcriptInfo = useMemo(
+    () => ({
+      sessionKey: hasCut ? session.key : undefined,
+      cutMatches: extraOpen,
+      onMatchLoaded
+    }),
+    [hasCut, session.key, extraOpen, onMatchLoaded]
+  )
+  // A citation being scrolled to: its turn stays drawn until it's found.
+  const focusMessage = useApp((s) => s.focusMessage)
+  const pinIds = focusMessage?.key === session.key ? focusMessage.ids : undefined
+  // Find counts what's drawn: it waits for the matching turns and opened outputs.
+  const findVersion = useMemo(
+    () => [detail, extraOpen, loadedMatches],
+    [detail, extraOpen, loadedMatches]
+  )
+  const find = useFind(contentRef, scrollRef, effectiveQuery, findVersion)
 
   useHotkeys([
     { combo: 'mod+f', allowInInput: true, handler: openFind },
@@ -617,7 +668,15 @@ export function SessionViewer({
           session={session}
           allTags={allTags}
           onFind={openFind}
-          onCopyConversation={detail ? () => copyConversation(detail, session) : undefined}
+          onCopyConversation={
+            detail
+              ? () =>
+                  // Every tool output in full, not the viewer's cut ones.
+                  void (hasCut ? api.getSession(session.key) : Promise.resolve(detail)).then(
+                    (d) => d && copyConversation(d, session)
+                  )
+              : undefined
+          }
           branchPointPreview={branchPointPreview}
         />
         {changesTab && (
@@ -669,16 +728,21 @@ export function SessionViewer({
           {tab === 'changes' && changesTab ? (
             <ChangesPanel session={session} />
           ) : detail ? (
-            <Transcript
-              messages={messages}
-              cwd={session.cwd}
-              findQuery={effectiveQuery}
-              // Imported claude.ai conversations are view only, and Codex has no Branch from here.
-              onBranch={isViewOnly(session) || !capsOf(session).branch ? undefined : onBranch}
-              marks={marks}
-              agent={providerOf(session)}
-              cited={cited}
-            />
+            <TranscriptContext.Provider value={transcriptInfo}>
+              <Transcript
+                messages={messages}
+                cwd={session.cwd}
+                findQuery={effectiveQuery}
+                scrollRef={scrollRef}
+                pinIds={pinIds}
+                extraOpen={extraOpen}
+                // Imported claude.ai conversations are view only, and Codex has no Branch from here.
+                onBranch={isViewOnly(session) || !capsOf(session).branch ? undefined : onBranch}
+                marks={marks}
+                agent={providerOf(session)}
+                cited={cited}
+              />
+            </TranscriptContext.Provider>
           ) : error ? (
             <div className="py-16 text-center text-sm text-muted-foreground">
               This session's file can't be read right now.

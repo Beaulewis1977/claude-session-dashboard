@@ -9,6 +9,7 @@ import type {
   LaunchPreview,
   LaunchResult,
   SessionDetail,
+  ToolResult,
   SessionMeta,
   SessionsPayload,
   SessionSummary,
@@ -109,7 +110,12 @@ export interface CsdApi {
   getInfo(): Promise<AppInfo>
   getSessions(): Promise<SessionsPayload>
   onSessionsChanged(cb: (payload: SessionsPayload) => void): () => void
-  getSession(key: string): Promise<SessionDetail | null>
+  /** `cut`: long tool outputs cut (the viewer); then getToolResult has them in full. */
+  getSession(key: string, opts?: { cut?: boolean }): Promise<SessionDetail | null>
+  /** A tool result in full, by its block id (after a getSession with `cut`). */
+  getToolResult(key: string, blockId: string): Promise<ToolResult | null>
+  /** Blocks whose cut tool result holds `query` in its hidden part. */
+  findInCut(key: string, query: string): Promise<string[]>
   search(query: string): Promise<SearchHit[]>
   updateMeta(key: string, patch: Partial<SessionMeta>): Promise<SessionSummary | null>
   /** Clear my dashboard names for these sessions, so their Claude Code names show. Returns how many changed. */

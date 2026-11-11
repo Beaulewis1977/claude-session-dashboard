@@ -1,4 +1,5 @@
 import { app, BrowserWindow, clipboard, dialog, nativeTheme, shell } from 'electron'
+import { cutTranscript, matchesInCut, toolResultOf } from '@shared/transcript-cut'
 import { writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
 import { clockOffset } from '@shared/clock'
@@ -37,6 +38,7 @@ import {
   type AppSettings,
   type BranchRequest,
   type LaunchOptions,
+  type SessionDetail,
   type SessionMeta,
   type TerminalPref,
   type ThemePref
@@ -251,7 +253,38 @@ export function registerIpc(deps: IpcDeps): void {
   }))
 
   handle('sessions:list', () => sessions.payload())
-  handle('sessions:get', (_e, key) => sessions.detail(str(key, 'key')))
+  // The viewer asks for its transcript with long tool outputs cut (see
+  // transcript-cut.ts); the full one is kept a little while for Show all,
+  // Copy output and find in a cut part, then let go.
+  let full: { key: string; detail: SessionDetail; timer: NodeJS.Timeout } | undefined
+  const keepFull = (key: string, detail: SessionDetail): void => {
+    if (full) clearTimeout(full.timer)
+    const timer = setTimeout(() => (full = undefined), 120_000)
+    timer.unref()
+    full = { key, detail, timer }
+  }
+  const fullDetail = async (key: string): Promise<SessionDetail | null> => {
+    if (full?.key === key) return full.detail
+    const d = await sessions.detail(key)
+    if (d) keepFull(key, d)
+    return d
+  }
+  handle('sessions:get', async (_e, key, opts) => {
+    const k = str(key, 'key')
+    if ((opts as { cut?: unknown } | undefined)?.cut !== true) return sessions.detail(k)
+    const d = await sessions.detail(k)
+    if (!d) return d
+    keepFull(k, d)
+    return { ...d, messages: cutTranscript(d.messages) }
+  })
+  handle('sessions:toolResult', async (_e, key, id) => {
+    const d = await fullDetail(str(key, 'key'))
+    return d ? (toolResultOf(d.messages, str(id, 'id')) ?? null) : null
+  })
+  handle('sessions:findInCut', async (_e, key, q) => {
+    const d = await fullDetail(str(key, 'key'))
+    return d ? matchesInCut(d.messages, str(q, 'query')) : []
+  })
   handle('sessions:search', (_e, q) => sessions.searchKeys(str(q, 'query')))
   handle('sessions:updateMeta', (_e, key, patch) =>
     sessions.updateMeta(str(key, 'key'), (patch ?? {}) as Partial<SessionMeta>)

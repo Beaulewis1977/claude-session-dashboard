@@ -196,7 +196,10 @@ export const webApi: CsdApi = {
   getInfo: () => rpc('getInfo'),
   getSessions: () => loadSessions(),
   onSessionsChanged: (cb) => subscribe('sessions', () => void loadSessions().then(cb)),
+  // The phone gets transcripts in full (nothing cut, so nothing to ask for later).
   getSession: (key) => rpc('getSession', key),
+  getToolResult: async () => null,
+  findInCut: async () => [],
   search: (q) => rpc('search', q),
   updateMeta: (key, patch) => rpc('updateMeta', key, patch),
   // One name at a time, through the same checks as any other edit from a phone.

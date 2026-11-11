@@ -18,7 +18,9 @@ const api: CsdApi = {
     ipcRenderer.on('sessions:changed', listener)
     return () => ipcRenderer.removeListener('sessions:changed', listener)
   },
-  getSession: (key) => ipcRenderer.invoke('sessions:get', key),
+  getSession: (key, opts) => ipcRenderer.invoke('sessions:get', key, opts),
+  getToolResult: (key, id) => ipcRenderer.invoke('sessions:toolResult', key, id),
+  findInCut: (key, q) => ipcRenderer.invoke('sessions:findInCut', key, q),
   search: (q) => ipcRenderer.invoke('sessions:search', q),
   updateMeta: (key, patch) => ipcRenderer.invoke('sessions:updateMeta', key, patch),
   applyClaudeNames: (keys) => ipcRenderer.invoke('sessions:applyClaudeNames', keys),

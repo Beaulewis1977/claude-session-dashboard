@@ -44,7 +44,8 @@ export function dayLabel(iso: string): string {
   })
 }
 
-function blockText(b: ContentBlock): string {
+/** A block's text as find sees it (tool calls: label, input and output). */
+export function searchText(b: ContentBlock): string {
   switch (b.type) {
     case 'text':
     case 'thinking':
@@ -72,14 +73,14 @@ export function blocksMatching(messages: ChatMessage[], query: string): Set<stri
           b.type === 'thinking' ||
           b.type === 'tool_result' ||
           b.type === 'agent_message') &&
-        blockText(b).toLowerCase().includes(q)
+        searchText(b).toLowerCase().includes(q)
       ) {
         out.add(blockId(m, b, i))
       }
     })
     if (
       m.kind === 'compact' &&
-      blockText(m.blocks[0] ?? { type: 'text', text: '' })
+      searchText(m.blocks[0] ?? { type: 'text', text: '' })
         .toLowerCase()
         .includes(q)
     )

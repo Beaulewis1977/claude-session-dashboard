@@ -576,8 +576,9 @@ export function buildTrends(input: TrendsInput): TrendsReport {
 }
 
 /**
- * The groups that get a line: the busiest ones (by responses). "All" keeps
- * its one line, plus its fast-mode line when there is one.
+ * The groups that get a line: the busiest real groups (by responses), each
+ * followed by its fast-mode line ("…|fast", speed metrics only) when it has
+ * one. A fast-mode line never takes a real group's place.
  */
 export function pickGroups<A>(
   groupBy: TrendGroupBy,
@@ -586,13 +587,16 @@ export function pickGroups<A>(
   maxGroups = 5
 ): { key: string; label: string; volume: number }[] {
   const sorted = [...volume.entries()].filter(([k]) => accs.has(k)).sort((a, b) => b[1] - a[1])
-  const picked =
-    groupBy === 'all'
-      ? sorted.filter(([k]) => k === 'all' || k === 'all|fast')
-      : sorted.slice(0, maxGroups)
-  const groups = picked.map(([key, v]) => ({ key, label: groupLabel(groupBy, key), volume: v }))
-  if (groupBy === 'all' && !groups.some((g) => g.key === 'all') && accs.has('all'))
-    groups.unshift({ key: 'all', label: 'All', volume: 0 })
+  const real = sorted.filter(([k]) => !k.endsWith('|fast'))
+  const picked = groupBy === 'all' ? real.filter(([k]) => k === 'all') : real.slice(0, maxGroups)
+  if (groupBy === 'all' && !picked.length && accs.has('all')) picked.push(['all', 0])
+  const groups: { key: string; label: string; volume: number }[] = []
+  for (const [key, v] of picked) {
+    groups.push({ key, label: groupLabel(groupBy, key), volume: v })
+    const fast = `${key}|fast`
+    if (accs.has(fast))
+      groups.push({ key: fast, label: groupLabel(groupBy, fast), volume: volume.get(fast) ?? 0 })
+  }
   return groups
 }
 

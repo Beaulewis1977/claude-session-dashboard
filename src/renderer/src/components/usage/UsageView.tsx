@@ -68,6 +68,32 @@ const CodexPlanChip = memo(Codex.CodexPlanChip)
 
 const NO_MODELS: string[] = []
 
+/**
+ * Opening the screen draws it in steps, a frame apart: gauges, cards and the
+ * main chart first, then limit health, then the rest. Each step is a short
+ * task instead of one long one, and the top shows sooner.
+ */
+function useStages(n: number): number {
+  const [stage, setStage] = useState(0)
+  useEffect(() => {
+    if (stage >= n) return
+    let timer = 0
+    const raf = requestAnimationFrame(() => {
+      timer = window.setTimeout(() => setStage((s) => s + 1), 0)
+    })
+    return () => {
+      cancelAnimationFrame(raf)
+      window.clearTimeout(timer)
+    }
+  }, [stage, n])
+  return stage
+}
+
+/** Where a part that isn't drawn yet goes (about its height, so nothing jumps much). */
+function Pending({ className }: { className: string }) {
+  return <div aria-hidden className={cn('rounded-xl border border-border bg-card/50', className)} />
+}
+
 type RangeId = 'today' | 'week' | 'month' | '7d' | '30d' | '90d' | '1y' | 'all' | 'custom'
 
 const RANGE_LABEL: Record<RangeId, string> = {
@@ -302,6 +328,7 @@ export function UsageView() {
   const [rescanning, setRescanning] = useState(false)
   const scan = useApp((s) => s.scan)
   const t = useNow()
+  const stage = useStages(2)
 
   useEffect(() => api.onUsageChanged(() => setVersion((v) => v + 1)), [])
 
@@ -636,7 +663,8 @@ export function UsageView() {
 
         <UnpricedNotice models={unpriced} onOpen={openPrices} />
 
-        {view === 'claude' && (
+        {stage < 1 && <Pending className="mt-4 h-[330px]" />}
+        {stage >= 1 && view === 'claude' && (
           <div
             data-shot="health"
             className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(300px,1fr)]"
@@ -645,7 +673,7 @@ export function UsageView() {
             <WhereItWent limits={limits} />
           </div>
         )}
-        {view === 'codex' && (
+        {stage >= 1 && view === 'codex' && (
           <div
             data-shot="health"
             className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(300px,1fr)]"
@@ -654,7 +682,7 @@ export function UsageView() {
             <WhereItWent limits={null} codex={codexLimits} />
           </div>
         )}
-        {view === 'all' && (
+        {stage >= 1 && view === 'all' && (
           <div data-shot="health" className="mt-4 grid gap-4 xl:grid-cols-2">
             <LimitHealthCard limits={limits} onAsk={askClaude} />
             <LimitHealthCard limits={null} codex={codexLimits} onAsk={askClaude} />
@@ -697,10 +725,14 @@ export function UsageView() {
         </div>
 
         {/* 4. Two columns */}
-        <div className="mt-4 grid gap-4 lg:grid-cols-2">
-          <ModelShare rows={report?.byModel} models={report?.models ?? []} />
-          <TopSessions rows={report?.topSessions} onOpen={openSession} />
-        </div>
+        {stage < 2 ? (
+          <Pending className="mt-4 h-[360px]" />
+        ) : (
+          <div className="mt-4 grid gap-4 lg:grid-cols-2">
+            <ModelShare rows={report?.byModel} models={report?.models ?? NO_MODELS} />
+            <TopSessions rows={report?.topSessions} onOpen={openSession} />
+          </div>
+        )}
 
         {/* 5. Tabs */}
         <div className="mt-8">
@@ -743,7 +775,7 @@ export function UsageView() {
               </Button>
             </span>
           </div>
-          {shownTab === 'trends' && (
+          {stage >= 2 && shownTab === 'trends' && (
             <>
               {view === 'all' && (
                 <div className="mb-5">
@@ -771,20 +803,20 @@ export function UsageView() {
               />
             </>
           )}
-          {shownTab === 'limits' && view === 'claude' && (
+          {stage >= 2 && shownTab === 'limits' && view === 'claude' && (
             <LimitHistoryTab limits={limits} report={report} />
           )}
-          {shownTab === 'limits' && view === 'codex' && (
+          {stage >= 2 && shownTab === 'limits' && view === 'codex' && (
             <LimitHistoryTab limits={null} report={report} codex={codexLimits} />
           )}
-          {shownTab === 'limits' && view === 'all' && (
+          {stage >= 2 && shownTab === 'limits' && view === 'all' && (
             <div className="space-y-6">
               <LimitHistoryTab limits={limits} report={report} />
               <LimitHistoryTab limits={null} report={null} codex={codexLimits} hideBlocks />
             </div>
           )}
-          {shownTab === 'credits' && <CreditsTab credits={credits} />}
-          {shownTab === 'raw' && (
+          {stage >= 2 && shownTab === 'credits' && <CreditsTab credits={credits} />}
+          {stage >= 2 && shownTab === 'raw' && (
             <RawTableTab report={report} query={query} groupBy={groupBy} onGroupBy={setGroupBy} />
           )}
         </div>

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { memo, useEffect, useMemo, useState } from 'react'
 import {
   CartesianGrid,
   Line,
@@ -483,6 +483,31 @@ function Compare({ versions, provider }: { versions: string[]; provider: Provide
 
 // ------------------------------------------------------------------- tab
 
+const ChartOf = memo(MetricChart)
+/** Charts that take a new report per frame (a dozen at once is one long task). */
+const CHARTS_PER_FRAME = 4
+
+/**
+ * A new report reaches the charts a few per frame: the others keep showing
+ * the report before it (or their placeholder, the first time) until then.
+ */
+function useBatched<R>(report: R | null, total: number): (i: number) => R | null {
+  const [b, setB] = useState<{ cur: R | null; prev: R | null; n: number }>({
+    cur: report,
+    prev: null,
+    n: CHARTS_PER_FRAME
+  })
+  // A new report: start over from the first charts (adjusted during render).
+  if (b.cur !== report)
+    setB({ cur: report, prev: b.n >= total ? b.cur : b.prev, n: CHARTS_PER_FRAME })
+  useEffect(() => {
+    if (b.n >= total) return
+    const raf = requestAnimationFrame(() => setB((x) => ({ ...x, n: x.n + CHARTS_PER_FRAME })))
+    return () => cancelAnimationFrame(raf)
+  }, [b, total])
+  return (i) => (i < b.n ? b.cur : b.prev)
+}
+
 export function TrendsTab({ provider = 'claude' }: { provider?: ProviderId }) {
   const p = PROVIDER_TRENDS[provider]
   const codex = provider === 'codex'
@@ -498,6 +523,8 @@ export function TrendsTab({ provider = 'claude' }: { provider?: ProviderId }) {
     }
   }, [groupBy, version, p])
 
+  const charts = useMemo(() => p.metrics.filter((m) => !m.compareOnly), [p])
+  const reportFor = useBatched(report, charts.length)
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-3 rounded-xl border border-border bg-card px-4 py-3 shadow-card">
@@ -558,9 +585,17 @@ export function TrendsTab({ provider = 'claude' }: { provider?: ProviderId }) {
 
       <div className="grid grid-cols-[repeat(auto-fit,minmax(330px,1fr))] gap-4">
         {report
-          ? p.metrics
-              .filter((m) => !m.compareOnly)
-              .map((m) => <MetricChart key={m.id} report={report} metric={m} product={p.product} />)
+          ? charts.map((m, i) => {
+              const r = reportFor(i)
+              return r ? (
+                <ChartOf key={m.id} report={r} metric={m} product={p.product} />
+              ) : (
+                <Card key={m.id} className="p-4">
+                  <Skeleton className="h-4 w-32" />
+                  <Skeleton className="mt-4 h-[140px] w-full" />
+                </Card>
+              )
+            })
           : [0, 1, 2, 3].map((i) => (
               <Card key={i} className="p-4">
                 <Skeleton className="h-4 w-32" />

@@ -4,13 +4,23 @@ copyright: Copyright © 2026 Beau Lewis
 directories:
   output: release/${version}
   buildResources: resources
+# Only the built app goes into app.asar (scripts/check-asar.cjs fails the build
+# if anything else ends up in it, e.g. a stray file left in out/).
 files:
-  - out/**
+  - out/main/**
+  - out/preload/**
+  - out/renderer/**
   - resources/icon.png
   - resources/bridge/**
   - package.json
   - '!**/*.map'
+afterPack: scripts/check-asar.cjs
 npmRebuild: false
+# The app is in English: only Electron's en-US locale ships (Chromium falls
+# back to it for every other system language).
+electronLanguages:
+  - en-US
+compression: maximum
 # Electron features the app doesn't use are switched off in the packaged app,
 # and it only runs its own, integrity-checked app.asar
 # (https://www.electronjs.org/docs/latest/tutorial/fuses).

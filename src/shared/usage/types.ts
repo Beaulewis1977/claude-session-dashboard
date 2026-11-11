@@ -270,11 +270,6 @@ export interface UsageStatus {
   codexRecords?: number
 }
 
-export interface CcusageDay {
-  date: string
-  total: number
-}
-
 export interface CcusageComparison {
   available: boolean
   error?: string

@@ -61,8 +61,6 @@ export function inProviderView(view: ProviderView, s: { provider?: ProviderId })
 /** Which providers are turned on (Settings → Providers). Both by default. */
 export type ProviderToggles = Record<ProviderId, boolean>
 
-export const DEFAULT_PROVIDER_TOGGLES: ProviderToggles = { claude: true, codex: true }
-
 /** Cleans stored toggles: unknown values are on, and at least one stays on. */
 export function sanitizeProviderToggles(v: unknown): ProviderToggles {
   const o = (v && typeof v === 'object' ? v : {}) as Record<string, unknown>

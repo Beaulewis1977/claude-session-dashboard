@@ -35,7 +35,6 @@ const RAW = /[\p{L}\p{N}][\p{L}\p{N}_.\-/\\]*/gu
 const CAMEL = /([a-z0-9])([A-Z])|([A-Z]+)([A-Z][a-z])/g
 const FILE_LIKE = /\.[a-z][a-z0-9]{0,6}$/
 const VERSION = /^v?\d+(?:\.\d+){1,3}$/
-const SHA = /^[0-9a-f]{7,40}$/
 
 /** A light English stemmer (suffixes only; never shorter than 3 letters). */
 export function stem(t: string): string {
@@ -113,9 +112,4 @@ export function queryTokens(text: string): string[] {
   const m = new Map<string, number>()
   addTokens(text, m)
   return [...m.keys()]
-}
-
-/** A short hex id of a commit, as the tokenizer keeps it. */
-export function isShaToken(w: string): boolean {
-  return SHA.test(w) && /\d/.test(w) && /[a-f]/.test(w)
 }

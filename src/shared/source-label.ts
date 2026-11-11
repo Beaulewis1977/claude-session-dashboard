@@ -39,16 +39,6 @@ export type CodexSourceLabel =
   | 'codex-claude-code'
   | 'codex-unknown'
 
-export const CODEX_SOURCE_LABELS: readonly CodexSourceLabel[] = [
-  'codex-cli',
-  'codex-vscode',
-  'codex-desktop',
-  'codex-exec',
-  'codex-subagent',
-  'codex-claude-code',
-  'codex-unknown'
-]
-
 export const SOURCE_LABELS: Record<SourceLabel, string> = {
   'terminal-windows': 'Terminal (Windows)',
   'terminal-wsl': 'Terminal (WSL)',

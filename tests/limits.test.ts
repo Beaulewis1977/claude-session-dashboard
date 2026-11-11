@@ -493,6 +493,35 @@ describe('LimitsService (fixtures)', () => {
       const apiSession = limits.readings().find((r) => r.costUsd && !r.fiveHour)
       expect(apiSession && limits.billingOf(apiSession.sessionId!)).toBe('api')
       expect(notes).toEqual([]) // nothing over 75% right now
+
+      // Kept answers are exactly what a fresh calculation gives, until the time
+      // closes an open window or the data changes.
+      const kept = (limits as unknown as { kept: Map<string, unknown> }).kept
+      const fresh = (): string => {
+        kept.clear()
+        return JSON.stringify(limits.health('five_hour'))
+      }
+      const first = JSON.stringify(limits.health('five_hour'))
+      expect(JSON.stringify(limits.health('five_hour'))).toBe(first)
+      expect(first).toBe(fresh())
+      const open = s.health5h!.windows.find((w) => !w.closed)
+      expect(open).toBeDefined()
+      setClockOffset(open!.resetsAt + 1 - Date.now())
+      const closed = JSON.stringify(limits.health('five_hour'))
+      expect(closed).not.toBe(first)
+      expect(closed).toBe(fresh())
+      setClockOffset(FIXTURES_NOW - Date.now())
+      // A new reading is new data: worked out again.
+      limits.health('five_hour')
+      const last = limits.readings()[limits.readings().length - 1]
+      ;(limits as unknown as { add(r: BridgeReading): void }).add({
+        ...last,
+        ts: last.ts + 1000,
+        fiveHour: { pct: 60, resetsAt: open!.resetsAt }
+      })
+      const after = JSON.stringify(limits.health('five_hour'))
+      expect(after).not.toBe(first)
+      expect(after).toBe(fresh())
       await sessions.idle()
       await usage.idle()
     }

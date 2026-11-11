@@ -1,7 +1,7 @@
 // The phone companion: the desktop app's components in a phone layout
 // (bottom tabs, cards, full-screen session view) over the web transport.
 
-import { useEffect, useState } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
 import { toast, Toaster } from 'sonner'
 import {
   ChartNoAxesColumn,
@@ -19,7 +19,7 @@ import { useThemeEffect } from '@/lib/theme'
 import { cn } from '@/lib/utils'
 import { phone } from '@/lib/web-api'
 import { TooltipProvider } from '@/components/ui/tooltip'
-import { UsageView } from '@/components/usage/UsageView'
+import { idleLoad } from '@/lib/lazy-views'
 import { PairScreen } from './PairScreen'
 import { SessionsTab } from './SessionsTab'
 import { SessionScreen } from './SessionScreen'
@@ -31,6 +31,12 @@ import { usePhoneHistory } from './nav'
 import { bootstrap } from './bootstrap'
 import { useMobile } from './state'
 import { useMobileScope } from './scope'
+
+// The usage screen (charts) loads when first opened, or in the background soon after start.
+const UsageView = lazy(() =>
+  import('@/components/usage/UsageView').then((m) => ({ default: m.UsageView }))
+)
+idleLoad([() => import('@/components/usage/UsageView')])
 
 function useBootstrap(paired: boolean): void {
   const set = useApp((s) => s.set)
@@ -154,7 +160,9 @@ export function MobileApp() {
             )}
             {view === 'usage' && (
               <div className="absolute inset-0 pt-[env(safe-area-inset-top)]">
-                <UsageView />
+                <Suspense fallback={null}>
+                  <UsageView />
+                </Suspense>
               </div>
             )}
             {view === 'settings' && (

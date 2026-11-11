@@ -1,4 +1,7 @@
 import { app, BrowserWindow, clipboard, dialog, nativeTheme, shell } from 'electron'
+import { sentOf, sessionsDelta, type SentList } from '@shared/sessions-delta'
+import { coalesce } from './core/coalesce'
+import { cutTranscript, matchesInCut, toolResultOf } from '@shared/transcript-cut'
 import { writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
 import { clockOffset } from '@shared/clock'
@@ -37,6 +40,8 @@ import {
   type AppSettings,
   type BranchRequest,
   type LaunchOptions,
+  type SessionDetail,
+  type SessionsPayload,
   type SessionMeta,
   type TerminalPref,
   type ThemePref
@@ -231,9 +236,60 @@ export function registerIpc(deps: IpcDeps): void {
   const { sessions, settings, paths, platform } = deps
   const win = (): BrowserWindow | undefined => BrowserWindow.getAllWindows()[0]
 
-  sessions.on('changed', () => {
-    for (const w of BrowserWindow.getAllWindows())
-      w.webContents.send('sessions:changed', sessions.payload())
+  // The session list goes to each window as changes to what it has (see
+  // sessions-delta.ts): at most one a half second, one a second while a
+  // scan runs. A window that loaded (or asked for the list) gets it in full.
+  // Every list a window gets has a version, and each delta says which version
+  // it applies to: the window applies it only to that one (else it asks for
+  // the full list), so no change is ever lost or applied to the wrong list.
+  const sent = new Map<number, { list: SentList; sources: string; scan: string; version: number }>()
+  let versions = 0
+  const remember = (id: number, p: SessionsPayload): SessionsPayload => {
+    const version = ++versions
+    sent.set(id, {
+      list: sentOf(p),
+      sources: JSON.stringify(p.sources),
+      scan: JSON.stringify(p.scan),
+      version
+    })
+    return { ...p, version }
+  }
+  const pushSessions = coalesce(
+    () => {
+      const p = sessions.payload()
+      for (const w of BrowserWindow.getAllWindows()) {
+        const wc = w.webContents
+        const prev = sent.get(wc.id)
+        if (!prev) {
+          wc.send('sessions:changed', remember(wc.id, p))
+          continue
+        }
+        const { delta, next } = sessionsDelta(prev.list, p)
+        const sources = JSON.stringify(p.sources)
+        const scan = JSON.stringify(p.scan)
+        const same =
+          !delta.upserts.length &&
+          !delta.removed.length &&
+          !delta.keys &&
+          sources === prev.sources &&
+          scan === prev.scan
+        if (same) continue
+        const version = ++versions
+        sent.set(wc.id, { list: next, sources, scan, version })
+        wc.send('sessions:delta', { ...delta, base: prev.version, version })
+      }
+    },
+    () => (sessions.scanning ? 1000 : 500)
+  )
+  sessions.on('changed', pushSessions)
+  // A window that loads again starts from the full list.
+  app.on('web-contents-created', (_e, wc) => {
+    const forget = (): void => void sent.delete(wc.id)
+    wc.on('did-start-navigation', (d) => {
+      if (d.isMainFrame && !d.isSameDocument) forget()
+    })
+    wc.on('render-process-gone', forget)
+    wc.on('destroyed', forget)
   })
 
   const rescan = async (): Promise<void> => {
@@ -250,8 +306,43 @@ export function registerIpc(deps: IpcDeps): void {
     archiveDir: paths.archiveDir
   }))
 
-  handle('sessions:list', () => sessions.payload())
-  handle('sessions:get', (_e, key) => sessions.detail(str(key, 'key')))
+  handle('sessions:list', (e) => {
+    const p = sessions.payload()
+    // What this window has now: later changes are sent as a delta from it.
+    return e.sender?.id !== undefined ? remember(e.sender.id, p) : p
+  })
+  // The viewer asks for its transcript with long tool outputs cut (see
+  // transcript-cut.ts); the full one is kept a little while for Show all,
+  // Copy output and find in a cut part, then let go.
+  let full: { key: string; detail: SessionDetail; timer: NodeJS.Timeout } | undefined
+  const keepFull = (key: string, detail: SessionDetail): void => {
+    if (full) clearTimeout(full.timer)
+    const timer = setTimeout(() => (full = undefined), 120_000)
+    timer.unref()
+    full = { key, detail, timer }
+  }
+  const fullDetail = async (key: string): Promise<SessionDetail | null> => {
+    if (full?.key === key) return full.detail
+    const d = await sessions.detail(key)
+    if (d) keepFull(key, d)
+    return d
+  }
+  handle('sessions:get', async (_e, key, opts) => {
+    const k = str(key, 'key')
+    if ((opts as { cut?: unknown } | undefined)?.cut !== true) return sessions.detail(k)
+    const d = await sessions.detail(k)
+    if (!d) return d
+    keepFull(k, d)
+    return { ...d, messages: cutTranscript(d.messages) }
+  })
+  handle('sessions:toolResult', async (_e, key, id) => {
+    const d = await fullDetail(str(key, 'key'))
+    return d ? (toolResultOf(d.messages, str(id, 'id')) ?? null) : null
+  })
+  handle('sessions:findInCut', async (_e, key, q) => {
+    const d = await fullDetail(str(key, 'key'))
+    return d ? matchesInCut(d.messages, str(q, 'query')) : []
+  })
   handle('sessions:search', (_e, q) => sessions.searchKeys(str(q, 'query')))
   handle('sessions:updateMeta', (_e, key, patch) =>
     sessions.updateMeta(str(key, 'key'), (patch ?? {}) as Partial<SessionMeta>)

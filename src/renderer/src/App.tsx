@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
+import { SessionsSync } from '@shared/sessions-delta'
 import { Toaster } from 'sonner'
 import { setClockOffset } from '@shared/clock'
 import { api } from '@/lib/api'
@@ -19,7 +20,6 @@ import { SummaryQueuePanel } from './components/summary/SummaryQueuePanel'
 import { CommandPalette } from './components/CommandPalette'
 import { SessionList } from './components/list/SessionList'
 import { ResumeDialog } from './components/ResumeDialog'
-import { SettingsView } from './components/SettingsView'
 import { ShortcutsDialog } from './components/ShortcutsDialog'
 import { Sidebar } from './components/Sidebar'
 import { TitleBar } from './components/TitleBar'
@@ -27,10 +27,25 @@ import { Shortcut } from './components/ui/kbd'
 import { TooltipProvider } from './components/ui/tooltip'
 import { SessionViewer } from './components/viewer/SessionViewer'
 import { TrayPainter } from './components/usage/TrayPainter'
-import { UsageView } from './components/usage/UsageView'
 import { RunningView } from './components/live/RunningNow'
-import { AskView } from './components/ask/AskView'
+import { idleLoad } from './lib/lazy-views'
 import { subscribeAsk } from '@/lib/ask-sessions'
+
+// Screens with their own big libraries (charts, markdown editors) load when
+// first opened, and in the background soon after start, so the session list
+// shows sooner and opening them doesn't wait.
+const UsageView = lazy(() =>
+  import('./components/usage/UsageView').then((m) => ({ default: m.UsageView }))
+)
+const SettingsView = lazy(() =>
+  import('./components/SettingsView').then((m) => ({ default: m.SettingsView }))
+)
+const AskView = lazy(() => import('./components/ask/AskView').then((m) => ({ default: m.AskView })))
+idleLoad([
+  () => import('./components/usage/UsageView'),
+  () => import('./components/SettingsView'),
+  () => import('./components/ask/AskView')
+])
 
 const LIST_WIDTH_KEY = 'csd.listWidth'
 
@@ -46,22 +61,24 @@ function readWidth(): number {
 function useBootstrap(): void {
   const set = useApp((s) => s.set)
   useEffect(() => {
-    void Promise.all([api.getInfo(), api.getSettings(), api.getSessions()]).then(
-      ([info, settings, payload]) => {
-        setClockOffset(info.clockOffset)
-        set({
-          info,
-          settings,
-          sessions: payload.sessions,
-          sources: payload.sources,
-          scan: payload.scan,
-          loaded: true
-        })
-      }
+    // The session list is kept in step by version (see SessionsSync): the
+    // first list goes into the store as soon as it arrives, so a delta that
+    // follows it applies to it, and an older list never replaces a newer one.
+    const sync = new SessionsSync(
+      () => useApp.getState().sessions,
+      (p) => set(p),
+      () => api.getSessions()
     )
+    const first = api.getSessions().then((p) => sync.full(p))
+    void Promise.all([api.getInfo(), api.getSettings(), first]).then(([info, settings]) => {
+      setClockOffset(info.clockOffset)
+      set({ info, settings, loaded: true })
+    })
     void api.summaryState().then((summaryQueue) => set({ summaryQueue }))
     const offs = [
-      api.onSessionsChanged((p) => set({ sessions: p.sessions, sources: p.sources, scan: p.scan })),
+      api.onSessionsChanged((p) => sync.full(p)),
+      // Only what changed: unchanged sessions stay the same objects (their rows don't redraw).
+      api.onSessionsDelta((d) => sync.delta(d)),
       api.onSummariesChanged((summaryQueue) => set({ summaryQueue })),
       // Tray icon or limit notification clicked.
       api.onShowUsage(() => set({ view: 'usage' })),
@@ -295,11 +312,15 @@ export function App() {
           </div>
           {view === 'settings' ? (
             <div className="min-w-0 flex-1">
-              <SettingsView />
+              <Suspense fallback={null}>
+                <SettingsView />
+              </Suspense>
             </div>
           ) : view === 'usage' ? (
             <div className="min-w-0 flex-1">
-              <UsageView />
+              <Suspense fallback={null}>
+                <UsageView />
+              </Suspense>
             </div>
           ) : view === 'running' ? (
             <div className="min-w-0 flex-1">
@@ -307,7 +328,9 @@ export function App() {
             </div>
           ) : view === 'ask' ? (
             <div className="min-w-0 flex-1">
-              <AskView />
+              <Suspense fallback={null}>
+                <AskView />
+              </Suspense>
             </div>
           ) : (
             <>

@@ -8,7 +8,13 @@ const shared = resolve(import.meta.dirname, 'src/shared')
 export default defineConfig({
   main: {
     resolve: { alias: { '@shared': shared } },
-    build: { externalizeDeps: true }
+    build: {
+      // Dependencies are bundled into out/main, so the app ships no node_modules
+      // (and none of their CLIs, docs or test files). ws's optional native
+      // add-ons stay outside: they aren't installed, and ws works without them.
+      externalizeDeps: false,
+      rollupOptions: { external: ['bufferutil', 'utf-8-validate'] }
+    }
   },
   preload: {
     resolve: { alias: { '@shared': shared } },

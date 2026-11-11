@@ -265,6 +265,11 @@ export interface ToolResult {
   isError: boolean
   /** Number of images that were part of the result. */
   images?: number
+  /**
+   * Sent cut (a long output, see transcript-cut.ts): `text` is its start, and
+   * the full text has this many characters and lines.
+   */
+  cut?: { chars: number; lines: number }
 }
 
 export type ContentBlock =
@@ -703,6 +708,8 @@ export interface SessionsPayload {
   sessions: SessionSummary[]
   sources: SourceInfo[]
   scan: ScanState
+  /** Which list this is for the window that got it (deltas name the one they apply to). */
+  version?: number
 }
 
 /** Settings → "Start with Windows (minimized to tray)", as Windows reports it now. */

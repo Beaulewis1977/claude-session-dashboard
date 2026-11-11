@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useState } from 'react'
 import {
   Calendar,
   ChevronDown,
@@ -37,15 +37,62 @@ import {
 import { Input } from '../ui/input'
 import { Popover, PopoverAnchor, PopoverContent } from '../ui/popover'
 import { BridgeDialog } from '../settings/BridgeDialog'
-import { CreditsEmptyState, CreditsHeroCard, LimitCard } from './Hero'
-import { MainChart, ModelShare, SummaryCards, TopSessions } from './Overview'
-import { CreditsTab, LimitHistoryTab, RawTableTab } from './Tabs'
-import { LimitHealthCard, WhereItWent } from './LimitHealth'
-import { PaceAdviceLine } from './Hero'
-import { SpeedByModelChart, TrendsTab } from './Trends'
-import { CodexLimitCards, CodexPlanChip } from './CodexLimits'
+import * as Hero from './Hero'
+import * as Overview from './Overview'
+import * as Tabs from './Tabs'
+import * as Health from './LimitHealth'
+import * as Trends from './Trends'
+import * as Codex from './CodexLimits'
 import { AskClaudePanel } from './AskClaude'
 import type { UsageTab } from '@/lib/nav-history'
+
+// Each part re-renders only when its own props change (a new report doesn't
+// redraw the trends' charts, a limits update doesn't redraw the main chart).
+const LimitCard = memo(Hero.LimitCard)
+const CreditsHeroCard = memo(Hero.CreditsHeroCard)
+const CreditsEmptyState = memo(Hero.CreditsEmptyState)
+const PaceAdviceLine = memo(Hero.PaceAdviceLine)
+const MainChart = memo(Overview.MainChart)
+const ModelShare = memo(Overview.ModelShare)
+const SummaryCards = memo(Overview.SummaryCards)
+const TopSessions = memo(Overview.TopSessions)
+const CreditsTab = memo(Tabs.CreditsTab)
+const LimitHistoryTab = memo(Tabs.LimitHistoryTab)
+const RawTableTab = memo(Tabs.RawTableTab)
+const LimitHealthCard = memo(Health.LimitHealthCard)
+const WhereItWent = memo(Health.WhereItWent)
+const SpeedByModelChart = memo(Trends.SpeedByModelChart)
+const TrendsTab = memo(Trends.TrendsTab)
+const CodexLimitCards = memo(Codex.CodexLimitCards)
+const CodexPlanChip = memo(Codex.CodexPlanChip)
+
+const NO_MODELS: string[] = []
+
+/**
+ * Opening the screen draws it in steps, a frame apart: gauges, cards and the
+ * main chart first, then limit health, then the rest. Each step is a short
+ * task instead of one long one, and the top shows sooner.
+ */
+function useStages(n: number): number {
+  const [stage, setStage] = useState(0)
+  useEffect(() => {
+    if (stage >= n) return
+    let timer = 0
+    const raf = requestAnimationFrame(() => {
+      timer = window.setTimeout(() => setStage((s) => s + 1), 0)
+    })
+    return () => {
+      cancelAnimationFrame(raf)
+      window.clearTimeout(timer)
+    }
+  }, [stage, n])
+  return stage
+}
+
+/** Where a part that isn't drawn yet goes (about its height, so nothing jumps much). */
+function Pending({ className }: { className: string }) {
+  return <div aria-hidden className={cn('rounded-xl border border-border bg-card/50', className)} />
+}
 
 type RangeId = 'today' | 'week' | 'month' | '7d' | '30d' | '90d' | '1y' | 'all' | 'custom'
 
@@ -267,11 +314,12 @@ export function UsageView() {
   // Model chips per view: a model picked in one view isn't in another's list.
   const [modelsBy, setModelsBy] = useState<Record<string, string[]>>({})
   const models = useMemo(() => modelsBy[view] ?? [], [modelsBy, view])
-  const setModels = (m: string[]): void => setModelsBy((p) => ({ ...p, [view]: m }))
+  const setModels = useCallback(
+    (m: string[]): void => setModelsBy((p) => ({ ...p, [view]: m })),
+    [view]
+  )
   const [groupBy, setGroupBy] = useState<Dimension>('model')
-  // In the store, so Back / Forward can return to it.
-  const tab = useApp((s) => s.usageTab)
-  const setTab = (usageTab: Tab): void => set({ usageTab })
+  const setTab = useCallback((usageTab: Tab): void => set({ usageTab }), [set])
   // In the All view: whose trends the Trends tab shows.
   const [trendsOf, setTrendsOf] = useState<'claude' | 'codex'>('claude')
   const [bridge, setBridge] = useState<BridgeEnv | null>(null)
@@ -280,16 +328,31 @@ export function UsageView() {
   const [rescanning, setRescanning] = useState(false)
   const scan = useApp((s) => s.scan)
   const t = useNow()
+  const stage = useStages(2)
 
   useEffect(() => api.onUsageChanged(() => setVersion((v) => v + 1)), [])
 
+  // Today / This week / This month start where the report's cards say (the
+  // user's week start); other ranges don't depend on the report, so a new
+  // report never asks for another one.
+  const cardFrom = ['today', 'week', 'month'].includes(range)
+    ? report?.cards?.find((c) => c.id === range)?.from
+    : undefined
+  // In the store, so Back / Forward can return to it.
+  const tab = useApp((s) => s.usageTab)
+  const rawTab = tab === 'raw'
+  // The local day: rolling ranges (Last 7 days …) start a day later after midnight,
+  // within 30 s (the clock above ticks every 30 s).
+  const today = new Date(t).toDateString()
   const query: UsageQuery = useMemo(() => {
     const r = rangeOf(range, report?.cards, custom)
     const q: UsageQuery = { ...r, period, models, groupBy }
     if (view !== 'claude') q.provider = view
+    // The raw records (the biggest part of a report) only for the Raw table tab.
+    if (!rawTab) q.raw = false
     return q
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [range, custom, period, models, groupBy, view, report?.cards?.[0]?.from])
+  }, [range, custom, period, models, groupBy, view, cardFrom, rawTab, today])
 
   useEffect(() => {
     let cancelled = false
@@ -305,7 +368,7 @@ export function UsageView() {
     if (!wantSplit) return
     let cancelled = false
     // The same model filter as the chips above (a Claude model leaves Codex's chart empty).
-    const base = { ...query, groupBy: 'model' as Dimension }
+    const base = { ...query, groupBy: 'model' as Dimension, raw: false as const }
     void Promise.all([
       api.getUsageReport({ ...base, provider: undefined }),
       api.getUsageReport({ ...base, provider: 'codex' })
@@ -315,17 +378,37 @@ export function UsageView() {
     }
   }, [wantSplit, query, version])
 
-  const pickCard = (c: PeriodCard): void => {
-    if (range === c.id) {
-      setRange('30d')
-      setPeriod('day')
-      return
-    }
-    setRange(c.id === 'all' ? 'all' : c.id)
-    setPeriod(c.id === 'today' ? 'hour' : c.id === 'all' ? 'week' : 'day')
-  }
+  const pickCard = useCallback(
+    (c: PeriodCard): void => {
+      if (range === c.id) {
+        setRange('30d')
+        setPeriod('day')
+        return
+      }
+      setRange(c.id === 'all' ? 'all' : c.id)
+      setPeriod(c.id === 'today' ? 'hour' : c.id === 'all' ? 'week' : 'day')
+    },
+    [range]
+  )
 
   const firstEnv = limits?.envs.find((e) => !e.installed && !e.unavailable)
+  const enableBridge = useCallback(() => firstEnv && setBridge(firstEnv), [firstEnv])
+  const askClaude = useCallback(
+    () => (remote ? toast('Ask Claude runs in the app on your PC') : setAsk(true)),
+    [remote]
+  )
+  const openSession = useCallback(
+    (key: string) => {
+      set({ view: 'sessions' })
+      select(key)
+    },
+    [set, select]
+  )
+  const openCredits = useCallback(() => setTab('credits'), [setTab])
+  const rangePicker = useMemo(
+    () => <RangePicker value={range} onChange={setRange} custom={custom} onCustom={setCustom} />,
+    [range, custom]
+  )
   const noBridge = limits && !limits.hasBridgeData && !limits.envs.some((e) => e.installed)
   const hasCredits = !!credits?.summaries.some((s) => s.granted > 0 || s.spent > 0)
   // Codex models in this report that have no price yet.
@@ -379,13 +462,9 @@ export function UsageView() {
       report={r}
       period={period}
       onPeriod={setPeriod}
-      range={
-        opts.withModels === false ? null : (
-          <RangePicker value={range} onChange={setRange} custom={custom} onCustom={setCustom} />
-        )
-      }
-      models={opts.withModels === false ? [] : (report?.models ?? [])}
-      selectedModels={opts.withModels === false ? [] : models}
+      range={opts.withModels === false ? null : rangePicker}
+      models={opts.withModels === false ? NO_MODELS : (report?.models ?? NO_MODELS)}
+      selectedModels={opts.withModels === false ? NO_MODELS : models}
       onModels={setModels}
       byProvider={opts.byProvider}
       provider={opts.provider}
@@ -393,19 +472,23 @@ export function UsageView() {
       extraRight={opts.extraRight}
     />
   )
-  const splitSwitch = view === 'all' && (
-    <Segmented
-      ariaLabel="Providers"
-      value={splitMode}
-      onChange={(v) => {
-        set({ settings: { ...settings, usageSplit: v } })
-        void api.updateSettings({ usageSplit: v })
-      }}
-      options={[
-        { value: 'stacked', label: 'Stacked' },
-        { value: 'split', label: 'Split' }
-      ]}
-    />
+  const splitSwitch = useMemo(
+    () =>
+      view === 'all' && (
+        <Segmented
+          ariaLabel="Providers"
+          value={splitMode}
+          onChange={(v) => {
+            set({ settings: { ...useApp.getState().settings, usageSplit: v } })
+            void api.updateSettings({ usageSplit: v })
+          }}
+          options={[
+            { value: 'stacked', label: 'Stacked' },
+            { value: 'split', label: 'Split' }
+          ]}
+        />
+      ),
+    [view, splitMode, set]
   )
 
   return (
@@ -506,19 +589,9 @@ export function UsageView() {
                 : 'grid-cols-[repeat(auto-fit,minmax(min(340px,100%),1fr))]'
             )}
           >
-            <LimitCard
-              kind="five_hour"
-              limits={limits}
-              onEnable={() => firstEnv && setBridge(firstEnv)}
-            />
-            <LimitCard
-              kind="seven_day"
-              limits={limits}
-              onEnable={() => firstEnv && setBridge(firstEnv)}
-            />
-            {hasCredits && credits && (
-              <CreditsHeroCard credits={credits} onOpen={() => setTab('credits')} />
-            )}
+            <LimitCard kind="five_hour" limits={limits} onEnable={enableBridge} />
+            <LimitCard kind="seven_day" limits={limits} onEnable={enableBridge} />
+            {hasCredits && credits && <CreditsHeroCard credits={credits} onOpen={openCredits} />}
           </div>
         )}
         {view === 'codex' && (
@@ -546,18 +619,8 @@ export function UsageView() {
                 </span>
               }
             >
-              <LimitCard
-                compact
-                kind="five_hour"
-                limits={limits}
-                onEnable={() => firstEnv && setBridge(firstEnv)}
-              />
-              <LimitCard
-                compact
-                kind="seven_day"
-                limits={limits}
-                onEnable={() => firstEnv && setBridge(firstEnv)}
-              />
+              <LimitCard compact kind="five_hour" limits={limits} onEnable={enableBridge} />
+              <LimitCard compact kind="seven_day" limits={limits} onEnable={enableBridge} />
             </ProviderGroup>
             <ProviderGroup
               provider="codex"
@@ -578,7 +641,7 @@ export function UsageView() {
         )}
         {view === 'all' && hasCredits && credits && (
           <div className="mt-4 grid grid-cols-[repeat(auto-fit,minmax(min(300px,100%),1fr))] gap-4">
-            <CreditsHeroCard credits={credits} onOpen={() => setTab('credits')} />
+            <CreditsHeroCard credits={credits} onOpen={openCredits} />
           </div>
         )}
 
@@ -603,42 +666,29 @@ export function UsageView() {
 
         <UnpricedNotice models={unpriced} onOpen={openPrices} />
 
-        {view === 'claude' && (
+        {stage < 1 && <Pending className="mt-4 h-[330px]" />}
+        {stage >= 1 && view === 'claude' && (
           <div
             data-shot="health"
             className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(300px,1fr)]"
           >
-            <LimitHealthCard
-              limits={limits}
-              onAsk={() => (remote ? toast('Ask Claude runs in the app on your PC') : setAsk(true))}
-            />
+            <LimitHealthCard limits={limits} onAsk={askClaude} />
             <WhereItWent limits={limits} />
           </div>
         )}
-        {view === 'codex' && (
+        {stage >= 1 && view === 'codex' && (
           <div
             data-shot="health"
             className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(300px,1fr)]"
           >
-            <LimitHealthCard
-              limits={null}
-              codex={codexLimits}
-              onAsk={() => (remote ? toast('Ask Claude runs in the app on your PC') : setAsk(true))}
-            />
+            <LimitHealthCard limits={null} codex={codexLimits} onAsk={askClaude} />
             <WhereItWent limits={null} codex={codexLimits} />
           </div>
         )}
-        {view === 'all' && (
+        {stage >= 1 && view === 'all' && (
           <div data-shot="health" className="mt-4 grid gap-4 xl:grid-cols-2">
-            <LimitHealthCard
-              limits={limits}
-              onAsk={() => (remote ? toast('Ask Claude runs in the app on your PC') : setAsk(true))}
-            />
-            <LimitHealthCard
-              limits={null}
-              codex={codexLimits}
-              onAsk={() => (remote ? toast('Ask Claude runs in the app on your PC') : setAsk(true))}
-            />
+            <LimitHealthCard limits={limits} onAsk={askClaude} />
+            <LimitHealthCard limits={null} codex={codexLimits} onAsk={askClaude} />
             <WhereItWent limits={limits} />
             <WhereItWent limits={null} codex={codexLimits} />
           </div>
@@ -678,16 +728,14 @@ export function UsageView() {
         </div>
 
         {/* 4. Two columns */}
-        <div className="mt-4 grid gap-4 lg:grid-cols-2">
-          <ModelShare rows={report?.byModel} models={report?.models ?? []} />
-          <TopSessions
-            rows={report?.topSessions}
-            onOpen={(key) => {
-              set({ view: 'sessions' })
-              select(key)
-            }}
-          />
-        </div>
+        {stage < 2 ? (
+          <Pending className="mt-4 h-[360px]" />
+        ) : (
+          <div className="mt-4 grid gap-4 lg:grid-cols-2">
+            <ModelShare rows={report?.byModel} models={report?.models ?? NO_MODELS} />
+            <TopSessions rows={report?.topSessions} onOpen={openSession} />
+          </div>
+        )}
 
         {/* 5. Tabs */}
         <div className="mt-8">
@@ -730,7 +778,7 @@ export function UsageView() {
               </Button>
             </span>
           </div>
-          {shownTab === 'trends' && (
+          {stage >= 2 && shownTab === 'trends' && (
             <>
               {view === 'all' && (
                 <div className="mb-5">
@@ -758,20 +806,20 @@ export function UsageView() {
               />
             </>
           )}
-          {shownTab === 'limits' && view === 'claude' && (
+          {stage >= 2 && shownTab === 'limits' && view === 'claude' && (
             <LimitHistoryTab limits={limits} report={report} />
           )}
-          {shownTab === 'limits' && view === 'codex' && (
+          {stage >= 2 && shownTab === 'limits' && view === 'codex' && (
             <LimitHistoryTab limits={null} report={report} codex={codexLimits} />
           )}
-          {shownTab === 'limits' && view === 'all' && (
+          {stage >= 2 && shownTab === 'limits' && view === 'all' && (
             <div className="space-y-6">
               <LimitHistoryTab limits={limits} report={report} />
               <LimitHistoryTab limits={null} report={null} codex={codexLimits} hideBlocks />
             </div>
           )}
-          {shownTab === 'credits' && <CreditsTab credits={credits} />}
-          {shownTab === 'raw' && (
+          {stage >= 2 && shownTab === 'credits' && <CreditsTab credits={credits} />}
+          {stage >= 2 && shownTab === 'raw' && (
             <RawTableTab report={report} query={query} groupBy={groupBy} onGroupBy={setGroupBy} />
           )}
         </div>

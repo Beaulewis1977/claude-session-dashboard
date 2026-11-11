@@ -599,14 +599,16 @@ describe('session Find with production screens', { timeout: 30_000 }, () => {
           await page.getByRole('textbox', { name: 'Find in session', exact: true }).fill('copy')
           await expect.poll(() => page.getByText(/^\d+ of \d+$/).textContent()).toBe('1 of 6')
 
-          // Both layouts exist in the real tool group. Find must skip the
-          // hidden row as well as the active controls and code-block buttons.
+          // On touch, both layouts exist in the real tool group (the desktop row
+          // hidden); with a mouse the touch row isn't drawn at all. Find must
+          // skip the hidden row as well as the active controls and code-block buttons.
           const controls = await page
             .locator('[data-message-actions]')
             .evaluateAll((elements) =>
               elements.map((el) => el.ownerDocument.defaultView!.getComputedStyle(el).display)
             )
-          expect(controls).toContain('none')
+          if (touch) expect(controls).toContain('none')
+          else expect(controls).not.toContain('none')
           expect(controls.filter((display) => display !== 'none').length).toBeGreaterThan(0)
           await expect.poll(() => page.locator('button[aria-label="Copy input"]').count()).toBe(1)
           await expect.poll(() => page.locator('button[aria-label="Copy output"]').count()).toBe(2)

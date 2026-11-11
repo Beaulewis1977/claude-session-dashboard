@@ -37,8 +37,7 @@ export function useSearch(): [string, (q: string) => void] {
   const seenSessions = useRef(sessions)
   const setQuery = (q: string): void => {
     const s = useApp.getState()
-    if (q.trim() && !s.query.trim())
-      set({ query: q, sortBeforeSearch: s.sort, sort: 'relevance' })
+    if (q.trim() && !s.query.trim()) set({ query: q, sortBeforeSearch: s.sort, sort: 'relevance' })
     else if (!q.trim())
       set({ query: q, hits: null, sort: s.sort === 'relevance' ? s.sortBeforeSearch : s.sort })
     else set({ query: q })

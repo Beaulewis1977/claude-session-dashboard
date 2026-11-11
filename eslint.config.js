@@ -28,6 +28,12 @@ export default tseslint.config(
     languageOptions: { globals: { ...globals.node } }
   },
   {
+    // CommonJS hooks electron-builder loads (scripts/check-asar.cjs).
+    files: ['scripts/**/*.cjs'],
+    languageOptions: { sourceType: 'commonjs', globals: { ...globals.node } },
+    rules: { '@typescript-eslint/no-require-imports': 'off' }
+  },
+  {
     files: ['src/renderer/**/*.{ts,tsx}'],
     languageOptions: { globals: { ...globals.browser } },
     plugins: { 'react-hooks': reactHooks, 'react-refresh': reactRefresh },

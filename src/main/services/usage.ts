@@ -43,6 +43,7 @@ import { copyShared } from '../core/shared-copy'
 import { sessionProvider } from '../providers/registry'
 import type { SessionService } from './sessions'
 import { CodexUsageStore } from './codex-usage'
+import { InProcessParser, type UsageParser } from './usage-parse'
 import type { SessionProvider } from '../providers/types'
 
 // 2: dedupe follows ccusage (session-scoped requestless ids, sidechain replays).
@@ -124,7 +125,9 @@ export class UsageService extends EventEmitter<{ changed: []; 'codex-progress': 
   constructor(
     private readonly sessions: SessionService,
     private readonly paths: UsagePaths,
-    private readonly settings: () => UsageSettings
+    private readonly settings: () => UsageSettings,
+    /** Where session files are read and parsed (the app: a worker thread). */
+    private readonly parser: UsageParser = new InProcessParser()
   ) {
     super()
   }
@@ -191,6 +194,11 @@ export class UsageService extends EventEmitter<{ changed: []; 'codex-progress': 
 
   // ---------------------------------------------------------------- queries
 
+  /** Reading the logs (or loading the saved data) right now. */
+  get busy(): boolean {
+    return this.parsing || !this.loaded
+  }
+
   status(): UsageStatus {
     const codex = this.codex.size
     return {
@@ -217,11 +225,21 @@ export class UsageService extends EventEmitter<{ changed: []; 'codex-progress': 
     return this.codex.readings()
   }
 
+  /** Both agents' records, merged (kept until either list changes). */
+  private merged?: { claude: UsageRecord[]; codex: UsageRecord[]; list: UsageRecord[] }
+  private mergedPrices?: { claude: ModelPrice[]; codex?: ModelPrice[]; list: ModelPrice[] }
+
   /** Records of one view: Claude Code's (as before), Codex's, or both. */
   recordsOf(view: ProviderView): UsageRecord[] {
     if (view === 'claude') return this.allRecords()
     if (view === 'codex') return this.codexRecords()
-    return [...this.allRecords(), ...this.codexRecords()].sort((a, b) => a.ts - b.ts)
+    const claude = this.allRecords()
+    const codex = this.codexRecords()
+    const m = this.merged
+    if (m && m.claude === claude && m.codex === codex) return m.list
+    const list = [...claude, ...codex].sort((a, b) => a.ts - b.ts)
+    this.merged = { claude, codex, list }
+    return list
   }
 
   /** The price table for a view's records (the two tables never share a model id). */
@@ -229,7 +247,24 @@ export class UsageService extends EventEmitter<{ changed: []; 'codex-progress': 
     const s = this.settings()
     if (view === 'claude') return s.prices
     if (view === 'codex') return s.codexPrices ?? []
-    return [...s.prices, ...(s.codexPrices ?? [])]
+    // The same table while neither changes (costs are worked out once per table).
+    const m = this.mergedPrices
+    if (m && m.claude === s.prices && m.codex === s.codexPrices) return m.list
+    const list = [...s.prices, ...(s.codexPrices ?? [])]
+    this.mergedPrices = { claude: s.prices, codex: s.codexPrices, list }
+    return list
+  }
+
+  /** The last answer of a pure calculation, kept while its inputs are the same objects. */
+  private memo = new Map<string, { deps: unknown[]; value: unknown }>()
+
+  memoized<T>(name: string, deps: unknown[], make: () => T): T {
+    const m = this.memo.get(name)
+    if (m && m.deps.length === deps.length && m.deps.every((d, i) => d === deps[i]))
+      return m.value as T
+    const value = make()
+    this.memo.set(name, { deps, value })
+    return value
   }
 
   allRecords(): UsageRecord[] {
@@ -256,8 +291,11 @@ export class UsageService extends EventEmitter<{ changed: []; 'codex-progress': 
     this.emit('changed')
   }
 
+  /** Sorted turns, kept until a turn changes. */
+  private cachedTurns: TurnSample[] | undefined
+
   allTurns(): TurnSample[] {
-    return [...this.turns.values()].sort((a, b) => a.ts - b.ts)
+    return (this.cachedTurns ??= [...this.turns.values()].sort((a, b) => a.ts - b.ts))
   }
 
   limitHits(): LimitHit[] {
@@ -323,11 +361,12 @@ export class UsageService extends EventEmitter<{ changed: []; 'codex-progress': 
 
   /** Weekly output speed per model, Claude Code's and Codex's together. */
   speedTrends(): SpeedTrendsReport {
-    return buildSpeedTrends({
-      records: this.recordsOf('all'),
-      timeZone: localTimeZone(),
-      weekStart: this.settings().weekStart
-    })
+    const records = this.recordsOf('all')
+    const timeZone = localTimeZone()
+    const weekStart = this.settings().weekStart
+    return this.memoized('speedTrends', [records, timeZone, weekStart], () =>
+      buildSpeedTrends({ records, timeZone, weekStart })
+    )
   }
 
   /** Recent output speed against the weeks before (limit health's extra signal). */
@@ -350,6 +389,7 @@ export class UsageService extends EventEmitter<{ changed: []; 'codex-progress': 
 
   private invalidate(): void {
     this.cachedList = undefined
+    this.cachedTurns = undefined
   }
 
   private async load(): Promise<void> {
@@ -520,15 +560,7 @@ export class UsageService extends EventEmitter<{ changed: []; 'codex-progress': 
   ): Promise<boolean> {
     const sig = [s.filePath, s.sizeBytes, s.lastActivityAt ?? '', root].join('|')
     if (!force && this.codex.index[s.key] === sig) return false
-    let text: string
-    try {
-      text = provider.usage.readText
-        ? await provider.usage.readText(s.filePath)
-        : await readFile(s.filePath, 'utf8')
-    } catch {
-      return false
-    }
-    const a = provider.usage.analyze(text, {
+    const ctx = {
       key: s.key,
       project: s.projectName,
       env: s.env,
@@ -537,7 +569,23 @@ export class UsageService extends EventEmitter<{ changed: []; 'codex-progress': 
       lineageRoot: root,
       source: s.sourceId,
       ...(s.version ? { version: s.version } : {})
-    })
+    }
+    let a: UsageAnalysis | undefined
+    if (provider.id === 'codex') {
+      // Read and parsed off this thread (the app's parser is a worker).
+      a = await this.parser.parse({ provider: 'codex', path: s.filePath, ctx })
+      if (!a) return false
+    } else {
+      let text: string
+      try {
+        text = provider.usage.readText
+          ? await provider.usage.readText(s.filePath)
+          : await readFile(s.filePath, 'utf8')
+      } catch {
+        return false
+      }
+      a = provider.usage.analyze(text, ctx)
+    }
     this.codex.set(s.key, a.records, a.codexLimits ?? [], sig, a.codexTurns ?? [])
     // Let other work (IPC) run between files on big histories.
     await new Promise((r) => setImmediate(r))
@@ -546,6 +594,19 @@ export class UsageService extends EventEmitter<{ changed: []; 'codex-progress': 
 
   /** Read and analyze one file of a session (nothing is changed yet); undefined if unreadable. */
   private async readUsage(path: string, s: SessionSummary): Promise<UsageAnalysis | undefined> {
+    const provider = sessionProvider(this.sessions, s)
+    if (provider.id === 'claude')
+      return this.parser.parse({
+        provider: 'claude',
+        path,
+        ctx: {
+          key: s.key,
+          project: s.projectName,
+          env: s.env,
+          sessionId: s.sessionId,
+          file: basename(path)
+        }
+      })
     let text: string
     try {
       text = await readFile(path, 'utf8')
@@ -574,6 +635,7 @@ export class UsageService extends EventEmitter<{ changed: []; 'codex-progress': 
       if (!prev || JSON.stringify(prev) !== JSON.stringify(t)) {
         if (prev && prev.key !== t.key) continue // copied into a fork: keep the original
         this.turns.set(t.id, t)
+        this.cachedTurns = undefined
         this.dirtyTurnMonths.add(storageMonth(t.ts))
       }
     }

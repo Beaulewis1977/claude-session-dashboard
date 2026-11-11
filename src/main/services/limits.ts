@@ -115,8 +115,7 @@ export class LimitsService extends EventEmitter<{ changed: [] }> {
     private readonly settings: () => LimitsSettings,
     private readonly notify: (title: string, body: string) => void,
     /** Sessions the app knows are billed to an API key. */
-    private readonly billingOverride: (key: string) => 'subscription' | 'api' | undefined = () =>
-      undefined,
+    private readonly billingOverride?: (key: string) => 'subscription' | 'api' | undefined,
     /** Source label of a session (Terminal, VS Code, …), for the window split. */
     private readonly sourceOf: (key: string) => string = () => 'This computer'
   ) {
@@ -500,7 +499,7 @@ export class LimitsService extends EventEmitter<{ changed: [] }> {
 
   /** Billed to the subscription (what the limit gauge counts; API-billed use is left out). */
   isSubscription = (key: string): boolean => {
-    const o = this.billingOverride(key)
+    const o = this.billingOverride?.(key)
     if (o) return o === 'subscription'
     const sid = key.split(':').pop() ?? key
     return this.billingOf(sid) !== 'api'
@@ -515,18 +514,84 @@ export class LimitsService extends EventEmitter<{ changed: [] }> {
     return out
   }
 
-  health(kind: WindowKind): HealthReport {
+  /**
+   * isSubscription with its answers kept for one calculation (billing is
+   * worked out from a session's readings, once per session instead of per record).
+   */
+  private subscriptionMemo(): (key: string) => boolean {
+    const seen = new Map<string, boolean>()
+    return (key) => {
+      let v = seen.get(key)
+      if (v === undefined) seen.set(key, (v = this.isSubscription(key)))
+      return v
+    }
+  }
+
+  /**
+   * Results kept while what they're made from is unchanged: the records (a
+   * new list when they change), the limit history (it only grows), the
+   * /usage readings, the settings and the billing (worked out from the
+   * history, unless an override says otherwise: then nothing is kept).
+   */
+  private kept = new Map<string, { deps: unknown[]; from: number; until: number; value: unknown }>()
+
+  private inputs(): unknown[] {
     const s = this.settings()
-    return healthReport(this.windowReadings(kind), this.usage.allRecords(), {
-      kind,
-      prices: s.prices,
-      now: now(),
-      settings: s.health,
-      planHistory: s.planHistory,
-      currentPlan: s.plan,
-      elsewhere: s.elsewhere,
-      isSubscription: this.isSubscription
-    })
+    const cmd = this.usage.usageCommandReadings()
+    const h = this.history
+    return [
+      this.usage.allRecords(),
+      h.length,
+      h[h.length - 1]?.ts,
+      cmd.length,
+      cmd[cmd.length - 1]?.ts,
+      s.prices,
+      JSON.stringify([s.health, s.planHistory, s.plan, s.elsewhere, s.weights])
+    ]
+  }
+
+  /**
+   * `make`'s answer, kept while the inputs are the same and the time is in
+   * [made, until(answer)): an answer that depends on the time says until when
+   * it holds (e.g. the next reset of an open window).
+   */
+  private keep<T>(name: string, t: number, make: () => T, until: (v: T) => number): T {
+    if (this.billingOverride) return make()
+    const deps = this.inputs()
+    const k = this.kept.get(name)
+    if (
+      k &&
+      t >= k.from &&
+      t < k.until &&
+      k.deps.length === deps.length &&
+      k.deps.every((d, i) => d === deps[i])
+    )
+      return k.value as T
+    const value = make()
+    this.kept.set(name, { deps, from: t, until: until(value), value })
+    return value
+  }
+
+  health(kind: WindowKind, isSub = this.subscriptionMemo()): HealthReport {
+    const s = this.settings()
+    const t = now()
+    return this.keep(
+      `health:${kind}`,
+      t,
+      () =>
+        healthReport(this.windowReadings(kind), this.usage.allRecords(), {
+          kind,
+          prices: s.prices,
+          now: t,
+          settings: s.health,
+          planHistory: s.planHistory,
+          currentPlan: s.plan,
+          elsewhere: s.elsewhere,
+          isSubscription: isSub
+        }),
+      // The time only decides which windows are closed: the same until an open one resets.
+      (h) => Math.min(...h.windows.filter((w) => !w.closed).map((w) => w.resetsAt), Infinity)
+    )
   }
 
   compare(kind: WindowKind, a: CompareRange, b: CompareRange): HealthCompare {
@@ -538,8 +603,9 @@ export class LimitsService extends EventEmitter<{ changed: [] }> {
     const t = now()
     const records = this.usage.allRecords()
     const readings = this.history
-    const five = gauge(readings, records, 'five_hour', t, s.weights, this.isSubscription)
-    const week = gauge(readings, records, 'seven_day', t, s.weights, this.isSubscription)
+    const before = this.subscriptionMemo()
+    const five = gauge(readings, records, 'five_hour', t, s.weights, before)
+    const week = gauge(readings, records, 'seven_day', t, s.weights, before)
     const lastReadingAt = readings.length ? readings[readings.length - 1].ts : undefined
     const lastLimitReading = [...readings].reverse().find(hasLimits)
 
@@ -550,26 +616,41 @@ export class LimitsService extends EventEmitter<{ changed: [] }> {
       const e = await this.installer.describe(src, lastBySource.get(src.id))
       if (e) envs.push(e)
     }
+    // Billing may have changed while the bridges were described: answers from now on.
+    const isSub = this.subscriptionMemo()
 
-    const recent = records.filter((r) => r.ts >= t - 2 * 86_400_000 && this.isSubscription(r.key))
+    const recent = records.filter((r) => r.ts >= t - 2 * 86_400_000 && isSub(r.key))
     const blocks = fiveHourBlocks(recent, t, s.prices)
     const block = blocks.find((b) => b.active) ?? undefined
 
-    const cap5 = impliedCapacity(readings, records, 'five_hour', s.weights, {
-      isSubscription: this.isSubscription
-    })
-    const cap7 = impliedCapacity(readings, records, 'seven_day', s.weights, {
-      isSubscription: this.isSubscription
-    })
+    // Neither depends on the time.
+    const cap5 = this.keep(
+      'capacity:five_hour',
+      t,
+      () => impliedCapacity(readings, records, 'five_hour', s.weights, { isSubscription: isSub }),
+      () => Infinity
+    )
+    const cap7 = this.keep(
+      'capacity:seven_day',
+      t,
+      () => impliedCapacity(readings, records, 'seven_day', s.weights, { isSubscription: isSub }),
+      () => Infinity
+    )
 
-    const allBlocks = fiveHourBlocks(records, t, s.prices)
+    // Blocks are the same until one starts or ends (its "active" flag).
+    const allBlocks = this.keep(
+      'blocks',
+      t,
+      () => fiveHourBlocks(records, t, s.prices),
+      (bs) => Math.min(...bs.flatMap((b) => [b.start, b.end]).filter((x) => x > t), Infinity)
+    )
     const hits = this.usage.limitHits().map((h) => {
       const b = allBlocks.find((x) => h.ts >= x.start && h.ts < x.end + 60_000)
       return { ...h, windowTokens: b?.total ?? 0 }
     })
 
-    const health5h = this.health('five_hour')
-    const health7d = this.health('seven_day')
+    const health5h = this.health('five_hour', isSub)
+    const health7d = this.health('seven_day', isSub)
     const pace5h =
       five && !five.expired
         ? paceOf({ pct: five.pct, resetsAt: five.resetsAt }, 'five_hour', t, s.pace)
@@ -591,20 +672,13 @@ export class LimitsService extends EventEmitter<{ changed: [] }> {
         planHistory: s.planHistory,
         currentPlan: s.plan,
         elsewhere: s.elsewhere,
-        isSubscription: this.isSubscription,
+        isSubscription: isSub,
         // The long-run baseline, not one from this window alone.
         baseline: h.baseline ?? null
       })
       const w = scored.windows[scored.windows.length - 1]
       if (!w) return undefined
-      return splitWindow(
-        w,
-        records,
-        s.prices,
-        this.sourceOf,
-        this.isSubscription,
-        s.health.familyPricing
-      )
+      return splitWindow(w, records, s.prices, this.sourceOf, isSub, s.health.familyPricing)
     }
 
     return {

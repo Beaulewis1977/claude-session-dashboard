@@ -142,8 +142,29 @@ const DATE_SUFFIX = /^-(?:\d{4}-\d{2}-\d{2}|\d{8})$/
 /** A newer minor version ("claude-fable-5" + "-2") is another model, never priced by the older row. */
 const MINOR_VERSION = /^-\d{1,2}(?:$|[-@[])/
 
+/**
+ * findPrice's answers per table (tables are replaced, never edited in place,
+ * when the prices change; a table whose length changed is looked up again).
+ */
+const priceMemo = new WeakMap<
+  ModelPrice[],
+  { length: number; byModel: Map<string, ModelPrice | undefined> }
+>()
+
 /** Find the price entry for a model id: exact match first, then the longest prefix. */
 export function findPrice(model: string, table: ModelPrice[]): ModelPrice | undefined {
+  let memo = priceMemo.get(table)
+  if (!memo || memo.length !== table.length) {
+    memo = { length: table.length, byModel: new Map() }
+    priceMemo.set(table, memo)
+  }
+  if (memo.byModel.has(model)) return memo.byModel.get(model)
+  const row = findPriceIn(model, table)
+  memo.byModel.set(model, row)
+  return row
+}
+
+function findPriceIn(model: string, table: ModelPrice[]): ModelPrice | undefined {
   const id = model.toLowerCase()
   let best: ModelPrice | undefined
   for (const row of table) {

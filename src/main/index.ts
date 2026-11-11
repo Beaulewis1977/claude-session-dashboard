@@ -92,6 +92,7 @@ import { registerAskSessionsIpc } from './ipc-ask-sessions'
 import { AskSessionsService, createAskSessionsStore } from './ask-sessions/service'
 import { InProcessHost } from './ask-sessions/host'
 import { startIndexWorker } from './ask-sessions/spawn'
+import { startUsageParser } from './services/usage-parse-spawn'
 import { sanitizeAskSessions } from '@shared/ask-sessions/types'
 import { fiveHourGuard, registerSummaryIpc } from './ipc-summaries'
 import { registerContextIpc } from './ipc-context'
@@ -500,11 +501,18 @@ async function main(): Promise<void> {
       codexCache = { from: key, value: codexUsageSettings(s) }
     return codexCache.value
   }
-  const usage = new UsageService(sessions, usagePaths(paths.dataDir, paths.archiveDir), () => ({
-    weekStart: settings.value.weekStart,
-    prices: settings.value.prices,
-    codexPrices: codexSettings().codexPrices
-  }))
+  // Session files are read and parsed for usage in a worker thread.
+  const usageParser = startUsageParser()
+  const usage = new UsageService(
+    sessions,
+    usagePaths(paths.dataDir, paths.archiveDir),
+    () => ({
+      weekStart: settings.value.weekStart,
+      prices: settings.value.prices,
+      codexPrices: codexSettings().codexPrices
+    }),
+    usageParser
+  )
   // Ask across sessions is made once the git links exist (further down); what
   // runs before then (settings changes, the backup, a phone) finds it here.
   const late: { ask?: AskSessionsService } = {}
@@ -1076,6 +1084,7 @@ async function main(): Promise<void> {
       await sessions.idle().catch(() => undefined)
       await gitLinks.flush().catch(() => undefined)
       await usage.idle().catch(() => undefined)
+      await usageParser.stop().catch(() => undefined)
       limits.stop()
       live.stop()
       summaries.stopAuto()

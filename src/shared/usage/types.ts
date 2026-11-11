@@ -175,6 +175,8 @@ export interface UsageQuery {
   sessionKey?: string
   /** Whose usage: Claude Code's (absent), Codex's, or both. */
   provider?: ProviderView
+  /** false: leave the raw table's records out (only the Raw table tab shows them). */
+  raw?: false
 }
 
 export interface Totals extends TokenCounts {

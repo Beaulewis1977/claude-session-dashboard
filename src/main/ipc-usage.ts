@@ -16,6 +16,7 @@ import {
 import { buildCodexTrends, compareCodexTrends } from '@shared/usage/codex-trends'
 import type { CcusageComparison, Dimension, Period, UsageQuery } from '@shared/usage/types'
 import { isProviderView } from '@shared/provider'
+import { coalesce } from './core/coalesce'
 import { assertUserWrite } from './core/safe-paths'
 import { handle } from './ipc-guard'
 import type { Platform } from './platform'
@@ -50,6 +51,7 @@ export function cleanQuery(v: unknown): UsageQuery {
       : undefined,
     groupBy: DIMENSIONS.includes(o.groupBy as Dimension) ? (o.groupBy as Dimension) : undefined,
     sessionKey: typeof o.sessionKey === 'string' ? o.sessionKey : undefined,
+    ...(o.raw === false ? { raw: false as const } : {}),
     // Absent: Claude Code's usage, as before Codex.
     ...(isProviderView(o.provider) && o.provider !== 'claude' ? { provider: o.provider } : {})
   }
@@ -95,15 +97,18 @@ export function registerUsageIpc(deps: UsageIpcDeps): void {
   const { usage } = deps
   const win = (): BrowserWindow | undefined => BrowserWindow.getAllWindows()[0]
 
-  usage.on('changed', () => {
-    for (const w of BrowserWindow.getAllWindows()) w.webContents.send('usage:changed')
-  })
-  deps.limits.on('changed', () => {
-    for (const w of BrowserWindow.getAllWindows()) w.webContents.send('limits:changed')
-  })
-  deps.codexLimits?.on('changed', () => {
-    for (const w of BrowserWindow.getAllWindows()) w.webContents.send('limits:changed')
-  })
+  // Each notice makes the open views ask again (reports, trends, limits): at
+  // most one a second, and one every few seconds while the logs are being read.
+  const wait = (): number => (usage.busy ? 3000 : 1000)
+  const tell = (channel: string) =>
+    coalesce(() => {
+      for (const w of BrowserWindow.getAllWindows()) w.webContents.send(channel)
+    }, wait)
+  const usageChanged = tell('usage:changed')
+  const limitsChanged = tell('limits:changed')
+  usage.on('changed', usageChanged)
+  deps.limits.on('changed', limitsChanged)
+  deps.codexLimits?.on('changed', limitsChanged)
 
   const action = (v: unknown): 'install' | 'uninstall' =>
     v === 'uninstall' ? 'uninstall' : 'install'
@@ -150,36 +155,59 @@ export function registerUsageIpc(deps: UsageIpcDeps): void {
     const by: TrendGroupBy = groupBy === 'model' || groupBy === 'version' ? groupBy : 'all'
     // Limit-health scores ($ per 1%, per 1x of plan) mark capacity changes.
     const health = deps.limits.health('five_hour')
-    return buildTrends({
-      records: usage.allRecords(),
-      turns: usage.allTurns(),
-      readings: deps.limits.readings(),
-      capacity: health.windows
-        .filter((w) => w.closed && !w.excluded && w.dollars > 0)
-        .map((w) => ({
-          ts: w.resetsAt,
-          kind: 'five_hour' as const,
-          pct: w.pct,
-          weighted: w.dollars,
-          capacity: w.perPct / w.mult,
-          mix: ''
-        })),
-      plans: health.plans,
-      timeZone: localTimeZone(),
-      weekStart: deps.weekStart(),
-      groupBy: by
-    })
+    const capacity = health.windows
+      .filter((w) => w.closed && !w.excluded && w.dollars > 0)
+      .map((w) => ({
+        ts: w.resetsAt,
+        kind: 'five_hour' as const,
+        pct: w.pct,
+        weighted: w.dollars,
+        capacity: w.perPct / w.mult,
+        mix: ''
+      }))
+    const records = usage.allRecords()
+    const turns = usage.allTurns()
+    const readings = deps.limits.readings()
+    const timeZone = localTimeZone()
+    const weekStart = deps.weekStart()
+    // The same answer while nothing it's made from changed (the limit history
+    // only grows, so its length and newest time stand for it).
+    return usage.memoized(
+      `trends:${by}`,
+      [
+        records,
+        turns,
+        readings.length,
+        readings[readings.length - 1]?.ts,
+        JSON.stringify(capacity),
+        JSON.stringify(health.plans),
+        timeZone,
+        weekStart
+      ],
+      () =>
+        buildTrends({
+          records,
+          turns,
+          readings,
+          capacity,
+          plans: health.plans,
+          timeZone,
+          weekStart,
+          groupBy: by
+        })
+    )
   })
   // Codex trends: Codex's own records and turns, kept apart from Claude Code's.
-  handle('usage:codexTrends', (_e, groupBy) =>
-    buildCodexTrends({
-      records: usage.codexRecords(),
-      turns: usage.codexTurns(),
-      timeZone: localTimeZone(),
-      weekStart: deps.weekStart(),
-      groupBy: groupBy === 'model' || groupBy === 'version' ? groupBy : 'all'
-    })
-  )
+  handle('usage:codexTrends', (_e, groupBy) => {
+    const by: TrendGroupBy = groupBy === 'model' || groupBy === 'version' ? groupBy : 'all'
+    const records = usage.codexRecords()
+    const turns = usage.codexTurns()
+    const timeZone = localTimeZone()
+    const weekStart = deps.weekStart()
+    return usage.memoized(`codexTrends:${by}`, [records, turns, timeZone, weekStart], () =>
+      buildCodexTrends({ records, turns, timeZone, weekStart, groupBy: by })
+    )
+  })
   handle('usage:codexCompare', (_e, a, b) =>
     compareCodexTrends(
       { records: usage.codexRecords(), turns: usage.codexTurns() },

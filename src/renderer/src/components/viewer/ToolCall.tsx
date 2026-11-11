@@ -1,4 +1,4 @@
-import { memo, useState, type ReactNode } from 'react'
+import { memo, useContext, useEffect, useState, type ReactNode } from 'react'
 import {
   Bot,
   ChevronRight,
@@ -19,7 +19,10 @@ import { cn } from '@/lib/utils'
 import { truncateText } from '@/lib/transcript'
 import { useOpenState } from '@/lib/open-state'
 import { toolInputText, toolOutputText } from '@/lib/copy'
+import { api } from '@/lib/api'
 import { ErrorBoundary, RenderFailed } from '../ErrorBoundary'
+import { TranscriptContext } from './transcript-context'
+import { SpriteIcon } from '../ui/sprite-icon'
 import { CodeBlock, CopyButton } from './Markdown'
 
 type ToolUse = Extract<ContentBlock, { type: 'tool_use' }>
@@ -43,22 +46,27 @@ function codexCommand(i: Record<string, unknown>): string {
   return parts.join(' ')
 }
 
-function ToolIcon({ name, className }: { name: string; className?: string }) {
+function toolIcon(name: string): [typeof Wrench, string] {
   if (name === 'Bash' || name === 'PowerShell' || CODEX_SHELL.has(name))
-    return <SquareTerminal className={className} />
-  if (name === 'apply_patch') return <FilePen className={className} />
-  if (name === 'web_search') return <Globe className={className} />
-  if (name === 'update_plan') return <ListChecks className={className} />
-  if (['Edit', 'MultiEdit', 'Write', 'NotebookEdit'].includes(name))
-    return <FilePen className={className} />
-  if (name === 'Read' || name === 'NotebookRead') return <FileText className={className} />
-  if (name === 'Grep') return <Search className={className} />
-  if (name === 'Glob' || name === 'LS') return <FolderSearch className={className} />
-  if (name === 'WebFetch' || name === 'WebSearch') return <Globe className={className} />
-  if (name === 'Task' || name === 'Agent') return <Bot className={className} />
-  if (name === 'TodoWrite') return <ListChecks className={className} />
-  if (name.startsWith('mcp__')) return <Plug className={className} />
-  return <Wrench className={className} />
+    return [SquareTerminal, 'terminal']
+  if (name === 'apply_patch') return [FilePen, 'file-pen']
+  if (name === 'web_search') return [Globe, 'globe']
+  if (name === 'update_plan') return [ListChecks, 'list-checks']
+  if (['Edit', 'MultiEdit', 'Write', 'NotebookEdit'].includes(name)) return [FilePen, 'file-pen']
+  if (name === 'Read' || name === 'NotebookRead') return [FileText, 'file-text']
+  if (name === 'Grep') return [Search, 'search']
+  if (name === 'Glob' || name === 'LS') return [FolderSearch, 'folder-search']
+  if (name === 'WebFetch' || name === 'WebSearch') return [Globe, 'globe']
+  if (name === 'Task' || name === 'Agent') return [Bot, 'bot']
+  if (name === 'TodoWrite') return [ListChecks, 'list-checks']
+  if (name.startsWith('mcp__')) return [Plug, 'plug']
+  return [Wrench, 'wrench']
+}
+
+/** A tool's icon (from the sprite: a long session has hundreds). */
+function ToolIcon({ name, className }: { name: string; className?: string }) {
+  const [icon, id] = toolIcon(name)
+  return <SpriteIcon icon={icon} name={id} className={className} />
 }
 
 function s(v: unknown): string {
@@ -196,16 +204,57 @@ function ToolInput({ tool, cwd }: { tool: ToolUse; cwd?: string }) {
   )
 }
 
-export function ResultView({ result, findQuery }: { result: ToolResult; findQuery?: string }) {
+/** A tool output in full: as it is, or asked for when it was sent cut. */
+async function fullOutput(
+  result: ToolResult,
+  sessionKey: string | undefined,
+  id: string | undefined
+): Promise<string> {
+  if (!result.cut || !sessionKey || !id) return toolOutputText(result)
+  const r = await api.getToolResult(sessionKey, id).catch(() => null)
+  return r?.text ?? toolOutputText(result)
+}
+
+export function ResultView({
+  result,
+  findQuery,
+  blockId
+}: {
+  result: ToolResult
+  findQuery?: string
+  /** Its block's id: a cut output is asked for in full by it. */
+  blockId?: string
+}) {
+  const { sessionKey, cutMatches, onMatchLoaded } = useContext(TranscriptContext)
   const [showAll, setShowAll] = useState(false)
+  const [fullText, setFullText] = useState<string>()
   const t = truncateText(result.text)
-  // Expand automatically when a find match sits in the hidden part.
+  const cut = result.cut
+  const truncated = t.truncated || !!cut
+  const totalLines = cut?.lines ?? t.totalLines
+  const totalChars = cut?.chars ?? result.text.length
+  // Expand automatically when a find match sits in the hidden part (past the cut too).
+  const q = findQuery?.toLowerCase()
   const hiddenMatch =
-    !!findQuery &&
-    t.truncated &&
-    result.text.toLowerCase().includes(findQuery.toLowerCase()) &&
-    !t.text.toLowerCase().includes(findQuery.toLowerCase())
+    !!q &&
+    truncated &&
+    ((!!blockId && cutMatches.has(blockId)) ||
+      (result.text.toLowerCase().includes(q) && !t.text.toLowerCase().includes(q)))
   const full = showAll || hiddenMatch
+  // A cut output's full text, once it's to be shown.
+  useEffect(() => {
+    if (!full || !cut || fullText !== undefined) return
+    let gone = false
+    void fullOutput(result, sessionKey, blockId).then((x) => {
+      if (gone) return
+      setFullText(x)
+      // Opened for a find match: find counts what's shown now.
+      if (hiddenMatch) requestAnimationFrame(() => onMatchLoaded?.())
+    })
+    return () => {
+      gone = true
+    }
+  }, [full, cut, fullText, result, sessionKey, blockId, hiddenMatch, onMatchLoaded])
   if (!result.text && !result.images) {
     return <div className="px-1 text-xs text-subtle-foreground italic">No output</div>
   }
@@ -221,7 +270,7 @@ export function ResultView({ result, findQuery }: { result: ToolResult; findQuer
           {result.isError ? 'Error' : 'Result'}
         </span>
         <span>
-          {t.totalLines.toLocaleString()} line{t.totalLines === 1 ? '' : 's'}
+          {totalLines.toLocaleString()} line{totalLines === 1 ? '' : 's'}
           {result.images ? ` · ${result.images} image${result.images > 1 ? 's' : ''}` : ''}
         </span>
       </div>
@@ -231,9 +280,9 @@ export function ResultView({ result, findQuery }: { result: ToolResult; findQuer
           result.isError && 'text-destructive'
         )}
       >
-        {full ? result.text : t.text}
+        {full ? (fullText ?? result.text) : t.text}
       </pre>
-      {t.truncated && (
+      {truncated && (
         <div className="border-t border-inherit px-2 py-1">
           <button
             type="button"
@@ -242,7 +291,7 @@ export function ResultView({ result, findQuery }: { result: ToolResult; findQuer
           >
             {full
               ? 'Show less'
-              : `Show all (${t.totalLines.toLocaleString()} lines, ${result.text.length.toLocaleString()} chars)`}
+              : `Show all (${totalLines.toLocaleString()} lines, ${totalChars.toLocaleString()} chars)`}
           </button>
         </div>
       )}
@@ -256,7 +305,16 @@ const touchCopy =
   'touch:h-10 touch:min-w-10 touch:whitespace-nowrap touch:rounded-lg touch:px-2.5 touch:text-[13px] touch:text-foreground touch:active:bg-hover [&_svg]:touch:size-4'
 
 /** Copy input / Copy output for an expanded tool call (always the full text, never the preview). */
-function CopyRow({ input, output }: { input?: () => string; output?: ToolResult }) {
+function CopyRow({
+  input,
+  output,
+  blockId
+}: {
+  input?: () => string
+  output?: ToolResult
+  blockId?: string
+}) {
+  const { sessionKey } = useContext(TranscriptContext)
   const hasOutput = !!output?.text
   if (!input && !hasOutput) return null
   return (
@@ -268,7 +326,7 @@ function CopyRow({ input, output }: { input?: () => string; output?: ToolResult 
       {hasOutput && (
         <CopyButton
           label="Copy output"
-          getText={() => toolOutputText(output!)}
+          getText={() => fullOutput(output!, sessionKey, blockId)}
           className={touchCopy}
         />
       )}
@@ -297,7 +355,9 @@ export function Collapsible({
         onClick={onToggle}
         className="group/row flex w-full min-w-0 items-center gap-2 rounded-md px-2 py-1.5 text-left text-[12.5px] transition-colors hover:bg-hover"
       >
-        <ChevronRight
+        <SpriteIcon
+          icon={ChevronRight}
+          name="chevron-right"
           className={cn(
             'size-3.5 shrink-0 text-subtle-foreground transition-transform duration-150',
             open && 'rotate-90'
@@ -362,9 +422,9 @@ export const ToolCall = memo(function ToolCall({
       }
     >
       <ErrorBoundary fallback={<RenderFailed what="This tool call" />}>
-        <CopyRow input={() => toolInputText(tool)} output={tool.result} />
+        <CopyRow input={() => toolInputText(tool)} output={tool.result} blockId={tool.id} />
         <ToolInput tool={tool} cwd={cwd} />
-        {tool.result && <ResultView result={tool.result} findQuery={findQuery} />}
+        {tool.result && <ResultView result={tool.result} findQuery={findQuery} blockId={tool.id} />}
       </ErrorBoundary>
     </Collapsible>
   )
@@ -374,9 +434,12 @@ export const OrphanResult = memo(function OrphanResult({
   result,
   findQuery,
   forceOpen,
-  openSignal
+  openSignal,
+  blockId
 }: {
   result: ToolResult
+  /** Its block's id (a cut output is asked for in full by it). */
+  blockId?: string
   findQuery?: string
   forceOpen?: boolean
   openSignal?: number
@@ -393,8 +456,8 @@ export const OrphanResult = memo(function OrphanResult({
         </>
       }
     >
-      <CopyRow output={result} />
-      <ResultView result={result} findQuery={findQuery} />
+      <CopyRow output={result} blockId={blockId} />
+      <ResultView result={result} findQuery={findQuery} blockId={blockId} />
     </Collapsible>
   )
 })

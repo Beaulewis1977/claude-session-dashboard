@@ -150,36 +150,59 @@ export function registerUsageIpc(deps: UsageIpcDeps): void {
     const by: TrendGroupBy = groupBy === 'model' || groupBy === 'version' ? groupBy : 'all'
     // Limit-health scores ($ per 1%, per 1x of plan) mark capacity changes.
     const health = deps.limits.health('five_hour')
-    return buildTrends({
-      records: usage.allRecords(),
-      turns: usage.allTurns(),
-      readings: deps.limits.readings(),
-      capacity: health.windows
-        .filter((w) => w.closed && !w.excluded && w.dollars > 0)
-        .map((w) => ({
-          ts: w.resetsAt,
-          kind: 'five_hour' as const,
-          pct: w.pct,
-          weighted: w.dollars,
-          capacity: w.perPct / w.mult,
-          mix: ''
-        })),
-      plans: health.plans,
-      timeZone: localTimeZone(),
-      weekStart: deps.weekStart(),
-      groupBy: by
-    })
+    const capacity = health.windows
+      .filter((w) => w.closed && !w.excluded && w.dollars > 0)
+      .map((w) => ({
+        ts: w.resetsAt,
+        kind: 'five_hour' as const,
+        pct: w.pct,
+        weighted: w.dollars,
+        capacity: w.perPct / w.mult,
+        mix: ''
+      }))
+    const records = usage.allRecords()
+    const turns = usage.allTurns()
+    const readings = deps.limits.readings()
+    const timeZone = localTimeZone()
+    const weekStart = deps.weekStart()
+    // The same answer while nothing it's made from changed (the limit history
+    // only grows, so its length and newest time stand for it).
+    return usage.memoized(
+      `trends:${by}`,
+      [
+        records,
+        turns,
+        readings.length,
+        readings[readings.length - 1]?.ts,
+        JSON.stringify(capacity),
+        JSON.stringify(health.plans),
+        timeZone,
+        weekStart
+      ],
+      () =>
+        buildTrends({
+          records,
+          turns,
+          readings,
+          capacity,
+          plans: health.plans,
+          timeZone,
+          weekStart,
+          groupBy: by
+        })
+    )
   })
   // Codex trends: Codex's own records and turns, kept apart from Claude Code's.
-  handle('usage:codexTrends', (_e, groupBy) =>
-    buildCodexTrends({
-      records: usage.codexRecords(),
-      turns: usage.codexTurns(),
-      timeZone: localTimeZone(),
-      weekStart: deps.weekStart(),
-      groupBy: groupBy === 'model' || groupBy === 'version' ? groupBy : 'all'
-    })
-  )
+  handle('usage:codexTrends', (_e, groupBy) => {
+    const by: TrendGroupBy = groupBy === 'model' || groupBy === 'version' ? groupBy : 'all'
+    const records = usage.codexRecords()
+    const turns = usage.codexTurns()
+    const timeZone = localTimeZone()
+    const weekStart = deps.weekStart()
+    return usage.memoized(`codexTrends:${by}`, [records, turns, timeZone, weekStart], () =>
+      buildCodexTrends({ records, turns, timeZone, weekStart, groupBy: by })
+    )
+  })
   handle('usage:codexCompare', (_e, a, b) =>
     compareCodexTrends(
       { records: usage.codexRecords(), turns: usage.codexTurns() },

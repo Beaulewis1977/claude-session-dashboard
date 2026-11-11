@@ -66,7 +66,9 @@ export function codexFirstTokenMs(t: CodexTurnSample): number | undefined {
 
 export function median(xs: number[]): number | undefined {
   if (!xs.length) return undefined
-  const s = [...xs].sort((a, b) => a - b)
+  // A typed array sorts numbers in the same order as (a, b) => a - b, much
+  // faster (NaN aside, which the comparator orders differently).
+  const s = xs.some(Number.isNaN) ? [...xs].sort((a, b) => a - b) : Float64Array.from(xs).sort()
   const m = Math.floor(s.length / 2)
   return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2
 }

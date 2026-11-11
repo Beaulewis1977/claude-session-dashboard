@@ -217,11 +217,21 @@ export class UsageService extends EventEmitter<{ changed: []; 'codex-progress': 
     return this.codex.readings()
   }
 
+  /** Both agents' records, merged (kept until either list changes). */
+  private merged?: { claude: UsageRecord[]; codex: UsageRecord[]; list: UsageRecord[] }
+  private mergedPrices?: { claude: ModelPrice[]; codex?: ModelPrice[]; list: ModelPrice[] }
+
   /** Records of one view: Claude Code's (as before), Codex's, or both. */
   recordsOf(view: ProviderView): UsageRecord[] {
     if (view === 'claude') return this.allRecords()
     if (view === 'codex') return this.codexRecords()
-    return [...this.allRecords(), ...this.codexRecords()].sort((a, b) => a.ts - b.ts)
+    const claude = this.allRecords()
+    const codex = this.codexRecords()
+    const m = this.merged
+    if (m && m.claude === claude && m.codex === codex) return m.list
+    const list = [...claude, ...codex].sort((a, b) => a.ts - b.ts)
+    this.merged = { claude, codex, list }
+    return list
   }
 
   /** The price table for a view's records (the two tables never share a model id). */
@@ -229,7 +239,24 @@ export class UsageService extends EventEmitter<{ changed: []; 'codex-progress': 
     const s = this.settings()
     if (view === 'claude') return s.prices
     if (view === 'codex') return s.codexPrices ?? []
-    return [...s.prices, ...(s.codexPrices ?? [])]
+    // The same table while neither changes (costs are worked out once per table).
+    const m = this.mergedPrices
+    if (m && m.claude === s.prices && m.codex === s.codexPrices) return m.list
+    const list = [...s.prices, ...(s.codexPrices ?? [])]
+    this.mergedPrices = { claude: s.prices, codex: s.codexPrices, list }
+    return list
+  }
+
+  /** The last answer of a pure calculation, kept while its inputs are the same objects. */
+  private memo = new Map<string, { deps: unknown[]; value: unknown }>()
+
+  memoized<T>(name: string, deps: unknown[], make: () => T): T {
+    const m = this.memo.get(name)
+    if (m && m.deps.length === deps.length && m.deps.every((d, i) => d === deps[i]))
+      return m.value as T
+    const value = make()
+    this.memo.set(name, { deps, value })
+    return value
   }
 
   allRecords(): UsageRecord[] {
@@ -256,8 +283,11 @@ export class UsageService extends EventEmitter<{ changed: []; 'codex-progress': 
     this.emit('changed')
   }
 
+  /** Sorted turns, kept until a turn changes. */
+  private cachedTurns: TurnSample[] | undefined
+
   allTurns(): TurnSample[] {
-    return [...this.turns.values()].sort((a, b) => a.ts - b.ts)
+    return (this.cachedTurns ??= [...this.turns.values()].sort((a, b) => a.ts - b.ts))
   }
 
   limitHits(): LimitHit[] {
@@ -323,11 +353,12 @@ export class UsageService extends EventEmitter<{ changed: []; 'codex-progress': 
 
   /** Weekly output speed per model, Claude Code's and Codex's together. */
   speedTrends(): SpeedTrendsReport {
-    return buildSpeedTrends({
-      records: this.recordsOf('all'),
-      timeZone: localTimeZone(),
-      weekStart: this.settings().weekStart
-    })
+    const records = this.recordsOf('all')
+    const timeZone = localTimeZone()
+    const weekStart = this.settings().weekStart
+    return this.memoized('speedTrends', [records, timeZone, weekStart], () =>
+      buildSpeedTrends({ records, timeZone, weekStart })
+    )
   }
 
   /** Recent output speed against the weeks before (limit health's extra signal). */
@@ -350,6 +381,7 @@ export class UsageService extends EventEmitter<{ changed: []; 'codex-progress': 
 
   private invalidate(): void {
     this.cachedList = undefined
+    this.cachedTurns = undefined
   }
 
   private async load(): Promise<void> {
@@ -574,6 +606,7 @@ export class UsageService extends EventEmitter<{ changed: []; 'codex-progress': 
       if (!prev || JSON.stringify(prev) !== JSON.stringify(t)) {
         if (prev && prev.key !== t.key) continue // copied into a fork: keep the original
         this.turns.set(t.id, t)
+        this.cachedTurns = undefined
         this.dirtyTurnMonths.add(storageMonth(t.ts))
       }
     }

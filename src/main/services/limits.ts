@@ -515,7 +515,20 @@ export class LimitsService extends EventEmitter<{ changed: [] }> {
     return out
   }
 
-  health(kind: WindowKind): HealthReport {
+  /**
+   * isSubscription with its answers kept for one calculation (billing is
+   * worked out from a session's readings, once per session instead of per record).
+   */
+  private subscriptionMemo(): (key: string) => boolean {
+    const seen = new Map<string, boolean>()
+    return (key) => {
+      let v = seen.get(key)
+      if (v === undefined) seen.set(key, (v = this.isSubscription(key)))
+      return v
+    }
+  }
+
+  health(kind: WindowKind, isSub = this.subscriptionMemo()): HealthReport {
     const s = this.settings()
     return healthReport(this.windowReadings(kind), this.usage.allRecords(), {
       kind,
@@ -525,7 +538,7 @@ export class LimitsService extends EventEmitter<{ changed: [] }> {
       planHistory: s.planHistory,
       currentPlan: s.plan,
       elsewhere: s.elsewhere,
-      isSubscription: this.isSubscription
+      isSubscription: isSub
     })
   }
 
@@ -538,8 +551,9 @@ export class LimitsService extends EventEmitter<{ changed: [] }> {
     const t = now()
     const records = this.usage.allRecords()
     const readings = this.history
-    const five = gauge(readings, records, 'five_hour', t, s.weights, this.isSubscription)
-    const week = gauge(readings, records, 'seven_day', t, s.weights, this.isSubscription)
+    const before = this.subscriptionMemo()
+    const five = gauge(readings, records, 'five_hour', t, s.weights, before)
+    const week = gauge(readings, records, 'seven_day', t, s.weights, before)
     const lastReadingAt = readings.length ? readings[readings.length - 1].ts : undefined
     const lastLimitReading = [...readings].reverse().find(hasLimits)
 
@@ -550,16 +564,18 @@ export class LimitsService extends EventEmitter<{ changed: [] }> {
       const e = await this.installer.describe(src, lastBySource.get(src.id))
       if (e) envs.push(e)
     }
+    // Billing may have changed while the bridges were described: answers from now on.
+    const isSub = this.subscriptionMemo()
 
-    const recent = records.filter((r) => r.ts >= t - 2 * 86_400_000 && this.isSubscription(r.key))
+    const recent = records.filter((r) => r.ts >= t - 2 * 86_400_000 && isSub(r.key))
     const blocks = fiveHourBlocks(recent, t, s.prices)
     const block = blocks.find((b) => b.active) ?? undefined
 
     const cap5 = impliedCapacity(readings, records, 'five_hour', s.weights, {
-      isSubscription: this.isSubscription
+      isSubscription: isSub
     })
     const cap7 = impliedCapacity(readings, records, 'seven_day', s.weights, {
-      isSubscription: this.isSubscription
+      isSubscription: isSub
     })
 
     const allBlocks = fiveHourBlocks(records, t, s.prices)
@@ -568,8 +584,8 @@ export class LimitsService extends EventEmitter<{ changed: [] }> {
       return { ...h, windowTokens: b?.total ?? 0 }
     })
 
-    const health5h = this.health('five_hour')
-    const health7d = this.health('seven_day')
+    const health5h = this.health('five_hour', isSub)
+    const health7d = this.health('seven_day', isSub)
     const pace5h =
       five && !five.expired
         ? paceOf({ pct: five.pct, resetsAt: five.resetsAt }, 'five_hour', t, s.pace)
@@ -591,20 +607,13 @@ export class LimitsService extends EventEmitter<{ changed: [] }> {
         planHistory: s.planHistory,
         currentPlan: s.plan,
         elsewhere: s.elsewhere,
-        isSubscription: this.isSubscription,
+        isSubscription: isSub,
         // The long-run baseline, not one from this window alone.
         baseline: h.baseline ?? null
       })
       const w = scored.windows[scored.windows.length - 1]
       if (!w) return undefined
-      return splitWindow(
-        w,
-        records,
-        s.prices,
-        this.sourceOf,
-        this.isSubscription,
-        s.health.familyPricing
-      )
+      return splitWindow(w, records, s.prices, this.sourceOf, isSub, s.health.familyPricing)
     }
 
     return {

@@ -48,6 +48,126 @@ export function providerOfRecord(r: Pick<UsageRecord, 'provider'>): 'claude' | '
   return r.provider ?? 'claude'
 }
 
+// --------------------------------------------------------------- the index
+//
+// Reports are worked out from the raw records every time (so every number is
+// exactly what one pass over them gives), but a record list is indexed once:
+// its times (for binary search: a range scans only its own records, in the
+// same order) and each record's cost at a price table. Lists are replaced,
+// never changed, when records change (the usage service sorts a new one).
+
+interface RecordIndex {
+  /** Each record's time, in list order. */
+  ts: Float64Array
+  /** The list is in time order (ranges can be found by binary search). */
+  sorted: boolean
+  first: number
+  last: number
+  costs?: { prices: ModelPrice[]; map: Map<UsageRecord, number> }
+  /** Each record's cost at a price table, by position. */
+  costArr?: { prices: ModelPrice[]; arr: Float64Array }
+  /** The list's model ids, sorted. */
+  models?: string[]
+  /** Total tokens and cost of the whole list (the all-time card). */
+  all?: { costs: Map<UsageRecord, number>; total: number; cost: number }
+  /** Normal-mode median speed of the whole list. */
+  speed?: { tps?: number }
+}
+
+const indexes = new WeakMap<UsageRecord[], RecordIndex>()
+
+function indexOf(records: UsageRecord[]): RecordIndex {
+  const n = records.length
+  let x = indexes.get(records)
+  // A list changed in place since it was indexed: index it again.
+  if (
+    x &&
+    (x.ts.length !== n || (n && (x.first !== records[0].ts || x.last !== records[n - 1].ts)))
+  )
+    x = undefined
+  if (!x) {
+    const ts = new Float64Array(n)
+    let sorted = true
+    for (let i = 0; i < n; i++) {
+      ts[i] = records[i].ts
+      if (i && !(ts[i] >= ts[i - 1])) sorted = false
+    }
+    x = { ts, sorted, first: n ? records[0].ts : NaN, last: n ? records[n - 1].ts : NaN }
+    indexes.set(records, x)
+  }
+  return x
+}
+
+/** First index whose time is ≥ t (sorted lists). */
+function lowerBound(ts: Float64Array, t: number): number {
+  let lo = 0
+  let hi = ts.length
+  while (lo < hi) {
+    const mid = (lo + hi) >>> 1
+    if (ts[mid] < t) lo = mid + 1
+    else hi = mid
+  }
+  return lo
+}
+
+/**
+ * Index bounds [lo, hi) holding every record with from ≤ ts < to (the whole
+ * list when it isn't in time order). Callers still test each record, so the
+ * bounds only ever skip records that would be skipped anyway.
+ */
+export function spanOf(records: UsageRecord[], from: number, to: number): [number, number] {
+  const x = indexOf(records)
+  if (!x.sorted) return [0, records.length]
+  const lo = from === -Infinity ? 0 : lowerBound(x.ts, from)
+  const hi = to === Infinity ? records.length : lowerBound(x.ts, to)
+  return [lo, Math.max(lo, hi)]
+}
+
+/** Each record's cost at a price table (worked out once per list and table). */
+export function costsOf(records: UsageRecord[], prices: ModelPrice[]): Map<UsageRecord, number> {
+  const x = indexOf(records)
+  if (x.costs?.prices === prices) return x.costs.map
+  const map = new Map<UsageRecord, number>()
+  for (const r of records) map.set(r, recordCost(r, prices))
+  x.costs = { prices, map }
+  return map
+}
+
+/** Each record's cost at a price table, by position in the list. */
+function costArrOf(records: UsageRecord[], prices: ModelPrice[]): Float64Array {
+  const x = indexOf(records)
+  if (x.costArr?.prices === prices) return x.costArr.arr
+  const map = costsOf(records, prices)
+  const arr = new Float64Array(records.length)
+  for (let i = 0; i < records.length; i++) arr[i] = map.get(records[i]) ?? 0
+  x.costArr = { prices, arr }
+  return arr
+}
+
+/**
+ * Records' costs: a map by record, or a lookup by position in the list
+ * being added up (quicker for big lists).
+ */
+export type Costs = Map<UsageRecord, number> | ((i: number) => number)
+
+/** The records with from ≤ ts < to, in list order. */
+export function inSpan(records: UsageRecord[], from: number, to: number): UsageRecord[] {
+  const [lo, hi] = spanOf(records, from, to)
+  const out: UsageRecord[] = []
+  for (let i = lo; i < hi; i++) {
+    const r = records[i]
+    if (r.ts >= from && r.ts < to) out.push(r)
+  }
+  return out
+}
+
+/** records[lo..hi) without copying them. */
+function* slice(records: UsageRecord[], lo: number, hi: number): Generator<UsageRecord> {
+  for (let i = lo; i < hi; i++) yield records[i]
+}
+
+const DAY_MS = 86_400_000
+
 export interface ReportContext {
   timeZone: string
   weekStart: WeekStart
@@ -111,36 +231,82 @@ export function breakdown(
   ctx: ReportContext,
   costs?: Map<UsageRecord, number>
 ): BreakdownRow[] {
-  const groups = new Map<string, Totals>()
-  const speeds = new Map<string, number[]>()
-  let grand = 0
-  for (const r of records) {
-    const k = dimensionKey(r, d, ctx)
-    let t = groups.get(k)
-    if (!t) groups.set(k, (t = emptyTotals()))
-    addRecord(t, r, costs?.get(r) ?? recordCost(r, ctx.prices))
-    grand += totalTokens(r)
-    // Speed: by model, a fast-mode model is a row of its own; other rows show normal mode only.
-    const v = d === 'model' || !isFast(r) ? outputSpeed(r) : undefined
-    if (v !== undefined) {
-      let xs = speeds.get(k)
-      if (!xs) speeds.set(k, (xs = []))
-      xs.push(v)
+  return breakdowns(records, [d], ctx, costs)[0]
+}
+
+/**
+ * Breakdowns by several dimensions in one pass over the records (each group
+ * adds its records in list order, as one breakdown at a time would). The
+ * same dimension twice gives the same rows.
+ */
+export function breakdowns(
+  records: UsageRecord[],
+  dims: Dimension[],
+  ctx: ReportContext,
+  costs?: Costs
+): BreakdownRow[][] {
+  const uniq = [...new Set(dims)]
+  const groups = uniq.map(() => new Map<string, Totals>())
+  const speeds = uniq.map(() => new Map<string, number[]>())
+  // A session's billing and source labels, asked once per session.
+  const perKey = (f?: (key: string) => string): ((key: string) => string) | undefined => {
+    if (!f) return undefined
+    const seen = new Map<string, string>()
+    return (key) => {
+      let v = seen.get(key)
+      if (v === undefined) seen.set(key, (v = f(key)))
+      return v
     }
   }
-  return [...groups.entries()]
-    .map(([key, t]) => {
-      const xs = speeds.get(key) ?? []
-      const tps = speedMedian(xs)
-      return {
-        key,
-        ...dimensionLabel(key, d, ctx),
-        ...t,
-        share: grand ? t.total / grand : 0,
-        ...(tps !== undefined ? { tps, tpsSamples: xs.length } : {})
+  const keyCtx: ReportContext = {
+    ...ctx,
+    billingOf: perKey(ctx.billingOf),
+    sourceOf: perKey(ctx.sourceOf)
+  }
+  let grand = 0
+  const costAt = typeof costs === 'function' ? costs : undefined
+  const costMap = typeof costs === 'function' ? undefined : costs
+  for (let j = 0; j < records.length; j++) {
+    const r = records[j]
+    const cost = costAt ? costAt(j) : (costMap?.get(r) ?? recordCost(r, ctx.prices))
+    grand += totalTokens(r)
+    const speed = outputSpeed(r)
+    const fast = isFast(r)
+    for (let i = 0; i < uniq.length; i++) {
+      const d = uniq[i]
+      const k = dimensionKey(r, d, keyCtx)
+      let t = groups[i].get(k)
+      if (!t) groups[i].set(k, (t = emptyTotals()))
+      addRecord(t, r, cost)
+      // Speed: by model, a fast-mode model is a row of its own; other rows show normal mode only.
+      const v = d === 'model' || !fast ? speed : undefined
+      if (v !== undefined) {
+        let xs = speeds[i].get(k)
+        if (!xs) speeds[i].set(k, (xs = []))
+        xs.push(v)
       }
-    })
-    .sort((a, b) => b.total - a.total)
+    }
+  }
+  const rows = uniq.map((d, i) =>
+    [...groups[i].entries()]
+      .map(([key, t]) => {
+        const xs = speeds[i].get(key) ?? []
+        const tps = speedMedian(xs)
+        return {
+          key,
+          ...dimensionLabel(key, d, ctx),
+          ...t,
+          share: grand ? t.total / grand : 0,
+          ...(tps !== undefined ? { tps, tpsSamples: xs.length } : {})
+        }
+      })
+      .sort((a, b) => b.total - a.total)
+  )
+  // A dimension asked for again gets its own copy (callers may sort or change theirs).
+  return dims.map((d, j) => {
+    const r = rows[uniq.indexOf(d)]
+    return dims.indexOf(d) === j ? r : r.map((x) => ({ ...x }))
+  })
 }
 
 function sumRange(
@@ -151,7 +317,9 @@ function sumRange(
 ): { total: number; cost: number } {
   let total = 0
   let cost = 0
-  for (const r of records) {
+  const [lo, hi] = spanOf(records, from, to)
+  for (let i = lo; i < hi; i++) {
+    const r = records[i]
     if (r.ts >= from && r.ts < to) {
       total += totalTokens(r)
       cost += costs.get(r) ?? 0
@@ -162,8 +330,17 @@ function sumRange(
 
 /** Median normal-mode output speed in a range (fast mode never moves it), when there's enough data. */
 function rangeSpeed(records: UsageRecord[], from: number, to: number): { tps?: number } {
-  const { tps } = medianSpeed(records, (r) => r.ts >= from && r.ts < to && notFast(r))
-  return tps !== undefined ? { tps } : {}
+  // The whole list's median is worked out once (a median doesn't depend on order).
+  const x = from === -Infinity && to === Infinity ? indexOf(records) : undefined
+  if (x?.speed) return x.speed
+  const [lo, hi] = spanOf(records, from, to)
+  const { tps } = medianSpeed(
+    { [Symbol.iterator]: () => slice(records, lo, hi) },
+    (r) => r.ts >= from && r.ts < to && notFast(r)
+  )
+  const out = tps !== undefined ? { tps } : {}
+  if (x) x.speed = out
+  return out
 }
 
 /** Daily totals for a range of day keys (for sparklines). */
@@ -176,7 +353,14 @@ function dailySpark(
   const keys = Array.from({ length: days }, (_, i) => addDays(fromKey, i))
   const index = new Map(keys.map((k, i) => [k, i]))
   const out = new Array<number>(days).fill(0)
-  for (const r of records) {
+  // Only records near those days can have one of their keys (two days of margin each side).
+  const [lo, hi] = spanOf(
+    records,
+    startOfDayKey(fromKey, timeZone) - 2 * DAY_MS,
+    startOfDayKey(addDays(fromKey, days), timeZone) + 2 * DAY_MS
+  )
+  for (let j = lo; j < hi; j++) {
+    const r = records[j]
     const i = index.get(dayKey(r.ts, timeZone))
     if (i !== undefined) out[i] += totalTokens(r)
   }
@@ -258,14 +442,7 @@ export function periodCards(
     ...rangeSpeed(records, monthStart, now + 1)
   })
 
-  let allTotal = 0
-  let allCost = 0
-  let first = Infinity
-  for (const r of records) {
-    allTotal += totalTokens(r)
-    allCost += costs.get(r) ?? 0
-    if (r.ts < first) first = r.ts
-  }
+  const { total: allTotal, cost: allCost, first } = allTime(records, costs)
   cards.push({
     id: 'all',
     label: 'All-time',
@@ -279,10 +456,33 @@ export function periodCards(
   return cards
 }
 
+/** Total tokens, cost (summed in list order) and first time of a whole list. */
+function allTime(
+  records: UsageRecord[],
+  costs: Map<UsageRecord, number>
+): { total: number; cost: number; first: number } {
+  const x = indexOf(records)
+  let first = Infinity
+  if (x.sorted) first = records.length ? records[0].ts : Infinity
+  else for (const r of records) if (r.ts < first) first = r.ts
+  if (x.all?.costs === costs) return { total: x.all.total, cost: x.all.cost, first }
+  let total = 0
+  let cost = 0
+  for (const r of records) {
+    total += totalTokens(r)
+    cost += costs.get(r) ?? 0
+  }
+  // Kept for the list's own cost table only (a map made for one report isn't kept).
+  if (x.costs?.map === costs) x.all = { costs, total, cost }
+  return { total, cost, first }
+}
+
 function hourlySpark(records: UsageRecord[], from: number, now: number): number[] {
   const hours = Math.max(1, Math.ceil((now - from) / 3_600_000))
   const out = new Array<number>(Math.min(24, hours)).fill(0)
-  for (const r of records) {
+  const [lo, hi] = spanOf(records, from, now + 1)
+  for (let j = lo; j < hi; j++) {
+    const r = records[j]
     if (r.ts < from || r.ts > now) continue
     const i = Math.min(out.length - 1, Math.floor((r.ts - from) / 3_600_000))
     out[i] += totalTokens(r)
@@ -301,7 +501,10 @@ function weeklySpark(
   const keys = Array.from({ length: weeks }, (_, i) => addDays(last, -7 * (weeks - 1 - i)))
   const index = new Map(keys.map((k, i) => [k, i]))
   const out = new Array<number>(weeks).fill(0)
-  for (const r of records) {
+  // Records long before the first week can't be in any (two days of margin).
+  const [lo, hi] = spanOf(records, startOfDayKey(keys[0], tz) - 2 * DAY_MS, Infinity)
+  for (let j = lo; j < hi; j++) {
+    const r = records[j]
     const i = index.get(weekKey(r.ts, tz, weekStart))
     if (i !== undefined) out[i] += totalTokens(r)
   }
@@ -313,21 +516,24 @@ export function timeSeries(
   records: UsageRecord[],
   query: Pick<UsageQuery, 'period' | 'from' | 'to'>,
   ctx: ReportContext,
-  costs: Map<UsageRecord, number>
+  costs: Costs
 ): SeriesPoint[] {
   const { period } = query
   const tz = ctx.timeZone
   const points = new Map<string, SeriesPoint>()
   let minTs = Infinity
   let maxTs = -Infinity
-  for (const r of records) {
+  const costAt = typeof costs === 'function' ? costs : undefined
+  const costMap = typeof costs === 'function' ? undefined : costs
+  for (let j = 0; j < records.length; j++) {
+    const r = records[j]
     const k = bucketKey(r.ts, period, tz, ctx.weekStart)
     let p = points.get(k)
     if (!p) {
       p = { bucket: k, start: bucketRange(k, period, tz).start, ...emptyTotals(), byModel: {} }
       points.set(k, p)
     }
-    addRecord(p, r, costs.get(r) ?? 0)
+    addRecord(p, r, costAt ? costAt(j) : (costMap?.get(r) ?? 0))
     p.byModel[r.model] = (p.byModel[r.model] ?? 0) + totalTokens(r)
     if (ctx.byProvider) {
       const pv = providerOfRecord(r)
@@ -408,13 +614,67 @@ function finishBlock(b: UsageBlock & { modelSet: Set<string> }, now: number): Us
 
 export function filterRecords(records: UsageRecord[], q: UsageQuery): UsageRecord[] {
   const models = q.models?.length ? new Set(q.models) : undefined
-  return records.filter(
-    (r) =>
+  const [lo, hi] = spanOf(records, q.from ?? -Infinity, q.to ?? Infinity)
+  const out: UsageRecord[] = []
+  for (let i = lo; i < hi; i++) {
+    const r = records[i]
+    if (
       (q.from === undefined || r.ts >= q.from) &&
       (q.to === undefined || r.ts < q.to) &&
       (!models || models.has(r.model)) &&
       (!q.sessionKey || r.key === q.sessionKey)
-  )
+    )
+      out.push(r)
+  }
+  return out
+}
+
+/** filterRecords, also giving each kept record's position in `records`. */
+function filterWithPositions(
+  records: UsageRecord[],
+  q: UsageQuery
+): { kept: UsageRecord[]; pos: Int32Array } {
+  const models = q.models?.length ? new Set(q.models) : undefined
+  const [lo, hi] = spanOf(records, q.from ?? -Infinity, q.to ?? Infinity)
+  const kept: UsageRecord[] = []
+  const pos = new Int32Array(hi - lo)
+  for (let i = lo; i < hi; i++) {
+    const r = records[i]
+    if (
+      (q.from === undefined || r.ts >= q.from) &&
+      (q.to === undefined || r.ts < q.to) &&
+      (!models || models.has(r.model)) &&
+      (!q.sessionKey || r.key === q.sessionKey)
+    ) {
+      pos[kept.length] = i
+      kept.push(r)
+    }
+  }
+  return { kept, pos }
+}
+
+/**
+ * The newest `max` records, newest first: exactly what a stable sort by time
+ * (newest first) and a slice give, without sorting a list already in order.
+ */
+export function newestFirst(records: UsageRecord[], max: number): UsageRecord[] {
+  if (!indexOf(records).sorted) return [...records].sort((a, b) => b.ts - a.ts).slice(0, max)
+  const out: UsageRecord[] = []
+  let j = records.length - 1
+  while (j >= 0 && out.length < max) {
+    // A run of equal times keeps its list order (the sort is stable).
+    let k = j
+    while (k > 0 && records[k - 1].ts === records[j].ts) k--
+    for (let i = k; i <= j && out.length < max; i++) out.push(records[i])
+    j = k - 1
+  }
+  return out
+}
+
+/** The list's model ids, sorted (worked out once per list). */
+function modelsOf(records: UsageRecord[]): string[] {
+  const x = indexOf(records)
+  return (x.models ??= [...new Set(records.map((r) => r.model))].sort())
 }
 
 export function buildReport(
@@ -422,26 +682,39 @@ export function buildReport(
   query: UsageQuery,
   ctx: ReportContext
 ): UsageReport {
-  const costs = new Map<UsageRecord, number>()
-  for (const r of all) costs.set(r, recordCost(r, ctx.prices))
-  const inRange = filterRecords(all, query)
+  const costs = costsOf(all, ctx.prices)
+  const arr = costArrOf(all, ctx.prices)
+  const { kept: inRange, pos } = filterWithPositions(all, query)
+  // In-range record i's cost (the same numbers as the map, by position).
+  const costAt = (i: number): number => arr[pos[i]]
   const totals = emptyTotals()
   const extra = new Set<string>()
-  for (const r of inRange) {
-    addRecord(totals, r, costs.get(r) ?? 0)
-    if (r.extra) for (const k of Object.keys(r.extra)) extra.add(k)
+  for (let i = 0; i < inRange.length; i++) {
+    const r = inRange[i]
+    addRecord(totals, r, costAt(i))
+    if (r.extra) for (const k in r.extra) extra.add(k)
   }
-  const models = [...new Set(all.map((r) => r.model))].sort()
-  const raw = [...inRange].sort((a, b) => b.ts - a.ts).slice(0, 500)
+  const models = [...modelsOf(all)]
+  const raw = newestFirst(inRange, 500)
   let first: number | undefined
   let last: number | undefined
-  for (const r of all) {
-    if (first === undefined || r.ts < first) first = r.ts
-    if (last === undefined || r.ts > last) last = r.ts
-  }
+  if (indexOf(all).sorted && all.length) {
+    first = all[0].ts
+    last = all[all.length - 1].ts
+  } else
+    for (const r of all) {
+      if (first === undefined || r.ts < first) first = r.ts
+      if (last === undefined || r.ts > last) last = r.ts
+    }
   const allForCards = query.models?.length
     ? filterRecords(all, { ...query, from: undefined, to: undefined })
     : all
+  const [byGroup, byModel, bySession] = breakdowns(
+    inRange,
+    [query.groupBy ?? 'model', 'model', 'session'],
+    ctx,
+    costAt
+  )
   return {
     generatedAt: ctx.now,
     timeZone: ctx.timeZone,
@@ -451,13 +724,13 @@ export function buildReport(
     lastRecordAt: last,
     models,
     totals,
-    series: timeSeries(inRange, query, ctx, costs),
-    breakdown: breakdown(inRange, query.groupBy ?? 'model', ctx, costs),
-    byModel: breakdown(inRange, 'model', ctx, costs),
-    topSessions: breakdown(inRange, 'session', ctx, costs).slice(0, 12),
+    series: timeSeries(inRange, query, ctx, costAt),
+    breakdown: byGroup,
+    byModel,
+    topSessions: bySession.slice(0, 12),
     cards: periodCards(allForCards, ctx, costs),
     blocks: fiveHourBlocks(
-      all.filter((r) => r.ts >= ctx.now - 8 * 86_400_000),
+      inSpan(all, ctx.now - 8 * 86_400_000, Infinity),
       ctx.now,
       ctx.prices
     ).slice(-40),

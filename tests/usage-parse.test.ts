@@ -66,3 +66,31 @@ describe('usage parser', () => {
     await parser.stop()
   })
 })
+
+describe('usage parser thread', () => {
+  it('starts when there is a file, ends when idle, and starts again', async () => {
+    const { mkdtemp, writeFile, rm } = await import('node:fs/promises')
+    const { tmpdir } = await import('node:os')
+    const dir = await mkdtemp(join(tmpdir(), 'csd-parser-'))
+    try {
+      // A stand-in thread that answers every job with an empty analysis.
+      const path = join(dir, 'worker.mjs')
+      await writeFile(
+        path,
+        "import { parentPort } from 'node:worker_threads'\n" +
+          "parentPort.on('message', (m) => parentPort.postMessage({ id: m.id, ok: true, value: { records: [], turns: [], limitHits: [], usageReadings: [], file: m.job.path } }))\n"
+      )
+      const parser = new WorkerParser(path, 128, 50)
+      const job: UsageParseJob = { provider: 'claude', path: 'a.jsonl', ctx: ctx('a') }
+      expect(parser.running).toBe(false)
+      expect(await parser.parse(job)).toMatchObject({ file: 'a.jsonl' })
+      expect(parser.running).toBe(true)
+      await expect.poll(() => parser.running, { timeout: 3000 }).toBe(false)
+      expect(await parser.parse({ ...job, path: 'b.jsonl' })).toMatchObject({ file: 'b.jsonl' })
+      await parser.stop()
+      expect(parser.running).toBe(false)
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+})

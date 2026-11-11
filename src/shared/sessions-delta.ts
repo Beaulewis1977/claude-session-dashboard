@@ -18,10 +18,27 @@ export interface SessionsDelta {
   scan: SessionsPayload['scan']
 }
 
-/** What was last sent to one window: each session's JSON, and the order. */
+/**
+ * What was last sent to one window: a hash of each session's JSON (53 bits:
+ * keeping the strings would keep megabytes per window), and the order.
+ */
 export interface SentList {
-  json: Map<string, string>
+  json: Map<string, number>
   order: string
+}
+
+/** A 53-bit hash of a string (cyrb53). */
+export function hash53(s: string): number {
+  let h1 = 0xdeadbeef
+  let h2 = 0x41c6ce57
+  for (let i = 0; i < s.length; i++) {
+    const c = s.charCodeAt(i)
+    h1 = Math.imul(h1 ^ c, 2654435761)
+    h2 = Math.imul(h2 ^ c, 1597334677)
+  }
+  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909)
+  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909)
+  return 4294967296 * (2097151 & h2) + (h1 >>> 0)
 }
 
 /** The delta from what was sent to `payload`, and what's sent after it. */
@@ -29,10 +46,10 @@ export function sessionsDelta(
   sent: SentList,
   payload: SessionsPayload
 ): { delta: SessionsDelta; next: SentList } {
-  const json = new Map<string, string>()
+  const json = new Map<string, number>()
   const upserts: SessionSummary[] = []
   for (const s of payload.sessions) {
-    const j = JSON.stringify(s)
+    const j = hash53(JSON.stringify(s))
     json.set(s.key, j)
     if (sent.json.get(s.key) !== j) upserts.push(s)
   }
@@ -54,8 +71,8 @@ export function sessionsDelta(
 
 /** What's sent after a full list. */
 export function sentOf(payload: SessionsPayload): SentList {
-  const json = new Map<string, string>()
-  for (const s of payload.sessions) json.set(s.key, JSON.stringify(s))
+  const json = new Map<string, number>()
+  for (const s of payload.sessions) json.set(s.key, hash53(JSON.stringify(s)))
   return { json, order: payload.sessions.map((s) => s.key).join('\n') }
 }
 

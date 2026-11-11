@@ -1828,8 +1828,10 @@ These are choices I made where the spec left room, or had to deviate:
   AppUserModelID: the installed and portable app use `com.beaulewis.claude-session-dashboard`,
   `npm run dev` the same with `.dev`. Also check Windows Settings → System → Notifications for the
   app, and Do not disturb.
-- **Slow right after starting.** Start it with `CSD_TIMING=1` set to print the startup steps, each
-  Resume preview step, and any time the main process was busy for more than 100 ms;
+- **Slow right after starting, or a slow screen.** Start it with `CSD_TIMING=1` set to print the
+  startup steps, each Resume preview step, every IPC call that took over 50 ms or answered over
+  256 KB (channel, time and size only), and any time the main process was busy for more than
+  50 ms in the first minute (`CSD_TIMING_LOOP_MS` sets how long to watch);
   `CSD_CPU_PROFILE=<file>` also writes a CPU profile of the first 30 seconds.
 - **Nothing shows up.** Open Settings and check the scan sources. Add your `.claude` folder with
   **Add folder…** if it lives somewhere unusual.

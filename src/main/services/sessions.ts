@@ -194,6 +194,11 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
 
   // ---------------------------------------------------------------- public
 
+  /** A scan is running. */
+  get scanning(): boolean {
+    return this.scan.phase === 'scanning'
+  }
+
   payload(): SessionsPayload {
     return {
       sessions: this.list(),

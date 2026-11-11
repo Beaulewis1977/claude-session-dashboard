@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
+import type { SessionsDelta } from '@shared/sessions-delta'
 import type { CsdApi } from '@shared/api'
 import type { SessionsPayload } from '@shared/types'
 import type { SummaryQueueState } from '@shared/summary-queue'
@@ -17,6 +18,11 @@ const api: CsdApi = {
     const listener = (_e: unknown, payload: SessionsPayload): void => cb(payload)
     ipcRenderer.on('sessions:changed', listener)
     return () => ipcRenderer.removeListener('sessions:changed', listener)
+  },
+  onSessionsDelta: (cb) => {
+    const listener = (_e: unknown, delta: SessionsDelta): void => cb(delta)
+    ipcRenderer.on('sessions:delta', listener)
+    return () => ipcRenderer.removeListener('sessions:delta', listener)
   },
   getSession: (key, opts) => ipcRenderer.invoke('sessions:get', key, opts),
   getToolResult: (key, id) => ipcRenderer.invoke('sessions:toolResult', key, id),

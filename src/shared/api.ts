@@ -1,5 +1,6 @@
 // The API exposed to the renderer by the preload script (window.csd).
 
+import type { SessionsDelta } from './sessions-delta'
 import type {
   AppInfo,
   AppSettings,
@@ -110,6 +111,8 @@ export interface CsdApi {
   getInfo(): Promise<AppInfo>
   getSessions(): Promise<SessionsPayload>
   onSessionsChanged(cb: (payload: SessionsPayload) => void): () => void
+  /** Changes to the session list since the last full list or delta (see sessions-delta.ts). */
+  onSessionsDelta(cb: (delta: SessionsDelta) => void): () => void
   /** `cut`: long tool outputs cut (the viewer); then getToolResult has them in full. */
   getSession(key: string, opts?: { cut?: boolean }): Promise<SessionDetail | null>
   /** A tool result in full, by its block id (after a getSession with `cut`). */

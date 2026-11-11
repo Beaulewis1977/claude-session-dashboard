@@ -1,4 +1,5 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
+import { applySessionsDelta } from '@shared/sessions-delta'
 import { Toaster } from 'sonner'
 import { setClockOffset } from '@shared/clock'
 import { api } from '@/lib/api'
@@ -76,6 +77,14 @@ function useBootstrap(): void {
     void api.summaryState().then((summaryQueue) => set({ summaryQueue }))
     const offs = [
       api.onSessionsChanged((p) => set({ sessions: p.sessions, sources: p.sources, scan: p.scan })),
+      // Only what changed: unchanged sessions stay the same objects (their rows don't redraw).
+      api.onSessionsDelta((d) =>
+        set({
+          sessions: applySessionsDelta(useApp.getState().sessions, d),
+          sources: d.sources,
+          scan: d.scan
+        })
+      ),
       api.onSummariesChanged((summaryQueue) => set({ summaryQueue })),
       // Tray icon or limit notification clicked.
       api.onShowUsage(() => set({ view: 'usage' })),

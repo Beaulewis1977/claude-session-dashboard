@@ -1,4 +1,6 @@
 import { app, BrowserWindow, clipboard, dialog, nativeTheme, shell } from 'electron'
+import { sentOf, sessionsDelta, type SentList } from '@shared/sessions-delta'
+import { coalesce } from './core/coalesce'
 import { cutTranscript, matchesInCut, toolResultOf } from '@shared/transcript-cut'
 import { writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
@@ -39,6 +41,7 @@ import {
   type BranchRequest,
   type LaunchOptions,
   type SessionDetail,
+  type SessionsPayload,
   type SessionMeta,
   type TerminalPref,
   type ThemePref
@@ -233,9 +236,54 @@ export function registerIpc(deps: IpcDeps): void {
   const { sessions, settings, paths, platform } = deps
   const win = (): BrowserWindow | undefined => BrowserWindow.getAllWindows()[0]
 
-  sessions.on('changed', () => {
-    for (const w of BrowserWindow.getAllWindows())
-      w.webContents.send('sessions:changed', sessions.payload())
+  // The session list goes to each window as changes to what it has (see
+  // sessions-delta.ts): at most one a half second, one a second while a
+  // scan runs. A window that loaded (or asked for the list) gets it in full.
+  const sent = new Map<number, { list: SentList; sources: string; scan: string }>()
+  const remember = (id: number, p: SessionsPayload): void => {
+    sent.set(id, {
+      list: sentOf(p),
+      sources: JSON.stringify(p.sources),
+      scan: JSON.stringify(p.scan)
+    })
+  }
+  const pushSessions = coalesce(
+    () => {
+      const p = sessions.payload()
+      for (const w of BrowserWindow.getAllWindows()) {
+        const wc = w.webContents
+        const prev = sent.get(wc.id)
+        if (!prev) {
+          wc.send('sessions:changed', p)
+          remember(wc.id, p)
+          continue
+        }
+        const { delta, next } = sessionsDelta(prev.list, p)
+        const sources = JSON.stringify(p.sources)
+        const scan = JSON.stringify(p.scan)
+        sent.set(wc.id, { list: next, sources, scan })
+        if (
+          !delta.upserts.length &&
+          !delta.removed.length &&
+          !delta.keys &&
+          sources === prev.sources &&
+          scan === prev.scan
+        )
+          continue
+        wc.send('sessions:delta', delta)
+      }
+    },
+    () => (sessions.scanning ? 1000 : 500)
+  )
+  sessions.on('changed', pushSessions)
+  // A window that loads again starts from the full list.
+  app.on('web-contents-created', (_e, wc) => {
+    const forget = (): void => void sent.delete(wc.id)
+    wc.on('did-start-navigation', (d) => {
+      if (d.isMainFrame && !d.isSameDocument) forget()
+    })
+    wc.on('render-process-gone', forget)
+    wc.on('destroyed', forget)
   })
 
   const rescan = async (): Promise<void> => {
@@ -252,7 +300,12 @@ export function registerIpc(deps: IpcDeps): void {
     archiveDir: paths.archiveDir
   }))
 
-  handle('sessions:list', () => sessions.payload())
+  handle('sessions:list', (e) => {
+    const p = sessions.payload()
+    // What this window has now: later changes are sent as a delta from it.
+    if (e.sender?.id !== undefined) remember(e.sender.id, p)
+    return p
+  })
   // The viewer asks for its transcript with long tool outputs cut (see
   // transcript-cut.ts); the full one is kept a little while for Show all,
   // Copy output and find in a cut part, then let go.

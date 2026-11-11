@@ -153,15 +153,12 @@ describe('a long session in the viewer', { timeout: 30_000 }, () => {
       expect(await page.locator('[data-msg-ids="u0"]').count()).toBe(1)
       expect(await page.locator('[data-msg-ids="u299"]').count()).toBe(0)
       // It asked for the transcript with long outputs cut.
-      expect(
-        await page.evaluate(() => (window as unknown as { calls: unknown[] }).calls)
-      ).toContainEqual(['getSession', true])
+      expect(await page.evaluate<unknown[]>('window.calls')).toContainEqual(['getSession', true])
       // Scrolling to the end draws the last turns (and lets the first ones go).
       for (let i = 0; i < 30; i++) {
-        await page.evaluate((s) => {
-          const el = document.querySelector(s)!
-          el.scrollTop = el.scrollHeight
-        }, scroller)
+        await page.evaluate(
+          `(() => { const el = document.querySelector('${scroller}'); el.scrollTop = el.scrollHeight })()`
+        )
         await page.waitForTimeout(50)
         if (await page.locator('[data-msg-ids="a299"]').count()) break
       }
@@ -187,10 +184,9 @@ describe('a long session in the viewer', { timeout: 30_000 }, () => {
       await page.getByRole('button', { name: 'Next match' }).click()
       await expect
         .poll(() =>
-          page.evaluate(() => {
-            const el = document.querySelector('[data-msg-ids="u290"]')!.getBoundingClientRect()
-            return el.top >= 0 && el.bottom <= window.innerHeight
-          })
+          page.evaluate<boolean>(
+            `(() => { const r = document.querySelector('[data-msg-ids="u290"]').getBoundingClientRect(); return r.top >= 0 && r.bottom <= window.innerHeight })()`
+          )
         )
         .toBe(true)
     } finally {
@@ -206,7 +202,7 @@ describe('a long session in the viewer', { timeout: 30_000 }, () => {
       await page.getByRole('textbox', { name: 'Find in session' }).fill('needle')
       // The main process says which cut outputs hold it; that tool opens with its full text.
       await expect.poll(() => page.locator('.sr-only[aria-live]').innerText()).toBe('1 matches')
-      const calls = await page.evaluate(() => (window as unknown as { calls: unknown[] }).calls)
+      const calls = await page.evaluate<unknown[]>('window.calls')
       expect(calls).toContainEqual(['findInCut', 'needle'])
       expect(calls).toContainEqual(['getToolResult', 'tool200'])
       await expect
@@ -223,7 +219,7 @@ describe('a long session in the viewer', { timeout: 30_000 }, () => {
     try {
       const turn = page.locator('[data-msg-ids="a200"]')
       for (let i = 0; i < 60 && !(await turn.count()); i++) {
-        await page.evaluate((s) => (document.querySelector(s)!.scrollTop += 2500), scroller)
+        await page.evaluate(`document.querySelector('${scroller}').scrollTop += 2500`)
         await page.waitForTimeout(50)
       }
       await turn.scrollIntoViewIfNeeded()

@@ -1,5 +1,40 @@
 # Changelog
 
+## 1.16.1 (November 10, 2026)
+
+**Token speed: how fast Claude and Codex answer.**
+
+### Token speed and time to first token (PR #54)
+
+- **Output speed (tokens per second)** for every Claude Code and Codex response, worked out from
+  the timestamps in the logs (never from message text). Time spent running tools isn't counted.
+- **Time to first token:** Codex's own per-turn figure, and an estimate for Claude Code (only for
+  replies that start with thinking; the tooltip says what share of replies it comes from).
+- **Trends** (Claude Code and Codex, kept apart): weekly median output speed, output speed without
+  thinking/reasoning, and Claude's time to first token (est.), per model and per CLI version, with
+  the usual change markers and Compare.
+- **All view:** a combined "Output speed by model" chart, each line tagged Claude Code or Codex.
+- **Usage:** tok/s on the period cards and next to each model in the Models card.
+- **Each session** (desktop and phone): tok/s, time to first token and a Fast badge in the usage
+  strip, with a tooltip.
+- **Limit health:** a "Speed" row that compares each busy model's last 7 days with the 4 weeks
+  before. It's an extra signal only, never part of the score.
+- **Fast mode is tracked separately:** Claude Code's fast responses and Codex's priority tier are
+  counted as `<model>-fast`, get their own dashed line and compare rows, never mix into a
+  normal-mode median, and are priced at the official fast prices.
+- **Prices:** Claude Fable 5.2 and Mythos 5.2 added from Anthropic's pricing page. A newer minor
+  version is no longer silently priced by an older model's row.
+- **CSV export:** the per-response file gets `thinking_tokens`, `gen_ms`, `ttft_ms`,
+  `tokens_per_sec` and `fast_mode`; the daily file gets `median_tokens_per_sec` and
+  `speed_samples`.
+- Speeds are medians and need at least 5 responses. Very short replies, replies cut short or after
+  an API error, impossible timings and copied history (forks, subagents that inherit their parent's
+  history) are left out of the medians; they still count everywhere else.
+- **After updating,** the app re-reads all Claude Code sessions and Codex rollouts once, in the
+  background. Speeds fill in as they are read, and a restart picks up where it stopped.
+- Speed is an estimate: it includes waiting and thinking time, and network and server load affect
+  it. Only timings are stored, no content.
+
 ## 1.16.0 (November 10, 2026)
 
 **Ask across all sessions.**

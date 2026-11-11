@@ -82,6 +82,18 @@ medium.push({
       label: 'Write big.ts',
       input: { file_path: 'C:\\fixture\\big.ts', content },
       result: { text: 'File created', isError: false }
+    },
+    // A long command: "twoneedle" in the part sent and again past the cut, and a
+    // quoted, escaped path past the cut.
+    {
+      type: 'tool_use',
+      id: 'bash1',
+      name: 'Bash',
+      label: 'Bash: long command',
+      input: {
+        command: `echo twoneedle && ${'x'.repeat(7000)} && echo twoneedle "quoted" > C:\\tmp\\esc.txt`
+      },
+      result: { text: 'ok', isError: false }
     }
   ]
 })
@@ -284,6 +296,37 @@ describe('a long tool input', { timeout: 30_000 }, () => {
       await expect
         .poll(() => writeCall(page).locator('pre').first().innerText())
         .toContain('inputneedle')
+    } finally {
+      await page.close()
+    }
+  })
+
+  it('find counts a later match past the cut when the part sent has one too', async ({ skip }) => {
+    if (!browser) skip(unavailableReason)
+    const page = await open('medium')
+    try {
+      await page.keyboard.press('Control+f')
+      await page.getByRole('textbox', { name: 'Find in session' }).fill('twoneedle')
+      await expect.poll(() => page.locator('.sr-only[aria-live]').innerText()).toBe('2 matches')
+      expect(await page.evaluate<unknown[]>('window.calls')).toContainEqual([
+        'getToolInput',
+        'bash1'
+      ])
+    } finally {
+      await page.close()
+    }
+  })
+
+  it('find matches quoted and escaped text past the cut as it is shown', async ({ skip }) => {
+    if (!browser) skip(unavailableReason)
+    const page = await open('medium')
+    try {
+      await page.keyboard.press('Control+f')
+      const box = page.getByRole('textbox', { name: 'Find in session' })
+      await box.fill('"quoted"')
+      await expect.poll(() => page.locator('.sr-only[aria-live]').innerText()).toBe('1 matches')
+      await box.fill('C:\\tmp\\esc')
+      await expect.poll(() => page.locator('.sr-only[aria-live]').innerText()).toBe('1 matches')
     } finally {
       await page.close()
     }

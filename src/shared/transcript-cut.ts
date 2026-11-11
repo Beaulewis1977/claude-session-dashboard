@@ -233,9 +233,36 @@ export function toolInputOf(messages: ChatMessage[], id: string): { input: unkno
   return undefined
 }
 
+/** Added to a matched block's id: which of its parts holds the match past its cut. */
+export const OUTPUT_MATCH = '#output'
+export const INPUT_MATCH = '#input'
+
 /**
- * Blocks whose result or input holds `query` only in the part a cut leaves
- * out (case-insensitive; an input as find sees it: its JSON).
+ * `text`, of which the first `sentLen` characters were sent, holds `q`
+ * (lower-cased) somewhere that isn't wholly inside what was sent: also when
+ * the sent part holds it too (a later one is still hidden).
+ */
+export function holdsPast(text: string, sentLen: number, q: string): boolean {
+  if (!q || sentLen >= text.length) return false
+  const from = text.slice(0, sentLen).toLowerCase().length
+  return text.toLowerCase().indexOf(q, Math.max(0, from - q.length + 1)) !== -1
+}
+
+/** The value at a cut's path in an input. */
+function at(v: unknown, path: (string | number)[]): unknown {
+  let x = v
+  for (const k of path) x = (x as Record<string | number, unknown> | undefined)?.[k]
+  return x
+}
+
+/** A string as it shows inside JSON (an input the viewer draws as JSON): its escapes. */
+const escaped = (v: string): string => JSON.stringify(v).slice(1, -1)
+
+/**
+ * The blocks whose result or input holds `query` past the part a cut sent
+ * (case-insensitive), each by its id and by its id with OUTPUT_MATCH or
+ * INPUT_MATCH for the part. An input's strings are looked at as the viewer
+ * shows them: as they are (a command, a file, an edit) and as JSON.
  */
 export function matchesInCut(
   messages: ChatMessage[],
@@ -247,25 +274,29 @@ export function matchesInCut(
   const out: string[] = []
   for (const m of messages)
     m.blocks.forEach((b, i) => {
+      const id = blockIdOf(m, b, i)
+      let found = false
       const r = b.type === 'tool_use' ? b.result : b.type === 'tool_result' ? b.result : undefined
       if (r) {
         const sent = cutResult(r, limits)
-        // A match that starts in the sent part and ends past it: in the hidden part too.
-        if (
-          sent !== r &&
-          r.text.toLowerCase().includes(q) &&
-          !sent.text.toLowerCase().includes(q)
-        ) {
-          out.push(blockIdOf(m, b, i))
-          return
+        if (sent !== r && holdsPast(r.text, sent.text.length, q)) {
+          out.push(id, id + OUTPUT_MATCH)
+          found = true
         }
       }
       if (b.type !== 'tool_use') return
       const inp = cutInput(b.input, limits)
       if (!inp) return
-      const full = (JSON.stringify(b.input) ?? '').toLowerCase()
-      if (full.includes(q) && !(JSON.stringify(inp.input) ?? '').toLowerCase().includes(q))
-        out.push(b.id)
+      const hit = inp.cuts.some((c) => {
+        const full = at(b.input, c.path)
+        const sent = at(inp.input, c.path)
+        if (typeof full !== 'string' || typeof sent !== 'string') return false
+        return holdsPast(full, sent.length, q) || holdsPast(escaped(full), escaped(sent).length, q)
+      })
+      if (hit) {
+        if (!found) out.push(id)
+        out.push(id + INPUT_MATCH)
+      }
     })
   return out
 }

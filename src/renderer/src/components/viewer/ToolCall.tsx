@@ -20,7 +20,7 @@ import { truncateText } from '@/lib/transcript'
 import { useOpenState } from '@/lib/open-state'
 import { toolInputText, toolOutputText } from '@/lib/copy'
 import { api } from '@/lib/api'
-import { CUT, cutInput } from '@shared/transcript-cut'
+import { CUT, cutInput, holdsPast, INPUT_MATCH, OUTPUT_MATCH } from '@shared/transcript-cut'
 import { ErrorBoundary, RenderFailed } from '../ErrorBoundary'
 import { TranscriptContext } from './transcript-context'
 import { SpriteIcon } from '../ui/sprite-icon'
@@ -285,12 +285,8 @@ function InputBody({ tool, cwd, findQuery }: { tool: ToolUse; cwd?: string; find
   const cut = tool.inputCut
   const view = inputPreview(tool)
   const q = findQuery?.trim().toLowerCase()
-  // Cut, and find's match isn't in what was sent: it's past the cut.
-  const hiddenMatch =
-    !!q &&
-    !!cut &&
-    cutMatches.has(tool.id) &&
-    !(JSON.stringify(tool.input) ?? '').toLowerCase().includes(q)
+  // Cut, and the main process found the query past the cut (a later one too).
+  const hiddenMatch = !!q && !!cut && cutMatches.has(tool.id + INPUT_MATCH)
   const full = showFull || hiddenMatch
   useEffect(() => {
     if (!full || !cut || loaded) return
@@ -413,12 +409,13 @@ function ResultBody({
   const totalLines = cut?.lines ?? t.totalLines
   const totalChars = cut?.chars ?? result.text.length
   // Expand automatically when a find match sits in the hidden part (past the cut too).
-  const q = findQuery?.toLowerCase()
+  // A match past what's shown: also when the preview holds one too (a later one is hidden).
+  const q = findQuery?.trim().toLowerCase()
   const hiddenMatch =
     !!q &&
     truncated &&
-    ((!!blockId && cutMatches.has(blockId)) ||
-      (result.text.toLowerCase().includes(q) && !t.text.toLowerCase().includes(q)))
+    ((!!blockId && cutMatches.has(blockId + OUTPUT_MATCH)) ||
+      holdsPast(result.text, t.text.length, q))
   const full = showAll || hiddenMatch
   // A cut output's full text, once it's to be shown.
   useEffect(() => {

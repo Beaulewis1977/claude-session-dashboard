@@ -11,8 +11,8 @@ import {
   toolInputOf,
   toolResultOf
 } from '@shared/transcript-cut'
-import type { ChatMessage } from '@shared/types'
-import { truncateText } from '../src/renderer/src/lib/transcript'
+import type { ChatMessage, ContentBlock } from '@shared/types'
+import { searchText, truncateText } from '../src/renderer/src/lib/transcript'
 
 const long = `${'line\n'.repeat(3000)}tail needle`
 const messages: ChatMessage[] = [
@@ -123,10 +123,12 @@ describe('cut transcripts', () => {
     }
   })
 
-  it('finds a query only in the part a cut leaves out', () => {
-    expect(matchesInCut(messages, 'NEEDLE')).toEqual(['t1', 'u2:0'])
-    // In the part that is sent: nothing to ask for.
-    expect(matchesInCut(messages, 'line')).toEqual([])
+  it('finds a query in the part a cut leaves out', () => {
+    expect(matchesInCut(messages, 'NEEDLE')).toEqual(['t1', 't1#output', 'u2:0', 'u2:0#output'])
+    // Also when the sent part holds it too: the later ones are still hidden.
+    expect(matchesInCut(messages, 'line')).toEqual(['t1', 't1#output', 'u2:0', 'u2:0#output'])
+    // Only where nothing was cut: nothing to ask for.
+    expect(matchesInCut(messages, 'short needle')).toEqual([])
     expect(matchesInCut(messages, '  ')).toEqual([])
   })
 })
@@ -253,12 +255,53 @@ describe('cut tool inputs', () => {
     expect(c.cuts[0].chars).toBe(s.length)
   })
 
-  it('finds a query that is only past an input cut (as find sees an input: its JSON)', () => {
-    expect(matchesInCut(tools, 'INPUT NEEDLE')).toEqual(['w1', 'm1'])
-    expect(matchesInCut(tools, 'result needle')).toEqual(['r1'])
-    // In what is sent: nothing to ask for.
-    expect(matchesInCut(tools, 'const x')).toEqual([])
+  it('finds a query past an input cut, saying which part holds it', () => {
+    expect(matchesInCut(tools, 'INPUT NEEDLE')).toEqual(['w1', 'w1#input', 'm1', 'm1#input'])
+    expect(matchesInCut(tools, 'result needle')).toEqual(['r1', 'r1#output'])
+    // Only in what is sent: nothing to ask for.
     expect(matchesInCut(tools, 'begin patch')).toEqual([])
+    expect(matchesInCut(tools, '/p/a.ts')).toEqual([])
+  })
+
+  const bash = (command: string): ChatMessage[] => [
+    {
+      id: 'a',
+      role: 'assistant',
+      kind: 'response',
+      blocks: [{ type: 'tool_use', id: 'b1', name: 'Bash', label: 'Bash', input: { command } }]
+    }
+  ]
+
+  it('finds a later occurrence past the cut when the sent part holds one too', () => {
+    const cmd = `echo needle && ${'x'.repeat(7000)} && echo needle`
+    expect(matchesInCut(bash(cmd), 'needle')).toEqual(['b1', 'b1#input'])
+    // Only in the sent part: nothing.
+    expect(matchesInCut(bash(`echo needle && ${'x'.repeat(7000)}`), 'needle')).toEqual([])
+    // One that starts in the sent part and ends past it is hidden too.
+    const edge = `${'x'.repeat(CUT.inChars - 3)}needle${'y'.repeat(3000)}`
+    expect(matchesInCut(bash(edge), 'needle')).toEqual(['b1', 'b1#input'])
+  })
+
+  it('finds quoted and escaped text past the cut as the viewer shows it, and as JSON', () => {
+    const cmd = `${'x'.repeat(7000)} echo "hello" > C:\\temp\\out.txt`
+    // As a command shows: the string itself.
+    expect(matchesInCut(bash(cmd), '"hello"')).toEqual(['b1', 'b1#input'])
+    expect(matchesInCut(bash(cmd), 'C:\\temp\\out')).toEqual(['b1', 'b1#input'])
+    // As a JSON view shows it: escaped.
+    expect(matchesInCut(bash(cmd), '\\"hello\\"')).toEqual(['b1', 'b1#input'])
+    expect(matchesInCut(bash(cmd), 'C:\\\\temp')).toEqual(['b1', 'b1#input'])
+    expect(matchesInCut(bash(cmd), 'nothing like it')).toEqual([])
+  })
+
+  it('a tool call is found by its input as shown (find in what was sent)', () => {
+    const b: ContentBlock = {
+      type: 'tool_use',
+      id: 'q',
+      name: 'Bash',
+      label: 'Bash',
+      input: { command: 'echo "hi" C:\\x' }
+    }
+    expect(searchText(b)).toContain('echo "hi" C:\\x')
   })
 })
 
@@ -305,9 +348,13 @@ describe('very long transcripts', () => {
   })
 
   it('find looks past the same cut the viewer got', () => {
-    // Shown in the usual preview, but past a placeholder.
-    expect(matchesInCut(msgs, 'row of output\nrow', CUT)).toEqual([])
-    expect(matchesInCut(msgs, 'output\nrow', LAZY)).toHaveLength(30)
-    expect(matchesInCut(msgs, 'deep needle', LAZY)).toHaveLength(30)
+    // Past the placeholders, in both parts of every tool call.
+    const lazy = matchesInCut(msgs, 'deep needle', LAZY)
+    expect(lazy).toHaveLength(90)
+    expect(lazy.slice(0, 3)).toEqual(['t0', 't0#output', 't0#input'])
+    // The first line every placeholder shows, and the later ones it hides.
+    expect(matchesInCut(msgs, 'row of output', LAZY)).toHaveLength(90)
+    // Only in the placeholder's line: nothing.
+    expect(matchesInCut(msgs, 'f.ts', LAZY)).toEqual([])
   })
 })

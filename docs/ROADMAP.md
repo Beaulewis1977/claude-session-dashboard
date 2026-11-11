@@ -391,6 +391,9 @@ Run typecheck, lint, tests and the build. Commit, push the branch and open a PR 
 - ✅ Performance: a fast Usage & limits screen (exact record index, one fetch per report, a parser
   thread), a virtualized viewer with cut tool outputs, session list deltas, smaller installers
   with a build check (PR #58, v1.16.3)
+- ✅ Memory & big sessions: long tool inputs trimmed with Show full (placeholders for very long
+  sessions), virtualized by size so short sessions keep normal selection, fewer allocations in
+  usage reports and the Codex fork check, the parser thread let go after a scan (PR #60, v1.16.4)
 
 **Next up:**
 
@@ -415,8 +418,8 @@ Then the loose ends below.
 
 **Loose ends:**
 
-- Memory & big sessions follow-up: trim large tool inputs, virtualize shorter sessions, reduce
-  main-process memory churn.
+- Memory: opening Usage still briefly takes the main heap to ~600 MB of garbage (source not yet
+  found). The session search index (~60–70 MB, loaded at startup) could load on the first search.
 - Tests: `summarize-dialog.browser.test.ts` (preparation progress) can hit its 15 s timeout under
   full-suite load; it passes alone.
 - Startup (left after the loose-ends PR): the main process can still be busy for up to ~0.4 s at a

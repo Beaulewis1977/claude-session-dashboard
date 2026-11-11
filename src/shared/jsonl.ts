@@ -165,7 +165,10 @@ export interface SessionAnalysis {
   userMessageCount: number
   assistantMessageCount: number
   toolCallCount: number
+  /** Every model the session used, in the order each first appeared. */
   models: string[]
+  /** The model of the session's last reply (its main thread, not a subagent's). */
+  lastModel?: string
   /** Plain text of the conversation, for full-text search. */
   searchText: string
   /** uuid of the first real prompt. Forks and branches keep it, so it groups a family. */
@@ -431,7 +434,10 @@ export function analyzeEvents(events: RawEvent[], opts: AnalyzeOptions = {}): Se
       const m = messageOf(e)
       const id = str(m?.id) ?? str(e.uuid)
       const model = str(m?.model)
-      if (model && model !== '<synthetic>') models.add(model)
+      if (model && model !== '<synthetic>') {
+        models.add(model)
+        a.lastModel = model
+      }
       const content = contentOf(e)
       if (id) {
         if (!assistantIds.has(id)) {

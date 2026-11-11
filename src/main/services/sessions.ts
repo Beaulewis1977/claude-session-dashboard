@@ -66,7 +66,8 @@ import {
 // v13: when each claude.ai/code link was seen, and older Codex copies found more closely.
 // v14: cloud-link hints only for a real link outside Remote Control (local sessions were
 // labelled "Cloud" for an empty `remote_session_change` attachment).
-const CACHE_VERSION = 14
+// v15: the model of each session's last reply (what fast mode is offered for).
+const CACHE_VERSION = 15
 
 interface CacheFile {
   version: number
@@ -768,8 +769,8 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
     sessionId: string,
     branch: BranchRecord,
     name?: string,
-    /** The parent's own model / effort choice, kept by the branch. */
-    inherit: Pick<SessionMeta, 'model' | 'effort'> = {}
+    /** The parent's own model / effort / fast-mode choice, kept by the branch. */
+    inherit: Pick<SessionMeta, 'model' | 'effort' | 'fast'> = {}
   ): void {
     const kept = cleanMetaPatch(inherit)
     this.metadata.update((d) => {
@@ -780,6 +781,7 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
         ...(name && !prev.name ? { name, nameAt: new Date().toISOString() } : {}),
         ...(kept.model && !prev.model ? { model: kept.model } : {}),
         ...(kept.effort && !prev.effort ? { effort: kept.effort } : {}),
+        ...(kept.fast && !prev.fast ? { fast: kept.fast } : {}),
         updatedAt: new Date().toISOString()
       }
     })
@@ -838,7 +840,7 @@ export class SessionService extends EventEmitter<{ changed: [] }> {
         createdAt: p.createdAt
       },
       p.name,
-      { model: p.model, effort: p.effort }
+      { model: p.model, effort: p.effort, fast: p.fast }
     )
   }
 

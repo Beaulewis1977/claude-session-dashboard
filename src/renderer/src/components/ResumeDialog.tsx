@@ -39,6 +39,9 @@ import { BillingPicker } from './BillingPicker'
 import { capsOf, providerOf } from '@shared/provider'
 import { BranchPointCard } from './viewer/Branches'
 import { SessionModelControls } from './ModelPicker'
+import { FastModeNotes } from './FastModeNote'
+import { fastNotes } from '@shared/fast-notes'
+import { asBranch } from '@/lib/model-choice'
 import { choiceLabel } from '@shared/model-choice'
 import { projectDefault, projectDefaultKey, withProjectDefault } from '@shared/project-key'
 import type { AcceptedProject, CodexAppKind, OpenIn } from '@shared/codex-app'
@@ -122,6 +125,7 @@ export function ResumeDialog() {
 function ResumeDialogBody({ resume }: { resume: ResumeRequest }) {
   const sessions = useApp((s) => s.sessions)
   const settings = useApp((s) => s.settings)
+  const codexLimits = useApp((s) => s.codexLimits)
   const info = useApp((s) => s.info)
   const set = useApp((s) => s.set)
   const session = sessions.find((s) => s.key === resume.key)
@@ -286,11 +290,14 @@ function ResumeDialogBody({ resume }: { resume: ResumeRequest }) {
     // The model / effort pickers save right away; the command follows them.
     session?.meta.model,
     session?.meta.effort,
+    session?.meta.fast,
     settings.defaultModel,
     settings.defaultEffort,
+    settings.defaultFast,
     settings.projectModels,
     settings.codexDefaultModel,
     settings.codexDefaultEffort,
+    settings.codexDefaultFast,
     settings.codexProjectModels
   ])
 
@@ -800,11 +807,11 @@ function ResumeDialogBody({ resume }: { resume: ResumeRequest }) {
 
               <div>
                 <div className="mb-1.5 flex items-center gap-1.5 text-xs font-medium">
-                  Model and effort
+                  Model, effort and fast mode
                   <Tooltip
                     content={
                       codex
-                        ? "Saved for this session. Default uses the project's default, then Settings → Codex, then Codex's own (no -m / -c model_reasoning_effort)."
+                        ? "Saved for this session. Default uses the project's default, then Settings → Codex, then Codex's own (no -m / -c model_reasoning_effort / -c service_tier)."
                         : "Saved for this session. Default uses the project's default, then Settings, then Claude Code's own (no flag). An effort level set with CLAUDE_CODE_EFFORT_LEVEL wins over --effort."
                     }
                     side="right"
@@ -815,7 +822,26 @@ function ResumeDialogBody({ resume }: { resume: ResumeRequest }) {
                     />
                   </Tooltip>
                 </div>
-                <SessionModelControls session={session} />
+                <SessionModelControls
+                  // A branch resumes on the model of the last reply it keeps (once the preview knows it).
+                  session={
+                    branchAt && preview?.branch
+                      ? asBranch(session, preview.branch.lastModel)
+                      : session
+                  }
+                  newSession={newSession || continueFresh}
+                />
+                <FastModeNotes
+                  className="mt-2"
+                  notes={fastNotes({
+                    fast: preview?.modelChoice?.fast,
+                    agent: codex ? 'codex' : 'claude',
+                    api: !!billingAccountId,
+                    inApp: claudeMode ? 'claude-app' : appMode ? 'codex-app' : undefined,
+                    codexLimits,
+                    pauseAbovePct: settings.summaries.pauseAbovePct
+                  })}
+                />
               </div>
 
               {caps.remoteControl && (

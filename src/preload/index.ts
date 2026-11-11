@@ -43,6 +43,7 @@ const api: CsdApi = {
   openClaudeSettings: (id) => ipcRenderer.invoke('sources:openSettings', id),
   previewLaunch: (opts) => ipcRenderer.invoke('launch:preview', opts),
   launch: (opts) => ipcRenderer.invoke('launch:run', opts),
+  getFastModels: () => ipcRenderer.invoke('launch:fastModels'),
   pickCwd: (key, where) => ipcRenderer.invoke('launch:pickCwd', key, where),
   openInAgentApp: (key) => ipcRenderer.invoke('launch:openInAgentApp', key),
   exportMarkdown: (key) => ipcRenderer.invoke('export:markdown', key),

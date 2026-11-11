@@ -86,13 +86,23 @@ export interface CreditsSummary {
 }
 
 const DAY = 86_400_000
-const KEY_RE = /^sk-ant-(api|admin)\d*-[A-Za-z0-9_-]{8,}$/
+/**
+ * Claude Console keys (platform.claude.com/docs/en/get-api-key): personal
+ * keys `sk-ant-usr-…` (the Console's default now), the older workspace keys
+ * `sk-ant-api03-…`, and Admin keys `sk-ant-admin01-…`. Never a subscription
+ * token (`sk-ant-oat…` from `claude setup-token`): that isn't an API key.
+ */
+const KEY_RE = /^sk-ant-(api\d*|usr\d*|admin\d*)-[A-Za-z0-9_-]{8,}$/
 
 export function keyKind(key: string): AccountKind | undefined {
   const m = KEY_RE.exec(key.trim())
   if (!m) return undefined
-  return m[1] === 'admin' ? 'admin' : 'standard'
+  return m[1].startsWith('admin') ? 'admin' : 'standard'
 }
+
+/** Why a pasted key was refused, in the words the dialog shows. */
+export const KEY_FORMAT_ERROR =
+  'That doesn’t look like a Claude Console API key (sk-ant-usr…, sk-ant-api… or sk-ant-admin…).'
 
 /** "sk-ant-api03-abc…xyz" → "sk-ant-api03-…wxyz". Shows only the prefix and the last 4. */
 export function maskKey(key: string): string {

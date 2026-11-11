@@ -189,6 +189,25 @@ describe('API key storage', () => {
     expect(keyKind('sk-ant-oat01-abcdefghijk')).toBeUndefined()
     expect(maskKey(ADMIN)).toBe('sk-ant-admin01-…m2Pd')
   })
+
+  it("accepts the Console's personal keys (sk-ant-usr-…) as standard keys, with no network call", async () => {
+    const { svc, calls } = await service()
+    const USR = 'sk-ant-usr-FAKEfakeFAKE0000000000abcdefK3yZ'
+    expect(keyKind(USR)).toBe('standard')
+    expect(maskKey(USR)).toBe('sk-ant-usr-…K3yZ')
+    const res = await svc.add('Personal key', USR)
+    expect(res.error).toBeUndefined()
+    expect(res.account).toMatchObject({ kind: 'standard', masked: 'sk-ant-usr-…K3yZ' })
+    expect(calls).toEqual([])
+    // Still refused: the shortened key the Console's list shows, other prefixes, a subscription token.
+    for (const bad of [
+      'sk-ant-usr-FAKEfake…K3yZ',
+      'sk-ant-xyz-FAKEfakeFAKE0000',
+      'sk-ant-oat01-FAKEfakeFAKE0000',
+      'sk-ant-usr-short'
+    ])
+      expect(keyKind(bad), bad).toBeUndefined()
+  })
 })
 
 describe('Admin API', () => {

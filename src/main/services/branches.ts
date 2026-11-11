@@ -89,7 +89,8 @@ export class BranchService {
       snapTools: plan.snapTools,
       keptMessages: plan.keptMessages,
       totalMessages: plan.totalMessages,
-      name: this.defaultName(s)
+      name: this.defaultName(s),
+      ...(plan.lastModel ? { lastModel: plan.lastModel } : {})
     }
   }
 
@@ -123,7 +124,8 @@ export class BranchService {
         createdAt: new Date().toISOString()
       },
       name,
-      { model: s.meta.model, effort: s.meta.effort }
+      // The parent's own launch choice, fast mode included (Off too).
+      { model: s.meta.model, effort: s.meta.effort, fast: s.meta.fast }
     )
     return this.sessions.get(created.key) ?? created
   }

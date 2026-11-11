@@ -1,11 +1,11 @@
-// Model and effort pickers for launches (Resume, Fork, Branch, New session),
-// and the small badge that shows the choice. The choice is saved per session
-// in the app's metadata; "Default" falls back to the project's default, then
-// Settings, then Claude Code's own default (no flag).
+// Model, effort and fast-mode pickers for launches (Resume, Fork, Branch,
+// Continue fresh, New session), and the small badge that shows the choice.
+// The choice is saved per session in the app's metadata; "Default" falls back
+// to the project's default, then Settings, then the agent's own (no flag).
 
 import { useMemo, useState } from 'react'
 import { toast } from 'sonner'
-import { Check, ChevronDown, FolderCog, Gauge, Sparkles, X } from 'lucide-react'
+import { Check, ChevronDown, FolderCog, Gauge, Info, Sparkles, X, Zap } from 'lucide-react'
 import {
   choiceLabel,
   CODEX_EFFORT_LEVELS,
@@ -23,13 +23,14 @@ import {
   promoteToProject,
   type ChoiceFrom,
   type EffortChoice,
+  type FastChoice,
   type ResolvedModel
 } from '@shared/model-choice'
 import type { SessionMeta, SessionSummary } from '@shared/types'
 import { api } from '@/lib/api'
 import { updateMeta } from '@/lib/actions'
 import { useApp } from '@/lib/store'
-import { modelChoiceOf } from '@/lib/model-choice'
+import { fastSupportOf, modelChoiceOf } from '@/lib/model-choice'
 import { PROVIDER_LABEL, providerOf, type ProviderId } from '@shared/provider'
 import { cn } from '@/lib/utils'
 import { Badge } from './ui/badge'
@@ -45,6 +46,8 @@ import {
   DropdownMenuTrigger
 } from './ui/dropdown-menu'
 import { Input } from './ui/input'
+import { Popover, PopoverContent, PopoverTrigger } from './ui/popover'
+import { FAST_NOTE, fastDetails } from '@shared/fast-notes'
 
 const SEEN_MAX = 8
 
@@ -52,9 +55,15 @@ const SEEN_MAX = 8
  * Back to Default. Sent as "" (the main process stores it as unset): an
  * undefined value could be dropped on the way.
  */
-const clearChoice = { model: '', effort: '' } as unknown as Pick<SessionMeta, 'model' | 'effort'>
+const clearChoice = { model: '', effort: '', fast: '' } as unknown as Pick<
+  SessionMeta,
+  'model' | 'effort' | 'fast'
+>
 
-/** What "Default" means for a session: its project's default, else Settings. */
+/**
+ * What "Default" means for a session: its project's default, else Settings
+ * (fast mode as chosen, whatever the model: the picker says when it doesn't apply).
+ */
 function useInherited(s: SessionSummary): ResolvedModel {
   const settings = useApp((st) => st.settings)
   const { cwd, env, distro, provider } = s
@@ -78,6 +87,11 @@ function inheritedEffortText(r: ResolvedModel, agent: ProviderId = 'claude'): st
   return r.effort ? `${effortLabel(r.effort)} · ${fromShort(r.effortFrom)}` : ownDefault(agent)
 }
 
+function inheritedFastText(r: ResolvedModel): string {
+  const from = r.fastFrom ? fromShort(r.fastFrom) : ''
+  return `${r.fast ? 'On' : 'Off'}${from ? ` · ${from}` : ''}`
+}
+
 /** "Opus · High" next to a session; nothing when Claude Code's defaults apply. */
 export function ModelChoiceBadge({
   choice,
@@ -88,10 +102,14 @@ export function ModelChoiceBadge({
 }) {
   const label = choiceLabel(choice)
   if (!label) return null
-  const own = choice.modelFrom === 'session' || choice.effortFrom === 'session'
+  const own =
+    choice.modelFrom === 'session' ||
+    choice.effortFrom === 'session' ||
+    (choice.fast === true && choice.fastFrom === 'session')
   const title = [
     choice.model && `Model ${choice.model} (from ${FROM_LABEL[choice.modelFrom]})`,
-    choice.effort && `Effort ${choice.effort} (from ${FROM_LABEL[choice.effortFrom]})`
+    choice.effort && `Effort ${choice.effort} (from ${FROM_LABEL[choice.effortFrom]})`,
+    choice.fast && `Fast mode (from ${FROM_LABEL[choice.fastFrom ?? 'none']})`
   ]
     .filter(Boolean)
     .join('\n')
@@ -104,14 +122,40 @@ export function ModelChoiceBadge({
         )}
         title={`Launches with: ${title}`}
       >
-        <Sparkles className="size-2.5 shrink-0" />
+        {choice.fast && !choice.model && !choice.effort ? (
+          <Zap className="size-2.5 shrink-0" />
+        ) : (
+          <Sparkles className="size-2.5 shrink-0" />
+        )}
         <span className="truncate">{label}</span>
       </span>
     )
   return (
     <Badge variant={own ? 'accent' : 'muted'} title={`Launches with: ${title}`}>
-      <Sparkles /> {label}
+      {choice.fast && !choice.model && !choice.effort ? <Zap /> : <Sparkles />} {label}
     </Badge>
+  )
+}
+
+/** The ⓘ with fastDetails (a popover, so it opens with a tap on the phone too). */
+export function FastInfo({ agent }: { agent: ProviderId }) {
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          className="inline-flex size-5 items-center justify-center rounded text-subtle-foreground hover:bg-hover"
+          aria-label="About fast mode"
+        >
+          <Info className="size-3.5" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent className="w-80 space-y-1.5 text-[12px] leading-snug">
+        {fastDetails(agent).map((t) => (
+          <p key={t}>{t}</p>
+        ))}
+      </PopoverContent>
+    </Popover>
   )
 }
 
@@ -385,29 +429,103 @@ export function EffortPicker({
   )
 }
 
+/** Fast mode: Default (the project's, else Settings), On or Off. `value` undefined = Default. */
+export function FastPicker({
+  value,
+  onChange,
+  defaultText,
+  align = 'start',
+  disabled,
+  className
+}: {
+  value: FastChoice | undefined
+  onChange: (v: FastChoice | undefined) => void
+  /** What Default means here, e.g. "Off · Settings". */
+  defaultText?: string
+  align?: 'start' | 'end'
+  disabled?: boolean
+  className?: string
+}) {
+  const label =
+    value === undefined
+      ? `Fast: Default (${defaultText})`
+      : value === 'on'
+        ? 'Fast: On'
+        : 'Fast: Off'
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild disabled={disabled}>
+        <button
+          type="button"
+          className={cn(triggerClass, 'min-w-[120px]', className)}
+          aria-label={label}
+        >
+          <Zap
+            className={cn('size-3.5', value === 'on' ? 'text-primary' : 'text-muted-foreground')}
+          />
+          <span className="min-w-0 flex-1 truncate">{label}</span>
+          <ChevronDown className="size-3.5 text-muted-foreground" />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align={align} className="w-64">
+        <DropdownMenuRadioGroup
+          value={value ?? ''}
+          onValueChange={(v) => onChange(v === 'on' || v === 'off' ? v : undefined)}
+        >
+          {defaultText !== undefined && (
+            <DropdownMenuRadioItem value="">
+              <span className="min-w-0 flex-1 truncate">Default</span>
+              <span className="truncate text-[11px] text-subtle-foreground">{defaultText}</span>
+            </DropdownMenuRadioItem>
+          )}
+          <DropdownMenuRadioItem value="on">On</DropdownMenuRadioItem>
+          <DropdownMenuRadioItem value="off">
+            <span className="min-w-0 flex-1">Off</span>
+            <span className="text-[11px] text-subtle-foreground">no flag</span>
+          </DropdownMenuRadioItem>
+        </DropdownMenuRadioGroup>
+        <div className="px-2 pt-1 pb-1.5 text-[11px] leading-snug text-subtle-foreground">
+          {FAST_NOTE}.
+        </div>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+}
+
 /**
- * The session's own model and effort, saved in the app's metadata as soon
- * as they change. On the desktop, also a menu to make them the project's
- * default.
+ * The session's own model, effort and fast mode, saved in the app's metadata
+ * as soon as they change. Fast is hidden for a model known not to have it.
+ * On the desktop, also a menu to make them the project's default.
  */
 export function SessionModelControls({
   session,
   write = (fn) => void fn(),
   disabled,
-  className
+  className,
+  newSession = false
 }: {
   session: SessionSummary
   /** Wraps each save (the phone checks read-only mode). */
   write?: (fn: () => Promise<void>) => void
   disabled?: boolean
   className?: string
+  /**
+   * The launch starts a new session (New session, Continue fresh): without a
+   * chosen model it runs on the agent's own default, not on this session's last.
+   */
+  newSession?: boolean
 }) {
   const inherited = useInherited(session)
+  const codexFast = useApp((st) => st.codexFastModels)
   const agent = providerOf(session)
   const meta = session.meta
   const model = meta.model
   const effort = meta.effort
   const save = (patch: Partial<SessionMeta>): void => write(() => updateMeta(session.key, patch))
+  // The model it will run on: its own choice, else the inherited one, else (resuming)
+  // the model of its last reply.
+  const runModel = model && model !== DEFAULT_CHOICE ? model : model ? undefined : inherited.model
+  const support = fastSupportOf(session, { model: runModel }, codexFast, newSession)
   return (
     <div className={cn('flex flex-wrap items-center gap-2', className)}>
       <ModelPicker
@@ -426,6 +544,25 @@ export function SessionModelControls({
         disabled={disabled}
         agent={agent}
       />
+      {support !== 'no' && (
+        <span className="inline-flex items-center gap-0.5">
+          <FastPicker
+            value={meta.fast}
+            onChange={(v) => save(v === undefined ? { fast: clearChoice.fast } : { fast: v })}
+            defaultText={inheritedFastText(inherited)}
+            disabled={disabled}
+          />
+          <FastInfo agent={agent} />
+        </span>
+      )}
+      {support === 'unknown' &&
+        (meta.fast === 'on' || (meta.fast === undefined && inherited.fast)) && (
+          <span className="w-full text-[11px] leading-snug text-subtle-foreground">
+            {agent === 'codex'
+              ? "Only applies on models whose entry in Codex's model list offers Fast."
+              : 'Only applies on Fable 5.2, Opus 5.5 and Opus 5.'}
+          </span>
+        )}
       {!api.remote && projectModelKey(session) && <ProjectDefaultMenu session={session} />}
     </div>
   )
@@ -441,14 +578,15 @@ function ProjectDefaultMenu({ session }: { session: SessionSummary }) {
   const field = codex ? 'codexProjectModels' : 'projectModels'
   const models = (codex ? settings.codexProjectModels : settings.projectModels) ?? {}
   const current = Object.hasOwn(models, key) ? models[key] : undefined
-  const own = { model: session.meta.model, effort: session.meta.effort }
-  const hasOwn = own.model !== undefined || own.effort !== undefined
+  const own = { model: session.meta.model, effort: session.meta.effort, fast: session.meta.fast }
+  const hasOwn = own.model !== undefined || own.effort !== undefined || own.fast !== undefined
   const currentLabel = current
     ? choiceLabel({
         model: current.model !== DEFAULT_CHOICE ? current.model : undefined,
         effort: isEffortLevel(current.effort, codex ? CODEX_EFFORT_LEVELS : EFFORT_LEVELS)
           ? current.effort
-          : undefined
+          : undefined,
+        fast: current.fast === 'on'
       }) || ownDefault(providerOf(session)) + ' default'
     : undefined
   const saveProject = async (next: (typeof settings)['projectModels']): Promise<boolean> => {
@@ -467,7 +605,7 @@ function ProjectDefaultMenu({ session }: { session: SessionSummary }) {
           variant="ghost"
           size="sm"
           className="text-muted-foreground"
-          aria-label="Project default for model and effort"
+          aria-label="Project default for model, effort and fast mode"
         >
           <FolderCog />
           {currentLabel ? `Project: ${currentLabel}` : 'Project default'}
@@ -485,7 +623,8 @@ function ProjectDefaultMenu({ session }: { session: SessionSummary }) {
               // Saved: the session now follows the project default for what it promoted.
               await updateMeta(session.key, {
                 ...(own.model !== undefined ? { model: clearChoice.model } : {}),
-                ...(own.effort !== undefined ? { effort: clearChoice.effort } : {})
+                ...(own.effort !== undefined ? { effort: clearChoice.effort } : {}),
+                ...(own.fast !== undefined ? { fast: clearChoice.fast } : {})
               })
             })()
           }
@@ -504,7 +643,7 @@ function ProjectDefaultMenu({ session }: { session: SessionSummary }) {
         </DropdownMenuItem>
         {!hasOwn && (
           <div className="px-2 pt-1 pb-1.5 text-[11px] leading-snug text-subtle-foreground">
-            Pick a model or effort for this session first.
+            Pick a model, effort or fast mode for this session first.
           </div>
         )}
       </DropdownMenuContent>
@@ -516,14 +655,19 @@ function ProjectDefaultMenu({ session }: { session: SessionSummary }) {
 export function DefaultModelPickers({
   model,
   effort,
+  fast,
   onModel,
   onEffort,
+  onFast,
   agent = 'claude'
 }: {
   model: string
   effort: EffortChoice
+  /** Fast mode default (absent with onFast: no Fast picker). */
+  fast?: FastChoice
   onModel: (v: string) => void
   onEffort: (v: EffortChoice) => void
+  onFast?: (v: FastChoice) => void
   agent?: ProviderId
 }) {
   return (
@@ -542,6 +686,12 @@ export function DefaultModelPickers({
         defaultText={ownDefault(agent)}
         agent={agent}
       />
+      {onFast && (
+        <span className="inline-flex items-center gap-0.5">
+          <FastPicker align="end" value={fast ?? 'off'} onChange={(v) => onFast(v ?? 'off')} />
+          <FastInfo agent={agent} />
+        </span>
+      )}
     </div>
   )
 }

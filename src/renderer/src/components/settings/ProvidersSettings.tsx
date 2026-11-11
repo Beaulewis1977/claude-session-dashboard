@@ -138,8 +138,10 @@ function CodexModelRow({ update }: { update: Update }) {
         agent="codex"
         model={settings.codexDefaultModel ?? DEFAULT_CHOICE}
         effort={settings.codexDefaultEffort ?? DEFAULT_CHOICE}
+        fast={settings.codexDefaultFast}
         onModel={(codexDefaultModel) => void update({ codexDefaultModel })}
         onEffort={(codexDefaultEffort) => void update({ codexDefaultEffort })}
+        onFast={(codexDefaultFast) => void update({ codexDefaultFast })}
       />
     </Row>
   )

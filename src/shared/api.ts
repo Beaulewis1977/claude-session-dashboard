@@ -142,6 +142,11 @@ export interface CsdApi {
 
   previewLaunch(opts: LaunchOptions): Promise<LaunchPreview>
   launch(opts: LaunchOptions): Promise<LaunchResult>
+  /**
+   * Which Codex models offer fast mode, per Codex source (from that home's own
+   * model list; null for a home whose list couldn't be read).
+   */
+  getFastModels(): Promise<{ codex: Record<string, string[] | null> }>
   /** Open the session in its agent's own app (Codex: `codex://threads/<id>`). Desktop only. */
   openInAgentApp(key: string): Promise<void>
   /** `where`: the choices made in the dialog for a session whose folder is in the other environment. */

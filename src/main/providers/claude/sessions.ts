@@ -106,6 +106,7 @@ export function parseSessionText(
       malformedLines,
       sizeBytes: file.size,
       models: a.models,
+      ...(a.lastModel ? { lastModel: a.lastModel } : {}),
       firstUuid: a.firstUuid,
       forkedFrom: a.forkedFrom,
       copiedFrom:

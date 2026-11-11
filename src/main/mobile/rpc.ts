@@ -34,7 +34,7 @@ const str = (v: unknown, max = 1000): string => {
   return v.slice(0, max)
 }
 
-/** The fields a phone may edit: name, description, tags, pinned, hidden, alert mute, the large-context warning, launch model and effort. */
+/** The fields a phone may edit: name, description, tags, pinned, hidden, alert mute, the large-context warning, launch model, effort and fast mode. */
 export function phoneMetaPatch(v: unknown): Partial<SessionMeta> {
   const o = (v && typeof v === 'object' ? v : {}) as Record<string, unknown>
   const out: Partial<SessionMeta> = {}
@@ -51,6 +51,8 @@ export function phoneMetaPatch(v: unknown): Partial<SessionMeta> {
   if ('model' in o) out.model = typeof o.model === 'string' ? o.model.slice(0, 200) : undefined
   if ('effort' in o)
     out.effort = typeof o.effort === 'string' ? (o.effort as SessionMeta['effort']) : undefined
+  if ('fast' in o)
+    out.fast = typeof o.fast === 'string' ? (o.fast as SessionMeta['fast']) : undefined
   return out
 }
 
@@ -177,6 +179,8 @@ export const RPC: Record<string, RpcMethod> = {
     args: ([p]) => [phoneSettingsPatch(p)],
     result: (r) => phoneSettings(r as AppSettings)
   },
+  // Which Codex models offer fast mode (model names only), for the Fast picker.
+  getFastModels: { channel: 'launch:fastModels', kind: 'read', args: none },
   getUsageReport: { channel: 'usage:report', kind: 'read', args: ([q]) => [q] },
   getSessionUsage: { channel: 'usage:session', kind: 'read', args: ([k]) => [str(k, 300)] },
   // Priced as the phone launches: always on the subscription.

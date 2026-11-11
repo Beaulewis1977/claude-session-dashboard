@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { toast } from 'sonner'
 import {
   AppWindow,
   ArchiveRestore,
@@ -34,6 +35,10 @@ import { useApp } from '@/lib/store'
 import { phone } from '@/lib/web-api'
 import { Button } from '@/components/ui/button'
 import { Sheet, SheetContent } from '@/components/ui/sheet'
+import { SessionModelControls } from '@/components/ModelPicker'
+import { FastModeNotes } from '@/components/FastModeNote'
+import { fastNotes } from '@shared/fast-notes'
+import { asBranch } from '@/lib/model-choice'
 
 export type LaunchTarget =
   | { kind: 'resume' }
@@ -83,6 +88,7 @@ export function LaunchSheet({
   onSwitch?: (t: LaunchTarget) => void
 }) {
   const settings = useApp((st) => st.settings)
+  const codexLimits = useApp((st) => st.codexLimits)
   // Codex: no Remote Control or Claude app link; it asks before acting, in its sandbox.
   const codex = providerOf(session) === 'codex'
   // "Don't warn for this session": saved right away; the warning stays while the sheet is open.
@@ -121,7 +127,24 @@ export function LaunchSheet({
     // The request is fixed for the sheet's lifetime; preview again when the
     // cache runs out or the session's context changes (grew, shrank, compacted).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [expired, session.sizeBytes, session.context?.tokens, session.context?.at])
+  }, [
+    expired,
+    session.sizeBytes,
+    session.context?.tokens,
+    session.context?.at,
+    // The model / effort / fast pickers below save right away; the preview follows them.
+    session.meta.model,
+    session.meta.effort,
+    session.meta.fast
+  ])
+
+  const write = (fn: () => Promise<void>): void => {
+    if (readOnly) {
+      toast('Read-only mode is on', { description: 'Change it on your PC.' })
+      return
+    }
+    void fn().catch((err: Error) => toast.error("Couldn't save", { description: err.message }))
+  }
 
   useEffect(() => {
     if (!result?.ok || fresh || codex) return
@@ -324,16 +347,49 @@ export function LaunchSheet({
                     {preview.modelChoice?.effort && (
                       <> · {effortLabel(preview.modelChoice.effort)} effort</>
                     )}
-                    {preview.modelChoice?.model && (
+                    {preview.modelChoice?.fast && (
+                      <>
+                        {' '}
+                        · <b>Fast</b>
+                      </>
+                    )}
+                    {(preview.modelChoice?.model || preview.modelChoice?.fast) && (
                       <span className="mt-0.5 block truncate font-mono text-[11.5px] text-muted-foreground">
-                        {codex ? '-m' : '--model'} {preview.modelChoice.model}
-                        {preview.modelChoice.effort
+                        {preview.modelChoice.model &&
+                          `${codex ? '-m' : '--model'} ${preview.modelChoice.model}`}
+                        {preview.modelChoice.model && preview.modelChoice.effort
                           ? codex
                             ? ` -c model_reasoning_effort=${preview.modelChoice.effort}`
                             : ` --effort ${preview.modelChoice.effort}`
                           : ''}
+                        {preview.modelChoice.fast
+                          ? codex
+                            ? ' -c service_tier=fast'
+                            : ' --settings …fast-mode.json'
+                          : ''}
                       </span>
                     )}
+                    <SessionModelControls
+                      // A branch resumes on the model of the last reply it keeps.
+                      session={
+                        target.kind === 'branch' && preview.branch
+                          ? asBranch(session, preview.branch.lastModel)
+                          : session
+                      }
+                      write={write}
+                      disabled={readOnly}
+                      className="mt-2"
+                      newSession={target.kind === 'continue'}
+                    />
+                    <FastModeNotes
+                      className="mt-2"
+                      notes={fastNotes({
+                        fast: preview.modelChoice?.fast,
+                        agent: codex ? 'codex' : 'claude',
+                        codexLimits,
+                        pauseAbovePct: settings.summaries.pauseAbovePct
+                      })}
+                    />
                   </span>
                 </li>
                 <li className="flex items-start gap-2.5">

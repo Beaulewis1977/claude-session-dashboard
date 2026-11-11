@@ -54,11 +54,18 @@ import { isUuid } from '@shared/jsonl'
 import { buildHandoff, continuedName, newSinceSummary } from '@shared/summary'
 import {
   codexModelSettings,
+  fastSupport,
+  launchModel,
   resolveModelChoice,
+  withFastSupport,
+  FAST_MODE_FILE,
   type CodexModelSettings,
   type ModelSettings,
   type ResolvedModel
 } from '@shared/model-choice'
+import { ensureFastModeFile } from '../core/fast-mode-file'
+import type { CodexFastModels } from '../providers/codex/fast-models'
+import type { ModelChoice } from '../core/launch'
 import { fileExists, isAbsoluteWindowsPath } from '../core/which'
 import type { Platform } from '../platform'
 import { BranchService } from './branches'
@@ -175,6 +182,8 @@ export class Launcher {
   ) => Promise<ResumeEstimate | undefined>
   /** "Open in Codex app" (set at startup on Windows; absent: never offered). */
   codexApp?: CodexAppLauncher
+  /** Which Codex models offer fast mode (Codex's models_cache.json; set at startup). */
+  codexFastModels?: CodexFastModels
   /** "Open in: Claude desktop app" (set at startup on Windows; absent: never offered). */
   claudeApp?: ClaudeAppLauncher
   /**
@@ -398,12 +407,97 @@ export class Launcher {
    * project's default, else Settings. Read here for every launch path
    * (desktop, phone, copied command), so they all match.
    */
-  modelChoice(s: SessionSummary): ResolvedModel {
+  modelChoice(
+    s: SessionSummary,
+    opts?: Pick<LaunchOptions, 'newSession' | 'continueFresh'>
+  ): ResolvedModel {
     const p = this.provider(s)
     // Codex has its own defaults and levels, kept apart from Claude Code's.
-    if (p.id === 'codex')
-      return resolveModelChoice(s.meta, s, codexModelSettings(this.modelSettings()), p.effortLevels)
-    return resolveModelChoice(s.meta, s, this.modelSettings())
+    const r =
+      p.id === 'codex'
+        ? resolveModelChoice(s.meta, s, codexModelSettings(this.modelSettings()), p.effortLevels)
+        : resolveModelChoice(s.meta, s, this.modelSettings())
+    // Fast mode only on a model that has it (unknown: passed, the agent decides). New
+    // session and Continue fresh start a new session: without --model it runs on the
+    // agent's own default, not on the model this session used last.
+    const fresh = opts?.newSession === true || opts?.continueFresh !== undefined
+    const model = launchModel(r, s, fresh)
+    return withFastSupport(
+      r,
+      fastSupport(
+        p.id === 'codex' ? 'codex' : 'claude',
+        model,
+        // Codex: this session's own home's list (unknown when that home's can't be read).
+        p.id === 'codex' ? (this.codexFastModels?.latest()?.[s.sourceId] ?? null) : null
+      )
+    )
+  }
+
+  /** Fast mode chosen for this session (session → project → Settings), before the model check. */
+  private chosenFast(s: SessionSummary): boolean {
+    return resolveModelChoice(s.meta, s, this.modelSettings()).fast === true
+  }
+
+  /**
+   * Claude Code's fast-mode settings file, as each environment sees it:
+   * 'windows', or per distro and user (see fastKey). Filled by prepareFast
+   * before a command is built; an error says why it can't be used there.
+   */
+  private fastFiles = new Map<string, { path?: string; error?: string }>()
+
+  private fastKey(s: SessionSummary): string {
+    return s.env === 'wsl'
+      ? `wsl|${wslRootKey(s.distro ?? '', this.targetOf(s)?.wslUser)}`
+      : 'windows'
+  }
+
+  /**
+   * Before building a command: Codex's list of Fast models read again, and for
+   * Claude Code in fast mode the app's settings file written (only
+   * {"fastMode": true}) and, in WSL, found where the distro mounts the data
+   * folder. `verify`: also check the distro can really read the file (a launch).
+   */
+  private async prepareFast(s: SessionSummary, verify = false): Promise<void> {
+    const p = this.provider(s)
+    if (p.id === 'codex') {
+      await this.codexFastModels?.get().catch(() => null)
+      return
+    }
+    // Fast chosen at all (whatever the model): a branch's own model is known only later.
+    if (!this.chosenFast(s)) return
+    const key = this.fastKey(s)
+    const set = (v: { path?: string; error?: string }): void => void this.fastFiles.set(key, v)
+    const dataDir = this.dataDir
+    if (!dataDir) return set({ error: "Fast mode isn't available here." })
+    let winPath: string
+    try {
+      winPath = await ensureFastModeFile(dataDir)
+    } catch (err) {
+      return set({ error: `Couldn't write the fast-mode settings file: ${(err as Error).message}` })
+    }
+    if (s.env !== 'wsl') return set({ path: winPath })
+    const user = this.targetOf(s)?.wslUser
+    const root = s.distro ? await this.wslDataDir(s.distro, dataDir, user) : undefined
+    const cant = `${s.sourceLabel} can't read the app's data folder, where the fast-mode settings file is. Check that Windows drives are mounted in this distro ([automount] in /etc/wsl.conf), and that it's running.`
+    if (!root) return set({ error: cant })
+    const path = `${root}/launch/${FAST_MODE_FILE}`
+    if (verify && !(await this.platform.wslCanRead(s.distro!, path, user).catch(() => false))) {
+      this.wslRoots.delete(wslRootKey(s.distro!, user))
+      return set({ error: cant })
+    }
+    set({ path })
+  }
+
+  /** The choice with Claude Code's fast-mode file (throws why fast mode can't be passed). */
+  private launchChoice(
+    s: SessionSummary,
+    opts: Pick<LaunchOptions, 'newSession' | 'continueFresh'>
+  ): ModelChoice {
+    const r = this.modelChoice(s, opts)
+    if (!r.fast || this.provider(s).id === 'codex') return r
+    const f = this.fastFiles.get(this.fastKey(s))
+    if (f?.error) throw new Error(f.error)
+    return { ...r, fastSettingsFile: f?.path }
   }
 
   private command(
@@ -428,7 +522,7 @@ export class Launcher {
       remoteControl: this.remoteControl(s, opts),
       askPermissions: forced || opts.askPermissions === true,
       ...(forced ? { readOnly: true } : {}),
-      modelChoice: this.modelChoice(s),
+      modelChoice: this.launchChoice(s, opts),
       env: s.env,
       distro: s.distro,
       sessionId: s.sessionId,
@@ -834,7 +928,7 @@ export class Launcher {
         remoteControl: this.remoteControl(s, opts),
         askPermissions: forced || opts.askPermissions === true,
         ...(forced ? { readOnly: true } : {}),
-        modelChoice: this.modelChoice(s)
+        modelChoice: this.launchChoice(s, opts)
       })
     } catch {
       return ''
@@ -987,6 +1081,7 @@ export class Launcher {
         name: cont.preview.name,
         ...(s.meta.model ? { model: s.meta.model } : {}),
         ...(s.meta.effort ? { effort: s.meta.effort } : {}),
+        ...(s.meta.fast ? { fast: s.meta.fast } : {}),
         createdAt: new Date().toISOString()
       })
     }
@@ -1031,6 +1126,7 @@ export class Launcher {
     const placed = await timed('preview: placement', this.place(found, opts))
     const s = placed.s
     const cwd = opts.cwdOverride ?? s.cwd
+    await timed('preview: fast mode', this.prepareFast(s))
     const tools = await timed('preview: terminal and Claude lookup', this.platform.launchTools())
     const { terminal, fellBack } = this.resolveTerminal(
       opts.terminal ?? this.defaultTerminal(),
@@ -1050,7 +1146,15 @@ export class Launcher {
       } catch (err) {
         branchError = (err as Error).message
       }
-      const target = branch ? this.derived(s, { sessionId: branch.newSessionId }) : s
+      // The branch holds the transcript only up to the cut: it resumes on the model of
+      // the last reply it keeps, not on the one the whole session used last.
+      const target = branch
+        ? this.derived(s, {
+            sessionId: branch.newSessionId,
+            lastModel: branch.lastModel,
+            models: branch.lastModel ? [branch.lastModel] : []
+          })
+        : s
       const branchOpts = { ...opts, fork: false, newSession: false }
       const { cmd, error } = this.tryCommand(
         target,
@@ -1079,7 +1183,7 @@ export class Launcher {
           branch ? { ...s, meta: { ...s.meta, name: s.meta.name || branch.name } } : s,
           opts
         )?.name,
-        modelChoice: this.modelChoice(s)
+        modelChoice: this.modelChoice(target, branchOpts)
       }
     }
     if (opts.continueFresh) {
@@ -1121,7 +1225,7 @@ export class Launcher {
         launchError:
           this.unsupported(s, opts) ?? placeError(placed, opts) ?? built.error ?? folderError,
         remoteControlName: this.remoteControl(target, opts)?.name,
-        modelChoice: this.modelChoice(s),
+        modelChoice: this.modelChoice(s, cOpts),
         // A WSL-only folder: the same opt-in and distro choice as Resume.
         ...(placed.placement ? { placement: placed.placement } : {})
       })
@@ -1133,7 +1237,7 @@ export class Launcher {
     const record = this.sessions.archiveRecord(s.key)
     const noRestore = this.noRestore(s, opts, originalExists)
     const { cmd, error } = this.tryCommand(s, opts, cwd ?? this.placeholderCwd(s), terminal, tools)
-    const modelChoice = this.modelChoice(s)
+    const modelChoice = this.modelChoice(s, opts)
     // An estimate that fails never stops a launch. Only for agents whose usage is read.
     const context =
       opts.newSession || !this.provider(s).capabilities.usage
@@ -1343,6 +1447,8 @@ export class Launcher {
     if (unsupported) return fail(unsupported)
     if (opts.remoteControl && opts.billingAccountId) return fail(REMOTE_CONTROL_API_ERROR)
     const cwd = opts.cwdOverride ?? s.cwd
+    // A branch is launched by its own launch() below (checked there).
+    await this.prepareFast(s, !opts.branch)
     const tools = await this.platform.launchTools()
     // Create a branch without opening a terminal: the folder doesn't matter yet.
     if (opts.branch?.createOnly) {
@@ -1511,6 +1617,7 @@ export class Launcher {
         name: cont!.preview.name,
         ...(s.meta.model ? { model: s.meta.model } : {}),
         ...(s.meta.effort ? { effort: s.meta.effort } : {}),
+        ...(s.meta.fast ? { fast: s.meta.fast } : {}),
         createdAt: new Date().toISOString()
       })
     const notStarted = (r: LaunchResult): LaunchResult => {
@@ -1564,7 +1671,7 @@ export class Launcher {
           createdAt: new Date().toISOString()
         },
         cont.preview.name,
-        { model: s.meta.model, effort: s.meta.effort }
+        { model: s.meta.model, effort: s.meta.effort, fast: s.meta.fast }
       )
     }
     this.billing?.launched(target, opts, cwd, ctx)

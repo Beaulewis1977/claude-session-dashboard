@@ -10,7 +10,12 @@ import {
 } from '@shared/types'
 import { JsonStore } from '../core/json-store'
 import { isSourceLabel } from '@shared/source-label'
-import { cleanEffortChoice, cleanModelChoice, type EffortLevels } from '@shared/model-choice'
+import {
+  cleanEffortChoice,
+  cleanFastChoice,
+  cleanModelChoice,
+  type EffortLevels
+} from '@shared/model-choice'
 import type { MobileSettings } from '@shared/mobile'
 
 export interface MetadataFile {
@@ -40,6 +45,7 @@ export interface PendingContinue {
   name?: string
   model?: SessionMeta['model']
   effort?: SessionMeta['effort']
+  fast?: SessionMeta['fast']
   createdAt: string
 }
 
@@ -104,9 +110,10 @@ export function cleanMetaPatch(
       .filter((t) => t && !seen.has(t) && seen.add(t))
   }
   if ('hidden' in patch) out.hidden = patch.hidden === true
-  // Launch model / effort: a value that isn't safe or known clears the choice.
+  // Launch model / effort / fast mode: a value that isn't safe or known clears the choice.
   if ('model' in patch) out.model = cleanModelChoice(patch.model)
   if ('effort' in patch) out.effort = cleanEffortChoice(patch.effort, levels)
+  if ('fast' in patch) out.fast = cleanFastChoice(patch.fast)
   if ('pinned' in patch) out.pinned = patch.pinned === true
   if ('muteAlerts' in patch) out.muteAlerts = patch.muteAlerts === true ? true : undefined
   if ('noContextWarning' in patch)

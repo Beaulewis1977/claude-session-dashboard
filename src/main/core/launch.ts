@@ -14,7 +14,7 @@
 // with quotes, backslashes or control characters are refused.
 
 import type { EnvKind, TerminalPref } from '@shared/types'
-import { modelArgs, type ResolvedModel } from '@shared/model-choice'
+import { claudeFastArgs, modelArgs, type ResolvedModel } from '@shared/model-choice'
 import { isAbsoluteWindowsPath } from './which'
 import { isValidDistroName } from './wsl'
 
@@ -60,7 +60,7 @@ export interface LaunchInput {
   askPermissions?: boolean
   /** With askPermissions: the read-only sandbox (Codex `-s read-only`). */
   readOnly?: boolean
-  /** `--model` / `--effort` (validated; nothing for Claude Code's default). */
+  /** `--model` / `--effort` / fast mode (validated; nothing for the agent's own default). */
   modelChoice?: ModelChoice
   /** Continue fresh: a new session with this id whose first message is `prompt`. */
   continueFresh?: ContinueFreshArgs
@@ -108,7 +108,13 @@ export interface ContinueFreshArgs {
   addDir?: string
 }
 
-export type ModelChoice = Pick<ResolvedModel, 'model' | 'effort'>
+export type ModelChoice = Pick<ResolvedModel, 'model' | 'effort' | 'fast'> & {
+  /**
+   * Claude Code's fast mode: the app's own settings file holding only
+   * {"fastMode": true}, as the agent's environment sees it (WSL: `wslpath`).
+   */
+  fastSettingsFile?: string
+}
 
 export interface RemoteControl {
   /** Already cleaned with remoteControlName(). */
@@ -319,7 +325,10 @@ export function claudeArgs(
   const rc = remoteControlArgs(remoteControl)
   const ask = askPermissions ? ASK_PERMISSION_ARGS : []
   // Validated again here: these reach every shell on the way to Claude.
-  const model = modelArgs(modelChoice?.model, modelChoice?.effort)
+  const model = [
+    ...modelArgs(modelChoice?.model, modelChoice?.effort),
+    ...(modelChoice?.fast ? claudeFastArgs(modelChoice.fastSettingsFile) : [])
+  ]
   if (continueFresh) {
     // The first message goes first, before any option that takes a value.
     const c = continueArgs(continueFresh)

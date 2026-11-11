@@ -11,6 +11,7 @@ import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { now } from '@shared/clock'
 import {
+  KEY_FORMAT_ERROR,
   keyKind,
   maskKey,
   parseCostReport,
@@ -141,11 +142,7 @@ export class AccountsService extends EventEmitter<{ changed: [] }> {
   async add(nickname: string, key: string): Promise<{ account?: Account; error?: string }> {
     const k = key.trim()
     const kind = keyKind(k)
-    if (!kind) {
-      return {
-        error: 'That doesn’t look like an Anthropic API key (sk-ant-api… or sk-ant-admin…).'
-      }
-    }
+    if (!kind) return { error: KEY_FORMAT_ERROR }
     if (!this.encryptionAvailable()) {
       return {
         error:
@@ -214,10 +211,7 @@ export class AccountsService extends EventEmitter<{ changed: [] }> {
     const target = this.store.value.accounts.find((a) => a.id === accountId && !a.sample)
     if (!target) return { error: 'That account isn’t there any more.' }
     if (target.enc) return { error: 'This account already has its key on this PC.' }
-    if (!kind)
-      return {
-        error: 'That doesn’t look like an Anthropic API key (sk-ant-api… or sk-ant-admin…).'
-      }
+    if (!kind) return { error: KEY_FORMAT_ERROR }
     if (kind !== target.kind)
       return {
         error: `This account used ${target.kind === 'admin' ? 'an Admin' : 'a standard'} key.`

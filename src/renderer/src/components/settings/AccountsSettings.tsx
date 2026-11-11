@@ -100,7 +100,7 @@ function AddKeyDialog({ onClose }: { onClose: () => void }) {
               type="password"
               autoComplete="off"
               className="font-mono"
-              placeholder="sk-ant-api03-… or sk-ant-admin01-…"
+              placeholder="sk-ant-usr-…, sk-ant-api03-… or sk-ant-admin01-…"
               value={key}
               onChange={(e) => setKey(e.target.value)}
             />
@@ -109,9 +109,11 @@ function AddKeyDialog({ onClose }: { onClose: () => void }) {
             <div className="flex gap-2">
               <KeyRound className="mt-0.5 size-3.5 shrink-0" />
               <span>
-                <span className="font-medium text-foreground">Standard key</span> (sk-ant-api…): run
-                sessions on API credits instead of your plan, and track their cost. No network calls
-                by the app.
+                <span className="font-medium text-foreground">Standard key</span> (a personal key,
+                sk-ant-usr…, or a workspace key, sk-ant-api…): run sessions on API credits instead
+                of your plan, and track their cost. No network calls by the app. Pick a workspace
+                when you create a personal key: one that isn&apos;t scoped to a workspace needs a
+                workspace ID on every request.
               </span>
             </div>
             <div className="flex gap-2">

@@ -625,8 +625,11 @@ both (Settings → **Codex usage & limits**).
 
 Settings → **Accounts & API credits** → **Add API key…**. Run sessions on API credits
 ([billing per launch](#billing-per-launch)), enter the credit grants you receive, and see the
-balance, spending, burn rate and how long they will last. An **Admin key** also pulls your
-organization's usage and cost reports. Keys are encrypted with Windows (DPAPI) and never shown,
+balance, spending, burn rate and how long they will last. A standard key is a Claude Console
+**personal key** (`sk-ant-usr-…`, what the Console creates now) or an older workspace key
+(`sk-ant-api03-…`). Scope a personal key to a workspace when you create it: one that isn't scoped
+needs a workspace ID on every request, which Claude Code doesn't add. An **Admin key**
+(`sk-ant-admin01-…`) also pulls your organization's usage and cost reports. Keys are encrypted with Windows (DPAPI) and never shown,
 logged or put on a command line.
 
 ![The Credits tab](docs/images/credits.webp)

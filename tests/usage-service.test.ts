@@ -160,6 +160,46 @@ describe('UsageService', () => {
     expect(await readFile(copy, 'utf8')).toContain('msg_sub')
   })
 
+  it('reads a subagent transcript again at the next sync when it couldn’t be read', async () => {
+    const { make, layout } = await setup()
+    const dir = join(
+      layout.sourcesDir,
+      'windows/Users/alex/.claude/projects/C--Users-alex-code-acme-web/7f3c9a12-4b8e-4d21-9c6a-1e2f3a4b5c6d/subagents'
+    )
+    await mkdir(dir, { recursive: true })
+    const file = join(dir, 'agent-a2.jsonl')
+    await writeFile(
+      file,
+      line({
+        type: 'assistant',
+        isSidechain: true,
+        timestamp: '2026-10-21T13:05:00Z',
+        requestId: 'req_sub2',
+        message: {
+          id: 'msg_sub2',
+          model: 'claude-haiku-5-5',
+          usage: { input_tokens: 5, output_tokens: 7 }
+        }
+      }) + '\n'
+    )
+    const usage = make()
+    // The subagent's file can't be read on the first sync (locked, offline share…).
+    let failing = true
+    const svc = usage as unknown as { readUsage: (p: string, s: unknown) => Promise<unknown> }
+    const read = svc.readUsage
+    svc.readUsage = function (this: unknown, p: string, s: unknown) {
+      return failing && p === file ? Promise.resolve(undefined) : read.call(this, p, s)
+    }
+    await usage.start()
+    await usage.idle()
+    expect(usage.allRecords().some((r) => r.id === 'msg_sub2:req_sub2')).toBe(false)
+    // Nothing changed on disk: the next (unforced) sync still reads it.
+    failing = false
+    await usage.sync()
+    await usage.idle()
+    expect(usage.allRecords().some((r) => r.id === 'msg_sub2:req_sub2')).toBe(true)
+  })
+
   it('recalculates from scratch', async () => {
     const { make } = await setup()
     const usage = make()

@@ -464,11 +464,14 @@ export class UsageService extends EventEmitter<{ changed: []; 'codex-progress': 
         if (!force && this.index.sessions[s.key] === sig) continue
         // Read everything first: a session's saved records (stale after a
         // parser update) are replaced only once all its files were read, so
-        // a file that can't be read right now never loses saved usage.
+        // a file that can't be read right now never loses saved usage. The
+        // session counts as read (its signature saved) only then too, so an
+        // unreadable file (the main one or a subagent's) is tried again at
+        // the next sync.
         const main = await this.readUsage(s.filePath, s)
         const subs = await Promise.all(subagents.map((f) => this.readUsage(f, s)))
-        const ok = main !== undefined
-        if (ok && subs.every((a) => a !== undefined) && this.stale.delete(s.key)) this.purge(s.key)
+        const ok = main !== undefined && subs.every((a) => a !== undefined)
+        if (ok && this.stale.delete(s.key)) this.purge(s.key)
         if (main) this.apply(main)
         for (const a of subs) if (a) this.apply(a)
         if (s.availability === 'live') await this.archiveSubagents(s, subagents)

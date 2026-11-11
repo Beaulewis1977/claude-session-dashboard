@@ -14,9 +14,9 @@ network.
 - **Every session, kept forever:** Claude Code, Codex and Claude desktop, Windows and WSL, with
   your own names, tags and full-text search, even after Claude Code deletes old sessions.
 - **Resume, fork, branch or continue fresh** in Windows Terminal, the Claude desktop app or the
-  Codex app, with the right folder, model and effort.
+  Codex app, with the right folder, model, effort and fast mode.
 - **Live limits and usage:** your real 5-hour and weekly percentages for Claude and Codex, with
-  pacing, every token you've used, and costs.
+  pacing, every token you've used, costs, and how fast each model answers (tokens per second).
 - **A nerf detector:** checks whether each 1% of your plan still buys as much work as it used to,
   tracks model behavior week by week, and compares any two periods or versions.
 - **Ask across all sessions:** "Where did I fix the WSL path bug?", answered with citations that
@@ -43,7 +43,8 @@ network.
     [pick several sessions](#pick-several-sessions), [back and forward](#back-and-forward),
     [the archive](#the-archive)
   - [Resume, fork, branch and continue](#resume-fork-branch-and-continue): [resume and fork](#resume-and-fork),
-    [model and effort](#model-and-effort), [skip permission prompts](#skip-permission-prompts),
+    [model and effort](#model-and-effort), [fast mode](#fast-mode),
+    [skip permission prompts](#skip-permission-prompts),
     [Remote Control](#remote-control), [Open in Claude desktop app](#open-in-claude-desktop-app),
     [Open in Codex app](#open-in-codex-app), [branch from any message](#branch-from-any-message),
     [context size warnings](#context-size-warnings),
@@ -56,7 +57,8 @@ network.
     [session alerts (hooks)](#session-alerts-hooks), [desktop notifications](#desktop-notifications),
     [phone push alerts](#phone-push-alerts)
   - [Usage and limits](#usage-and-limits): [live limits](#live-limits), [pacing](#pacing),
-    [token usage and costs](#token-usage-and-costs), [Codex usage and limits](#codex-usage-and-limits),
+    [token usage and costs](#token-usage-and-costs), [token speed](#token-speed),
+    [Codex usage and limits](#codex-usage-and-limits),
     [at a glance: title bar, tray and mini meter](#at-a-glance-title-bar-tray-and-mini-meter),
     [API credits](#api-credits), [Ask Claude about your usage](#ask-claude-about-your-usage)
   - [Nerf detector: limit health and trends](#nerf-detector-limit-health-and-trends):
@@ -170,8 +172,9 @@ locally, so they can't be listed.
 
 Each card shows the title, your description, the project, environment (**Windows** or
 **WSL: Ubuntu**), git branch, message count, start and last activity times, tags, a context size
-badge (S / M / L / XL), git badges ("2 commits · PR #14"), the model and effort you launch it with,
-and badges such as **Archived only**, **📱 Remote** or **Max** / **API**.
+badge (S / M / L / XL), git badges ("2 commits · PR #14"), the model, effort and fast mode you
+launch it with ("Opus · High · Fast"), and badges such as **Archived only**, **📱 Remote** or
+**Max** / **API**.
 
 - **Sort** by last activity (default), start time, name or context size. Branches can be grouped
   under the session they came from.
@@ -254,13 +257,14 @@ overwritten).
 **Resume** (<kbd>Ctrl</kbd>+<kbd>Enter</kbd>) opens the session in a new terminal in its own
 folder, for Windows and WSL sessions alike. **Fork** (<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Enter</kbd>)
 starts a copy and leaves the original untouched. The dialog shows the exact command, the working
-folder (with **Choose…** if it no longer exists), the terminal, billing, model and effort.
+folder (with **Choose…** if it no longer exists), the terminal, billing, model, effort and
+[fast mode](#fast-mode).
 
 - **Terminal:** Windows Terminal, PowerShell or cmd (Settings → **Resume**). WSL sessions run
   `wsl.exe -d <distro> --cd <folder> -- bash -lic "claude --resume …"`, so a `claude` installed with
   nvm is found.
-- **Codex sessions** resume with `codex resume` / `codex fork`, with Codex's own model and
-  reasoning effort.
+- **Codex sessions** resume with `codex resume` / `codex fork`, with Codex's own model, reasoning
+  effort and [fast mode](#fast-mode).
 - **Copy resume command** (<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>C</kbd>) copies a command you can
   paste into PowerShell yourself.
 - **New session in this folder…** (⋯ menu or command palette) starts a fresh session in the same
@@ -276,25 +280,40 @@ Pick them under the session's title (**Launch with**) or in the launch dialog: D
 (Fable, Opus, Sonnet, Haiku), a model seen in your logs, or any model ID; effort Low to Max. The
 choice is saved for that session. **Project default** sets one for a whole project, and
 Settings → **Resume** sets the global default (Codex has its own). **Default** adds no flag, so
-Claude Code decides. The Resume button shows the result ("Resume · Opus · High").
+Claude Code decides. The Resume button shows the result ("Resume · Opus · High"). **Fast** sits
+right next to them ([fast mode](#fast-mode)).
 
 #### Fast mode
 
-**Fast** sits next to Model and Effort (Default, On or Off; off unless you turn it on), on the
-desktop and the phone, and is remembered the same way: session, then project, then Settings. It's
-offered only for models that have it: Claude's Fable 5.2, Opus 5.5 and Opus 5, and the Codex models
-whose entry in Codex's own model list (`models_cache.json`, read only) offers the Fast tier.
+Start any session in fast mode: the same model, answering faster, at a higher price. **Fast** sits
+next to Model and Effort (**Default**, **On** or **Off**; off unless you turn it on) under the
+session's title and in the Resume, Fork, Branch, Continue fresh and New session dialogs, on the
+desktop and on the phone. It's remembered like the model and effort: the session's own choice, then
+the **Project default**, then Settings → **Resume** (Claude Code) or Settings → **Providers**
+(Codex, kept apart).
 
+- **Which models:** Claude's Fable 5.2, Opus 5.5 and Opus 5 (and the `opus` and `fable` aliases),
+  and the Codex models whose entry in Codex's own model list (`models_cache.json`, read only) offers
+  the Fast tier. For any other model the picker is hidden and no flag is passed.
+- **Which model counts:** the one you picked; otherwise, when you resume or fork, the model of the
+  session's last reply; for Continue fresh and New session (a new session on the agent's own
+  default model), Fast is offered with a note that it only applies on those models.
 - **Claude Code** gets `--settings <the app's launch\fast-mode.json>`, a file in the app's data
-  folder holding only `{"fastMode": true}`, so none of your other Claude Code settings change. On
-  the subscription, fast mode is billed to usage credits (not your plan limits) and only works if
-  usage credits are turned on in your Claude account.
+  folder holding only `{"fastMode": true}` (checked before every launch), so none of your other
+  Claude Code settings change; WSL sessions get the same file as the distro sees it. On the
+  subscription, fast mode is billed to usage credits (not your plan limits) and only works if usage
+  credits are turned on in your Claude account; the dialog says so. On an API key it's billed at the
+  fast prices (the ⓘ lists them).
 - **Codex** gets `-c service_tier=fast`. It uses your plan's limits at 2.5×, so the launch dialog
-  warns when Codex's 5-hour window is above the pause line in Settings → Summaries.
+  and the phone warn when Codex's 5-hour window is above the pause line in Settings → **Summaries**.
+- **Every launch path:** Windows Terminal, PowerShell, cmd and WSL, Remote Control, phone launches
+  and API billing. The flag is in **Copy resume command**, and the Resume button and badges say
+  "Fast". It isn't passed when a session opens in the Claude desktop app or the Codex app (turn it on
+  there).
 
-**Off** adds no flag (your own `/fast` setting or `service_tier` applies). The flag is in **Copy
-resume command**, the Resume button and badges say "Fast", and it isn't passed when a session opens
-in the Claude desktop app or the Codex app (turn it on there).
+**Off** adds no flag, so your own `/fast` setting or `service_tier` applies. Responses that ran in
+fast mode get a **Fast** badge in the session's usage strip and their own line in
+[token speed](#token-speed).
 
 #### Skip permission prompts
 
@@ -544,15 +563,44 @@ Code's cleanup. Today / week / month / all-time cards, a stacked chart by day, w
 a date range and model filter, a model share donut, the top sessions, and a raw table by model,
 session, project, environment, version, billing or source, with **CSV export**. Costs are
 estimates at API list prices from an editable price table (Settings → **Usage**), fast mode
-included. Per-session usage shows at the top of each session.
-
-**Token speed:** each card and each model in the Models card shows the median output speed
-(tokens per second), and each session shows its own, with its time to first token and a **Fast**
-badge when it used fast mode. It's an estimate from log timestamps (from when a request was sent
-to when the reply's last part was written, tool time left out), so waiting, thinking, network and
-server load all count. Fast mode is always counted apart from normal mode.
+included at its own prices; Claude Fable 5.2 and Mythos 5.2 are priced from Anthropic's pricing
+page, and a newer minor version is never silently priced by an older model's row. Per-session usage
+shows at the top of each session, with its [token speed](#token-speed).
 
 ![Token charts and the model share](docs/images/usage-charts.webp)
+
+#### Token speed
+
+How fast Claude Code and Codex answer, worked out from the timestamps in your logs (never from the
+text):
+
+- **Output speed** (tokens per second) for every response, from when its request was sent to when
+  its last part was written. Time spent running tools isn't counted.
+- **Time to first token:** Codex's own per-turn figure; for Claude Code an estimate ("est."), only
+  for replies that start with thinking, and the tooltip says what share of replies it comes from.
+- **Where it shows:** tok/s on the period cards and next to each model in the Models card, and each
+  session's own tok/s, time to first token and **Fast** badge in its usage strip (desktop and phone,
+  with a tooltip).
+- **Trends** (Claude Code and Codex kept apart): weekly median output speed, output speed without
+  thinking or reasoning, and Claude's time to first token, per model and per CLI version, with the
+  usual markers and [Compare](#compare). With the switch on **All**, an **Output speed by model**
+  chart puts both side by side, each line tagged Claude Code or Codex ([trends](#trends)).
+- **Limit health:** a **Speed** row compares each busy model's last 7 days with the 4 weeks before.
+  It's a side signal only, never part of the score ([keeping it honest](#keeping-it-honest)).
+- **Fast mode is kept apart:** Claude Code's fast responses and Codex's priority tier count as
+  `<model>-fast`, with their own dashed line and compare rows, never in a normal-mode median, and
+  priced at the official fast prices.
+- **CSV export:** the per-response file has `thinking_tokens`, `gen_ms`, `ttft_ms`,
+  `tokens_per_sec` and `fast_mode`; the daily file has `median_tokens_per_sec` and
+  `speed_samples`.
+
+Speeds are medians and need at least 5 responses. Very short replies, replies cut short or after an
+API error, impossible timings and copied history (forks, subagents that start from their parent's
+history) are left out of the medians but still count everywhere else. After updating to 1.16.1,
+the app re-reads every Claude Code session and Codex rollout once in the background, and speeds
+fill in as they're read. It's an estimate: waiting and thinking time are in it, and network and
+server load affect it. Only timings are stored, no content. Method in full:
+[docs/DETAILS.md → What the numbers mean](docs/DETAILS.md#what-the-numbers-mean-and-their-limits).
 
 #### Codex usage and limits
 
@@ -649,7 +697,8 @@ Claude Code updates, plan changes and score changes:
 - **Output:** output per response and per message you sent.
 - **Speed:** median response time (gaps over 10 minutes ignored), output speed in tokens per
   second (also without thinking tokens), and time to first token (an estimate, from replies that
-  start with thinking; the ⓘ says how many). Fast mode gets its own dashed line.
+  start with thinking; the ⓘ says how many). Fast mode gets its own dashed line
+  ([token speed](#token-speed)).
 - **Reliability:** tool error rate, and API errors and retries.
 - **Effort:** assistant turns and tool calls per message you sent.
 - **Your corrections:** interruptions, and messages that start with "no", "wrong" or "that's not".
@@ -666,7 +715,7 @@ responses and tool calls per prompt, cached input ratio and context use. With th
 #### Compare
 
 Put **two date ranges, or two Claude Code (or Codex) versions,** side by side: every trend metric
-with the % change, marked **better** or **worse**. The Limit health card has its own **Compare**
+with the % change, marked **better** or **worse**, speed included (fast mode in rows of its own). The Limit health card has its own **Compare**
 for the score itself (as measured, per plan, and the token mix).
 
 ![Compare two date ranges: every metric with the change, marked better or worse](docs/images/trends-compare.webp)
@@ -717,7 +766,8 @@ Matching rules: [docs/DETAILS.md → Git links](docs/DETAILS.md#git-links).
 your home screen: search and read sessions, rename, describe, tag, pin and hide them, read and edit
 summaries, check usage and limits, see Running now, read your Ask history, and **Resume, Fork,
 Branch or Continue fresh a session on your PC** with Remote Control on, then continue it in the
-Claude app.
+Claude app. The launch sheet has the same model, effort and [fast mode](#fast-mode) pickers as the
+PC, with the same notes and the Codex limits warning.
 
 <table>
   <tr>
@@ -875,8 +925,9 @@ The full rules are in [`CLAUDE.md`](CLAUDE.md) and
 [docs/DETAILS.md → Safety in full](docs/DETAILS.md#safety-in-full). In short:
 
 **What the app reads.** Session files in `.claude` and `.codex` folders (Windows and WSL), Claude
-Code's running-session files, Codex's thread locks, `config.toml` and the Codex app's project list
-(read only), your git repos (read only), and any claude.ai export zip you pick.
+Code's running-session files, Codex's thread locks, `config.toml`, Codex's model list
+(`models_cache.json`, to see which models offer [fast mode](#fast-mode)) and the Codex app's project
+list (read only), your git repos (read only), and any claude.ai export zip you pick.
 
 **What it never reads.** Sign-in files: Claude's and Cowork's `.credentials.json`, Codex's
 `auth.json`, and anything credential-shaped. Codex's databases aren't opened either.
@@ -893,7 +944,9 @@ with these narrow, explained exceptions:
   never written.
 
 There is no delete feature (Hide is a flag). The app's own data lives in
-`%APPDATA%\ClaudeSessionDashboard\`, plus the backup folder you pick. If you turn on live limits or
+`%APPDATA%\ClaudeSessionDashboard\`, plus the backup folder you pick. [Fast mode](#fast-mode) hands
+Claude Code a settings file from there (`launch\fast-mode.json`, holding only `{"fastMode": true}`);
+Claude's own settings files are never edited for it. If you turn on live limits or
 alerts, it also keeps a small `.claude-session-dashboard` folder next to `.claude` in each home you
 enabled (Windows, and each WSL user): the bridge and hook scripts (`bin`), and the readings and
 events they save (`live`, `events`, `codex-events`). Other system changes are
@@ -1011,6 +1064,19 @@ Check that `claude` works in a login shell: `wsl -d <distro> -- bash -lic "claud
 
 Check that `where.exe claude` finds it in a new terminal. If you installed it while the app was
 open, restart the app. The app never runs a `claude` from the project folder.
+
+</details>
+
+<details>
+<summary><b>Fast isn't offered for a session, or fast mode didn't seem to apply</b></summary>
+
+Fast is shown only for models that have it: Claude's Fable 5.2, Opus 5.5 and Opus 5, and the Codex
+models Codex's own model list marks as Fast. When you resume, the model of the session's last reply
+counts unless you pick one, so a session that last ran on Sonnet hides it until you choose Opus or
+Fable. For Claude on a subscription, fast mode needs usage credits turned on in your Claude account
+(Team and Enterprise: an Owner must enable it); otherwise Claude Code runs at standard speed. Opening
+a session in the Claude desktop app or the Codex app doesn't pass it: turn it on there. Responses that
+really ran fast get a **Fast** badge in the session's usage strip. See [fast mode](#fast-mode).
 
 </details>
 

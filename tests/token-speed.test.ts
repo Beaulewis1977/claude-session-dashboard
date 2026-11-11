@@ -835,3 +835,34 @@ describe('fast-mode lines never take a version’s place', () => {
     expect(keys.indexOf('2.1.1|fast')).toBe(keys.indexOf('2.1.1') + 1)
   })
 })
+
+describe('sidechain replays never lend their timing', () => {
+  it("keeps the main response's time when a replay in the same session follows", () => {
+    const d = new UsageDeduper()
+    d.add(rec({ id: 'msg_m:req_1', mid: 'msg_m', rid: 'req_1', sid: 's1', genMs: 2000 }))
+    // A /btw replay in another file of the same session (same key), new request id.
+    const res = d.add(
+      rec({ id: 'msg_m:req_9', mid: 'msg_m', rid: 'req_9', sid: 's1', sc: true, genMs: 8000 })
+    )
+    expect(res.result).toBe('duplicate')
+    expect(d.get('msg_m:req_1')).toMatchObject({ genMs: 2000 })
+    expect(d.get('msg_m:req_1')!.sc).toBeUndefined()
+  })
+
+  it('takes the main response’s own time when it arrives after the replay', () => {
+    const d = new UsageDeduper()
+    d.add(rec({ id: 'msg_m:req_9', mid: 'msg_m', rid: 'req_9', sid: 's1', sc: true, genMs: 8000 }))
+    d.add(rec({ id: 'msg_m:req_1', mid: 'msg_m', rid: 'req_1', sid: 's1', genMs: 2000 }))
+    const kept = [...d.values()]
+    expect(kept).toHaveLength(1)
+    expect(kept[0]).toMatchObject({ genMs: 2000 })
+    expect(kept[0].sc).toBeUndefined()
+  })
+
+  it('never gives a timeless main response the replay’s time', () => {
+    const d = new UsageDeduper()
+    d.add(rec({ id: 'msg_m:req_1', mid: 'msg_m', rid: 'req_1', sid: 's1', genMs: undefined }))
+    d.add(rec({ id: 'msg_m:req_9', mid: 'msg_m', rid: 'req_9', sid: 's1', sc: true, genMs: 8000 }))
+    expect(d.get('msg_m:req_1')!.genMs).toBeUndefined()
+  })
+})

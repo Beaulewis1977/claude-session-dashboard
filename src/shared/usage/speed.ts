@@ -102,6 +102,8 @@ export interface SpeedStats {
   tps?: number
   /** Normal-mode responses the speed comes from. */
   samples: number
+  /** Normal-mode responses in all (with a speed or not): 0 means the set ran only in fast mode. */
+  normalResponses: number
   /** Median time to first token in normal mode, ms. */
   ttftMs?: number
   /** Responses (Claude Code) or turns (Codex) the time to first token comes from. */
@@ -126,7 +128,12 @@ export interface SpeedStats {
  */
 export function speedStats(records: UsageRecord[], codexTurns?: CodexTurnSample[]): SpeedStats {
   const { tps, samples } = medianSpeed(records, notFast)
-  const out: SpeedStats = { ...(tps !== undefined ? { tps } : {}), samples, ttftSamples: 0 }
+  const out: SpeedStats = {
+    ...(tps !== undefined ? { tps } : {}),
+    samples,
+    normalResponses: records.filter(notFast).length,
+    ttftSamples: 0
+  }
   if (records.some(isFast)) {
     const f = medianSpeed(records, isFast)
     out.fast = true

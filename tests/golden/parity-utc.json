@@ -19980,6 +19980,7 @@
     "output": 11642,
     "responses": 17,
     "speed": {
+     "normalResponses": 17,
      "samples": 17,
      "tps": 42.437035958654825,
      "ttftCoverage": 0,
@@ -20014,6 +20015,7 @@
     "output": 721,
     "responses": 5,
     "speed": {
+     "normalResponses": 5,
      "samples": 0,
      "ttftCoverage": 0,
      "ttftEstimated": true,
@@ -20049,6 +20051,7 @@
     "output": 29292,
     "responses": 24,
     "speed": {
+     "normalResponses": 24,
      "samples": 24,
      "tps": 52.47146336233789,
      "ttftCoverage": 0,
@@ -20085,6 +20088,7 @@
     "output": 10473,
     "responses": 15,
     "speed": {
+     "normalResponses": 15,
      "samples": 14,
      "tps": 26.25540722618161,
      "ttftCoverage": 0,
@@ -20119,6 +20123,7 @@
     "output": 1277,
     "responses": 12,
     "speed": {
+     "normalResponses": 12,
      "samples": 0,
      "ttftCoverage": 0,
      "ttftEstimated": true,
@@ -20152,6 +20157,7 @@
     "output": 262,
     "responses": 1,
     "speed": {
+     "normalResponses": 1,
      "samples": 0,
      "ttftCoverage": 0,
      "ttftEstimated": true,
@@ -20185,6 +20191,7 @@
     "output": 240,
     "responses": 1,
     "speed": {
+     "normalResponses": 1,
      "samples": 0,
      "ttftCoverage": 0,
      "ttftEstimated": true,
@@ -20202,6 +20209,7 @@
     "output": 0,
     "responses": 0,
     "speed": {
+     "normalResponses": 0,
      "samples": 0,
      "ttftSamples": 0
     },
@@ -20235,6 +20243,7 @@
     "output": 32177,
     "responses": 30,
     "speed": {
+     "normalResponses": 30,
      "samples": 30,
      "tps": 54.543504148647415,
      "ttftCoverage": 0,
@@ -20269,6 +20278,7 @@
     "output": 720,
     "responses": 3,
     "speed": {
+     "normalResponses": 3,
      "samples": 0,
      "ttftCoverage": 0,
      "ttftEstimated": true,
@@ -20304,6 +20314,7 @@
     "output": 30097,
     "responses": 28,
     "speed": {
+     "normalResponses": 28,
      "samples": 28,
      "tps": 40.618237280334846,
      "ttftCoverage": 0,
@@ -20340,6 +20351,7 @@
     "output": 15339,
     "responses": 22,
     "speed": {
+     "normalResponses": 22,
      "samples": 22,
      "tps": 39.33555409952219,
      "ttftCoverage": 0,
@@ -20374,6 +20386,7 @@
     "output": 1373,
     "responses": 6,
     "speed": {
+     "normalResponses": 6,
      "samples": 0,
      "ttftCoverage": 0,
      "ttftEstimated": true,
@@ -20409,6 +20422,7 @@
     "output": 17452,
     "responses": 25,
     "speed": {
+     "normalResponses": 25,
      "samples": 25,
      "tps": 29.18287937743191,
      "ttftCoverage": 0,
@@ -20445,6 +20459,7 @@
     "output": 35485,
     "responses": 35,
     "speed": {
+     "normalResponses": 35,
      "samples": 35,
      "tps": 30.282015718908927,
      "ttftCoverage": 0,
@@ -20481,6 +20496,7 @@
     "output": 11860,
     "responses": 19,
     "speed": {
+     "normalResponses": 19,
      "samples": 18,
      "tps": 39.085468137211926,
      "ttftCoverage": 0,
@@ -20515,6 +20531,7 @@
     "output": 2229,
     "responses": 12,
     "speed": {
+     "normalResponses": 12,
      "samples": 0,
      "ttftCoverage": 0,
      "ttftEstimated": true,
@@ -20550,6 +20567,7 @@
     "output": 23125,
     "responses": 30,
     "speed": {
+     "normalResponses": 30,
      "samples": 30,
      "tps": 44.85686970817805,
      "ttftCoverage": 0,
@@ -20584,6 +20602,7 @@
     "output": 761,
     "responses": 3,
     "speed": {
+     "normalResponses": 3,
      "samples": 0,
      "ttftCoverage": 0,
      "ttftEstimated": true,

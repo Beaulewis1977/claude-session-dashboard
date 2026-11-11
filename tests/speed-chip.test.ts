@@ -75,6 +75,24 @@ describe('session speed chip', () => {
     expect(html).toContain('TTFT 1.2s est.')
   })
 
+  it('a mixed session with too few normal responses shows its fast speed, not "Fast only"', () => {
+    const html = chip([...recs(2, {}), ...recs(6, { model: 'claude-opus-5-5-fast', genMs: 2000 })])
+    expect(html).toContain('250 tok/s (fast)')
+    expect(html).not.toContain('Fast only')
+    expect(html).toContain('Fast')
+  })
+
+  it('shows a fast speed next to the normal time to first token', () => {
+    const html = chip([
+      // Normal mode: too short for a speed, but each has a time to first token.
+      ...recs(5, { output: 20, ttftMs: 1200 }),
+      ...recs(6, { model: 'claude-opus-5-5-fast', genMs: 2000 })
+    ])
+    expect(html).toContain('250 tok/s (fast)')
+    expect(html).toContain('TTFT 1.2s est.')
+    expect(html).not.toContain('TTFT 1.2s est. (fast)')
+  })
+
   it('shows nothing without any timing', () => {
     expect(chip(recs(3, { genMs: undefined }))).toBe('')
   })

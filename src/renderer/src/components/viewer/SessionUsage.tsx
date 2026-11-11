@@ -98,11 +98,20 @@ export function SessionUsageStrip({
 export function SpeedChip({ u }: { u: SessionUsage }) {
   const sp = u.speed
   if (!sp) return null
-  // Normal mode first; a session that only ran in fast mode shows its fast numbers.
-  const onlyFast = sp.tps === undefined && sp.ttftMs === undefined
-  const tps = sp.tps ?? (onlyFast ? sp.fastTps : undefined)
-  const ttftMs = sp.ttftMs ?? (onlyFast ? sp.fastTtftMs : undefined)
-  if (tps === undefined && ttftMs === undefined && !sp.fast) return null
+  // Normal mode first; each figure falls back to fast mode on its own when
+  // normal mode has none, marked "(fast)" unless the session ran only in
+  // fast mode (then the badge says "Fast only").
+  const onlyFast = !!sp.fast && sp.normalResponses === 0
+  const pick = (normal: number | undefined, fast: number | undefined) =>
+    normal !== undefined
+      ? { v: normal, fast: false }
+      : fast !== undefined
+        ? { v: fast, fast: true }
+        : undefined
+  const speed = pick(sp.tps, sp.fastTps)
+  const first = pick(sp.ttftMs, sp.fastTtftMs)
+  if (!speed && !first && !sp.fast) return null
+  const tag = (x: { fast: boolean }): string => (x.fast && !onlyFast ? ' (fast)' : '')
   const coverage = ttftCoverageText(sp.ttftCoverage)
   const est = sp.ttftEstimated ? ' est.' : ''
   const ttftText = (ms: number | undefined): string =>
@@ -111,22 +120,26 @@ export function SpeedChip({ u }: { u: SessionUsage }) {
     <Tooltip
       content={
         <span className="block max-w-[300px] space-y-1 leading-relaxed">
-          <span className="block">
-            Output speed: {formatTps(sp.tps)}
-            {sp.samples
-              ? ` (median of ${formatInt(sp.samples)} responses${sp.fast ? ', normal mode' : ''})`
-              : ''}
-          </span>
-          <span className="block">
-            Time to first token: {ttftText(sp.ttftMs)}
-            {sp.ttftEstimated
-              ? coverage
-                ? ` (${coverage})`
-                : ''
-              : sp.ttftSamples
-                ? ` (Codex's own, ${formatInt(sp.ttftSamples)} turns)`
-                : ''}
-          </span>
+          {!onlyFast && (
+            <>
+              <span className="block">
+                Output speed: {formatTps(sp.tps)}
+                {sp.samples
+                  ? ` (median of ${formatInt(sp.samples)} responses${sp.fast ? ', normal mode' : ''})`
+                  : ''}
+              </span>
+              <span className="block">
+                Time to first token: {ttftText(sp.ttftMs)}
+                {sp.ttftEstimated
+                  ? coverage
+                    ? ` (${coverage})`
+                    : ''
+                  : sp.ttftSamples
+                    ? ` (Codex's own, ${formatInt(sp.ttftSamples)} turns)`
+                    : ''}
+              </span>
+            </>
+          )}
           {sp.fast && (
             <span className="block">
               Fast mode: {formatTps(sp.fastTps)}
@@ -143,15 +156,21 @@ export function SpeedChip({ u }: { u: SessionUsage }) {
     >
       <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground tabular-nums">
         <Gauge className="size-3.5 text-subtle-foreground" />
-        {tps !== undefined && <span>{formatTps(tps)}</span>}
-        {ttftMs !== undefined && (
-          <span className={tps !== undefined ? 'text-subtle-foreground' : undefined}>
-            {tps !== undefined ? '· ' : ''}TTFT {ttftText(ttftMs)}
+        {speed && (
+          <span>
+            {formatTps(speed.v)}
+            {tag(speed)}
+          </span>
+        )}
+        {first && (
+          <span className={speed ? 'text-subtle-foreground' : undefined}>
+            {speed ? '· ' : ''}TTFT {ttftText(first.v)}
+            {tag(first)}
           </span>
         )}
         {sp.fast && (
           <span className="inline-flex items-center gap-0.5 rounded bg-primary/12 px-1 text-[10px] font-medium text-primary">
-            <Zap className="size-2.5" /> Fast{onlyFast && tps !== undefined ? ' only' : ''}
+            <Zap className="size-2.5" /> {onlyFast ? 'Fast only' : 'Fast'}
           </span>
         )}
       </span>

@@ -217,8 +217,34 @@ export function costParts(r: CostInput, table: ModelPrice[]): CostParts {
 
 /** Estimated cost in USD, or 0 when the model isn't in the table. */
 export function estimateCost(r: CostInput, table: ModelPrice[]): number {
-  const p = costParts(r, table)
-  return p.input + p.output + p.cacheRead + p.cacheWrite
+  // costParts' four amounts added in the same order (the same number to the
+  // last bit), without making an object per record.
+  const fast = r.model.endsWith('-fast')
+  const price = findPrice(fast ? fastBase(r.model) : r.model, table)
+  if (!price) return 0
+  const lc = price.longContext
+  const tier: PriceTier = lc && r.input + r.cacheWrite + r.cacheRead > lc.above ? lc : price
+  const cw1h = Math.min(r.cw1h ?? 0, r.cacheWrite)
+  const cw5 = r.cacheWrite - cw1h
+  const m = (fast ? (price.fast ?? 1) : 1) / 1_000_000
+  return (
+    r.input * tier.input * m +
+    r.output * tier.output * m +
+    r.cacheRead * tier.cacheRead * m +
+    (cw5 * tier.cacheWrite5m + cw1h * tier.cacheWrite1h) * m
+  )
+}
+
+/** A fast-mode model id without its "-fast" (kept: one string per model, not per record). */
+const fastBases = new Map<string, string>()
+function fastBase(model: string): string {
+  let b = fastBases.get(model)
+  if (b === undefined) {
+    b = model.slice(0, -5)
+    if (fastBases.size >= 1000) fastBases.clear()
+    fastBases.set(model, b)
+  }
+  return b
 }
 
 /** A record's cost: what Claude Code logged (old versions), else the estimate. */

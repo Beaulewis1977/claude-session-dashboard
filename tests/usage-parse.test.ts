@@ -89,6 +89,19 @@ describe('usage parser thread', () => {
       expect(await parser.parse({ ...job, path: 'b.jsonl' })).toMatchObject({ file: 'b.jsonl' })
       await parser.stop()
       expect(parser.running).toBe(false)
+
+      // After a scan (rest), it goes after the short wait, not the idle one.
+      const scan = new WorkerParser(path, 128, 60_000, 50)
+      expect(await scan.parse(job)).toMatchObject({ file: 'a.jsonl' })
+      expect(scan.running).toBe(true)
+      scan.rest()
+      await expect.poll(() => scan.running, { timeout: 3000 }).toBe(false)
+      // A file asked for before it went keeps it.
+      expect(await scan.parse(job)).toMatchObject({ file: 'a.jsonl' })
+      scan.rest()
+      const p = scan.parse({ ...job, path: 'c.jsonl' })
+      expect(await p).toMatchObject({ file: 'c.jsonl' })
+      await scan.stop()
     } finally {
       await rm(dir, { recursive: true, force: true })
     }

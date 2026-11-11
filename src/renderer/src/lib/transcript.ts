@@ -44,14 +44,27 @@ export function dayLabel(iso: string): string {
   })
 }
 
-/** A block's text as find sees it (tool calls: label, input and output). */
+/** An input's strings as the viewer shows them (a command, a file, an edit), one per line. */
+function inputStrings(v: unknown): string {
+  if (typeof v === 'string') return v
+  const out: string[] = []
+  const walk = (x: unknown): void => {
+    if (typeof x === 'string') out.push(x)
+    else if (Array.isArray(x)) x.forEach(walk)
+    else if (x && typeof x === 'object') for (const k in x) walk((x as Record<string, unknown>)[k])
+  }
+  walk(v)
+  return out.join('\n')
+}
+
+/** A block's text as find sees it (tool calls: label, input as JSON and as shown, and output). */
 export function searchText(b: ContentBlock): string {
   switch (b.type) {
     case 'text':
     case 'thinking':
       return b.text
     case 'tool_use':
-      return `${b.label}\n${JSON.stringify(b.input)}\n${b.result?.text ?? ''}`
+      return `${b.label}\n${JSON.stringify(b.input)}\n${inputStrings(b.input)}\n${b.result?.text ?? ''}`
     case 'tool_result':
       return b.result.text
     case 'agent_message':

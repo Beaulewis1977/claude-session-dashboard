@@ -26,6 +26,7 @@ const api: CsdApi = {
   },
   getSession: (key, opts) => ipcRenderer.invoke('sessions:get', key, opts),
   getToolResult: (key, id) => ipcRenderer.invoke('sessions:toolResult', key, id),
+  getToolInput: (key, id) => ipcRenderer.invoke('sessions:toolInput', key, id),
   findInCut: (key, q) => ipcRenderer.invoke('sessions:findInCut', key, q),
   search: (q) => ipcRenderer.invoke('sessions:search', q),
   updateMeta: (key, patch) => ipcRenderer.invoke('sessions:updateMeta', key, patch),

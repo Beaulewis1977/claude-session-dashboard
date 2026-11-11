@@ -267,9 +267,21 @@ export interface ToolResult {
   images?: number
   /**
    * Sent cut (a long output, see transcript-cut.ts): `text` is its start, and
-   * the full text has this many characters and lines.
+   * the full text has this many characters and lines. `lazy`: a placeholder (a
+   * very long transcript's): the viewer loads the output when it's opened.
    */
-  cut?: { chars: number; lines: number }
+  cut?: { chars: number; lines: number; lazy?: true }
+}
+
+/**
+ * One long string of a tool call's input that was sent cut (see
+ * transcript-cut.ts): where it is in the input (no path: the input is that
+ * string), and its full size.
+ */
+export interface InputCut {
+  path: (string | number)[]
+  chars: number
+  lines: number
 }
 
 export type ContentBlock =
@@ -282,6 +294,10 @@ export type ContentBlock =
       input: unknown
       label: string
       result?: ToolResult
+      /** Long strings of `input` sent cut (their start only); the full input is asked for. */
+      inputCut?: InputCut[]
+      /** The input's long strings are placeholders (a very long transcript): loaded when it's opened. */
+      inputLazy?: true
     }
   | { type: 'tool_result'; toolUseId: string; result: ToolResult }
   | { type: 'image'; mediaType?: string }

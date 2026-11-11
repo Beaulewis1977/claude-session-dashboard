@@ -1,7 +1,16 @@
 // Turning usage records into the numbers the Usage view shows: time series,
 // breakdowns, period cards and 5-hour blocks.
 
-import { isFast, medianSpeed, notFast, outputSpeed, speedMedian, thinkingTokens } from './speed'
+import {
+  isFast,
+  medianSpeed,
+  notFast,
+  outputSpeed,
+  outputSpeedOrNone,
+  NO_SPEED,
+  speedMedian,
+  thinkingTokens
+} from './speed'
 import { modelLabel, recordCost, type ModelPrice } from './pricing'
 import { totalTokens } from './parse'
 import {
@@ -43,6 +52,98 @@ export function addRecord(t: Totals, r: UsageRecord, cost: number): void {
   if (r.reasoning) t.reasoning = (t.reasoning ?? 0) + r.reasoning
 }
 
+/** Fields of one group in TotalsSums: input, output, cacheWrite, cacheRead, total, cost, responses, reasoning. */
+const F = 8
+
+/**
+ * Totals of many groups, added up in a typed array: the same additions in
+ * the same order as addRecord (so the same numbers, to the last bit), with
+ * no number boxed per record (writing a sum into an object field that
+ * several kinds of objects share allocates a new number each time, which
+ * made a report over all records hundreds of bytes of garbage per record).
+ */
+export class TotalsSums {
+  private s: Float64Array
+  /** Groups that had reasoning tokens (addRecord adds the field only then). */
+  private reasoning: Uint8Array
+  /** Groups whose first record had reasoning tokens (the field came before anything added after it). */
+  private reasonedFirst: Uint8Array
+  size = 0
+
+  constructor(capacity = 16) {
+    const n = Math.max(1, capacity)
+    this.s = new Float64Array(n * F)
+    this.reasoning = new Uint8Array(n)
+    this.reasonedFirst = new Uint8Array(n)
+  }
+
+  /** A new group (its index). */
+  group(): number {
+    if (this.size === this.reasoning.length) {
+      const n = this.reasoning.length * 2
+      const s = new Float64Array(n * F)
+      s.set(this.s)
+      this.s = s
+      const r = new Uint8Array(n)
+      r.set(this.reasoning)
+      this.reasoning = r
+      const f = new Uint8Array(n)
+      f.set(this.reasonedFirst)
+      this.reasonedFirst = f
+    }
+    return this.size++
+  }
+
+  /** addRecord into group g. */
+  add(g: number, r: UsageRecord, cost: number): void {
+    const s = this.s
+    const o = g * F
+    s[o] += r.input
+    s[o + 1] += r.output
+    s[o + 2] += r.cacheWrite
+    s[o + 3] += r.cacheRead
+    s[o + 4] += r.input + r.output + r.cacheWrite + r.cacheRead
+    s[o + 5] += cost
+    if (r.reasoning) {
+      // No record counted yet: this is the group's first.
+      if (s[o + 6] === 0) this.reasonedFirst[g] = 1
+      s[o + 7] += r.reasoning
+      this.reasoning[g] = 1
+    }
+    s[o + 6]++
+  }
+
+  /** Group g's first record had reasoning tokens. */
+  reasonedAtFirst(g: number): boolean {
+    return this.reasonedFirst[g] === 1
+  }
+
+  hasReasoning(g: number): boolean {
+    return this.reasoning[g] === 1
+  }
+
+  reasoningOf(g: number): number {
+    return this.s[g * F + 7]
+  }
+
+  /** Group g's totals, as addRecord leaves them (reasoning only when there was some, unless left out). */
+  totals(g: number, withReasoning = true): Totals {
+    const s = this.s
+    const o = g * F
+    const t: Totals = {
+      input: s[o],
+      output: s[o + 1],
+      cacheWrite: s[o + 2],
+      cacheRead: s[o + 3],
+      total: s[o + 4],
+      cost: s[o + 5],
+      responses: s[o + 6]
+    }
+    if (withReasoning && this.reasoning[g]) t.reasoning = s[o + 7]
+    return t
+  }
+}
+
 /** A record's provider id ("claude" for Claude Code's). */
 export function providerOfRecord(r: Pick<UsageRecord, 'provider'>): 'claude' | 'codex' {
   return r.provider ?? 'claude'
@@ -63,13 +164,12 @@ interface RecordIndex {
   sorted: boolean
   first: number
   last: number
-  costs?: { prices: ModelPrice[]; map: Map<UsageRecord, number> }
   /** Each record's cost at a price table, by position. */
   costArr?: { prices: ModelPrice[]; arr: Float64Array }
   /** The list's model ids, sorted. */
   models?: string[]
-  /** Total tokens and cost of the whole list (the all-time card). */
-  all?: { costs: Map<UsageRecord, number>; total: number; cost: number }
+  /** Total tokens and cost of the whole list (the all-time card), at its own cost table. */
+  all?: { costs: Float64Array; total: number; cost: number }
   /** Normal-mode median speed of the whole list. */
   speed?: { tps?: number }
 }
@@ -123,32 +223,63 @@ export function spanOf(records: UsageRecord[], from: number, to: number): [numbe
   return [lo, Math.max(lo, hi)]
 }
 
-/** Each record's cost at a price table (worked out once per list and table). */
-export function costsOf(records: UsageRecord[], prices: ModelPrice[]): Map<UsageRecord, number> {
-  const x = indexOf(records)
-  if (x.costs?.prices === prices) return x.costs.map
-  const map = new Map<UsageRecord, number>()
-  for (const r of records) map.set(r, recordCost(r, prices))
-  x.costs = { prices, map }
-  return map
-}
-
-/** Each record's cost at a price table, by position in the list. */
-function costArrOf(records: UsageRecord[], prices: ModelPrice[]): Float64Array {
+/** Each record's cost at a price table, by position in the list (worked out once per list and table). */
+export function costArrOf(records: UsageRecord[], prices: ModelPrice[]): Float64Array {
   const x = indexOf(records)
   if (x.costArr?.prices === prices) return x.costArr.arr
-  const map = costsOf(records, prices)
   const arr = new Float64Array(records.length)
-  for (let i = 0; i < records.length; i++) arr[i] = map.get(records[i]) ?? 0
+  for (let i = 0; i < records.length; i++) arr[i] = recordCost(records[i], prices)
   x.costArr = { prices, arr }
   return arr
 }
 
+/** Costs by position: record i of the list being added up costs arr[pos[i]] (arr[i] without pos). */
+export interface CostTable {
+  arr: Float64Array
+  pos?: Int32Array
+}
+
 /**
- * Records' costs: a map by record, or a lookup by position in the list
- * being added up (quicker for big lists).
+ * Records' costs: a map by record, a lookup by position in the list being
+ * added up, or a table by position (quickest for big lists: no number is
+ * boxed per record).
  */
-export type Costs = Map<UsageRecord, number> | ((i: number) => number)
+export type Costs = Map<UsageRecord, number> | ((i: number) => number) | CostTable
+
+function isTable(c: Costs | undefined): c is CostTable {
+  return !!c && typeof c === 'object' && !(c instanceof Map)
+}
+
+/**
+ * The costs of a list as a table by position (a table as it is; a map or a
+ * lookup copied into one, with `missing` for a record a map doesn't have):
+ * a loop then reads every cost from one typed array, so none is boxed.
+ */
+function tableOf(
+  records: UsageRecord[],
+  costs: Costs | undefined,
+  missing: (r: UsageRecord) => number
+): CostTable {
+  if (isTable(costs)) return costs
+  const arr = new Float64Array(records.length)
+  if (typeof costs === 'function') for (let i = 0; i < records.length; i++) arr[i] = costs(i)
+  else
+    for (let i = 0; i < records.length; i++) {
+      const r = records[i]
+      const c = costs?.get(r)
+      arr[i] = c ?? missing(r)
+    }
+  return { arr }
+}
+
+const noCost = (): number => 0
+
+/** Record i's cost (0 when a map doesn't have it). */
+function costOf(costs: Costs, records: UsageRecord[], i: number): number {
+  if (costs instanceof Map) return costs.get(records[i]) ?? 0
+  if (typeof costs === 'function') return costs(i)
+  return costs.arr[costs.pos ? costs.pos[i] : i]
+}
 
 /** The records with from ≤ ts < to, in list order. */
 export function inSpan(records: UsageRecord[], from: number, to: number): UsageRecord[] {
@@ -246,7 +377,8 @@ export function breakdowns(
   costs?: Costs
 ): BreakdownRow[][] {
   const uniq = [...new Set(dims)]
-  const groups = uniq.map(() => new Map<string, Totals>())
+  const groups = uniq.map(() => new Map<string, number>())
+  const sums = uniq.map(() => new TotalsSums())
   const speeds = uniq.map(() => new Map<string, number[]>())
   // A session's billing and source labels, asked once per session.
   const perKey = (f?: (key: string) => string): ((key: string) => string) | undefined => {
@@ -264,32 +396,31 @@ export function breakdowns(
     sourceOf: perKey(ctx.sourceOf)
   }
   let grand = 0
-  const costAt = typeof costs === 'function' ? costs : undefined
-  const costMap = typeof costs === 'function' ? undefined : costs
+  const { arr, pos } = tableOf(records, costs, (r) => recordCost(r, ctx.prices))
   for (let j = 0; j < records.length; j++) {
     const r = records[j]
-    const cost = costAt ? costAt(j) : (costMap?.get(r) ?? recordCost(r, ctx.prices))
+    const cost = pos ? arr[pos[j]] : arr[j]
     grand += totalTokens(r)
-    const speed = outputSpeed(r)
+    const speed = outputSpeedOrNone(r)
     const fast = isFast(r)
     for (let i = 0; i < uniq.length; i++) {
       const d = uniq[i]
       const k = dimensionKey(r, d, keyCtx)
-      let t = groups[i].get(k)
-      if (!t) groups[i].set(k, (t = emptyTotals()))
-      addRecord(t, r, cost)
+      let g = groups[i].get(k)
+      if (g === undefined) groups[i].set(k, (g = sums[i].group()))
+      sums[i].add(g, r, cost)
       // Speed: by model, a fast-mode model is a row of its own; other rows show normal mode only.
-      const v = d === 'model' || !fast ? speed : undefined
-      if (v !== undefined) {
+      if (speed !== NO_SPEED && (d === 'model' || !fast)) {
         let xs = speeds[i].get(k)
         if (!xs) speeds[i].set(k, (xs = []))
-        xs.push(v)
+        xs.push(speed)
       }
     }
   }
   const rows = uniq.map((d, i) =>
     [...groups[i].entries()]
-      .map(([key, t]) => {
+      .map(([key, g]) => {
+        const t = sums[i].totals(g)
         const xs = speeds[i].get(key) ?? []
         const tps = speedMedian(xs)
         return {
@@ -313,16 +444,27 @@ function sumRange(
   records: UsageRecord[],
   from: number,
   to: number,
-  costs: Map<UsageRecord, number>
+  costs: Costs
 ): { total: number; cost: number } {
   let total = 0
   let cost = 0
   const [lo, hi] = spanOf(records, from, to)
+  if (!isTable(costs)) {
+    for (let i = lo; i < hi; i++) {
+      const r = records[i]
+      if (r.ts >= from && r.ts < to) {
+        total += totalTokens(r)
+        cost += costOf(costs, records, i)
+      }
+    }
+    return { total, cost }
+  }
+  const { arr, pos } = costs
   for (let i = lo; i < hi; i++) {
     const r = records[i]
     if (r.ts >= from && r.ts < to) {
       total += totalTokens(r)
-      cost += costs.get(r) ?? 0
+      cost += pos ? arr[pos[i]] : arr[i]
     }
   }
   return { total, cost }
@@ -376,7 +518,7 @@ function deltaPct(cur: number, prev: number): number | undefined {
 export function periodCards(
   records: UsageRecord[],
   ctx: ReportContext,
-  costs: Map<UsageRecord, number>
+  costs: Costs
 ): PeriodCard[] {
   const { now, timeZone: tz, weekStart } = ctx
   const today = dayKey(now, tz)
@@ -459,21 +601,23 @@ export function periodCards(
 /** Total tokens, cost (summed in list order) and first time of a whole list. */
 function allTime(
   records: UsageRecord[],
-  costs: Map<UsageRecord, number>
+  costs: Costs
 ): { total: number; cost: number; first: number } {
   const x = indexOf(records)
   let first = Infinity
   if (x.sorted) first = records.length ? records[0].ts : Infinity
   else for (const r of records) if (r.ts < first) first = r.ts
-  if (x.all?.costs === costs) return { total: x.all.total, cost: x.all.cost, first }
+  // At the list's own cost table, the sums are kept with the list (not for costs made for one report).
+  const own = isTable(costs) && !costs.pos && costs.arr === x.costArr?.arr ? costs.arr : undefined
+  if (own && x.all?.costs === own) return { total: x.all.total, cost: x.all.cost, first }
   let total = 0
   let cost = 0
-  for (const r of records) {
-    total += totalTokens(r)
-    cost += costs.get(r) ?? 0
+  const { arr, pos } = tableOf(records, costs, noCost)
+  for (let i = 0; i < records.length; i++) {
+    total += totalTokens(records[i])
+    cost += pos ? arr[pos[i]] : arr[i]
   }
-  // Kept for the list's own cost table only (a map made for one report isn't kept).
-  if (x.costs?.map === costs) x.all = { costs, total, cost }
+  if (own) x.all = { costs: own, total, cost }
   return { total, cost, first }
 }
 
@@ -520,28 +664,91 @@ export function timeSeries(
 ): SeriesPoint[] {
   const { period } = query
   const tz = ctx.timeZone
-  const points = new Map<string, SeriesPoint>()
+  // Each point's sums in typed arrays (see TotalsSums), its per-model and
+  // per-provider sums too. The points are made at the end, their fields in
+  // the order adding to an object record by record gave them.
+  const pointOf = new Map<string, number>()
+  const order: string[] = []
+  const sums = new TotalsSums(64)
+  /** Per point: model → its slot in modelSums (in the order the models came). */
+  const modelSlots: Map<string, number>[] = []
+  let modelSums = new Float64Array(256)
+  let slots = 0
+  /** Per point: tokens of Claude Code (2p) and Codex (2p + 1). */
+  let provSums = new Float64Array(128)
+  /** Per point: which providers came (bit 1 Claude Code, bit 2 Codex), and which first (1, 2). */
+  let provSeen = new Uint8Array(64)
+  let provFirst = new Uint8Array(64)
   let minTs = Infinity
   let maxTs = -Infinity
-  const costAt = typeof costs === 'function' ? costs : undefined
-  const costMap = typeof costs === 'function' ? undefined : costs
+  const { arr, pos } = tableOf(records, costs, noCost)
   for (let j = 0; j < records.length; j++) {
     const r = records[j]
     const k = bucketKey(r.ts, period, tz, ctx.weekStart)
-    let p = points.get(k)
-    if (!p) {
-      p = { bucket: k, start: bucketRange(k, period, tz).start, ...emptyTotals(), byModel: {} }
-      points.set(k, p)
+    let p = pointOf.get(k)
+    if (p === undefined) {
+      p = sums.group()
+      pointOf.set(k, p)
+      order.push(k)
+      modelSlots.push(new Map())
+      if (p >= provSeen.length) {
+        const n = provSeen.length * 2
+        const ps = new Float64Array(n * 2)
+        ps.set(provSums)
+        provSums = ps
+        const seen = new Uint8Array(n)
+        seen.set(provSeen)
+        provSeen = seen
+        const first = new Uint8Array(n)
+        first.set(provFirst)
+        provFirst = first
+      }
     }
-    addRecord(p, r, costAt ? costAt(j) : (costMap?.get(r) ?? 0))
-    p.byModel[r.model] = (p.byModel[r.model] ?? 0) + totalTokens(r)
+    sums.add(p, r, pos ? arr[pos[j]] : arr[j])
+    const tokens = r.input + r.output + r.cacheWrite + r.cacheRead
+    const ms = modelSlots[p]
+    let slot = ms.get(r.model)
+    if (slot === undefined) {
+      if (slots === modelSums.length) {
+        const m = new Float64Array(modelSums.length * 2)
+        m.set(modelSums)
+        modelSums = m
+      }
+      ms.set(r.model, (slot = slots++))
+    }
+    modelSums[slot] += tokens
     if (ctx.byProvider) {
-      const pv = providerOfRecord(r)
-      p.byProvider ??= {}
-      p.byProvider[pv] = (p.byProvider[pv] ?? 0) + totalTokens(r)
+      const pv = providerOfRecord(r) === 'codex' ? 1 : 0
+      if (!provFirst[p]) provFirst[p] = pv + 1
+      provSeen[p] |= 1 << pv
+      provSums[p * 2 + pv] += tokens
     }
     if (r.ts < minTs) minTs = r.ts
     if (r.ts > maxTs) maxTs = r.ts
+  }
+  const points = new Map<string, SeriesPoint>()
+  for (let p = 0; p < order.length; p++) {
+    const k = order[p]
+    const point: SeriesPoint = {
+      bucket: k,
+      start: bucketRange(k, period, tz).start,
+      ...sums.totals(p, false),
+      byModel: {}
+    }
+    for (const [model, slot] of modelSlots[p]) point.byModel[model] = modelSums[slot]
+    // addRecord added reasoning at the first record that had some, and
+    // byProvider came at the point's first record (after its reasoning).
+    const reasoning = sums.hasReasoning(p)
+    if (ctx.byProvider) {
+      if (reasoning && sums.reasonedAtFirst(p)) point.reasoning = sums.reasoningOf(p)
+      const by: Record<string, number> = {}
+      const firstPv = provFirst[p] - 1
+      for (const pv of firstPv === 1 ? [1, 0] : [0, 1])
+        if (provSeen[p] & (1 << pv)) by[pv ? 'codex' : 'claude'] = provSums[p * 2 + pv]
+      point.byProvider = by
+      if (reasoning && !sums.reasonedAtFirst(p)) point.reasoning = sums.reasoningOf(p)
+    } else if (reasoning) point.reasoning = sums.reasoningOf(p)
+    points.set(k, point)
   }
   const from = query.from ?? (Number.isFinite(minTs) ? minTs : ctx.now)
   const to = Math.min(query.to ?? ctx.now, ctx.now)
@@ -682,18 +889,19 @@ export function buildReport(
   query: UsageQuery,
   ctx: ReportContext
 ): UsageReport {
-  const costs = costsOf(all, ctx.prices)
   const arr = costArrOf(all, ctx.prices)
   const { kept: inRange, pos } = filterWithPositions(all, query)
-  // In-range record i's cost (the same numbers as the map, by position).
-  const costAt = (i: number): number => arr[pos[i]]
-  const totals = emptyTotals()
+  // In-range record i's cost: arr[pos[i]].
+  const costAt: CostTable = { arr, pos }
+  const sums = new TotalsSums(1)
+  sums.group()
   const extra = new Set<string>()
   for (let i = 0; i < inRange.length; i++) {
     const r = inRange[i]
-    addRecord(totals, r, costAt(i))
+    sums.add(0, r, arr[pos[i]])
     if (r.extra) for (const k in r.extra) extra.add(k)
   }
+  const totals = sums.totals(0)
   const models = [...modelsOf(all)]
   const raw = query.raw === false ? [] : newestFirst(inRange, 500)
   let first: number | undefined
@@ -706,9 +914,14 @@ export function buildReport(
       if (first === undefined || r.ts < first) first = r.ts
       if (last === undefined || r.ts > last) last = r.ts
     }
-  const allForCards = query.models?.length
-    ? filterRecords(all, { ...query, from: undefined, to: undefined })
-    : all
+  // The cards' records (all of them unless models are picked) and their costs by position.
+  let allForCards = all
+  let cardCosts: CostTable = { arr }
+  if (query.models?.length) {
+    const f = filterWithPositions(all, { ...query, from: undefined, to: undefined })
+    allForCards = f.kept
+    cardCosts = { arr, pos: f.pos }
+  }
   const [byGroup, byModel, bySession] = breakdowns(
     inRange,
     [query.groupBy ?? 'model', 'model', 'session'],
@@ -728,7 +941,7 @@ export function buildReport(
     breakdown: byGroup,
     byModel,
     topSessions: bySession.slice(0, 12),
-    cards: periodCards(allForCards, ctx, costs),
+    cards: periodCards(allForCards, ctx, cardCosts),
     blocks: fiveHourBlocks(
       inSpan(all, ctx.now - 8 * 86_400_000, Infinity),
       ctx.now,

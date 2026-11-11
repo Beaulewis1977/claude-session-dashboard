@@ -64,14 +64,55 @@ function better(a: { ts: number; key: string }, b: { ts: number; key: string }):
   return a.ts < b.ts || (a.ts === b.ts && a.key < b.key)
 }
 
+/** A session key's session id (its last part), worked out once per key. */
+const sidOfKey = new Map<string, string>()
+function keySid(key: string): string {
+  let sid = sidOfKey.get(key)
+  if (sid === undefined) {
+    sid = key.slice(key.lastIndexOf(':') + 1)
+    // Session keys are few (one per session); a bound all the same.
+    if (sidOfKey.size >= 200_000) sidOfKey.clear()
+    sidOfKey.set(key, sid)
+  }
+  return sid
+}
+
 /** A row's session id (older rows without one: from the session key). */
-const recSid = (r: UsageRecord): string => r.sid ?? r.key.slice(r.key.lastIndexOf(':') + 1)
-const readSid = (r: CodexLimitReading): string =>
-  r.sessionId ?? r.key.slice(r.key.lastIndexOf(':') + 1)
+const recSid = (r: UsageRecord): string => r.sid ?? keySid(r.key)
+const readSid = (r: CodexLimitReading): string => r.sessionId ?? keySid(r.key)
+
+/** A part of a content key, as Array.prototype.join writes it (nothing for undefined and null). */
+const part = (v: unknown): string => (v === undefined || v === null ? '' : String(v))
 
 /** What a copy has in common with its original whatever the parser version: its numbers. */
 const recContent = (r: UsageRecord): string =>
-  [r.input, r.cacheRead, r.cacheWrite, r.output, r.reasoning ?? 0].join(',')
+  `${part(r.input)},${part(r.cacheRead)},${part(r.cacheWrite)},${part(r.output)},${part(r.reasoning ?? 0)}`
+
+/** Mixes a number into a hash (its 32-bit integer part: equal numbers mix in the same). */
+const mix = (h: number, v: number): number => Math.imul(h ^ (v | 0), 0x9e3779b1)
+
+/**
+ * A small integer that rows with the same content always have the same of
+ * (a hash of its numbers), or undefined when that isn't sure (a part that
+ * isn't a number). Rows whose hashes differ can't have the same content, so
+ * theirs isn't built; rows whose hashes match are compared by content.
+ */
+const recQuick = (r: UsageRecord): number | undefined => {
+  if (
+    typeof r.input !== 'number' ||
+    typeof r.cacheRead !== 'number' ||
+    typeof r.cacheWrite !== 'number' ||
+    typeof r.output !== 'number' ||
+    !(r.reasoning === undefined || r.reasoning === null || typeof r.reasoning === 'number')
+  )
+    return undefined
+  let h = mix(0x2545f491, r.input)
+  h = mix(h, r.cacheRead)
+  h = mix(h, r.cacheWrite)
+  h = mix(h, r.output)
+  h = mix(h, r.reasoning ?? 0)
+  return h & 0x3fffffff
+}
 // A reading's reset date is part of it (a current window at 20% is never an
 // old window's 20%), except when older Codex gave it relative to the event
 // (resets_in_seconds): a fork's copy has a new event time, so another reset
@@ -79,6 +120,30 @@ const recContent = (r: UsageRecord): string =>
 // (Codex's own reset dates are whole seconds, event times have milliseconds).
 const relativeReset = (w: CodexLimitWindow): boolean =>
   w.relative ?? (w.resetsAt !== undefined && w.resetsAt % 1000 !== 0)
+/**
+ * readContent's hash (see recQuick): its limit id (when it has no "|", so
+ * the content starts with it), number of windows and each window's numbers.
+ */
+const readQuick = (r: CodexLimitReading): number | undefined => {
+  if (typeof r.limitId !== 'string' || r.limitId.includes('|') || !Array.isArray(r.windows))
+    return undefined
+  let h = 0x2545f491
+  for (let i = 0; i < r.limitId.length; i++) h = mix(h, r.limitId.charCodeAt(i))
+  h = mix(h, r.windows.length)
+  for (const w of r.windows) {
+    if (typeof w.pct !== 'number' || typeof w.minutes !== 'number') return undefined
+    h = mix(h, w.pct)
+    h = mix(h, w.minutes)
+    if (relativeReset(w)) h = mix(h, 0x52454c)
+    else {
+      const at = w.resetsAt ?? 0
+      if (typeof at !== 'number') return undefined
+      // The whole number, not just its low 32 bits (reset dates are epoch ms).
+      h = mix(mix(h, at), at / 4294967296)
+    }
+  }
+  return h & 0x3fffffff
+}
 const readContent = (r: CodexLimitReading): string =>
   r.limitId +
   '|' +
@@ -130,8 +195,8 @@ export class CodexUsageStore {
   ): void {
     if (turns) this.setTurns(key, turns)
     const old = this.bySession.get(key)
-    for (const x of [...(old?.records ?? []), ...(old?.readings ?? []), ...records, ...readings])
-      this.dirtyMonths.add(month(x.ts))
+    for (const list of [old?.records, old?.readings, records, readings])
+      if (list) for (const x of list) this.dirtyMonths.add(month(x.ts))
     this.bySession.set(key, { records, readings })
     if (this.legacy.delete(key)) {
       this.indexDirty = true
@@ -187,18 +252,23 @@ export class CodexUsageStore {
       }
       // Each response's counted copy (record id and the session it counts for).
       // (pick() gives an independent sibling's row its own id: <id>:<session id>.)
-      const counted = new Set(
-        winners.records.map((r) => {
-          const tail = `:${recSid(r)}`
-          return `${r.id.endsWith(tail) ? r.id.slice(0, -tail.length) : r.id}|${r.key}`
-        })
-      )
+      // (Made only when a prompt-split turn has copies: it's a string per counted row.)
+      let countedSet: Set<string> | undefined
+      const counted = (): Set<string> =>
+        (countedSet ??= new Set(
+          winners.records.map((r) => {
+            const tail = `:${recSid(r)}`
+            return `${r.id.endsWith(tail) ? r.id.slice(0, -tail.length) : r.id}|${r.key}`
+          })
+        ))
       const groups = new Map<string, CodexTurnSample[]>()
       for (const [key, list] of this.turnsBy) {
         const legacy = this.legacy.has(key)
         for (const t of list) {
           if (legacy && !CODEX_TURN_ID_RE.test(t.id) && inFamily.has(sidOf(t.key))) continue
-          groups.set(t.id, [...(groups.get(t.id) ?? []), t])
+          const g = groups.get(t.id)
+          if (g) g.push(t)
+          else groups.set(t.id, [t])
         }
       }
       const out: CodexTurnSample[] = []
@@ -209,7 +279,8 @@ export class CodexUsageStore {
           // The same decision as for its first response's usage: the session whose copy of
           // that response counts (resolve() tells copies from matching sibling responses).
           const recId = id.slice('codex-turn:'.length)
-          const owned = g.filter((t) => counted.has(`${recId}|${t.key}`))
+          const has = counted()
+          const owned = g.filter((t) => has.has(`${recId}|${t.key}`))
           if (owned.length) out.push(...owned)
           else {
             // No usage row to go by (an older build's turn): a fork ancestor's copy wins.
@@ -312,6 +383,9 @@ export class CodexUsageStore {
     // Each unknown session's first rows (its copies, if it's a fork), per home.
     const burst = new Map<string, UsageRecord[]>()
     const wanted = new Set<string>()
+    // Their hashes (see recQuick): a row with another hash can't have one of their contents.
+    const wantedOut = new Set<number>()
+    let sure = true
     for (const [key, c] of this.bySession)
       for (const r of c.records) {
         const start = first.get(recSid(r))
@@ -320,11 +394,21 @@ export class CodexUsageStore {
         if (!rows.length) burst.set(key, rows)
         rows.push(r)
         wanted.add(r.id).add(recContent(r))
+        const q = recQuick(r)
+        if (q === undefined) sure = false
+        else wantedOut.add(q)
       }
+    const mayHold = (r: UsageRecord): boolean => {
+      if (wanted.has(r.id)) return true
+      if (sure) {
+        const q = recQuick(r)
+        if (q !== undefined && !wantedOut.has(q)) return false
+      }
+      return wanted.has(recContent(r))
+    }
     // The other homes' sessions that hold any of those.
     const holders = new Set<string>()
-    for (const [key, c] of this.bySession)
-      if (c.records.some((r) => wanted.has(r.id) || wanted.has(recContent(r)))) holders.add(key)
+    for (const [key, c] of this.bySession) if (c.records.some(mayHold)) holders.add(key)
     // By time, and in file order when times tie (the sort is stable and each
     // session's rows are kept in their rollout's order): a fork's copies are
     // often written in one millisecond, and their order must stay Codex's own
@@ -374,6 +458,16 @@ export class CodexUsageStore {
     return links
   }
 
+  /** ancestors, each session's worked out once (for one run: the links don't change during it). */
+  private static ancestorsOnce(links: Map<string, Link>): (sid: string) => Set<string> {
+    const memo = new Map<string, Set<string>>()
+    return (sid) => {
+      let a = memo.get(sid)
+      if (!a) memo.set(sid, (a = CodexUsageStore.ancestors(links, sid)))
+      return a
+    }
+  }
+
   private static ancestors(links: Map<string, Link>, sid: string): Set<string> {
     const out = new Set<string>()
     let p = links.get(sid)?.parent
@@ -397,7 +491,8 @@ export class CodexUsageStore {
   private pick<T extends { id: string; ts: number; key: string }>(
     copies: T[],
     sidOf: (x: T) => string,
-    links: Map<string, Link>
+    links: Map<string, Link>,
+    ancestorsOf: (sid: string) => Set<string> = (sid) => CodexUsageStore.ancestors(links, sid)
   ): T[] {
     if (copies.length === 1) return copies
     const bySid = new Map<string, T>()
@@ -413,7 +508,7 @@ export class CodexUsageStore {
       for (const k of one) if (better(k, e)) e = k
       return [e]
     }
-    const anc = (x: T) => CodexUsageStore.ancestors(links, sidOf(x))
+    const anc = (x: T) => ancestorsOf(sidOf(x))
     const startOf = (x: T) => links.get(sidOf(x))?.start
     // The identity is exact (lineage, running total, last usage, occurrence),
     // so an ancestor's event from before the fork was made is the original
@@ -463,10 +558,12 @@ export class CodexUsageStore {
    */
   private dropCopies<T extends { id: string; ts: number; key: string }>(
     rows: T[],
-    all: T[],
+    eachRow: (fn: (x: T) => void) => void,
     sidOf: (x: T) => string,
     contentOf: (x: T) => string,
-    links: Map<string, Link>
+    quickOf: (x: T) => number | undefined,
+    links: Map<string, Link>,
+    ancestorsOf: (sid: string) => Set<string>
   ): T[] {
     const copyEnd = (sid: string): number | undefined => {
       const l = links.get(sid)
@@ -484,11 +581,23 @@ export class CodexUsageStore {
     }
     if (!cand.size) return rows
     const wanted = new Set([...cand.values()].map((g) => g.content))
+    // The candidates' quick keys (see recQuick): a row with another can't have their content.
+    const wantedQuick = new Set<number>()
+    let sure = true
+    for (const g of cand.values()) {
+      const q = quickOf(g.rows[0])
+      if (q === undefined) sure = false
+      else wantedQuick.add(q)
+    }
     // Who held rows with those numbers, when: by content, session and home.
     const held = new Map<string, Map<string, Map<string, number[]>>>()
-    for (const x of all) {
+    eachRow((x) => {
+      if (sure) {
+        const q = quickOf(x)
+        if (q !== undefined && !wantedQuick.has(q)) return
+      }
       const k = contentOf(x)
-      if (!wanted.has(k)) continue
+      if (!wanted.has(k)) return
       let bySid = held.get(k)
       if (!bySid) held.set(k, (bySid = new Map()))
       let byKey = bySid.get(sidOf(x))
@@ -496,7 +605,7 @@ export class CodexUsageStore {
       const ts = byKey.get(x.key)
       if (ts) ts.push(x.ts)
       else byKey.set(x.key, [x.ts])
-    }
+    })
     // The most any one home of a session held (a session in two homes is one).
     const most = (byKey: Map<string, number[]>, upTo: number) => {
       let m = 0
@@ -508,7 +617,7 @@ export class CodexUsageStore {
     for (const g of cand.values()) {
       const start = startOf(g.sid)
       const parent = links.get(g.sid)!.parent
-      const a = CodexUsageStore.ancestors(links, g.sid)
+      const a = ancestorsOf(g.sid)
       let m = 0
       for (const [s2, byKey] of held.get(g.content) ?? []) {
         if (s2 === g.sid) continue
@@ -522,7 +631,7 @@ export class CodexUsageStore {
           l2?.parent === parent &&
           l2.start !== undefined &&
           (l2.start < start || (l2.start === start && s2 < g.sid)) &&
-          !CodexUsageStore.ancestors(links, s2).has(g.sid)
+          !ancestorsOf(s2).has(g.sid)
         )
           m = Math.max(m, most(byKey, l2.start + COPY_MS))
       }
@@ -544,34 +653,60 @@ export class CodexUsageStore {
   private resolve(): { records: UsageRecord[]; readings: CodexLimitReading[] } {
     if (this.winners) return this.winners
     const links = this.links()
-    const recs = new Map<string, UsageRecord[]>()
-    const reads = new Map<string, CodexLimitReading[]>()
-    const allRecs: UsageRecord[] = []
-    const allReads: CodexLimitReading[] = []
-    const add = <T extends { id: string }>(m: Map<string, T[]>, x: T) => {
+    const ancestorsOf = CodexUsageStore.ancestorsOnce(links)
+    // Each identity's copies, in the order they came (most have one: kept as itself, not in a list).
+    const recs = new Map<string, UsageRecord | UsageRecord[]>()
+    const reads = new Map<string, CodexLimitReading | CodexLimitReading[]>()
+    const add = <T extends { id: string }>(m: Map<string, T | T[]>, x: T) => {
       const g = m.get(x.id)
-      if (g) g.push(x)
-      else m.set(x.id, [x])
+      if (g === undefined) m.set(x.id, x)
+      else if (Array.isArray(g)) g.push(x)
+      else m.set(x.id, [g, x])
     }
     for (const c of this.bySession.values()) {
-      for (const r of c.records) {
-        add(recs, r)
-        allRecs.push(r)
-      }
-      for (const r of c.readings) {
-        add(reads, r)
-        allReads.push(r)
-      }
+      for (const r of c.records) add(recs, r)
+      for (const r of c.readings) add(reads, r)
     }
-    const records = [...recs.values()].flatMap((c) => this.pick(c, recSid, links))
-    const readings = [...reads.values()].flatMap((c) => this.pick(c, readSid, links))
+    const picked = <T extends { id: string; ts: number; key: string }>(
+      m: Map<string, T | T[]>,
+      sidOf: (x: T) => string
+    ): T[] => {
+      const out: T[] = []
+      for (const g of m.values()) {
+        if (!Array.isArray(g)) out.push(g)
+        else for (const x of this.pick(g, sidOf, links, ancestorsOf)) out.push(x)
+      }
+      return out
+    }
+    const records = picked(recs, recSid)
+    recs.clear()
+    const readings = picked(reads, readSid)
+    reads.clear()
+    const eachRecord = (fn: (x: UsageRecord) => void): void => {
+      for (const c of this.bySession.values()) for (const r of c.records) fn(r)
+    }
+    const eachReading = (fn: (x: CodexLimitReading) => void): void => {
+      for (const c of this.bySession.values()) for (const r of c.readings) fn(r)
+    }
     this.winners = {
-      records: this.dropCopies(records, allRecs, recSid, recContent, links).sort(
-        (a, b) => a.ts - b.ts
-      ),
-      readings: this.dropCopies(readings, allReads, readSid, readContent, links).sort(
-        (a, b) => a.ts - b.ts
-      )
+      records: this.dropCopies(
+        records,
+        eachRecord,
+        recSid,
+        recContent,
+        recQuick,
+        links,
+        ancestorsOf
+      ).sort((a, b) => a.ts - b.ts),
+      readings: this.dropCopies(
+        readings,
+        eachReading,
+        readSid,
+        readContent,
+        readQuick,
+        links,
+        ancestorsOf
+      ).sort((a, b) => a.ts - b.ts)
     }
     return this.winners
   }
@@ -646,8 +781,11 @@ export class CodexUsageStore {
             typeof t.id === 'string' &&
             typeof t.ts === 'number' &&
             typeof t.key === 'string'
-          )
-            this.turnsBy.set(t.key, [...(this.turnsBy.get(t.key) ?? []), t])
+          ) {
+            const list = this.turnsBy.get(t.key)
+            if (list) list.push(t)
+            else this.turnsBy.set(t.key, [t])
+          }
     }
     this.turnList = undefined
     if (!current) {

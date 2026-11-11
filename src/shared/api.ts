@@ -113,11 +113,13 @@ export interface CsdApi {
   onSessionsChanged(cb: (payload: SessionsPayload) => void): () => void
   /** Changes to the session list since the last full list or delta (see sessions-delta.ts). */
   onSessionsDelta(cb: (delta: SessionsDelta) => void): () => void
-  /** `cut`: long tool outputs cut (the viewer); then getToolResult has them in full. */
+  /** `cut`: long tool outputs and inputs cut (the viewer); getToolResult / getToolInput have them in full. */
   getSession(key: string, opts?: { cut?: boolean }): Promise<SessionDetail | null>
   /** A tool result in full, by its block id (after a getSession with `cut`). */
   getToolResult(key: string, blockId: string): Promise<ToolResult | null>
-  /** Blocks whose cut tool result holds `query` in its hidden part. */
+  /** A tool call's input in full, by its id (after a getSession with `cut`). */
+  getToolInput(key: string, toolId: string): Promise<{ input: unknown } | null>
+  /** Blocks whose cut tool result or input holds `query` in its hidden part. */
   findInCut(key: string, query: string): Promise<string[]>
   search(query: string): Promise<SearchHit[]>
   updateMeta(key: string, patch: Partial<SessionMeta>): Promise<SessionSummary | null>

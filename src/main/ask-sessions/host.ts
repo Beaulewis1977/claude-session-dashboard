@@ -3,6 +3,7 @@
 // its own memory cap; or in this thread (tests, and as a fallback).
 
 import { Worker } from 'node:worker_threads'
+import { noteWorker } from '../timing'
 import {
   IndexCore,
   type CoreStatus,
@@ -116,6 +117,7 @@ export class WorkerHost implements IndexHost {
       resourceLimits: { maxOldGenerationSizeMb: opts.maxHeapMb }
     })
     this.worker.unref()
+    noteWorker('ask index', this.worker)
     this.worker.on('message', (m: FromWorker) => {
       if (m.t === 'status') {
         this.last = m.status
@@ -157,6 +159,7 @@ export class WorkerHost implements IndexHost {
       )
     )
     this.worker.on('exit', (code) => {
+      noteWorker('ask index', undefined)
       if (code !== 0) fail(`The index stopped (exit code ${code}).`)
       else this.gone ??= 'stopped'
     })

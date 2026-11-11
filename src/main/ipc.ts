@@ -1,7 +1,14 @@
 import { app, BrowserWindow, clipboard, dialog, nativeTheme, shell } from 'electron'
 import { sentOf, sessionsDelta, type SentList } from '@shared/sessions-delta'
 import { coalesce } from './core/coalesce'
-import { cutTranscript, matchesInCut, toolResultOf } from '@shared/transcript-cut'
+import {
+  CUT,
+  cutForViewer,
+  matchesInCut,
+  toolInputOf,
+  toolResultOf,
+  type CutLimits
+} from '@shared/transcript-cut'
 import { writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
 import { clockOffset } from '@shared/clock'
@@ -311,15 +318,23 @@ export function registerIpc(deps: IpcDeps): void {
     // What this window has now: later changes are sent as a delta from it.
     return e.sender?.id !== undefined ? remember(e.sender.id, p) : p
   })
-  // The viewer asks for its transcript with long tool outputs cut (see
+  // The viewer asks for its transcript with long tool outputs and inputs cut (see
   // transcript-cut.ts); the full one is kept a little while for Show all,
   // Copy output and find in a cut part, then let go.
-  let full: { key: string; detail: SessionDetail; timer: NodeJS.Timeout } | undefined
-  const keepFull = (key: string, detail: SessionDetail): void => {
+  let full:
+    { key: string; detail: SessionDetail; limits: CutLimits; timer: NodeJS.Timeout } | undefined
+  // The limits the viewer's copy of each session was cut with (find looks past the same cut).
+  const cutWith = new Map<string, CutLimits>()
+  const keepFull = (key: string, detail: SessionDetail, limits?: CutLimits): void => {
     if (full) clearTimeout(full.timer)
     const timer = setTimeout(() => (full = undefined), 120_000)
     timer.unref()
-    full = { key, detail, timer }
+    if (limits) {
+      cutWith.delete(key)
+      cutWith.set(key, limits)
+      if (cutWith.size > 50) cutWith.delete(cutWith.keys().next().value!)
+    }
+    full = { key, detail, limits: limits ?? cutWith.get(key) ?? CUT, timer }
   }
   const fullDetail = async (key: string): Promise<SessionDetail | null> => {
     if (full?.key === key) return full.detail
@@ -332,16 +347,22 @@ export function registerIpc(deps: IpcDeps): void {
     if ((opts as { cut?: unknown } | undefined)?.cut !== true) return sessions.detail(k)
     const d = await sessions.detail(k)
     if (!d) return d
-    keepFull(k, d)
-    return { ...d, messages: cutTranscript(d.messages) }
+    const sent = cutForViewer(d.messages)
+    keepFull(k, d, sent.limits)
+    return { ...d, messages: sent.messages }
   })
   handle('sessions:toolResult', async (_e, key, id) => {
     const d = await fullDetail(str(key, 'key'))
     return d ? (toolResultOf(d.messages, str(id, 'id')) ?? null) : null
   })
-  handle('sessions:findInCut', async (_e, key, q) => {
+  handle('sessions:toolInput', async (_e, key, id) => {
     const d = await fullDetail(str(key, 'key'))
-    return d ? matchesInCut(d.messages, str(q, 'query')) : []
+    return d ? (toolInputOf(d.messages, str(id, 'id')) ?? null) : null
+  })
+  handle('sessions:findInCut', async (_e, key, q) => {
+    const k = str(key, 'key')
+    const d = await fullDetail(k)
+    return d ? matchesInCut(d.messages, str(q, 'query'), cutWith.get(k) ?? CUT) : []
   })
   handle('sessions:search', (_e, q) => sessions.searchKeys(str(q, 'query')))
   handle('sessions:updateMeta', (_e, key, patch) =>

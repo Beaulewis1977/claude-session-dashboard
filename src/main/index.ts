@@ -106,7 +106,7 @@ import { AccountsService, createAccountsStore, type Encryptor } from './services
 import { httpsFetcher } from './services/anthropic-api'
 import { BillingService } from './services/billing'
 import { createFixturesPlatform, createRealPlatform, type Platform } from './platform'
-import { mark, profileStartup, timed, watchEventLoop } from './timing'
+import { mark, profileStartup, timed, watchEventLoop, watchMemory } from './timing'
 import { HIDDEN_ARG, setStartWithWindows, startWithWindows } from './login-item'
 import { createNotifier } from './notify'
 import { CodexAppService, codexProtocolRegistered } from './providers/codex/app'
@@ -304,6 +304,7 @@ async function main(): Promise<void> {
   await app.whenReady()
   mark('app ready')
   watchEventLoop()
+  watchMemory()
   await profileStartup()
   blockNetwork()
   setAppPage(RENDERER_INDEX, process.env.ELECTRON_RENDERER_URL)

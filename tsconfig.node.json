@@ -35,5 +35,10 @@
     "src/renderer/src/mobile/nav-rules.ts",
     "src/renderer/src/lib/nav-history.ts"
   ],
-  "exclude": ["tests/clipboard.test.ts", "tests/ui-names.test.ts", "tests/credits-empty.test.ts"]
+  "exclude": [
+    "tests/clipboard.test.ts",
+    "tests/ui-names.test.ts",
+    "tests/credits-empty.test.ts",
+    "tests/speed-chip.test.ts"
+  ]
 }

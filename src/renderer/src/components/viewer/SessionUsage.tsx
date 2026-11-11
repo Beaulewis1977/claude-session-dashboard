@@ -97,10 +97,16 @@ export function SessionUsageStrip({
 /** The session's median output speed and time to first token, and a "Fast" badge. */
 export function SpeedChip({ u }: { u: SessionUsage }) {
   const sp = u.speed
-  if (!sp || (sp.tps === undefined && !sp.fast)) return null
+  if (!sp) return null
+  // Normal mode first; a session that only ran in fast mode shows its fast numbers.
+  const onlyFast = sp.tps === undefined && sp.ttftMs === undefined
+  const tps = sp.tps ?? (onlyFast ? sp.fastTps : undefined)
+  const ttftMs = sp.ttftMs ?? (onlyFast ? sp.fastTtftMs : undefined)
+  if (tps === undefined && ttftMs === undefined && !sp.fast) return null
   const coverage = ttftCoverageText(sp.ttftCoverage)
-  const ttft =
-    sp.ttftMs === undefined ? 'n/a' : `${formatTtft(sp.ttftMs)}${sp.ttftEstimated ? ' est.' : ''}`
+  const est = sp.ttftEstimated ? ' est.' : ''
+  const ttftText = (ms: number | undefined): string =>
+    ms === undefined ? 'n/a' : `${formatTtft(ms)}${est}`
   return (
     <Tooltip
       content={
@@ -111,14 +117,8 @@ export function SpeedChip({ u }: { u: SessionUsage }) {
               ? ` (median of ${formatInt(sp.samples)} responses${sp.fast ? ', normal mode' : ''})`
               : ''}
           </span>
-          {sp.fast && (
-            <span className="block">
-              Fast mode: {formatTps(sp.fastTps)}
-              {sp.fastSamples ? ` (${formatInt(sp.fastSamples)} responses)` : ''}
-            </span>
-          )}
           <span className="block">
-            Time to first token: {ttft}
+            Time to first token: {ttftText(sp.ttftMs)}
             {sp.ttftEstimated
               ? coverage
                 ? ` (${coverage})`
@@ -127,6 +127,13 @@ export function SpeedChip({ u }: { u: SessionUsage }) {
                 ? ` (Codex's own, ${formatInt(sp.ttftSamples)} turns)`
                 : ''}
           </span>
+          {sp.fast && (
+            <span className="block">
+              Fast mode: {formatTps(sp.fastTps)}
+              {sp.fastSamples ? ` (${formatInt(sp.fastSamples)} responses)` : ''}, time to first
+              token {ttftText(sp.fastTtftMs)}
+            </span>
+          )}
           <span className="block text-muted-foreground">
             {SPEED_CAVEAT}
             {sp.ttftEstimated ? ` ${CLAUDE_TTFT_CAVEAT}` : ''}
@@ -136,13 +143,15 @@ export function SpeedChip({ u }: { u: SessionUsage }) {
     >
       <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground tabular-nums">
         <Gauge className="size-3.5 text-subtle-foreground" />
-        {sp.tps !== undefined && <span>{formatTps(sp.tps)}</span>}
-        {sp.tps !== undefined && sp.ttftMs !== undefined && (
-          <span className="text-subtle-foreground">· TTFT {ttft}</span>
+        {tps !== undefined && <span>{formatTps(tps)}</span>}
+        {ttftMs !== undefined && (
+          <span className={tps !== undefined ? 'text-subtle-foreground' : undefined}>
+            {tps !== undefined ? '· ' : ''}TTFT {ttftText(ttftMs)}
+          </span>
         )}
         {sp.fast && (
           <span className="inline-flex items-center gap-0.5 rounded bg-primary/12 px-1 text-[10px] font-medium text-primary">
-            <Zap className="size-2.5" /> Fast
+            <Zap className="size-2.5" /> Fast{onlyFast && tps !== undefined ? ' only' : ''}
           </span>
         )}
       </span>

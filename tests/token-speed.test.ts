@@ -756,3 +756,82 @@ describe('Codex copied history', () => {
     expect(a.records[0].genMs).toBe(50)
   })
 })
+
+describe('Claude Code timing: one response per message id, request and chain', () => {
+  const gw = (sec: number, out: number, stop: string | null, opts: { rid?: string } = {}) =>
+    JSON.stringify({
+      type: 'assistant',
+      uuid: `g-${sec}`,
+      timestamp: at(sec),
+      version: '2.1.300',
+      ...(opts.rid ? { requestId: opts.rid } : {}),
+      message: {
+        id: 'chatcmpl-1', // a gateway that reuses one id
+        role: 'assistant',
+        model: 'claude-opus-5-5',
+        content: [tool()],
+        stop_reason: stop,
+        usage: { input_tokens: 10, output_tokens: out }
+      }
+    })
+
+  it('splits a gateway id reused by separate responses', () => {
+    const lines = [prompt(0), gw(4, 400, 'tool_use'), toolResult(60), gw(62, 300, 'end_turn')]
+    const t = claudeResponseTimings(events(lines))
+    expect(t.get('chatcmpl-1', undefined, T0 + 4000)!.genMs).toBe(4000)
+    expect(t.get('chatcmpl-1', undefined, T0 + 62_000)!.genMs).toBe(2000)
+    // Each usage record gets its own response's time, never one 62-second interval.
+    const a = analyzeUsage(events(lines), ctx)
+    expect(a.records.map((r) => r.genMs).sort()).toEqual([2000, 4000])
+  })
+
+  it('keeps an id with different request ids apart', () => {
+    const t = claudeResponseTimings(
+      events([
+        prompt(0),
+        gw(3, 400, 'tool_use', { rid: 'req_a' }),
+        toolResult(30),
+        gw(35, 300, 'end_turn', { rid: 'req_b' })
+      ])
+    )
+    expect(t.get('chatcmpl-1', 'req_a')!.genMs).toBe(3000)
+    expect(t.get('chatcmpl-1', 'req_b')!.genMs).toBe(5000)
+  })
+
+  it("never lets a sidechain replay stretch the main response's time", () => {
+    const t = claudeResponseTimings(
+      events([
+        prompt(0),
+        assistant('msg_1', 3, 400, [text], { stop: 'end_turn' }),
+        toolResult(100, 'b1', true),
+        assistant('msg_1', 101, 400, [text], { stop: 'end_turn', sidechain: true })
+      ])
+    )
+    expect(t.get('msg_1', undefined, undefined, false)!.genMs).toBe(3000)
+    expect(t.get('msg_1', undefined, undefined, true)!.genMs).toBe(1000)
+  })
+})
+
+describe('fast-mode lines never take a version’s place', () => {
+  it('keeps the five busiest versions and adds their fast lines', () => {
+    const recs = ['2.1.1', '2.1.2', '2.1.3', '2.1.4', '2.1.5'].flatMap((v, i) =>
+      many(10 + i, { ts: MON, version: v })
+    )
+    // A small version, and lots of fast-mode responses on one of them.
+    recs.push(...many(3, { ts: MON, version: '2.1.0' }))
+    recs.push(...many(40, { ts: MON, version: '2.1.1', model: 'claude-opus-5-5-fast' }))
+    const r = buildTrends({
+      records: recs,
+      turns: [],
+      readings: [],
+      timeZone: 'UTC',
+      weekStart: 'monday',
+      groupBy: 'version'
+    })
+    const keys = r.groups.map((g) => g.key)
+    expect(keys.filter((k) => !k.endsWith('|fast'))).toHaveLength(5)
+    expect(keys).toContain('2.1.5')
+    expect(keys).toContain('2.1.1|fast')
+    expect(keys.indexOf('2.1.1|fast')).toBe(keys.indexOf('2.1.1') + 1)
+  })
+})

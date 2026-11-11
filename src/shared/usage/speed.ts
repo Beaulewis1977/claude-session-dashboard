@@ -115,6 +115,8 @@ export interface SpeedStats {
   /** Their median speed, and how many. */
   fastTps?: number
   fastSamples?: number
+  /** Fast mode's median time to first token, ms (Claude Code: estimated). */
+  fastTtftMs?: number
 }
 
 /**
@@ -132,13 +134,18 @@ export function speedStats(records: UsageRecord[], codexTurns?: CodexTurnSample[
     if (f.tps !== undefined) out.fastTps = f.tps
   }
   if (codexTurns) {
-    const xs = codexTurns
-      .filter((t) => !t.model || !isFastModel(t.model))
-      .map(codexFirstTokenMs)
-      .filter((v): v is number => v !== undefined)
+    const ttfts = (fast: boolean): number[] =>
+      codexTurns
+        .filter((t) => !!t.model && isFastModel(t.model) === fast)
+        .concat(fast ? [] : codexTurns.filter((t) => !t.model))
+        .map(codexFirstTokenMs)
+        .filter((v): v is number => v !== undefined)
+    const xs = ttfts(false)
     const m = speedMedian(xs)
     if (m !== undefined) out.ttftMs = m
     out.ttftSamples = xs.length
+    const f = speedMedian(ttfts(true))
+    if (f !== undefined) out.fastTtftMs = f
     return out
   }
   const xs: number[] = []
@@ -153,10 +160,16 @@ export function speedStats(records: UsageRecord[], codexTurns?: CodexTurnSample[
   const m = speedMedian(xs)
   if (m !== undefined) out.ttftMs = m
   out.ttftSamples = xs.length
-  if (responses) {
-    out.ttftEstimated = true
-    out.ttftCoverage = xs.length / responses
-  }
+  const fast = speedMedian(
+    records
+      .filter((r) => !isCodex(r) && isFast(r))
+      .map(firstTokenMs)
+      .filter((v): v is number => v !== undefined)
+  )
+  if (fast !== undefined) out.fastTtftMs = fast
+  // Claude Code's time to first token is always an estimate (also in fast mode).
+  if (records.some((r) => !isCodex(r) && r.startTs === undefined)) out.ttftEstimated = true
+  if (responses) out.ttftCoverage = xs.length / responses
   return out
 }
 

@@ -1,5 +1,49 @@
 # Changelog
 
+## 1.16.4 (November 11, 2026)
+
+**Big sessions open much faster, and the app uses less memory.**
+
+### Big sessions and memory (PR #60)
+
+- **Long tool inputs are trimmed.** Files Claude wrote, edits and patches used to arrive in full
+  in the viewer. Now each long one shows its start with a **Show full (N lines, M chars)** button
+  that loads the rest. Tool outputs arrive as exactly what the viewer shows before **Show all**,
+  so nothing looks different until you open one. **Copy input**, a message's **Copy**, **Copy
+  conversation** and **Find** still use the full text: Find counts and opens matches past the cut,
+  including later ones and quoted or escaped text.
+- **Very long sessions** (like a 715-message one with thousands of tool calls) get one-line
+  placeholders: a tool call loads its output and input when you open it and shows them as usual.
+- **Only large sessions are virtualized.** A session is drawn near the screen only when it would
+  draw more than about 3,000 elements (an estimate from its content, not its number of turns).
+  Short and medium sessions are drawn in full, so you can select text across the whole
+  conversation again.
+- **Lower memory.** Usage reports and the Codex fork check make far less garbage (about half),
+  and the usage reader thread stops right after a scan instead of 20 seconds later. **Every usage
+  and limits number is the same as before**, to the last digit.
+
+| | Before (1.16.3) | After (1.16.4) |
+|---|---|---|
+| Biggest session (715 messages): sent to the viewer | 14.5 MB | 2.7 MB |
+| …opens in | 445 ms | 368 ms |
+| Idle memory: main process | 798 MB | 428–472 MB |
+| Idle memory: all processes | 1,156 MB | 812–846 MB |
+| On Usage (All): all processes | 1,384 MB | 1,286 MB |
+| On Usage (Claude Code): all processes | 1,545 MB | 1,392 MB |
+
+Measured on a real history (148k Codex + 16k Claude Code responses, 2,575 sessions), built app,
+same steps.
+
+**Known limits:** opening the Usage screen still briefly takes the main process to about 600 MB
+before that garbage is collected, and opening a tool call in a very long session after two minutes
+idle takes about 0.3 s (the session is read again).
+
+### Also in this release
+
+- `CSD_TIMING=1` also logs main-process memory and each worker thread's heap every 10 seconds.
+- A performance harness in `scripts/perf/` measures the app on a copy of real data before and
+  after a change (numbers only).
+
 ## 1.16.3 (November 11, 2026)
 
 **Performance: a fast Usage screen, a smoother viewer, and smaller installers.**

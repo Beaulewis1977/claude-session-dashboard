@@ -108,3 +108,39 @@ export function timedCall(channel: string, call: () => unknown): unknown {
   report(res)
   return res
 }
+
+/** Worker threads whose heaps the memory log shows (by name). */
+const workers = new Map<string, { getHeapStatistics?: () => Promise<{ used_heap_size: number }> }>()
+
+/** A worker thread to show in the memory log while it runs (CSD_TIMING=1); undefined when it ends. */
+export function noteWorker(
+  name: string,
+  worker: { getHeapStatistics?: () => Promise<{ used_heap_size: number }> } | undefined
+): void {
+  if (!ON) return
+  if (worker) workers.set(name, worker)
+  else workers.delete(name)
+}
+
+/**
+ * With CSD_TIMING=1, every `everyMs`: the main process's memory and each
+ * running worker thread's heap (sizes only).
+ */
+export function watchMemory(everyMs = Number(process.env.CSD_TIMING_MEM_MS) || 10_000): void {
+  if (!ON) return
+  const mb = (b: number): number => Math.round(b / 1048576)
+  const t = setInterval(() => {
+    const m = process.memoryUsage()
+    void Promise.all(
+      [...workers].map(async ([name, w]) => {
+        const h = await w.getHeapStatistics?.().catch(() => undefined)
+        return `${name} ${h ? `${mb(h.used_heap_size)} MB` : '?'}`
+      })
+    ).then((ws) =>
+      console.log(
+        `[timing] memory: rss ${mb(m.rss)} MB, main heap ${mb(m.heapUsed)}/${mb(m.heapTotal)} MB, external ${mb(m.external)} MB; workers: ${ws.join(', ') || 'none'} (at ${Math.round(performance.now() - T0)} ms)`
+      )
+    )
+  }, everyMs)
+  t.unref()
+}

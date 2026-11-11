@@ -9,6 +9,7 @@ import { parseJsonl } from '@shared/jsonl'
 import { analyzeUsage, type UsageContext } from '@shared/usage/parse'
 import type { UsageAnalysis } from '@shared/usage/types'
 import { analyzeCodexUsage } from '../providers/codex/usage'
+import { noteWorker } from '../timing'
 import { readCodexUsageText } from '../providers/codex/read'
 
 export interface UsageParseJob {
@@ -36,6 +37,8 @@ export async function parseUsageFile(job: UsageParseJob): Promise<UsageAnalysis 
 
 export interface UsageParser {
   parse(job: UsageParseJob): Promise<UsageAnalysis | undefined>
+  /** A run of parses (a scan) is over: what it holds can be let go soon. */
+  rest?(): void
   stop(): Promise<void>
 }
 
@@ -52,6 +55,8 @@ type Reply =
 
 /** How long the thread stays with nothing to parse before it's let go (its memory with it). */
 const IDLE_MS = 20_000
+/** After a scan: soon (a file that changes again right away reuses the thread). */
+const REST_MS = 2_000
 
 /**
  * Parses in a worker thread, one file at a time, in the order asked. The
@@ -74,7 +79,8 @@ export class WorkerParser implements UsageParser {
   constructor(
     private readonly workerPath: string,
     private readonly maxHeapMb = 1024,
-    private readonly idleMs = IDLE_MS
+    private readonly idleMs = IDLE_MS,
+    private readonly restMs = REST_MS
   ) {}
 
   private start(): Worker | undefined {
@@ -90,6 +96,7 @@ export class WorkerParser implements UsageParser {
       return undefined
     }
     worker.unref()
+    noteWorker('usage parser', worker)
     worker.on('message', (m: Reply) => {
       const w = this.waiting.get(m.id)
       if (!w) return
@@ -99,6 +106,7 @@ export class WorkerParser implements UsageParser {
       this.restIfIdle()
     })
     const gone = (why: unknown): void => {
+      noteWorker('usage parser', undefined)
       if (this.worker !== worker) return // let go on purpose (idle, stop)
       console.warn('usage parser thread stopped, parsing in the main thread', why)
       this.worker = undefined
@@ -115,7 +123,7 @@ export class WorkerParser implements UsageParser {
   }
 
   /** Nothing waiting: end the thread after a while unless more comes. */
-  private restIfIdle(): void {
+  private restIfIdle(ms = this.idleMs): void {
     if (this.waiting.size) return
     if (this.idle) clearTimeout(this.idle)
     this.idle = setTimeout(() => {
@@ -124,8 +132,13 @@ export class WorkerParser implements UsageParser {
       const w = this.worker
       this.worker = undefined
       void w.terminate()
-    }, this.idleMs)
+    }, ms)
     this.idle.unref()
+  }
+
+  /** The scan is over: the thread (and the heap big files left in it) goes soon, not after IDLE_MS. */
+  rest(): void {
+    if (this.worker) this.restIfIdle(Math.min(this.restMs, this.idleMs))
   }
 
   /** The thread is running (tests). */

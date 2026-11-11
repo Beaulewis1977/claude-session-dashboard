@@ -432,7 +432,7 @@ export function analyzeUsage(events: RawEvent[], ctx: UsageContext): UsageAnalys
   // Each response's generation time (and time to first token), for token speed.
   const timings = claudeResponseTimings(events)
   for (const r of local.values()) {
-    const t = r.mid ? timings.get(r.mid) : undefined
+    const t = r.mid ? timings.get(r.mid, r.rid, r.ts, r.sc === true) : undefined
     if (!t) continue
     r.genMs = t.genMs
     if (t.ttftMs !== undefined) r.ttftMs = t.ttftMs

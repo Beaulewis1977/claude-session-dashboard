@@ -1875,6 +1875,7 @@ They were taken with a Playwright script that isn't in the repo; `npm run screen
 | ![Settings → Alerts](images/settings-alerts.webp)    | ![Enable live limits](images/enable-live-limits.webp) |
 | ![Command palette](images/command-palette.webp)      | ![Keyboard shortcuts](images/shortcuts.webp)          |
 
-|                                           |                                                      |                                                            |                                      |
-| ----------------------------------------- | ---------------------------------------------------- | ---------------------------------------------------------- | ------------------------------------ |
-| ![Phone: pairing](images/phone-pair.webp) | ![Phone: sessions](images/phone-sessions-light.webp) | ![Phone: Running (light)](images/phone-running-light.webp) | ![Phone: Ask](images/phone-ask.webp) |
+|                                                |                                                      |                                                            |                                      |
+| ---------------------------------------------- | ---------------------------------------------------- | ---------------------------------------------------------- | ------------------------------------ |
+| ![Phone: pairing](images/phone-pair.webp)      | ![Phone: sessions](images/phone-sessions-light.webp) | ![Phone: Running (light)](images/phone-running-light.webp) | ![Phone: Ask](images/phone-ask.webp) |
+| ![Phone: Settings](images/phone-settings.webp) |                                                      |                                                            |                                      |

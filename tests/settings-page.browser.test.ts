@@ -622,6 +622,66 @@ describe('the Settings page', () => {
     }
   })
 
+  it('Back stops a link that’s still waiting, and stays where Back put you', async ({ skip }) => {
+    if (!browser) skip(unavailableReason)
+    const page = await open()
+    try {
+      // Codex off first (it changes the page's height), then Alerts.
+      await t(page, 'setSettings({ providers: { claude: true, codex: false } })')
+      await page.locator('[data-settings-sidebar] [data-menu-item="alerts"]').click()
+      await expect.poll(() => t<string | null>(page, 'current()')).toBe('alerts')
+      await page.waitForTimeout(700)
+      const alerts = await t<number>(page, 'scrollTop()')
+      // Not on the page: this link waits before falling back to Launching…
+      await t(page, "set({ settingsSection: 'launching.codex-bypass' })")
+      await page.waitForTimeout(150)
+      // …but Back puts the Alerts place back first, and the link gives up.
+      await t(page, 'navigate(-1)')
+      await page.waitForTimeout(2200)
+      expect(await t<string | null>(page, 'current()')).toBe('alerts')
+      expect(Math.abs((await t<number>(page, 'scrollTop()')) - alerts)).toBeLessThan(2)
+      expect(await page.getByText('isn’t shown right now').count()).toBe(0)
+    } finally {
+      await page.close()
+    }
+  })
+
+  it('a closed sidebar takes no focus; Ctrl+F goes to the page’s own search', async ({ skip }) => {
+    if (!browser) skip(unavailableReason)
+    const page = await open()
+    try {
+      await t(page, 'set({ sidebarOpen: false })')
+      await expect
+        .poll(() => page.locator('[data-settings-sidebar]').getAttribute('inert'))
+        .toBe('')
+      expect(await page.locator('[data-sessions-sidebar]').getAttribute('inert')).toBe('')
+      await page.locator('body').click({ position: { x: 900, y: 10 } })
+      await page.keyboard.press('Control+f')
+      await expect
+        .poll(() =>
+          page.evaluate<boolean>(
+            `!!document.activeElement?.closest('#settings-scroll') && document.activeElement.hasAttribute('data-settings-search')`
+          )
+        )
+        .toBe(true)
+      // Tab never lands in the hidden menu.
+      for (let i = 0; i < 6; i++) {
+        await page.keyboard.press('Tab')
+        expect(
+          await page.evaluate<boolean>(
+            `!!document.activeElement?.closest('[data-settings-sidebar], [data-sessions-sidebar]')`
+          )
+        ).toBe(false)
+      }
+      await t(page, 'set({ sidebarOpen: true })')
+      await expect
+        .poll(() => page.locator('[data-settings-sidebar]').getAttribute('inert'))
+        .toBeNull()
+    } finally {
+      await page.close()
+    }
+  })
+
   it('a reset that wasn’t saved says so, with no Undo', async ({ skip }) => {
     if (!browser) skip(unavailableReason)
     const page = await open()

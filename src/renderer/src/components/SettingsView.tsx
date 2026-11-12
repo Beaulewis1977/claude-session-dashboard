@@ -257,8 +257,6 @@ export function SettingsView() {
   const pageRef = useRef<HTMLDivElement>(null)
   /** Scroll-spy waits while the page scrolls itself to a link. */
   const spyLockUntil = useRef(0)
-  /** The newest link being followed; an older one still waiting for its target stops. */
-  const linkToken = useRef(0)
   const saveTimer = useRef<number | undefined>(undefined)
 
   useEffect(() => {
@@ -334,9 +332,9 @@ export function SettingsView() {
     // startup). One that never shows (e.g. Codex's while Codex is off) goes to its
     // heading instead, and says so.
     const started = performance.now()
-    const token = ++linkToken.current
+    const token = settingsUi.startLink()
     const tick = (): void => {
-      if (token !== linkToken.current) return
+      if (!settingsUi.linkCurrent(token)) return
       if (targetTop(c, r.id) !== null) return go(r.id, r.kind)
       if (performance.now() - started < 1500) {
         requestAnimationFrame(tick)
@@ -376,7 +374,7 @@ export function SettingsView() {
   useEffect(
     () => () => {
       window.clearTimeout(saveTimer.current)
-      linkToken.current++
+      settingsUi.cancelLink()
     },
     []
   )
@@ -423,6 +421,8 @@ export function SettingsView() {
         className="h-full overflow-y-auto"
         data-nav-scroll="main"
         onScroll={spy}
+        onWheel={() => settingsUi.cancelLink()}
+        onPointerDown={() => settingsUi.cancelLink()}
         id="settings-scroll"
       >
         <div ref={pageRef} className="mx-auto max-w-[760px] px-10 pt-8 pb-[40vh]">

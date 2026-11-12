@@ -2,8 +2,8 @@
 // and, while Settings is open, the Settings menu. Both stay mounted side by
 // side and slide, so leaving Settings shows the normal sidebar exactly as it
 // was (its scroll, "Show more", what's open). The one out of view is inert (no
-// focus, hidden from screen readers). The slide is short and turns off with
-// reduced motion.
+// focus, hidden from screen readers), and both are while the sidebar is closed
+// (Ctrl+B). The slide is short and turns off with reduced motion.
 
 import { useApp } from '@/lib/store'
 import { cn } from '@/lib/utils'
@@ -27,10 +27,10 @@ export function SidebarSlot() {
           settings && '-translate-x-[232px]'
         )}
       >
-        <div className="h-full w-[232px] shrink-0" inert={settings} data-sessions-sidebar>
+        <div className="h-full w-[232px] shrink-0" inert={settings || !open} data-sessions-sidebar>
           <Sidebar />
         </div>
-        <div className="h-full w-[232px] shrink-0" inert={!settings} data-settings-sidebar>
+        <div className="h-full w-[232px] shrink-0" inert={!settings || !open} data-settings-sidebar>
           <SettingsMenu />
         </div>
       </div>

@@ -83,6 +83,8 @@ export const useSettingsUi = create<SettingsUiState>(() => ({
 }))
 
 let highlightToken = 0
+/** The newest link into Settings; one still waiting for its setting stops when it changes. */
+let linkEpoch = 0
 
 export const settingsUi = {
   setQuery(query: string): void {
@@ -123,6 +125,21 @@ export const settingsUi = {
   },
   focusSearch(): void {
     useSettingsUi.setState((s) => ({ focusSearch: s.focusSearch + 1 }))
+  },
+  /** A new link starts: returns its number (see linkCurrent). */
+  startLink(): number {
+    return ++linkEpoch
+  },
+  /** Still the newest link (nothing since cancelled it)? */
+  linkCurrent(n: number): boolean {
+    return n === linkEpoch
+  },
+  /**
+   * Stop a link that's still waiting for its setting: another link, Back /
+   * Forward putting an earlier place back, you scrolling, or leaving Settings.
+   */
+  cancelLink(): void {
+    linkEpoch++
   },
   /** For tests. */
   reset(): void {

@@ -16,6 +16,7 @@ import { NavHistory, type Direction, type NavState, type UsageTab } from './nav-
 import { saveView } from './scope'
 import { useApp, type State as AppState } from './store'
 import { askTitle } from './ask-sessions'
+import { settingsUi } from './settings-ui'
 import { targetLabel } from '@shared/settings-registry'
 
 let history = new NavHistory()
@@ -172,6 +173,8 @@ export function navigate(dir: Direction): boolean {
   flush()
   const entry = history.go(dir, validEntry, snapshot())
   if (!entry) return false
+  // Going back to a place (its scroll restored, no new link) stops a link still on its way.
+  settingsUi.cancelLink()
   const s = entry.state
   const st = useApp.getState()
   // A session that's gone (only possible here outside the session list) keeps the current one.

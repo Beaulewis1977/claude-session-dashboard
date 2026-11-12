@@ -603,6 +603,25 @@ describe('the Settings page', () => {
     }
   })
 
+  it('a newer link wins over an older one still waiting for its setting', async ({ skip }) => {
+    if (!browser) skip(unavailableReason)
+    const page = await open()
+    try {
+      await t(page, 'setSettings({ providers: { claude: true, codex: false } })')
+      // Not on the page: this link waits (up to 1.5 s) before falling back…
+      await t(page, "set({ settingsSection: 'launching.codex-bypass' })")
+      await page.waitForTimeout(100)
+      // …but a newer one is followed instead, and the older one never comes back.
+      await t(page, "set({ settingsSection: 'git' })")
+      await expect.poll(() => t<string | null>(page, 'current()')).toBe('git')
+      await page.waitForTimeout(2200)
+      expect(await t<string | null>(page, 'current()')).toBe('git')
+      expect(await page.getByText('isn’t shown right now').count()).toBe(0)
+    } finally {
+      await page.close()
+    }
+  })
+
   it('a reset that wasn’t saved says so, with no Undo', async ({ skip }) => {
     if (!browser) skip(unavailableReason)
     const page = await open()

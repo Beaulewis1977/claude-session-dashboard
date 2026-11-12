@@ -29,7 +29,11 @@ import {
 import { settingsAttention } from '../src/shared/settings-attention'
 import { MOBILE_SAFE_SETTINGS } from '../src/shared/mobile'
 import { codexBypassDefaultOf, skipDefaultFor } from '../src/shared/provider'
-import { patchAskSessions, sanitizeAskSessions } from '../src/shared/ask-sessions/types'
+import {
+  askSettingsFormPatch,
+  patchAskSessions,
+  sanitizeAskSessions
+} from '../src/shared/ask-sessions/types'
 import type { AppSettings, SourceInfo } from '../src/shared/types'
 import type { HookEnv } from '../src/shared/live'
 import type { LimitsState } from '../src/shared/usage/limits'
@@ -529,6 +533,26 @@ describe('values a reset must leave alone', () => {
     }
     expect(undo2.askSessions.lastModel).toBeNull()
     expect(patchAskSessions(cur, undo2.askSessions)).not.toHaveProperty('lastModel')
+  })
+
+  it('a new default picked in Settings clears the Ask screen’s remembered choice', () => {
+    const cur = sanitizeAskSessions({
+      ...APP_DEFAULTS.askSessions,
+      lastModel: 'haiku',
+      lastEffort: 'low'
+    })
+    const form = askSettingsFormPatch(cur, { model: 'opus', effort: 'high' })
+    expect(form).not.toHaveProperty('lastModel')
+    const saved = patchAskSessions(cur, form as unknown as Record<string, unknown>)
+    expect(saved).toMatchObject({ model: 'opus', effort: 'high' })
+    expect(saved).not.toHaveProperty('lastModel')
+    expect(saved).not.toHaveProperty('lastEffort')
+    // Another field changed in the form: the remembered choice stays (the default didn't change).
+    const other = patchAskSessions(
+      cur,
+      askSettingsFormPatch(cur, { maxSnippets: 10 }) as unknown as Record<string, unknown>
+    )
+    expect(other).toMatchObject({ lastModel: 'haiku', lastEffort: 'low', maxSnippets: 10 })
   })
 
   it('a changed default still clears the remembered choice when nothing says otherwise', () => {

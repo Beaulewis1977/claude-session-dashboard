@@ -31,7 +31,8 @@ export function openSettingsTarget(target: string): void {
  */
 export async function applySettingsPatch(patch: Partial<AppSettings>): Promise<void> {
   const st = useApp.getState()
-  st.set({ settings: { ...st.settings, ...patch } })
+  const before = st.settings
+  st.set({ settings: { ...before, ...patch } })
   const { gitLinks, ...rest } = patch
   try {
     if (Object.keys(rest).length) st.set({ settings: await api.updateSettings(rest) })
@@ -41,7 +42,7 @@ export async function applySettingsPatch(patch: Partial<AppSettings>): Promise<v
     }
   } catch (err) {
     // Not saved: show what the app has, and let the caller say it failed.
-    st.set({ settings: await api.getSettings().catch(() => st.settings) })
+    st.set({ settings: await api.getSettings().catch(() => before) })
     throw err
   }
 }

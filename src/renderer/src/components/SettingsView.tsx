@@ -257,6 +257,8 @@ export function SettingsView() {
   const pageRef = useRef<HTMLDivElement>(null)
   /** Scroll-spy waits while the page scrolls itself to a link. */
   const spyLockUntil = useRef(0)
+  /** The newest link being followed; an older one still waiting for its target stops. */
+  const linkToken = useRef(0)
   const saveTimer = useRef<number | undefined>(undefined)
 
   useEffect(() => {
@@ -332,7 +334,9 @@ export function SettingsView() {
     // startup). One that never shows (e.g. Codex's while Codex is off) goes to its
     // heading instead, and says so.
     const started = performance.now()
+    const token = ++linkToken.current
     const tick = (): void => {
+      if (token !== linkToken.current) return
       if (targetTop(c, r.id) !== null) return go(r.id, r.kind)
       if (performance.now() - started < 1500) {
         requestAnimationFrame(tick)
@@ -369,7 +373,13 @@ export function SettingsView() {
     }
   }, [target, set, scrollToTarget])
 
-  useEffect(() => () => window.clearTimeout(saveTimer.current), [])
+  useEffect(
+    () => () => {
+      window.clearTimeout(saveTimer.current)
+      linkToken.current++
+    },
+    []
+  )
 
   useSearchHighlight(pageRef, query)
   // A search changes what's on the page: the section in view may have changed.

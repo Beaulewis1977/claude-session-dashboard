@@ -7,6 +7,7 @@ import { toast } from 'sonner'
 import { RefreshCw, Trash2 } from 'lucide-react'
 import {
   ASK_LIMITS,
+  askSettingsFormPatch,
   sanitizeAskSessions,
   type AskSessionsSettings
 } from '@shared/ask-sessions/types'
@@ -29,7 +30,12 @@ export function AskSettings() {
   const [confirmDelete, setConfirmDelete] = useState(false)
   const update = async (patch: Partial<AskSessionsSettings>): Promise<void> => {
     set({ settings: { ...settings, askSessions: { ...ask, ...patch } } })
-    set({ settings: await api.updateSettings({ askSessions: { ...ask, ...patch } }) })
+    // An ordinary change: the Ask screen's remembered choice isn't named, so a new default clears it.
+    set({
+      settings: await api.updateSettings({
+        askSessions: askSettingsFormPatch(ask, patch) as AskSessionsSettings
+      })
+    })
   }
   return (
     <>

@@ -133,6 +133,20 @@ export function patchAskSessions(
   return next
 }
 
+/**
+ * What Settings → Ask saves for an ordinary change: the whole settings without
+ * the Ask screen's remembered model and effort, so a new default clears them
+ * (patchAskSessions keeps them only when a save names them, as reset and Undo do).
+ */
+export function askSettingsFormPatch(
+  cur: AskSessionsSettings,
+  patch: Partial<AskSessionsSettings>
+): Omit<AskSessionsSettings, 'lastModel' | 'lastEffort'> {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { lastModel, lastEffort, ...rest } = { ...cur, ...patch }
+  return rest
+}
+
 /** The model and effort the Ask screen starts with. */
 export function askChoice(s: AskSessionsSettings): { model: AskModel; effort: AskEffort } {
   return { model: s.lastModel ?? s.model, effort: s.lastEffort ?? s.effort }

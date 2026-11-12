@@ -282,11 +282,12 @@ export function SettingsTab() {
   /** Saves on the PC; a failure (or read-only mode) is thrown, with the PC's settings shown again. */
   const save: Update = async (patch) => {
     if (readOnly) throw new Error('Read-only mode is on. Change it on your PC.')
-    set({ settings: { ...useApp.getState().settings, ...patch } })
+    const before = useApp.getState().settings
+    set({ settings: { ...before, ...patch } })
     try {
       set({ settings: await api.updateSettings(patch) })
     } catch (err) {
-      set({ settings: await api.getSettings().catch(() => useApp.getState().settings) })
+      set({ settings: await api.getSettings().catch(() => before) })
       throw err
     }
   }

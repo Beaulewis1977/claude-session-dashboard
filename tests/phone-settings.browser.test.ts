@@ -36,7 +36,10 @@ window.csd = new Proxy({
     window.pc = { ...window.pc, ...patch }
     return window.pc
   },
-  getSettings: async () => window.pc
+  getSettings: async () => {
+    if (window.failGet) throw new Error('The PC is offline')
+    return window.pc
+  }
 }, { get: (t, k) => (k in t ? t[k] : typeof k === 'string' && k.startsWith('on') ? () => () => {} : async () => undefined) })
 
 const settings = structuredClone(APP_DEFAULTS)
@@ -197,6 +200,27 @@ describe('the phone’s Settings tab', () => {
       const sw = page.getByRole('switch', { name: 'Approvals during quiet hours' })
       expect(await sw.count()).toBe(1)
       expect(await sw.isDisabled()).toBe(true)
+    } finally {
+      await page.close()
+    }
+  })
+
+  it('with the PC unreachable, a failed reset keeps showing the value from before', async ({
+    skip
+  }) => {
+    if (!browser) skip(unavailableReason)
+    const page = await open()
+    try {
+      await p(page, "setSettings({ terminal: 'cmd' })")
+      await page.evaluate('window.fail = true; window.failGet = true')
+      await page.locator('[data-reset-setting="launching.terminal"]').click()
+      await expect.poll(() => page.getByText("Couldn't reset it").count()).toBe(1)
+      await expect
+        .poll(() => p<{ terminal: string }>(page, 'settings()').then((s) => s.terminal))
+        .toBe('cmd')
+      expect(
+        await page.locator('[data-setting-id="launching.terminal"] [data-changed-marker]').count()
+      ).toBe(1)
     } finally {
       await page.close()
     }

@@ -1475,9 +1475,10 @@ folder plus Codex's name index, `config.toml`, `archived_sessions` or `sessions/
   `codex resume <id>` / `codex fork <id>` in the session's folder (Windows Terminal + cmd with
   `codex.cmd` by full path; WSL via `wsl.exe --cd … -- bash -lic`), `-m <model>`,
   `-c model_reasoning_effort=<level>` (low … xhigh, max, ultra), and
-  `--dangerously-bypass-approvals-and-sandbox` when "Skip permission prompts" is on. Phone launches
+  `--dangerously-bypass-approvals-and-sandbox` when Codex's own default ("Codex: bypass approvals and
+  sandbox by default", or the launch's checkbox) is on. Phone launches
   never bypass: they add `-a on-request -s workspace-write`. Codex has its own model and effort
-  defaults (Settings → Resume) and project defaults, apart from Claude Code's. `CODEX_HOME` is
+  defaults (Settings → Launching → Codex) and project defaults, apart from Claude Code's. `CODEX_HOME` is
   always set to the session's own home (set in cmd itself on Windows, in front of the command in
   WSL, which also runs as the home's user), so a `CODEX_HOME` the app or a login profile already
   has can't send it to another home. In WSL the real binary runs (`command codex`), so a `codex`

@@ -28,6 +28,7 @@ import {
 } from '../src/shared/settings-registry'
 import { settingsAttention } from '../src/shared/settings-attention'
 import { MOBILE_SAFE_SETTINGS } from '../src/shared/mobile'
+import { codexBypassDefaultOf, skipDefaultFor } from '../src/shared/provider'
 import type { AppSettings, SourceInfo } from '../src/shared/types'
 import type { HookEnv } from '../src/shared/live'
 import type { LimitsState } from '../src/shared/usage/limits'
@@ -73,6 +74,7 @@ const ALL_KEYS: Record<keyof AppSettings, true> = {
   codexDefaultEffort: true,
   codexProjectModels: true,
   codexDefaultFast: true,
+  codexBypassDefault: true,
   codexOpenInDefault: true,
   codexProjectOpenIn: true,
   codexPlan: true,
@@ -212,6 +214,8 @@ describe('the settings map', () => {
     expect(ids).toContain('alerts.quiet')
     expect(ids).toContain('launching.terminal')
     expect(ids).not.toContain('launching.skip-permissions')
+    expect(ids).not.toContain('launching.codex-bypass')
+    expect(safe.has('codexBypassDefault')).toBe(false)
     expect(ids).not.toContain('phone.read-only')
   })
 })
@@ -434,5 +438,44 @@ describe('status dots', () => {
         backup: backup({ schedule: 'weekly', lastSuccessAt: '2026-11-08T02:00:00Z' })
       })
     ).toEqual({})
+  })
+})
+
+describe('Codex’s own bypass default', () => {
+  it('starts from the shared value it replaces, then is its own', () => {
+    // Settings files from before it: whatever Skip permission prompts was.
+    expect(codexBypassDefaultOf({ skipPermissionsDefault: true })).toBe(true)
+    expect(codexBypassDefaultOf({ skipPermissionsDefault: false })).toBe(false)
+    expect(codexBypassDefaultOf({})).toBe(true)
+    // Once set, it no longer follows Claude Code's.
+    expect(codexBypassDefaultOf({ skipPermissionsDefault: true, codexBypassDefault: false })).toBe(
+      false
+    )
+    expect(codexBypassDefaultOf({ skipPermissionsDefault: false, codexBypassDefault: true })).toBe(
+      true
+    )
+  })
+
+  it('is what a Codex launch starts with; Claude Code launches keep theirs', () => {
+    const s = { skipPermissionsDefault: true, codexBypassDefault: false }
+    expect(skipDefaultFor(s, 'codex')).toBe(false)
+    expect(skipDefaultFor(s, 'claude')).toBe(true)
+  })
+
+  it('is its own setting in Launching → Codex, reset on its own', () => {
+    const d = settingDef('launching.codex-bypass')!
+    expect(d).toMatchObject({
+      section: 'launching',
+      sub: 'launching.codex',
+      keys: ['codexBypassDefault']
+    })
+    expect(settingDef('launching.skip-permissions')).toMatchObject({ sub: 'launching.claude' })
+    const before = {
+      ...structuredClone(APP_DEFAULTS),
+      skipPermissionsDefault: false,
+      codexBypassDefault: false
+    }
+    expect(isChanged(d, before)).toBe(true)
+    expect(resetPatch([d], before as never)).toEqual({ codexBypassDefault: true })
   })
 })

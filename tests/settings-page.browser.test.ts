@@ -200,8 +200,7 @@ async function open(loadTimeout = 15_000): Promise<Page> {
 
 const t = <T>(page: Page, js: string) => page.evaluate<T>(`window.__t.${js}`)
 /** The element has the focus. */
-const focused = (l: Locator) =>
-  l.evaluate((e) => e === e.ownerDocument.activeElement)
+const focused = (l: Locator) => l.evaluate((e) => e === e.ownerDocument.activeElement)
 const search = (page: Page) => page.locator('[data-settings-sidebar] [data-settings-search]')
 
 describe('the Settings page', () => {
@@ -492,6 +491,44 @@ describe('the Settings page', () => {
       await expect
         .poll(() => t<{ terminal: string; skipPermissionsDefault: boolean }>(page, 'settings()'))
         .toMatchObject({ terminal: 'cmd', skipPermissionsDefault: false })
+    } finally {
+      await page.close()
+    }
+  })
+
+  it('has Codex’s own bypass default right after Claude Code’s, changed on its own', async ({
+    skip
+  }) => {
+    if (!browser) skip(unavailableReason)
+    const page = await open()
+    try {
+      // Adjacent: the last setting of Launching → Claude Code, the first of → Codex.
+      const order = await page.evaluate<string[]>(
+        `[...document.querySelectorAll('[data-settings-section="launching"] [data-setting-id]')].map((e) => e.getAttribute('data-setting-id'))`
+      )
+      const i = order.indexOf('launching.skip-permissions')
+      expect(order[i + 1]).toBe('launching.codex-bypass')
+      expect(
+        await page
+          .locator(
+            '[data-settings-sub-group="launching.codex"] [data-setting-id="launching.codex-bypass"]'
+          )
+          .count()
+      ).toBe(1)
+      await page
+        .getByRole('switch', { name: 'Codex: bypass approvals and sandbox by default' })
+        .click()
+      await expect
+        .poll(() =>
+          t<{ codexBypassDefault: boolean; skipPermissionsDefault: boolean }>(page, 'settings()')
+        )
+        .toMatchObject({ codexBypassDefault: false, skipPermissionsDefault: true })
+      await page.locator('[data-reset-setting="launching.codex-bypass"]').click()
+      await expect
+        .poll(() =>
+          t<{ codexBypassDefault: boolean }>(page, 'settings()').then((x) => x.codexBypassDefault)
+        )
+        .toBe(true)
     } finally {
       await page.close()
     }

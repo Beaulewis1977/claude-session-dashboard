@@ -256,24 +256,6 @@ export const SETTINGS: SettingDef[] = [
     keys: ['terminal'],
     phone: true
   },
-  {
-    id: 'launching.skip-permissions',
-    section: 'launching',
-    label: 'Skip permission prompts by default',
-    description:
-      'Claude Code’s --dangerously-skip-permissions and Codex’s --dangerously-bypass-approvals-and-sandbox.',
-    keywords: [
-      'dangerously',
-      'bypass',
-      'approvals',
-      'sandbox',
-      'yolo',
-      'permissions',
-      'codex bypass',
-      'ask'
-    ],
-    keys: ['skipPermissionsDefault']
-  },
   // Launching · Claude Code
   {
     id: 'launching.remote-control',
@@ -304,7 +286,35 @@ export const SETTINGS: SettingDef[] = [
     keywords: ['per project', 'project default', 'model', 'fast'],
     keys: ['projectModels']
   },
+  {
+    id: 'launching.skip-permissions',
+    section: 'launching',
+    sub: 'launching.claude',
+    label: 'Skip permission prompts by default',
+    description: 'Claude Code’s --dangerously-skip-permissions for every launch.',
+    keywords: ['dangerously', 'bypass', 'approvals', 'yolo', 'permissions', 'ask'],
+    keys: ['skipPermissionsDefault']
+  },
   // Launching · Codex
+  {
+    id: 'launching.codex-bypass',
+    section: 'launching',
+    sub: 'launching.codex',
+    label: 'Codex: bypass approvals and sandbox by default',
+    description:
+      'Codex’s --dangerously-bypass-approvals-and-sandbox: no approval prompts and no sandbox.',
+    keywords: [
+      'dangerously',
+      'yolo',
+      'permissions',
+      'approvals',
+      'sandbox',
+      'codex bypass',
+      'skip'
+    ],
+    keys: ['codexBypassDefault'],
+    codex: true
+  },
   {
     id: 'launching.codex-open-in',
     section: 'launching',
@@ -1242,6 +1252,7 @@ export const APP_DEFAULTS: AppSettings = {
   codexDefaultModel: 'default',
   codexDefaultEffort: 'default',
   codexDefaultFast: 'off',
+  codexBypassDefault: true,
   codexProjectModels: {},
   codexOpenInDefault: 'terminal',
   codexProjectOpenIn: {},

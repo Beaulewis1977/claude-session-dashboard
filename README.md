@@ -325,9 +325,11 @@ fast mode get a **Fast** badge in the session's usage strip and their own line i
 
 #### Skip permission prompts
 
-`--dangerously-skip-permissions` (Codex: `--dangerously-bypass-approvals-and-sandbox`) is **on by
-default**, with a per-launch checkbox, a warning label and a default in Settings → **Launching**.
-Launches from a phone never use it.
+`--dangerously-skip-permissions` is **on by default**, with a per-launch checkbox, a warning label
+and a default in Settings → **Launching** → **Claude Code**. Codex has its own default next to it
+(Settings → **Launching** → **Codex**: `--dangerously-bypass-approvals-and-sandbox`, which also
+turns off Codex's sandbox); it starts at whatever the shared default was before. Launches from a
+phone never use either.
 
 #### Remote Control
 

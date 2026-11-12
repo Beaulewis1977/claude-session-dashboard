@@ -36,7 +36,7 @@ import { Segmented } from './ui/segmented'
 import { Tooltip } from './ui/tooltip'
 import { validBilling } from '@/lib/billing'
 import { BillingPicker } from './BillingPicker'
-import { capsOf, providerOf } from '@shared/provider'
+import { capsOf, providerOf, skipDefaultFor } from '@shared/provider'
 import { BranchPointCard } from './viewer/Branches'
 import { SessionModelControls } from './ModelPicker'
 import { FastModeNotes } from './FastModeNote'
@@ -134,7 +134,9 @@ function ResumeDialogBody({ resume }: { resume: ResumeRequest }) {
   const codex = providerOf(session) === 'codex'
 
   const carry = resume.carry
-  const [skip, setSkip] = useState(carry?.skip ?? settings.skipPermissionsDefault)
+  const [skip, setSkip] = useState(
+    carry?.skip ?? skipDefaultFor(settings, codex ? 'codex' : 'claude')
+  )
   const [terminal, setTerminal] = useState<TerminalPref>(carry?.terminal ?? settings.terminal)
   const [cwdOverride, setCwdOverride] = useState<string | undefined>(carry?.cwdOverride)
   // A session whose folder exists only in WSL (see preview.placement): resumed with

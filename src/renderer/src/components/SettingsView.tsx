@@ -541,35 +541,6 @@ export function SettingsView() {
                 />
               </Row>
             </SettingItem>
-            <SettingItem id="launching.skip-permissions">
-              <Row
-                label="Skip permission prompts by default"
-                hint={
-                  <>
-                    Claude Code: <span className="font-mono">--dangerously-skip-permissions</span>.
-                    {codexOn && (
-                      <>
-                        {' '}
-                        Codex (the same default):{' '}
-                        <span className="font-mono">
-                          --dangerously-bypass-approvals-and-sandbox
-                        </span>
-                        .
-                      </>
-                    )}{' '}
-                    You can still change it for each launch. Never for launches from the phone.
-                  </>
-                }
-              >
-                <Switch
-                  checked={settings.skipPermissionsDefault}
-                  onCheckedChange={(v) => void update({ skipPermissionsDefault: v })}
-                  aria-label="Skip permission prompts by default"
-                />
-              </Row>
-              {settings.skipPermissionsDefault && <SkipPermissionsWarning className="mt-2" />}
-            </SettingItem>
-
             <SettingsSub id="launching.claude">
               <SettingItem id="launching.remote-control">
                 <Row
@@ -625,10 +596,60 @@ export function SettingsView() {
               <SettingItem id="launching.project-models">
                 <ProjectModelDefaults field="projectModels" update={update} />
               </SettingItem>
+              <SettingItem id="launching.skip-permissions">
+                <Row
+                  label="Skip permission prompts by default"
+                  hint={
+                    <>
+                      Claude Code: adds{' '}
+                      <span className="font-mono">--dangerously-skip-permissions</span>. You can
+                      still change it for each launch. Never for launches from the phone.
+                      {codexOn && (
+                        <span className="block">
+                          <SeeAlso to="launching.codex-bypass">Codex’s own default</SeeAlso>
+                        </span>
+                      )}
+                    </>
+                  }
+                >
+                  <Switch
+                    checked={settings.skipPermissionsDefault}
+                    onCheckedChange={(v) => void update({ skipPermissionsDefault: v })}
+                    aria-label="Skip permission prompts by default"
+                  />
+                </Row>
+                {settings.skipPermissionsDefault && <SkipPermissionsWarning className="mt-2" />}
+              </SettingItem>
             </SettingsSub>
 
             {codexOn && (
               <SettingsSub id="launching.codex">
+                <SettingItem id="launching.codex-bypass">
+                  <Row
+                    label="Codex: bypass approvals and sandbox by default"
+                    hint={
+                      <>
+                        Adds{' '}
+                        <span className="font-mono">
+                          --dangerously-bypass-approvals-and-sandbox
+                        </span>
+                        : Codex runs commands without asking <b>and</b> outside its sandbox, so they
+                        can read and change anything your Windows (or WSL) user can. Separate from
+                        Claude Code&apos;s. You can still change it for each launch. Never for
+                        launches from the phone.
+                      </>
+                    }
+                  >
+                    <Switch
+                      checked={settings.codexBypassDefault ?? settings.skipPermissionsDefault}
+                      onCheckedChange={(v) => void update({ codexBypassDefault: v })}
+                      aria-label="Codex: bypass approvals and sandbox by default"
+                    />
+                  </Row>
+                  {(settings.codexBypassDefault ?? settings.skipPermissionsDefault) && (
+                    <SkipPermissionsWarning codex className="mt-2" />
+                  )}
+                </SettingItem>
                 <CodexLaunchSettings update={update} />
               </SettingsSub>
             )}

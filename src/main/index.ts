@@ -83,7 +83,7 @@ import { claudeProvider } from './providers/claude'
 import { createCodexProvider } from './providers/codex'
 import { CompactTextCache } from './providers/codex/text-cache'
 import { ProviderRegistry } from './providers/registry'
-import { providerOf } from '@shared/provider'
+import { codexBypassDefaultOf, providerOf } from '@shared/provider'
 import { createMeter } from './meter'
 import { registerUsageIpc } from './ipc-usage'
 import { registerAccountsIpc } from './ipc-accounts'
@@ -352,6 +352,8 @@ async function main(): Promise<void> {
     s.prices = saved ? addSnapshotExtras(saved) : DEFAULT_PRICES.map((p) => ({ ...p }))
     s.plan = sanitizePlan(s.plan) ?? 'max5'
     if (typeof s.alertsEnabled !== 'boolean') s.alertsEnabled = true
+    // Codex's bypass default used to be skipPermissionsDefault: start from that value.
+    if (typeof s.codexBypassDefault !== 'boolean') s.codexBypassDefault = codexBypassDefaultOf(s)
     s.alertThresholds = sanitizeThresholds(s.alertThresholds) ?? [75, 90]
     s.capacityWeights = sanitizeWeights(s.capacityWeights) ?? { ...DEFAULT_WEIGHTS }
     if (typeof s.defaultBilling !== 'string') s.defaultBilling = 'subscription'

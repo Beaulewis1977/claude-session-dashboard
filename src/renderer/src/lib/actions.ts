@@ -4,7 +4,7 @@ import { toast } from 'sonner'
 import type { SessionDetail, SessionMeta, SessionSummary } from '@shared/types'
 import { sessionToMarkdown } from '@shared/markdown'
 import { canUseClaudeName } from '@shared/title'
-import { capsOf, PROVIDER_BIN, PROVIDER_LABEL, providerOf } from '@shared/provider'
+import { capsOf, PROVIDER_BIN, PROVIDER_LABEL, providerOf, skipDefaultFor } from '@shared/provider'
 import { api } from './api'
 import { projectKey } from './filters'
 import { useApp } from './store'
@@ -89,7 +89,10 @@ export async function copyResumeCommand(
     const p = await api.previewLaunch({
       key,
       fork: false,
-      skipPermissions: settings.skipPermissionsDefault
+      skipPermissions: skipDefaultFor(
+        settings,
+        providerOf(get().sessions.find((x) => x.key === key))
+      )
     })
     const text = which === 'launch' ? p.commandLine : p.claudeCommand
     if (!text) {

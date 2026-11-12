@@ -401,6 +401,12 @@ export interface AppSettings {
   codexProjectModels?: Record<string, ProjectModelDefault>
   /** Codex launches: fast mode unless a session or project has its own (absent: off). */
   codexDefaultFast?: FastChoice
+  /**
+   * Codex launches: --dangerously-bypass-approvals-and-sandbox by default (each
+   * launch can still change it; never from a phone). Absent in settings files
+   * from before it: set at startup from skipPermissionsDefault, which it shared.
+   */
+  codexBypassDefault?: boolean
   /** Codex launches: open in a terminal or the Codex app unless a session or project has its own (absent: terminal). */
   codexOpenInDefault?: OpenIn
   /** Codex per-project "Open in" defaults, keyed like projectModels. */

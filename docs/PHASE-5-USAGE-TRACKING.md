@@ -1,5 +1,10 @@
 # Phase 5 — Usage, Limits & Model Tracking
 
+> **Historical spec (Phase 5, Oct 2026).** Kept as it was written. The current safety rules and their
+> exceptions are in [`CLAUDE.md`](../CLAUDE.md) (several more were added after this phase), and what
+> the app does now is in the [README](../README.md) and [DETAILS](DETAILS.md). Parts of section D were
+> later replaced: see the note there.
+
 An add-on phase for **claude-session-dashboard**. Build it into the existing app.
 
 **Before starting:** read `CLAUDE.md` and the existing code. All of `CLAUDE.md`'s rules still apply:
@@ -123,6 +128,11 @@ There's no API to read a remaining credit balance, so I enter it myself.
 ---
 
 ## D. Limits view
+
+> **Superseded in part:** the implied-capacity chart and its "capacity looks lower" flag were replaced
+> by **Limit health** (each 1% of the limit against your normal dates, with a verdict) and the "Used
+> Claude elsewhere" list. The Limit history tab has no implied-capacity chart; implied capacity is
+> still computed for the trend markers.
 
 - **Plan** setting: Pro, Max 5x, Max 20x, API, or Team/Enterprise. **Default: Max 5x.**
 - Top of the Usage view: two large gauges, **Current 5-hour window** and **This week**. Each shows used % (from the bridge), reset time and countdown, tokens used so far in that window (from logs), and a burn-rate projection ("at this pace you'll hit 100% in ~1h 20m").

@@ -16,8 +16,8 @@ afterEach(async () => {
 })
 
 async function oldData(version?: number): Promise<void> {
-  await mkdir(join(base, 'sources', 'wsl', 'Ubuntu', 'home', 'beau'), { recursive: true })
-  await writeFile(join(base, 'sources', 'wsl', 'Ubuntu', 'home', 'beau', 'a.jsonl'), '{}\n')
+  await mkdir(join(base, 'sources', 'wsl', 'Ubuntu', 'home', 'alex'), { recursive: true })
+  await writeFile(join(base, 'sources', 'wsl', 'Ubuntu', 'home', 'alex', 'a.jsonl'), '{}\n')
   await mkdir(join(base, 'appdata'), { recursive: true })
   await writeFile(join(base, 'appdata', '.hooks-seeded'), '')
   await writeFile(join(base, 'appdata', 'metadata.json'), '{"mine":true}')
@@ -42,7 +42,7 @@ describe('fixtures data version', () => {
     // Everything is still there, seeding markers included.
     expect(await readFile(join(dest!, 'appdata', 'metadata.json'), 'utf8')).toBe('{"mine":true}')
     expect(existsSync(join(dest!, 'appdata', '.hooks-seeded'))).toBe(true)
-    expect(existsSync(join(dest!, 'sources', 'wsl', 'Ubuntu', 'home', 'beau', 'a.jsonl'))).toBe(
+    expect(existsSync(join(dest!, 'sources', 'wsl', 'Ubuntu', 'home', 'alex', 'a.jsonl'))).toBe(
       true
     )
     expect((await readFile(join(base, 'fixtures-version'), 'utf8')).trim()).toBe(

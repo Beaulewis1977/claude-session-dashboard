@@ -27,6 +27,7 @@ import { SOURCE_LABELS } from '@shared/source-label'
 import { isDevServerUrl } from './core/app-url'
 import { NO_CWD_SEARCH } from './core/launch'
 import { callHandler, handle, setAppPage } from './ipc-guard'
+import { setOutgoingFilter } from './outgoing'
 import { JsonStore } from './core/json-store'
 import { registerMobileIpc } from './ipc-mobile'
 import { focusLive, registerLiveIpc } from './ipc-live'
@@ -37,6 +38,7 @@ import { registerGitIpc } from './ipc-git'
 import { GitLinksService } from './git/service'
 import { createRealBackend } from './git/backend'
 import { createFixturesBackend } from './git/fixtures'
+import { createFixturesDisplay } from './fixtures-display'
 import { createProcessRunner } from './git/runner'
 import { sanitizeGitSettings } from '@shared/git/types'
 import { wslRoots } from './core/wsl'
@@ -314,6 +316,8 @@ async function main(): Promise<void> {
     await prepareFixtures(appRoot, { usageHistory: true, codex: true })
     const layout = fixturesLayout(appRoot)
     platform = createFixturesPlatform(layout.fixturesDir, layout.sourcesDir)
+    // Shown as the sample PC's paths, not this checkout's (fixtures-display.ts).
+    setOutgoingFilter(createFixturesDisplay(appRoot))
   } else {
     platform = createRealPlatform()
   }

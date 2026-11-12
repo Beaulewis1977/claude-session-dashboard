@@ -246,11 +246,6 @@ function parseHeader(buf: Buffer): Parsed {
   }
 }
 
-/** Is this envelope encrypted? (Reads only the header.) */
-export function isSealedEncrypted(buf: Buffer): boolean {
-  return parseHeader(buf).encrypted
-}
-
 /** Small content (manifests): gzip and seal in memory. */
 export function sealBuffer(data: Buffer, keys: BackupKeys | null): Buffer {
   const body = gzipSync(data)

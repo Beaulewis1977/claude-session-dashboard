@@ -5,7 +5,6 @@ import { useMemo } from 'react'
 import {
   effectiveView,
   enabledProviders,
-  providerOf,
   sanitizeProviderToggles,
   type ProviderId,
   type ProviderToggles,
@@ -62,8 +61,4 @@ export function saveShowSubagents(on: boolean): void {
 /** Some Codex sessions are subagent threads (the toggle shows only then). */
 export function hasSubagents(sessions: Pick<SessionSummary, 'subagent'>[]): boolean {
   return sessions.some((s) => !!s.subagent)
-}
-
-export function isCodex(s: Pick<SessionSummary, 'provider'> | undefined): boolean {
-  return providerOf(s) === 'codex'
 }

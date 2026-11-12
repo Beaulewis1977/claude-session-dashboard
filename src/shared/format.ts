@@ -107,12 +107,6 @@ export function formatDuration(ms: number): string {
   return `${min}m`
 }
 
-/** "+18%", "−7%". */
-export function formatPct(n: number, digits = 0): string {
-  const s = Math.abs(n).toFixed(digits)
-  return `${n >= 0 ? '+' : '−'}${s}%`
-}
-
 /** "just now", "5 min ago", "3h ago", "2 days ago". Uses the app clock. */
 export function ago(ts: number, nowMs = appNow()): string {
   const d = Math.max(0, nowMs - ts)

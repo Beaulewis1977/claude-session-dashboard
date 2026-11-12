@@ -143,20 +143,6 @@ export function sentOf(payload: SessionsPayload): SentList {
   return { json, order: payload.sessions.map((s) => s.key).join('\n') }
 }
 
-/** A delta that changes nothing (worth not sending). */
-export function isEmptyDelta(
-  d: SessionsDelta,
-  prev: Pick<SessionsPayload, 'sources' | 'scan'>
-): boolean {
-  return (
-    !d.upserts.length &&
-    !d.removed.length &&
-    !d.keys &&
-    JSON.stringify(d.sources) === JSON.stringify(prev.sources) &&
-    JSON.stringify(d.scan) === JSON.stringify(prev.scan)
-  )
-}
-
 /**
  * The window's list with a delta applied: changed sessions replaced,
  * gone ones dropped, the order from `keys` when given (else as it was, new

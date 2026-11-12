@@ -173,5 +173,3 @@ export function createCodexProvider(opts: { textCache?: CompactTextCache } = {})
     }
   }
 }
-
-export const codexProvider = createCodexProvider()

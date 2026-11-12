@@ -19,7 +19,7 @@ import { askTitle } from './ask-sessions'
 import { settingsUi } from './settings-ui'
 import { targetLabel } from '@shared/settings-registry'
 
-let history = new NavHistory()
+const history = new NavHistory()
 /** The Settings section last linked to (the store's settingsSection clears itself once scrolled to). */
 let lastSection: string | null = null
 let amendPending = false
@@ -31,17 +31,6 @@ let restoreToken = 0
 /** Bumped whenever history changes, so the title bar's buttons follow. */
 export const useNavVersion = create<{ version: number }>(() => ({ version: 0 }))
 const bump = (): void => useNavVersion.setState((s) => ({ version: s.version + 1 }))
-
-/** Start over (tests). */
-export function resetNavigation(): void {
-  history = new NavHistory()
-  lastSection = null
-  amendPending = false
-  flushQueued = false
-  restoring.clear()
-  restoreToken++
-  bump()
-}
 
 /** What's on screen now, as a history entry. */
 export function snapshot(st: AppState = useApp.getState()): NavState {

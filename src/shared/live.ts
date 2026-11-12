@@ -28,8 +28,6 @@ export const HOOK_EVENTS = [
   'SessionEnd'
 ] as const
 
-export type HookEventName = (typeof HOOK_EVENTS)[number]
-
 /** One saved hook payload, reduced to what the dashboard uses (no prompts or replies). */
 export interface HookEvent {
   /** When it was saved (file time on the app's clock), epoch ms. */

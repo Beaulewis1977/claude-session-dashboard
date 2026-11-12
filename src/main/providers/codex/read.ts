@@ -419,11 +419,6 @@ export function isToolItemType(type: unknown): boolean {
 }
 const MESSAGE_RE = /"payload":\{"type":"message"/
 
-/** The version of the usage text: bumped when it keeps more (see CODEX_USAGE_VERSION). */
-// 4: reasoning items, the model's messages and token_usage_record by type and time (token
-//    speed), and the service tier of thread_settings_applied (fast mode).
-export const USAGE_TEXT_FORMAT = 4
-
 /**
  * Only what token usage, plan limits and trends need, from the whole file
  * (never cut, however large): each `token_count` event, the model of each

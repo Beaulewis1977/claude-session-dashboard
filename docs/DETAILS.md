@@ -1172,27 +1172,30 @@ records of sessions whose files are gone are kept as they were.
 
 ### Where the data lives
 
-| File (in `%APPDATA%\ClaudeSessionDashboard\`)           | What's in it                                                                                                     |
-| ------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| `usage\records-YYYY-MM.ndjson`                          | One line per API response: time, session, project, environment, model, version, stop reason, every token count   |
-| `usage\turns-YYYY-MM.ndjson`, `usage\limit-hits.ndjson` | Per-request metrics for Trends, and every "usage limit reached" message                                          |
-| `limits-history.ndjson`                                 | Every status line reading                                                                                        |
-| `usage\usage-readings.ndjson`                           | Limit readings found in `/usage` output in transcripts (backfill)                                                |
-| `mobile.json`                                           | Paired phones (token hashes only), the activity log, the app's own serve / firewall rule, home Wi-Fi certificate |
-| `metadata.json`, `settings.json`                        | Your names, descriptions, tags, pins, summaries, launch choices, git unlinks and archive records; the settings   |
-| `archive\<source>\`                                     | The archived copy of every session file                                                                          |
-| `ask-history.json`                                      | Ask Claude questions and answers                                                                                 |
-| `ask-sessions-history.json`                             | Ask across sessions: questions, answers and their cited snippets                                                 |
-| `cache\ask\`, `cache\git-links-v1.json`, `cache\codex\` | The Ask index, git links and big Codex rollouts' compact text (rebuildable, never backed up)                     |
-| `usage\dashboard-runs.ndjson`                           | Token usage of the app's own `claude -p` runs ("Summaries (dashboard)", "Ask (dashboard)")                       |
-| `usage\codex-records-YYYY-MM.ndjson` and friends        | Codex usage, limit readings (`codex-limits-…`) and fork links (`codex-index.json`), apart from Claude Code's     |
-| `handoffs\<id>.md`, `handoffs\codex\<id>.md`            | Continue fresh: the summary each new session started from                                                        |
-| `backup.json`, `restore-backups\`                       | Backup settings (and a remembered, DPAPI-protected key); copies of files a restore replaced                      |
-| `terminal.json`, `terminal-backups\`                    | What the terminal access wizard changed, and the `sshd_config` backup                                            |
-| `archive\claude-ai\`                                    | Conversations imported from a claude.ai data export                                                              |
-| `accounts.json`                                         | API keys (encrypted), credit grants, cached Admin reports                                                        |
-| `bridge.json`, `backups\settings\`                      | What the installer changed, and the `settings.json` backups                                                      |
-| `logs\notifications.jsonl`                              | Each desktop notification: when it was sent and what Windows did (shown, failed and why, clicked). No text       |
+| File (in `%APPDATA%\ClaudeSessionDashboard\`)            | What's in it                                                                                                     |
+| -------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `usage\records-YYYY-MM.ndjson`                           | One line per API response: time, session, project, environment, model, version, stop reason, every token count   |
+| `usage\turns-YYYY-MM.ndjson`, `usage\limit-hits.ndjson`  | Per-request metrics for Trends, and every "usage limit reached" message                                          |
+| `limits-history.ndjson`                                  | Every status line reading                                                                                        |
+| `usage\usage-readings.ndjson`                            | Limit readings found in `/usage` output in transcripts (backfill)                                                |
+| `mobile.json`                                            | Paired phones (token hashes only), the activity log, the app's own serve / firewall rule, home Wi-Fi certificate |
+| `metadata.json`, `settings.json`                         | Your names, descriptions, tags, pins, summaries, launch choices, git unlinks and archive records; the settings   |
+| `archive\<source>\`                                      | The archived copy of every session file                                                                          |
+| `ask-history.json`                                       | Ask Claude questions and answers                                                                                 |
+| `ask-sessions-history.json`                              | Ask across sessions: questions, answers and their cited snippets                                                 |
+| `cache\ask\`, `cache\git-links-v1.json`, `cache\codex\`  | The Ask index, git links and big Codex rollouts' compact text (rebuildable, never backed up)                     |
+| `usage\dashboard-runs.ndjson`                            | Token usage of the app's own `claude -p` runs ("Summaries (dashboard)", "Ask (dashboard)")                       |
+| `usage\codex-records-YYYY-MM.ndjson` and friends         | Codex usage, limit readings (`codex-limits-…`) and fork links (`codex-index.json`), apart from Claude Code's     |
+| `handoffs\<id>.md`, `handoffs\codex\<id>.md`             | Continue fresh: the summary each new session started from                                                        |
+| `backup.json`, `restore-backups\`                        | Backup settings (and a remembered, DPAPI-protected key); copies of files a restore replaced                      |
+| `terminal.json`, `terminal-backups\`                     | What the terminal access wizard changed, and the `sshd_config` backup                                            |
+| `archive\claude-ai\`                                     | Conversations imported from a claude.ai data export                                                              |
+| `accounts.json`                                          | API keys (encrypted), credit grants, cached Admin reports                                                        |
+| `bridge.json`, `backups\settings\`                       | What the installer changed, and the `settings.json` backups                                                      |
+| `logs\notifications.jsonl`                               | Each desktop notification: when it was sent and what Windows did (shown, failed and why, clicked). No text       |
+| `hooks.json`, `codex-hooks.json`, `backups\codex-hooks\` | What Enable session alerts / approval alerts changed, and the backups of Codex's `hooks.json`                    |
+| `launch\fast-mode.json`                                  | Holds only `{"fastMode": true}`, passed to Claude Code with `--settings` when Fast is on                         |
+| `chromium\`                                              | Electron's own browser data (caches); rebuildable                                                                |
 
 **Recalculate usage** (Usage view or Settings → Usage) re-reads every session from scratch.
 
@@ -1318,19 +1321,19 @@ follows tabs and sessions the same way.
 
 ## Scripts
 
-| Command                                | What it does                                                                                                   |
-| -------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
-| `npm run dev`                          | Run with hot reload. Add `-- --fixtures` for sample data.                                                      |
-| `npm start`                            | Run the last production build (`npm run build` first).                                                         |
-| `npm test`                             | Unit and integration tests (Vitest).                                                                           |
-| `npm run typecheck`                    | TypeScript checks for the main process and the renderer.                                                       |
-| `npm run lint`                         | ESLint.                                                                                                        |
-| `npm run check`                        | Typecheck, lint, test and build in one go.                                                                     |
-| `npm run dist`                         | Build the Windows NSIS installer and the portable exe.                                                         |
-| `npm run dist:dir`                     | Build an unpacked app folder (quick packaging check).                                                          |
-| `npm run screenshots`                  | Run the app in fixtures mode and save screenshots to `docs/` (delete `.fixtures-data/` first for a clean run). |
-| `node scripts/make-fixtures.mjs`       | Regenerate the sample sessions in `fixtures/`.                                                                 |
-| `node scripts/make-usage-fixtures.mjs` | Regenerate the 13 weeks of sample usage in `fixtures/usage/`.                                                  |
+| Command                                | What it does                                                                                              |
+| -------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| `npm run dev`                          | Run with hot reload. Add `-- --fixtures` for sample data.                                                 |
+| `npm start`                            | Run the last production build (`npm run build` first).                                                    |
+| `npm test`                             | Unit and integration tests (Vitest).                                                                      |
+| `npm run typecheck`                    | TypeScript checks for the main process and the renderer.                                                  |
+| `npm run lint`                         | ESLint.                                                                                                   |
+| `npm run check`                        | Typecheck, lint, test and build in one go.                                                                |
+| `npm run dist`                         | Build the Windows NSIS installer and the portable exe.                                                    |
+| `npm run dist:dir`                     | Build an unpacked app folder (quick packaging check).                                                     |
+| `npm run screenshots`                  | Run the app in fixtures mode and save PNG screenshots to `docs/` (not the README's WebP ones; see below). |
+| `node scripts/make-fixtures.mjs`       | Regenerate the sample sessions in `fixtures/`.                                                            |
+| `node scripts/make-usage-fixtures.mjs` | Regenerate the 13 weeks of sample usage in `fixtures/usage/`.                                             |
 
 ## How it works
 
@@ -1342,7 +1345,7 @@ src/
     core/      Small, tested building blocks: WSL decoding, launch commands, finding programs by
                full path (which.ts), archive, restore, atomic JSON store, write guards
     services/  Source detection, the session catalogue, search index, watcher, launcher
-    providers/ One provider per coding agent (claude/ so far): see "Providers" below
+    providers/ One provider per coding agent (claude/ and codex/): see "Providers" below
     git/       Git links: the only place git and gh start (runner.ts, behind shared/git/guard.ts),
                the read-only commands (backend.ts) and the matching service (service.ts)
     platform.ts  Everything that touches the OS (wsl.exe, wt.exe, spawn), with a fixtures version
@@ -1370,6 +1373,13 @@ tests/         Vitest unit and integration tests
   A failed write (a locked file, a full disk) is retried and never blocks later saves, and a junction
   or link can't send a write outside the app's data folder. Search uses MiniSearch (pure JS). A startup cache of
   summaries and the search index means only changed files are re-parsed at launch.
+- **Usage parsing** runs in a worker thread (heap capped at 1,024 MB), started when there is a file
+  to parse and let go soon after a scan (or after 20 s with nothing to do), so its memory goes too; if
+  the thread can't start, parsing falls back to the main process.
+  The session catalogue and search are still parsed in the main process.
+- **Fast mode** at launch is passed only as launch flags (Claude Code: `--settings` with the app's
+  `launch\fast-mode.json`; Codex: `-c service_tier=fast`). See [Fast mode](../README.md#fast-mode)
+  in the README.
 
 ### Providers
 
@@ -1669,8 +1679,9 @@ These are choices I made where the spec left room, or had to deviate:
   arguments and the folder appear only inside single-quoted PowerShell strings, so a folder name
   from a session file can't run anything when pasted. "Copy claude command only" copies just
   `claude --resume …` for pasting into a terminal that's already in the right folder.
-- **Renderer libraries are dev dependencies.** Vite bundles them, so only `chokidar` and
-  `minisearch` (used by the main process) ship in the installer.
+- **Every library is a dev dependency.** electron-vite bundles them into `out/` (the main
+  process's too), and the installer ships only `out/`, `resources/` and `package.json` (checked by
+  `scripts/check-asar.cjs`): no `node_modules`.
 - **Fixtures mode** copies `fixtures/` into `.fixtures-data/` (git-ignored) and runs against that copy.
   Launching only shows the command. To reset the sample data, delete `.fixtures-data/` yourself; the
   app never deletes anything. When the sample files in `fixtures/` move or are renamed,
@@ -1844,71 +1855,26 @@ These are choices I made where the spec left room, or had to deviate:
 
 The README's screenshots are in [`images/`](images/): WebP files taken in fixtures mode
 (`npm run dev -- --fixtures`, the sample sessions in `fixtures/`), never from real data. The sample
-user name is shown as "alex", and QR codes are blurred.
+user name is shown as "alex", and QR codes and pairing codes are blurred. Fixtures mode shows the
+sample PC's paths (`C:\Users\alex\…`, `%APPDATA%` as `C:\Users\alex\AppData\Roaming\…`) instead of
+the checkout's, so no screenshot shows where the repo really is (`src/main/fixtures-display.ts`).
+They were taken with a Playwright script that isn't in the repo; `npm run screenshots`,
+`scripts/mobile-screenshots.mjs` and `scripts/terminal-screenshots.mjs` make PNG screenshots in
+`docs/` for checking the UI, which aren't committed unless a doc uses them.
 
-|                                                           |                                                       |
-| --------------------------------------------------------- | ----------------------------------------------------- |
-| ![Main screen (dark)](images/main-dark.webp)              | ![Main screen (light)](images/main-light.webp)        |
-| ![Search](images/search.webp)                             | ![Codex session](images/codex-session.webp)           |
-| ![Resume dialog](images/resume-dialog.webp)               | ![Already running](images/already-running.webp)       |
-| ![Context size warning](images/context-warning.webp)      | ![Branches](images/branches.webp)                     |
-| ![Summarize notice](images/summarize-notice.webp)         | ![Continue fresh](images/continue-fresh.webp)         |
-| ![Ask: local answer](images/ask-local.webp)               | ![Ask: cited answer](images/ask-answer.webp)          |
-| ![Running now (dark)](images/running-now-dark.webp)       | ![Running now (light)](images/running-now-light.webp) |
-| ![Limit gauges](images/limits.webp)                       | ![Compare two date ranges](images/limit-compare.webp) |
-| ![Settings → Session alerts](images/settings-alerts.webp) | ![Enable live limits](images/enable-live-limits.webp) |
-| ![Command palette](images/command-palette.webp)           | ![Keyboard shortcuts](images/shortcuts.webp)          |
+|                                                      |                                                       |
+| ---------------------------------------------------- | ----------------------------------------------------- |
+| ![Main screen (dark)](images/main-dark.webp)         | ![Main screen (light)](images/main-light.webp)        |
+| ![Search](images/search.webp)                        | ![Codex session](images/codex-session.webp)           |
+| ![Resume dialog](images/resume-dialog.webp)          | ![Already running](images/already-running.webp)       |
+| ![Context size warning](images/context-warning.webp) | ![Branches](images/branches.webp)                     |
+| ![Summarize notice](images/summarize-notice.webp)    | ![Continue fresh](images/continue-fresh.webp)         |
+| ![Ask: local answer](images/ask-local.webp)          | ![Ask: cited answer](images/ask-answer.webp)          |
+| ![Running now (dark)](images/running-now-dark.webp)  | ![Running now (light)](images/running-now-light.webp) |
+| ![Limit gauges](images/limits.webp)                  | ![Compare two date ranges](images/limit-compare.webp) |
+| ![Settings → Alerts](images/settings-alerts.webp)    | ![Enable live limits](images/enable-live-limits.webp) |
+| ![Command palette](images/command-palette.webp)      | ![Keyboard shortcuts](images/shortcuts.webp)          |
 
 |                                           |                                                      |                                                            |                                      |
 | ----------------------------------------- | ---------------------------------------------------- | ---------------------------------------------------------- | ------------------------------------ |
 | ![Phone: pairing](images/phone-pair.webp) | ![Phone: sessions](images/phone-sessions-light.webp) | ![Phone: Running (light)](images/phone-running-light.webp) | ![Phone: Ask](images/phone-ask.webp) |
-
-### Older screenshots
-
-Made by the scripts in `scripts/` (PNG, in `docs/`, `docs/mobile/` and `docs/terminal/`): desktop
-ones with `npm run screenshots`, phone ones with `node scripts/mobile-screenshots.mjs` after
-`npm run build`.
-
-Desktop:
-
-|                                               |                                                 |
-| --------------------------------------------- | ----------------------------------------------- |
-| ![Tool calls](tools.png)                      | ![Resume dialog](resume-dialog.png)             |
-| ![Find in session](find.png)                  | ![Command palette](command-palette.png)         |
-| ![Settings](settings.png)                     | ![Light theme](main-light.png)                  |
-| ![Enable live limits](enable-live-limits.png) | ![Disable live limits](disable-live-limits.png) |
-| ![Branch from a message](branch-intro.png)    | ![Branches](branches.png)                       |
-
-Phone companion:
-
-|                                  |                                |                                                  |                                           |
-| -------------------------------- | ------------------------------ | ------------------------------------------------ | ----------------------------------------- |
-| ![Sessions](mobile/sessions.png) | ![Session](mobile/session.png) | ![Resume with Remote Control](mobile/resume.png) | ![Started on your PC](mobile/resumed.png) |
-| ![Usage](mobile/usage-light.png) | ![Filters](mobile/filters.png) | ![Settings](mobile/settings.png)                 | ![Pairing](mobile/pair.png)               |
-
-![Connect your phone](mobile/desktop-wizard-pair.png)
-
-Terminal access (`node scripts/terminal-screenshots.mjs` after `npm run build`; fixtures mode uses
-a stand-in PC, so nothing is installed or changed):
-
-|                                                         |                                                           |
-| ------------------------------------------------------- | --------------------------------------------------------- |
-| ![Exactly what will run](terminal/confirm-firewall.png) | ![Key from the phone](terminal/wizard-key-from-phone.png) |
-| ![Phone app step](terminal/wizard-phone-app.png)        | ![Turn off](terminal/confirm-turn-off.png)                |
-
-|                                                          |                                                       |                                              |
-| -------------------------------------------------------- | ----------------------------------------------------- | -------------------------------------------- |
-| ![Open terminal here](terminal/phone-terminal-sheet.png) | ![A WSL project](terminal/phone-terminal-project.png) | ![Send SSH key](terminal/phone-send-key.png) |
-
-Usage and limits:
-
-|                                               |                                                 |
-| --------------------------------------------- | ----------------------------------------------- |
-| ![Limit gauges (dark)](limits.png)            | ![Limit gauges (light)](limits-light.png)       |
-| ![Credits card (dark)](credits.png)           | ![Credits card (light)](credits-light.png)      |
-| ![Charts](usage-charts.png)                   | ![Trends](trends.png)                           |
-| ![Limit history](limit-history.png)           | ![Credits tab](credits-tab.png)                 |
-| ![Usage (light)](usage-light.png)             | ![Mini meter](mini-meter.png)                   |
-| ![Limit health](limit-health.png)             | ![Limit health (light)](limit-health-light.png) |
-| ![Compare two date ranges](limit-compare.png) | ![Ask Claude](ask-claude.png)                   |
-| ![What Ask Claude sends](ask-preview.png)     |                                                 |

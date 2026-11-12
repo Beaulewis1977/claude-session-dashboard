@@ -5,6 +5,7 @@
 
 import { BrowserWindow, ipcMain, type IpcMainInvokeEvent } from 'electron'
 import { isAppPage } from './core/app-url'
+import { toRenderer } from './outgoing'
 import { timedCall } from './timing'
 
 let page: { indexFile: string; devUrl?: string } | undefined
@@ -32,9 +33,10 @@ const listeners = new Map<string, Listener>()
 
 export function handle(channel: string, listener: Listener): void {
   listeners.set(channel, listener)
-  ipcMain.handle(channel, (e, ...args) => {
+  ipcMain.handle(channel, async (e, ...args) => {
     if (!trusted(e)) throw new Error(`Refused ${channel}: not from the app's own page`)
-    return timedCall(channel, () => listener(e, ...args))
+    const result = await timedCall(channel, () => listener(e, ...args))
+    return toRenderer(result)
   })
 }
 
@@ -45,5 +47,5 @@ export function handle(channel: string, listener: Listener): void {
 export async function callHandler(channel: string, args: unknown[]): Promise<unknown> {
   const l = listeners.get(channel)
   if (!l) throw new Error(`No handler for ${channel}`)
-  return l({} as IpcMainInvokeEvent, ...args)
+  return toRenderer(await l({} as IpcMainInvokeEvent, ...args))
 }

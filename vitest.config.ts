@@ -1,5 +1,6 @@
 import { resolve } from 'node:path'
 import { defineConfig } from 'vitest/config'
+import { BROWSER_TEMP } from './tests/browser-temp'
 
 const BROWSER_TESTS = 'tests/**/*.browser.test.ts'
 
@@ -43,6 +44,9 @@ export default defineConfig({
           name: 'browser',
           include: [BROWSER_TESTS],
           globalSetup: ['tests/browser-global-setup.ts'],
+          // Playwright's profile and artifacts folders go into this run's own temp
+          // folder, removed after the run (tests/browser-temp.ts).
+          env: { TEMP: BROWSER_TEMP, TMP: BROWSER_TEMP, TMPDIR: BROWSER_TEMP },
           fileParallelism: false,
           sequence: { groupOrder: 1 },
           testTimeout: 30_000,

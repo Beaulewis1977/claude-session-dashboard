@@ -221,6 +221,10 @@ Click the title or description at the top of a session (or press <kbd>F2</kbd>, 
   **Agent → Agent** steps.
 - **Copy** buttons on every message, code block and tool call (the full input and output), and
   **Copy whole conversation** as Markdown. Text can be selected normally too.
+- **Big sessions stay quick.** A long tool input (a file Claude wrote, a big edit) shows its start
+  with **Show full**; Copy and Find still use the full text. A very large session (about 3,000
+  elements or more) is drawn only near the screen, so selecting text across all of it isn't possible
+  there; short and medium sessions are drawn in full.
 - **Find in session** (<kbd>Ctrl</kbd>+<kbd>F</kbd>) and **Export to Markdown**
   (<kbd>Ctrl</kbd>+<kbd>E</kbd>).
 - The header shows the session's usage, its context size and its **Branches** family; the
@@ -518,7 +522,7 @@ your own hooks stay exactly as they are. **Disable** takes out exactly the app's
 For Codex, **Enable approval alerts** adds one hook to that Codex home's `~/.codex/hooks.json` the
 same way. Codex then asks you to trust it in its `/hooks` screen (the app never does that for you).
 
-![Settings → Session alerts: per-environment hooks, events and quiet hours](docs/images/settings-alerts.webp)
+![Settings → Alerts: per-environment hooks, events and quiet hours](docs/images/settings-alerts.webp)
 
 #### Desktop notifications
 
@@ -870,7 +874,7 @@ OneDrive, an external drive or a NAS. Your cloud app syncs it; the dashboard mak
   to is gone, so resuming one of them can't re-read it. Details:
   [docs/DETAILS.md → Backups](docs/DETAILS.md#backups).
 
-![Settings → Backup](docs/images/settings-backup.webp)
+![Settings → Archive & backup](docs/images/settings-backup.webp)
 
 ### Providers and settings
 
@@ -892,7 +896,7 @@ OneDrive, an external drive or a NAS. Your cloud app syncs it; the dashboard mak
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/settings-dark.webp">
-  <img alt="Settings: appearance, startup and resume defaults" src="docs/images/settings-light.webp">
+  <img alt="Settings: one page in sections, with its menu, search and changed settings" src="docs/images/settings-light.webp">
 </picture>
 
 ---

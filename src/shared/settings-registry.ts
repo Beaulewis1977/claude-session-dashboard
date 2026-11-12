@@ -10,7 +10,6 @@
 // Pure data and functions: no React, no DOM, no Node.
 
 import { DEFAULT_SETTINGS, type AppSettings } from './types'
-import { DEFAULT_PROVIDER_TOGGLES } from './provider'
 import { DEFAULT_HEALTH } from './usage/health'
 import { DEFAULT_CODEX_PRICES } from './usage/pricing'
 import { DEFAULT_GIT_SETTINGS } from './git/types'
@@ -1258,7 +1257,7 @@ export function highlightWords(query: string): string[] {
 export const APP_DEFAULTS: AppSettings = {
   ...DEFAULT_SETTINGS,
   defaultFast: 'off',
-  providers: { ...DEFAULT_PROVIDER_TOGGLES },
+  providers: { claude: true, codex: true },
   codexArchive: 'off',
   codexDefaultModel: 'default',
   codexDefaultEffort: 'default',

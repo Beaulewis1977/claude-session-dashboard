@@ -523,23 +523,29 @@ export function AccountsSettings({
           </div>
         )}
       </SettingItem>
-      {accounts.some((a) => a.kind === 'admin') && (
-        <SettingItem id="accounts.refresh">
-          <Row label="Refresh Admin reports" hint="Read-only calls to api.anthropic.com.">
-            <Segmented
-              ariaLabel="Refresh interval"
-              value={String(settings.adminRefreshMinutes)}
-              onChange={(v) => void update({ adminRefreshMinutes: Number(v) })}
-              options={[
-                { value: '0', label: 'Manually' },
-                { value: '15', label: '15 min' },
-                { value: '60', label: 'Hourly' },
-                { value: '360', label: '6 h' }
-              ]}
-            />
-          </Row>
-        </SettingItem>
-      )}
+      {/* Always on the page (links, counts and Reset section… see it); used with an Admin key. */}
+      <SettingItem id="accounts.refresh">
+        <Row
+          label="Refresh Admin reports"
+          hint={
+            accounts.some((a) => a.kind === 'admin')
+              ? 'Read-only calls to api.anthropic.com.'
+              : 'Used once you add an Admin key: read-only calls to api.anthropic.com.'
+          }
+        >
+          <Segmented
+            ariaLabel="Refresh interval"
+            value={String(settings.adminRefreshMinutes)}
+            onChange={(v) => void update({ adminRefreshMinutes: Number(v) })}
+            options={[
+              { value: '0', label: 'Manually' },
+              { value: '15', label: '15 min' },
+              { value: '60', label: 'Hourly' },
+              { value: '360', label: '6 h' }
+            ]}
+          />
+        </Row>
+      </SettingItem>
       {adding && <AddKeyDialog onClose={() => setAdding(false)} />}
     </>
   )

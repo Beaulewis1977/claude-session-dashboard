@@ -317,21 +317,38 @@ function ResetSectionDialog({
 
   const run = async (): Promise<void> => {
     setBusy(true)
+    // Everything that's reset is decided now, before anything changes: resetting one
+    // setting can hide another (quiet hours and "Approvals during quiet hours").
+    // The app's own settings go back in one patch; the phone's and backups' each
+    // through their own reset, captured here too.
+    const snapshot = useSettingsUi.getState().mounted
+    const appDefs = resettable
+      .map((id) => settingDef(id)!)
+      .filter((d) => (d.store ?? 'app') === 'app')
+    const others = resettable
+      .filter((id) => (settingDef(id)?.store ?? 'app') !== 'app')
+      .map((id) => snapshot[id]?.reset)
+      .filter((r): r is NonNullable<typeof r> => !!r)
     const undos: (() => Promise<void>)[] = []
+    const undoAll = async (): Promise<void> => {
+      for (const u of [...undos].reverse()) await u()
+    }
     try {
-      for (const id of resettable) {
-        const r = useSettingsUi.getState().mounted[id]?.reset
-        if (r) undos.push(await r())
-      }
+      if (appDefs.length) undos.push(await resetAppSettings(appDefs))
+      for (const r of others) undos.push(await r())
       onOpenChange(false)
       undoToast(
-        `Reset ${undos.length} setting${undos.length === 1 ? '' : 's'} in ${title}`,
-        async () => {
-          for (const u of undos.reverse()) await u()
-        }
+        `Reset ${resettable.length} setting${resettable.length === 1 ? '' : 's'} in ${title}`,
+        undoAll
       )
     } catch (e) {
-      toast.error('Couldn’t reset everything', { description: (e as Error).message })
+      // Some may have been reset already: say so, and offer to put those back.
+      toast.error('Couldn’t reset everything', {
+        description: (e as Error).message,
+        ...(undos.length
+          ? { action: { label: 'Undo', onClick: () => void undoAll().catch(() => undefined) } }
+          : {})
+      })
     } finally {
       setBusy(false)
     }

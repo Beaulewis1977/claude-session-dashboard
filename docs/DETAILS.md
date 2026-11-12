@@ -133,7 +133,7 @@ Several later features stay inside the rules:
   restored from the archive, and whether the working folder still exists. If it doesn't, choose
   another folder. Fork adds `--fork-session` so the original session stays untouched.
 - **Remote Control:** tick **Remote Control** in the Resume / Fork / Branch dialog (or turn it on by
-  default in Settings → Resume) to start Claude Code with `--remote-control "<session name>"`, so you
+  default in Settings → Launching) to start Claude Code with `--remote-control "<session name>"`, so you
   can continue the session in the Claude app or at claude.ai/code. The name is your name for the
   session (or its title), cleaned to letters, digits, spaces and `_ . -`. Remote Control needs Claude
   Code 2.1.51+ signed in with your Claude subscription, so it turns API billing off and removes

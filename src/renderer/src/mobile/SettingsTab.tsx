@@ -62,12 +62,15 @@ interface TabContext {
   query: string
   readOnly: boolean
   update: Update
+  /** Like update, but a failure is thrown to the caller (resets and Undo). */
+  save: Update
 }
 
 const Ctx = createContext<TabContext>({
   query: '',
   readOnly: false,
-  update: async () => undefined
+  update: async () => undefined,
+  save: async () => undefined
 })
 
 function shown(id: string, query: string): boolean {
@@ -114,19 +117,24 @@ function Card({
 /** "Changed · Reset" for a PC setting the phone may change. */
 function ChangedMarker({ def }: { def: SettingDef }) {
   const settings = useApp((s) => s.settings)
-  const { readOnly, update } = useContext(Ctx)
+  const { readOnly, save } = useContext(Ctx)
   if (!def.keys?.length || !isChanged(def, settings)) return null
   const reset = async (): Promise<void> => {
     const before = useApp.getState().settings as unknown as Record<string, unknown>
-    await update(resetPatch([def], before) as Pick<Partial<AppSettings>, MobileSafeSetting>)
+    try {
+      await save(resetPatch([def], before) as Pick<Partial<AppSettings>, MobileSafeSetting>)
+    } catch (err) {
+      toast.error("Couldn't reset it", { description: (err as Error).message })
+      return
+    }
     toast.success(`“${def.label}” is back to its default`, {
       action: {
         label: 'Undo',
         onClick: () => {
           const now = useApp.getState().settings as unknown as Record<string, unknown>
-          void update(
+          void save(
             undoPatch([def], before, now) as Pick<Partial<AppSettings>, MobileSafeSetting>
-          )
+          ).catch((err: Error) => toast.error("Couldn't undo", { description: err.message }))
         }
       }
     })
@@ -271,21 +279,30 @@ export function SettingsTab() {
   const pageRef = useRef<HTMLDivElement>(null)
   useSearchHighlight(pageRef, query)
 
+  /** Saves on the PC; a failure (or read-only mode) is thrown, with the PC's settings shown again. */
+  const save: Update = async (patch) => {
+    if (readOnly) throw new Error('Read-only mode is on. Change it on your PC.')
+    set({ settings: { ...useApp.getState().settings, ...patch } })
+    try {
+      set({ settings: await api.updateSettings(patch) })
+    } catch (err) {
+      set({ settings: await api.getSettings().catch(() => useApp.getState().settings) })
+      throw err
+    }
+  }
   const update: Update = async (patch) => {
     if (readOnly) {
       toast('Read-only mode is on', { description: 'Change it on your PC.' })
       return
     }
-    set({ settings: { ...useApp.getState().settings, ...patch } })
     try {
-      set({ settings: await api.updateSettings(patch) })
+      await save(patch)
     } catch (err) {
       toast.error("Couldn't save", { description: (err as Error).message })
-      set({ settings: await api.getSettings() })
     }
   }
 
-  const ctx = { query, readOnly, update }
+  const ctx = { query, readOnly, update, save }
   const thresholds = settings.alertThresholds
   const none = query.trim() !== '' && !PHONE_DEFS.some((d) => shown(d.id, query))
 
@@ -773,15 +790,17 @@ function SessionAlertLines({ update }: { update: Update }) {
           </div>
         </Line>
       )}
-      {a.quiet.enabled && (
-        <Line id="alerts.quiet-approvals">
-          <Switch
-            checked={a.quiet.allowApprovals}
-            onCheckedChange={(v) => set({ quiet: { ...a.quiet, allowApprovals: v } })}
-            aria-label="Approvals during quiet hours"
-          />
-        </Line>
-      )}
+      <Line
+        id="alerts.quiet-approvals"
+        hint={a.quiet.enabled ? undefined : 'Used while quiet hours are on.'}
+      >
+        <Switch
+          checked={a.quiet.allowApprovals}
+          disabled={!a.quiet.enabled}
+          onCheckedChange={(v) => set({ quiet: { ...a.quiet, allowApprovals: v } })}
+          aria-label="Approvals during quiet hours"
+        />
+      </Line>
     </>
   )
 }

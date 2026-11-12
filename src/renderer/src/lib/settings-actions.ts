@@ -33,10 +33,16 @@ export async function applySettingsPatch(patch: Partial<AppSettings>): Promise<v
   const st = useApp.getState()
   st.set({ settings: { ...st.settings, ...patch } })
   const { gitLinks, ...rest } = patch
-  if (Object.keys(rest).length) st.set({ settings: await api.updateSettings(rest) })
-  if (gitLinks) {
-    await api.updateGitSettings(gitLinks as Partial<GitLinkSettings>)
-    st.set({ settings: await api.getSettings() })
+  try {
+    if (Object.keys(rest).length) st.set({ settings: await api.updateSettings(rest) })
+    if (gitLinks) {
+      await api.updateGitSettings(gitLinks as Partial<GitLinkSettings>)
+      st.set({ settings: await api.getSettings() })
+    }
+  } catch (err) {
+    // Not saved: show what the app has, and let the caller say it failed.
+    st.set({ settings: await api.getSettings().catch(() => st.settings) })
+    throw err
   }
 }
 

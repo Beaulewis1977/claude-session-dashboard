@@ -42,8 +42,6 @@ import { APP_DEFAULTS } from '/src/shared/settings-registry.ts'
 import '/src/renderer/src/styles.css'
 
 const settings = structuredClone(APP_DEFAULTS)
-// Shown only while quiet hours are on.
-settings.liveAlerts.quiet.enabled = true
 window.calls = []
 window.mobile = {
   settings: { enabled: false, mode: 'tailscale', port: 47821, httpsPort: 8443, readOnly: false, confirmOnPc: false, autoStart: true },
@@ -71,6 +69,7 @@ const known = {
   getArchiveStats: async () => ({ dir: 'C:\\\\data\\\\archive', files: 3, bytes: 1000 }),
   mobileStatus: async () => window.mobile,
   mobileUpdate: async (p) => {
+    if (window.failMobile) throw new Error('The phone server is busy')
     window.mobile = { ...window.mobile, settings: { ...window.mobile.settings, ...p } }
     return window.mobile
   },
@@ -529,6 +528,91 @@ describe('the Settings page', () => {
           t<{ codexBypassDefault: boolean }>(page, 'settings()').then((x) => x.codexBypassDefault)
         )
         .toBe(true)
+    } finally {
+      await page.close()
+    }
+  })
+
+  it('Reset section… resets every listed setting, even one that hides when another resets', async ({
+    skip
+  }) => {
+    if (!browser) skip(unavailableReason)
+    const page = await open()
+    try {
+      // Quiet hours on (with its times) and approvals during quiet hours on.
+      const s = await t<{ liveAlerts: Record<string, unknown> }>(page, 'settings()')
+      const quiet = { enabled: true, from: '21:00', to: '06:00', allowApprovals: true }
+      await t(page, `setSettings({ liveAlerts: ${JSON.stringify({ ...s.liveAlerts, quiet })} })`)
+      await expect
+        .poll(() => page.locator('[data-changed-count="alerts"]').textContent())
+        .toBe('2 changed')
+      await page.locator('[data-reset-section="alerts"]').click()
+      const dialog = page.getByRole('dialog')
+      const list = dialog.getByRole('list', { name: 'Settings to reset' })
+      await expect.poll(() => list.textContent()).toContain('Approvals during quiet hours')
+      await dialog.getByRole('button', { name: 'Reset 2 settings' }).click()
+      const now = () =>
+        t<{ liveAlerts: { quiet: unknown } }>(page, 'settings()').then((x) => x.liveAlerts.quiet)
+      await expect
+        .poll(now)
+        .toEqual({ enabled: false, from: '22:00', to: '07:00', allowApprovals: false })
+      // Still on the page with quiet hours off (its switch off); Undo brings both back.
+      expect(
+        await page.getByRole('switch', { name: 'Approvals during quiet hours' }).isDisabled()
+      ).toBe(true)
+      await page.getByRole('button', { name: 'Undo' }).first().click()
+      await expect.poll(now).toEqual(quiet)
+    } finally {
+      await page.close()
+    }
+  })
+
+  it('links reach settings that are off, clear a search hiding a section, and say when one isn’t shown', async ({
+    skip
+  }) => {
+    if (!browser) skip(unavailableReason)
+    const page = await open()
+    try {
+      // Quiet hours are off: "Approvals during quiet hours" is still there to land on.
+      await t(page, "set({ settingsSection: 'alerts.quiet-approvals' })")
+      await expect
+        .poll(() =>
+          page
+            .locator('[data-setting-id="alerts.quiet-approvals"]')
+            .getAttribute('data-highlighted')
+        )
+        .toBe('true')
+      // A search that hides Usage: an old Codex usage link clears it and lands there.
+      await search(page).fill('quiet')
+      await t(page, "set({ settingsSection: 'codex-usage' })")
+      await expect.poll(() => t<{ query: string }>(page, 'ui()').then((u) => u.query)).toBe('')
+      await expect.poll(() => t<string | null>(page, 'current()')).toBe('usage.codex')
+      // A Codex setting while Codex is off: its section, and a note why.
+      await t(page, 'setSettings({ providers: { claude: true, codex: false } })')
+      await t(page, "set({ settingsSection: 'launching.codex-bypass' })")
+      await expect
+        .poll(() => page.getByText('isn’t shown right now').count(), { timeout: 6000 })
+        .toBe(1)
+      await expect.poll(() => t<string | null>(page, 'current()')).toBe('launching')
+    } finally {
+      await page.close()
+    }
+  })
+
+  it('a reset that wasn’t saved says so, with no Undo', async ({ skip }) => {
+    if (!browser) skip(unavailableReason)
+    const page = await open()
+    try {
+      await page.evaluate(
+        'window.mobile = { ...window.mobile, settings: { ...window.mobile.settings, autoStart: false } }'
+      )
+      await t(page, "set({ view: 'sessions' })")
+      await t(page, "set({ view: 'settings' })")
+      await page.evaluate('window.failMobile = true')
+      await page.locator('[data-reset-setting="phone.auto-start"]').click()
+      await expect.poll(() => page.getByText('Couldn’t reset it').count()).toBe(1)
+      expect(await page.getByRole('button', { name: 'Undo' }).count()).toBe(0)
+      expect(await page.evaluate<boolean>('window.mobile.settings.autoStart')).toBe(false)
     } finally {
       await page.close()
     }

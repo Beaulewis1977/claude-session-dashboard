@@ -103,8 +103,16 @@ export function MobileSettingsSection() {
   }
   const update = (patch: Partial<MS>): Promise<void> =>
     run(async () => setStatus(await api.mobileUpdate(patch)))
+  // Resets save directly, so a failure reaches the reset (no "back to default" and Undo then).
+  const save = async (patch: Partial<MS>): Promise<void> => {
+    try {
+      setStatus(await api.mobileUpdate(patch))
+    } finally {
+      void refresh()
+    }
+  }
   const item = (id: string): ReturnType<typeof storeSetting> =>
-    storeSetting(id, s as unknown as Record<string, unknown>, (p) => update(p as Partial<MS>))
+    storeSetting(id, s as unknown as Record<string, unknown>, (p) => save(p as Partial<MS>))
 
   if (!status || !s) return null
   const link = tailscaleLinkIn(status.error)
@@ -465,9 +473,13 @@ export function PhonePortsSetting() {
   const { status, setStatus } = useMobileStatus()
   const s = status?.settings
   if (!s) return null
+  /** Saves; a failure is thrown (a reset shows it and offers no Undo). */
+  const save = async (patch: Partial<MS>): Promise<void> => {
+    setStatus(await api.mobileUpdate(patch))
+  }
   const update = async (patch: Partial<MS>): Promise<void> => {
     try {
-      setStatus(await api.mobileUpdate(patch))
+      await save(patch)
     } catch (err) {
       toast.error('Couldn’t save', { description: (err as Error).message })
     }
@@ -477,7 +489,7 @@ export function PhonePortsSetting() {
       id="advanced.ports"
       className="space-y-3"
       {...storeSetting('advanced.ports', s as unknown as Record<string, unknown>, (p) =>
-        update(p as Partial<MS>)
+        save(p as Partial<MS>)
       )}
     >
       <Row label="Local port" hint="Where the phone companion listens on this PC (1024–65535).">

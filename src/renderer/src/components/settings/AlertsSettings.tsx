@@ -357,20 +357,24 @@ export function AlertsSettings({ update }: { update: (p: Partial<AppSettings>) =
           </div>
         </Row>
       </SettingItem>
-      {a.quiet.enabled && (
-        <SettingItem id="alerts.quiet-approvals">
-          <Row
-            label="Approvals during quiet hours"
-            hint="A session that needs approval is stuck until you answer."
-          >
-            <Switch
-              checked={a.quiet.allowApprovals}
-              onCheckedChange={(v) => setQuiet({ allowApprovals: v })}
-              aria-label="Approvals during quiet hours"
-            />
-          </Row>
-        </SettingItem>
-      )}
+      {/* Always on the page (links, counts and Reset section… see it), used only with quiet hours on. */}
+      <SettingItem id="alerts.quiet-approvals">
+        <Row
+          label="Approvals during quiet hours"
+          hint={
+            a.quiet.enabled
+              ? 'A session that needs approval is stuck until you answer.'
+              : 'Used while quiet hours are on: a session that needs approval is stuck until you answer.'
+          }
+        >
+          <Switch
+            checked={a.quiet.allowApprovals}
+            disabled={!a.quiet.enabled}
+            onCheckedChange={(v) => setQuiet({ allowApprovals: v })}
+            aria-label="Approvals during quiet hours"
+          />
+        </Row>
+      </SettingItem>
 
       <SettingItem id="alerts.muted">
         <div className="text-[13px] font-medium">Muted sessions</div>

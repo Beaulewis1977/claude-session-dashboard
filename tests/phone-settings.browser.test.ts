@@ -32,13 +32,15 @@ window.csd = new Proxy({
   remote: true,
   updateSettings: async (patch) => {
     window.calls.push(patch)
-    return { ...useApp.getState().settings, ...patch }
+    if (window.fail) throw new Error('The PC is offline')
+    window.pc = { ...window.pc, ...patch }
+    return window.pc
   },
-  getSettings: async () => useApp.getState().settings
+  getSettings: async () => window.pc
 }, { get: (t, k) => (k in t ? t[k] : typeof k === 'string' && k.startsWith('on') ? () => () => {} : async () => undefined) })
 
 const settings = structuredClone(APP_DEFAULTS)
-settings.liveAlerts.quiet.enabled = true
+window.pc = settings
 useApp.setState({
   loaded: true,
   settings,
@@ -58,7 +60,7 @@ window.__p = {
   shown: () => [...new Set([...document.querySelectorAll('[data-setting-id]')].filter((e) => !e.closest('[hidden]')).map((e) => e.getAttribute('data-setting-id')))],
   sections: () => [...document.querySelectorAll('[data-phone-section]')].map((e) => e.getAttribute('data-phone-section')),
   shownSections: () => [...document.querySelectorAll('[data-phone-section]')].filter((e) => !e.hidden).map((e) => e.getAttribute('data-phone-section')),
-  setSettings: (patch) => { const st = useApp.getState(); st.set({ settings: { ...st.settings, ...patch } }) },
+  setSettings: (patch) => { const st = useApp.getState(); window.pc = { ...window.pc, ...patch }; st.set({ settings: window.pc }) },
   settings: () => useApp.getState().settings,
   readOnly: (on) => useMobile.setState({ me: me(on) })
 }
@@ -164,6 +166,37 @@ describe('the phone’s Settings tab', () => {
       await expect
         .poll(() => page.locator('[data-reset-setting="launching.terminal"]').count())
         .toBe(0)
+    } finally {
+      await page.close()
+    }
+  })
+
+  it('a reset that the PC didn’t save says so, with no Undo', async ({ skip }) => {
+    if (!browser) skip(unavailableReason)
+    const page = await open()
+    try {
+      await p(page, "setSettings({ terminal: 'cmd' })")
+      await page.evaluate('window.fail = true')
+      await page.locator('[data-reset-setting="launching.terminal"]').click()
+      await expect.poll(() => page.getByText("Couldn't reset it").count()).toBe(1)
+      expect(await page.getByRole('button', { name: 'Undo' }).count()).toBe(0)
+      await expect
+        .poll(() => p<{ terminal: string }>(page, 'settings()').then((s) => s.terminal))
+        .toBe('cmd')
+    } finally {
+      await page.close()
+    }
+  })
+
+  it('lists "Approvals during quiet hours" even while quiet hours are off (switch off)', async ({
+    skip
+  }) => {
+    if (!browser) skip(unavailableReason)
+    const page = await open()
+    try {
+      const sw = page.getByRole('switch', { name: 'Approvals during quiet hours' })
+      expect(await sw.count()).toBe(1)
+      expect(await sw.isDisabled()).toBe(true)
     } finally {
       await page.close()
     }

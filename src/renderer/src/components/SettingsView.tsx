@@ -32,7 +32,14 @@ import { api } from '@/lib/api'
 import { useApp } from '@/lib/store'
 import { useHotkeys } from '@/lib/hotkeys'
 import { cn } from '@/lib/utils'
-import { readLastSection, saveLastSection, settingsUi, useSettingsUi } from '@/lib/settings-ui'
+import {
+  readLastSection,
+  saveLastSection,
+  settingsIn,
+  settingsUi,
+  useSettingsUi,
+  visibleSettingIds
+} from '@/lib/settings-ui'
 import { useSearchHighlight } from '@/lib/settings-highlight'
 import { useEnabledProviders } from '@/lib/scope'
 import { Badge } from './ui/badge'
@@ -215,7 +222,7 @@ function targetTop(container: HTMLElement, target: string): number | null {
   const cTop = container.getBoundingClientRect().top - container.scrollTop
   if (r.kind === 'section') {
     const el = container.querySelector<HTMLElement>(`[data-settings-section="${r.id}"]`)
-    if (!el) return null
+    if (!el || el.closest('[hidden]')) return null
     // The header's own place (not where it's stuck): the section's top plus its padding.
     return (
       el.getBoundingClientRect().top - cTop + parseFloat(getComputedStyle(el).paddingTop || '0')
@@ -223,11 +230,11 @@ function targetTop(container: HTMLElement, target: string): number | null {
   }
   if (r.kind === 'sub') {
     const el = container.querySelector<HTMLElement>(`[data-settings-sub-group="${r.id}"]`)
-    if (!el) return null
+    if (!el || el.closest('[hidden]')) return null
     return el.getBoundingClientRect().top - cTop - SECTION_HEADER_PX
   }
   const el = container.querySelector<HTMLElement>(`[data-setting-id="${r.id}"]`)
-  if (!el) return null
+  if (!el || el.closest('[hidden]')) return null
   const def = settingDef(r.id)
   const under = SECTION_HEADER_PX + (def?.sub ? SUB_HEADER_PX : 0) + 16
   return el.getBoundingClientRect().top - cTop - under
@@ -294,25 +301,54 @@ export function SettingsView() {
     const c = scrollRef.current
     if (!r || !c) return
     const ui = useSettingsUi.getState()
+    // A search that hides the target is cleared: a setting it doesn't match, or a
+    // section or sub-heading where it matches nothing.
     if (ui.query.trim()) {
-      const def = r.kind === 'setting' ? settingDef(r.id) : undefined
-      if (def && !matchSetting(def, ui.query).match) settingsUi.setQuery('')
+      const shown = visibleSettingIds(ui.mounted, ui.query)
+      const hidden =
+        r.kind === 'setting'
+          ? !matchSetting(settingDef(r.id)!, ui.query).match
+          : settingsIn(shown, r.kind === 'sub' ? { sub: r.id } : { section: r.section }).length ===
+            0
+      if (hidden) settingsUi.setQuery('')
     }
     if (ui.collapsed[r.section]) settingsUi.toggleCollapsed(r.section, false)
-    // Two frames: an unfolded section or a cleared search has rendered.
-    requestAnimationFrame(() =>
-      requestAnimationFrame(() => {
-        const y = targetTop(c, target)
-        if (y === null) return
-        const def = r.kind === 'setting' ? settingDef(r.id) : undefined
-        settingsUi.setActive(r.section, r.kind === 'sub' ? r.id : (def?.sub ?? null))
-        const behavior: ScrollBehavior = smooth && !reducedMotion() ? 'smooth' : 'auto'
-        spyLockUntil.current = performance.now() + (behavior === 'smooth' ? 900 : 50)
-        c.scrollTo({ top: Math.max(0, Math.round(y)), behavior })
-        if (r.kind === 'setting') settingsUi.highlight(r.id)
-        saveLastSection(r.kind === 'setting' ? (def?.sub ?? r.section) : r.id)
-      })
-    )
+    const def = r.kind === 'setting' ? settingDef(r.id) : undefined
+    const go = (to: string, kind: 'section' | 'sub' | 'setting'): void => {
+      const y = targetTop(c, to)
+      if (y === null) return
+      settingsUi.setActive(
+        r.section,
+        kind === 'sub' ? to : kind === 'setting' ? (def?.sub ?? null) : null
+      )
+      const behavior: ScrollBehavior = smooth && !reducedMotion() ? 'smooth' : 'auto'
+      spyLockUntil.current = performance.now() + (behavior === 'smooth' ? 900 : 50)
+      c.scrollTo({ top: Math.max(0, Math.round(y)), behavior })
+      if (kind === 'setting') settingsUi.highlight(to)
+      saveLastSection(kind === 'setting' ? (def?.sub ?? r.section) : to)
+    }
+    // Wait for it to be on the page: an unfolded section or a cleared search renders
+    // next frame, and a few settings appear once their status has loaded (phone,
+    // startup). One that never shows (e.g. Codex's while Codex is off) goes to its
+    // heading instead, and says so.
+    const started = performance.now()
+    const tick = (): void => {
+      if (targetTop(c, r.id) !== null) return go(r.id, r.kind)
+      if (performance.now() - started < 1500) {
+        requestAnimationFrame(tick)
+        return
+      }
+      if (r.kind === 'setting') {
+        const fallback = def?.sub && targetTop(c, def.sub) !== null ? def.sub : r.section
+        go(fallback, fallback === r.section ? 'section' : 'sub')
+        toast(`“${def?.label ?? r.id}” isn’t shown right now`, {
+          description: def?.codex
+            ? 'It’s a Codex setting: turn Codex on in Providers & sources.'
+            : 'It appears when it applies here.'
+        })
+      }
+    }
+    requestAnimationFrame(tick)
   }, [])
 
   // Opened with a link (a section, a sub-heading or one setting), or a menu click.

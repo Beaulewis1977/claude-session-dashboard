@@ -69,14 +69,14 @@ default.**
   and the usage reader thread stops right after a scan instead of 20 seconds later. **Every usage
   and limits number is the same as before**, to the last digit.
 
-|                                                    | Before (1.16.3) | After (1.16.4) |
-| -------------------------------------------------- | --------------- | -------------- |
-| Biggest session (715 messages): sent to the viewer | 14.5 MB         | 2.7 MB         |
-| …opens in                                          | 445 ms          | 368 ms         |
-| Idle memory: main process                          | 798 MB          | 428–472 MB     |
-| Idle memory: all processes                         | 1,156 MB        | 812–846 MB     |
-| On Usage (All): all processes                      | 1,384 MB        | 1,286 MB       |
-| On Usage (Claude Code): all processes              | 1,545 MB        | 1,392 MB       |
+| | Before (1.16.3) | After (1.16.4) |
+|---|---|---|
+| Biggest session (715 messages): sent to the viewer | 14.5 MB | 2.7 MB |
+| …opens in | 445 ms | 368 ms |
+| Idle memory: main process | 798 MB | 428–472 MB |
+| Idle memory: all processes | 1,156 MB | 812–846 MB |
+| On Usage (All): all processes | 1,384 MB | 1,286 MB |
+| On Usage (Claude Code): all processes | 1,545 MB | 1,392 MB |
 
 Measured on a real history (148k Codex + 16k Claude Code responses, 2,575 sessions), built app,
 same steps.
@@ -116,24 +116,24 @@ idle takes about 0.3 s (the session is read again).
 - **Smaller installers:** only the built app is packed (a build check now fails if anything else
   gets in), no `node_modules` ship, and only the English locale.
 
-|                                                      | Before (1.16.2)     | After (1.16.3)           |
-| ---------------------------------------------------- | ------------------- | ------------------------ |
-| Open Usage: Claude / Codex / All                     | 0.8 / 5.7 / 6.0 s   | 0.05–0.2 / 0.33 / 0.34 s |
-| Range switch: Claude                                 | 0.6–4.2 s           | 85–103 ms                |
-| Range switch: Codex / All                            | 2.3–11.9 s          | 72–197 ms                |
-| Day / Week / Month                                   | 0.6–3.5 s           | 43–87 ms                 |
-| Sub-tabs                                             | 40–1,290 ms         | 23–192 ms                |
-| Longest freeze on Usage (renderer)                   | 423 ms              | 51 ms                    |
-| Main-process stalls over 50 ms / over 500 ms / worst | 98 / 49 / 3.9 s     | 16 / 0 / 465 ms          |
-| Installer / portable                                 | 108.9 / 108.6 MB    | 100.4 / 100.1 MB         |
-| Installed size                                       | 365.5 MB (75 files) | 315.2 MB (21 files)      |
+| | Before (1.16.2) | After (1.16.3) |
+|---|---|---|
+| Open Usage: Claude / Codex / All | 0.8 / 5.7 / 6.0 s | 0.05–0.2 / 0.33 / 0.34 s |
+| Range switch: Claude | 0.6–4.2 s | 85–103 ms |
+| Range switch: Codex / All | 2.3–11.9 s | 72–197 ms |
+| Day / Week / Month | 0.6–3.5 s | 43–87 ms |
+| Sub-tabs | 40–1,290 ms | 23–192 ms |
+| Longest freeze on Usage (renderer) | 423 ms | 51 ms |
+| Main-process stalls over 50 ms / over 500 ms / worst | 98 / 49 / 3.9 s | 16 / 0 / 465 ms |
+| Installer / portable | 108.9 / 108.6 MB | 100.4 / 100.1 MB |
+| Installed size | 365.5 MB (75 files) | 315.2 MB (21 files) |
 
 Measured on a real history (148k Codex + 15k Claude Code responses, 2,593 sessions), built app,
 same steps. Startup time is unchanged (the session scan dominates).
 
 **Known limits:** memory on the Usage screen (All) is still about 1.75 GB at peak (most of it
 garbage that is collected later), and the biggest transcripts are still large because of long tool
-_inputs_ (for example whole written files). These are on the roadmap.
+*inputs* (for example whole written files). These are on the roadmap.
 
 ### Also in this release
 

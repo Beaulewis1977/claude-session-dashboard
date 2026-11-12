@@ -113,18 +113,27 @@ Claude desktop app needs Claude Code 2.1.285 or newer.
 1. **Start the app.** It finds your sessions on its own: your Windows profile, every running WSL
    distro (each user in `/home`, plus `/root`), and your `.codex` folders. They show up newest
    first and update live.
-2. **Something missing?** Settings → **Scan sources** → **Add folder…** for a `.claude` or `.codex`
+2. **Something missing?** Settings → **Providers & sources** → **Add folder…** for a `.claude` or `.codex`
    folder in an unusual place. A stopped WSL distro shows a notice instead of being started.
 3. **Optional, one at a time, each with a preview of exactly what changes:**
-   - Settings → **Live limits** → **Enable live limits** for your real 5-hour and weekly gauges
+   - Settings → **Usage & limits** → **Live limits** → **Enable live limits** for your real 5-hour and weekly gauges
      ([how](#live-limits)).
-   - Settings → **Session alerts** → **Enable session alerts** for instant "needs approval" and
+   - Settings → **Alerts** → **Enable session alerts** for instant "needs approval" and
      "finished" alerts ([how](#session-alerts-hooks)).
-   - Settings → **Backup** → **Choose folder…** to keep a copy of everything the app keeps
+   - Settings → **Archive & backup** → **Choose folder…** to keep a copy of everything the app keeps
      ([how](#backup-and-restore)).
-   - Settings → **Phone** → **Connect your phone…** ([how](#phone-companion)).
+   - Settings → **Phone & remote** → **Connect your phone…** ([how](#phone-companion)).
 4. Press <kbd>?</kbd> for every keyboard shortcut, or <kbd>Ctrl</kbd>+<kbd>K</kbd> for the command
    palette.
+
+**Settings** (<kbd>Ctrl</kbd>+<kbd>,</kbd>) is one scrolling page in sections (General, Providers &
+sources, Launching, Usage & limits, Alerts, Summaries & Ask, Git, Phone & remote, Accounts &
+credits, Archive & backup, Advanced). While it's open, the sidebar becomes its menu: the section in
+view is highlighted, an amber dot marks something that needs attention, and the search at the top
+(<kbd>Ctrl</kbd>+<kbd>F</kbd>) filters the page as you type, by name, description or a related word
+("hook", "ssh", "fast", "quiet hours"). A setting you changed says **Changed** and can go back to
+its default (with Undo); API keys, paired phones, backup passwords and system changes never do.
+**Open setting…** in the command palette goes straight to one.
 
 ### Build from source
 
@@ -157,10 +166,10 @@ from **Git Bash** (a few of them call `sh`). Every script is listed in
   The Claude desktop app's **Code tab** sessions live there too and get a **Claude desktop** label.
 - **OpenAI Codex:** `~/.codex` on Windows and in WSL (CLI, VS Code and the Codex desktop app),
   plain or compressed, read only. Codex's own thread names are used as titles.
-- **Claude desktop (Cowork):** optional, off by default (Settings → **Scan sources**). View only:
+- **Claude desktop (Cowork):** optional, off by default (Settings → **Providers & sources**). View only:
   read, search, usage and git links, no launching or summaries.
-- **claude.ai chats:** import a claude.ai data export (Settings → **Archive** → **Import claude.ai
-  data export**) to read and search them next to your sessions (view only).
+- **claude.ai chats:** import a claude.ai data export (Settings → **Providers & sources** →
+  **Import claude.ai data export**) to read and search them next to your sessions (view only).
 - **Source labels** show what ran each session: terminal (Windows or WSL), VS Code, JetBrains,
   Claude desktop, the SDK / `claude -p`, Codex CLI, the Codex desktop app, Codex subagents, or a
   cloud session pulled down to this PC. The sidebar's **Source** list filters by them.
@@ -248,10 +257,10 @@ is lost. A session whose original is gone gets an **Archived only** badge and ca
 searched and resumed (the archived copy is put back first; an existing file is never
 overwritten).
 
-- Settings → **Archive** shows the archive's size and folder (**Open folder**).
-- Codex sessions are archived only if you choose to (Settings → **Archive**: Off, named / pinned /
+- Settings → **Archive & backup** shows the archive's size and folder (**Open folder**).
+- Codex sessions are archived only if you choose to (Settings → **Archive & backup**: Off, named / pinned /
   tagged, or all), since Codex doesn't delete old sessions itself.
-- Settings → **Claude Code cleanup** shows each home's current `cleanupPeriodDays` (read only), with
+- Settings → **Archive & backup** → **Claude Code cleanup** shows each home's current `cleanupPeriodDays` (read only), with
   how to raise it.
 
 ### Resume, fork, branch and continue
@@ -264,7 +273,7 @@ starts a copy and leaves the original untouched. The dialog shows the exact comm
 folder (with **Choose…** if it no longer exists), the terminal, billing, model, effort and
 [fast mode](#fast-mode).
 
-- **Terminal:** Windows Terminal, PowerShell or cmd (Settings → **Resume**). WSL sessions run
+- **Terminal:** Windows Terminal, PowerShell or cmd (Settings → **Launching**). WSL sessions run
   `wsl.exe -d <distro> --cd <folder> -- bash -lic "claude --resume …"`, so a `claude` installed with
   nvm is found.
 - **Codex sessions** resume with `codex resume` / `codex fork`, with Codex's own model, reasoning
@@ -283,7 +292,7 @@ folder (with **Choose…** if it no longer exists), the terminal, billing, model
 Pick them under the session's title (**Launch with**) or in the launch dialog: Default, an alias
 (Fable, Opus, Sonnet, Haiku), a model seen in your logs, or any model ID; effort Low to Max. The
 choice is saved for that session. **Project default** sets one for a whole project, and
-Settings → **Resume** sets the global default (Codex has its own). **Default** adds no flag, so
+Settings → **Launching** sets the global default (Codex has its own). **Default** adds no flag, so
 Claude Code decides. The Resume button shows the result ("Resume · Opus · High"). **Fast** sits
 right next to them ([fast mode](#fast-mode)).
 
@@ -293,8 +302,7 @@ Start any session in fast mode: the same model, answering faster, at a higher pr
 next to Model and Effort (**Default**, **On** or **Off**; off unless you turn it on) under the
 session's title and in the Resume, Fork, Branch, Continue fresh and New session dialogs, on the
 desktop and on the phone. It's remembered like the model and effort: the session's own choice, then
-the **Project default**, then Settings → **Resume** (Claude Code) or Settings → **Providers**
-(Codex, kept apart).
+the **Project default**, then Settings → **Launching** (Claude Code and Codex, kept apart).
 
 - **Which models:** Claude's Fable 5.2, Opus 5.5 and Opus 5 (and the `opus` and `fable` aliases),
   and the Codex models whose entry in Codex's own model list (`models_cache.json`, read only) offers
@@ -309,7 +317,7 @@ the **Project default**, then Settings → **Resume** (Claude Code) or Settings 
   credits are turned on in your Claude account; the dialog says so. On an API key it's billed at the
   fast prices (the ⓘ lists them).
 - **Codex** gets `-c service_tier=fast`. It uses your plan's limits at 2.5×, so the launch dialog
-  and the phone warn when Codex's 5-hour window is above the pause line in Settings → **Summaries**.
+  and the phone warn when Codex's 5-hour window is above the pause line in Settings → **Summaries & Ask**.
 - **Every launch path:** Windows Terminal, PowerShell, cmd and WSL, Remote Control, phone launches
   and API billing. The flag is in **Copy resume command**, and the Resume button and badges say
   "Fast". It isn't passed when a session opens in the Claude desktop app or the Codex app (turn it on
@@ -321,13 +329,15 @@ fast mode get a **Fast** badge in the session's usage strip and their own line i
 
 #### Skip permission prompts
 
-`--dangerously-skip-permissions` (Codex: `--dangerously-bypass-approvals-and-sandbox`) is **on by
-default**, with a per-launch checkbox, a warning label and a default in Settings → **Resume**.
-Launches from a phone never use it.
+`--dangerously-skip-permissions` is **on by default**, with a per-launch checkbox, a warning label
+and a default in Settings → **Launching** → **Claude Code**. Codex has its own default next to it
+(Settings → **Launching** → **Codex**: `--dangerously-bypass-approvals-and-sandbox`, which also
+turns off Codex's sandbox); it starts at whatever the shared default was before. Launches from a
+phone never use either.
 
 #### Remote Control
 
-Tick **Remote Control** in the dialog (or make it the default in Settings → **Resume**) to start
+Tick **Remote Control** in the dialog (or make it the default in Settings → **Launching**) to start
 Claude Code with `--remote-control`, so you can carry on in the Claude mobile app or at
 claude.ai/code. These sessions get a **📱 Remote** badge that links straight to them. It uses your
 Claude subscription.
@@ -367,7 +377,7 @@ Each session has a context size badge (S / M / L / XL, exact tokens on hover) an
 size** sort. The viewer shows the tokens, the share of the model's context window, compactions,
 and what resuming would cost next to what [Continue fresh](#summaries-and-continue-fresh) would.
 
-Before resuming a **large session** (150K tokens by default, Settings → **Context size**), the
+Before resuming a **large session** (150K tokens by default, Settings → **Launching** → **Large sessions**), the
 dialog warns: "Large session: about 192K tokens. Resuming may use about 21% of your 5-hour
 window", with **Continue fresh** (or **Summarize first**), **Fork**, **Resume anyway** and **Don't
 warn for this session**. The % is an estimate from your [limit-health baseline](#your-baseline-and-plans);
@@ -417,7 +427,7 @@ text for a summary, but it's optional: a summary you don't preview, and every au
 without a per-session preview. The queue pauses when your live 5-hour limit is above 80%. Runs show in Usage as
 "Summaries (dashboard)". Summaries live only in the app's data, never in Claude's files.
 
-**Where.** The session header; Settings → **Summaries** (model, size limit, pause line,
+**Where.** The session header; Settings → **Summaries & Ask** (model, size limit, pause line,
 auto-summarize, handoff files). Details: [docs/DETAILS.md → Summaries](docs/DETAILS.md#summaries-and-continue-fresh).
 
 ![A summary at the top of a session](docs/images/summary.webp)
@@ -441,7 +451,7 @@ questions are off.
 #### Content questions
 
 "Where did I fix the WSL path bug?", "What did I decide about pricing?": questions about what was
-said or decided. They're **off until you turn them on** (on the Ask screen, or Settings → **Ask**,
+said or decided. They're **off until you turn them on** (on the Ask screen, or Settings → **Summaries & Ask**,
 after a one-time notice). Then the app builds a local search index of your sessions (your prompts,
 the agents' answers, tool names and file paths, plans, summaries, names, tags and commit messages;
 never tool output or thinking) in a background worker.
@@ -468,9 +478,9 @@ sources.
 
 #### Model and effort for answers
 
-Model and effort pickers sit next to **Send** (defaults in Settings → **Ask**, and your last choice
+Model and effort pickers sit next to **Send** (defaults in Settings → **Summaries & Ask**, and your last choice
 is remembered). Scope filters narrow a question to agents, sources, environments, dates, projects,
-subagents or hidden sessions. Settings → **Ask** also has the snippet limits, the index size limit,
+subagents or hidden sessions. Settings → **Summaries & Ask** also has the snippet limits, the index size limit,
 and **Rebuild** / **Delete index**.
 
 On the phone, the **Ask** tab shows your past answers and answers local questions at once; a
@@ -504,7 +514,7 @@ one needs you.
 
 #### Session alerts (hooks)
 
-For exact, instant states, Settings → **Session alerts** → **Enable session alerts** for each
+For exact, instant states, Settings → **Alerts** → **Enable session alerts** for each
 environment (Windows, and each WSL user). The app shows the exact change to Claude Code's
 `settings.json` first, backs the file up, and adds its hooks **at the end** of each event's list;
 your own hooks stay exactly as they are. **Disable** takes out exactly the app's hooks.
@@ -512,13 +522,13 @@ your own hooks stay exactly as they are. **Disable** takes out exactly the app's
 For Codex, **Enable approval alerts** adds one hook to that Codex home's `~/.codex/hooks.json` the
 same way. Codex then asks you to trust it in its `/hooks` screen (the app never does that for you).
 
-![Settings → Session alerts: per-environment hooks, events and quiet hours](docs/images/settings-alerts.webp)
+![Settings → Alerts: per-environment hooks, events and quiet hours](docs/images/settings-alerts.webp)
 
 #### Desktop notifications
 
 Windows notifications when a session needs approval, finishes (after a minimum working time), stops
 with an error, keeps waiting, or ends. Pick the events, set **quiet hours** (approvals can still
-come through), and mute single sessions, in Settings → **Session alerts**. Clicking a notification
+come through), and mute single sessions, in Settings → **Alerts**. Clicking a notification
 opens the session.
 
 #### Phone push alerts
@@ -526,7 +536,7 @@ opens the session.
 On each phone that should get alerts: **Running** tab → **Turn on push alerts** (on an iPhone, add
 the app to the Home Screen first). Pushes arrive even when the phone app is closed. A push says
 only what happened ("A session needs your approval"), never names, folders or text; tapping it
-loads the details from your PC over Tailscale. Settings → **Phone** shows which phones have push on.
+loads the details from your PC over Tailscale. Settings → **Phone & remote** shows which phones have push on.
 Details: [docs/DETAILS.md → Running now](docs/DETAILS.md#running-now-and-session-alerts).
 
 ### Usage and limits
@@ -545,7 +555,7 @@ Your real **5-hour** and **weekly** plan percentages (the same ones `/usage` sho
 countdowns, the tokens used in each window, a projection ("On pace to hit 100% at 4:30 PM") and
 alerts at 75% and 90%.
 
-**Turn it on:** Settings → **Live limits** → pick your plan → **Enable live limits** next to each
+**Turn it on:** Settings → **Usage & limits** → **Live limits** → pick your plan → **Enable live limits** next to each
 environment → check the diff → confirm → send any message in Claude Code. The app adds a tiny
 **status line bridge** (only the `statusLine` key of `settings.json` changes, your current status
 line keeps working, and **Disable** puts the old value back exactly). Live limits exist for Pro and
@@ -566,7 +576,7 @@ Every token, forever: read from your session logs and the archive, so history su
 Code's cleanup. Today / week / month / all-time cards, a stacked chart by day, week or month with
 a date range and model filter, a model share donut, the top sessions, and a raw table by model,
 session, project, environment, version, billing or source, with **CSV export**. Costs are
-estimates at API list prices from an editable price table (Settings → **Usage**), fast mode
+estimates at API list prices from an editable price table (Settings → **Usage & limits**), fast mode
 included at its own prices; Claude Fable 5.2 and Mythos 5.2 are priced from Anthropic's pricing
 page, and a newer minor version is never silently priced by an older model's row. Per-session usage
 shows at the top of each session, with its [token speed](#token-speed).
@@ -613,7 +623,7 @@ usage (input, cached input, output, reasoning; per model, session, project, envi
 its 5-hour and weekly gauges (and any separate limit, such as one model's own), its plan
 (detected from the logs or chosen), pacing, limit health and price table. With the switch on
 **All**, Claude and Codex each keep their own gauges (never one combined %), and charts stack or
-split by provider. Settings → **Codex usage & limits**.
+split by provider. Settings → **Usage & limits** → **Codex**.
 
 ![Claude and Codex side by side in the All view](docs/images/usage-all-providers.webp)
 
@@ -621,13 +631,13 @@ split by provider. Settings → **Codex usage & limits**.
 
 Small gauges in the title bar, a tray icon with the 5-hour % (hover for both windows, click to open
 Usage) and an always-on-top **mini meter** you can drag anywhere. Each can show Claude, Codex or
-both (Settings → **Codex usage & limits**).
+both (Settings → **Usage & limits** → **Codex**).
 
 ![The mini meter](docs/images/mini-meter.webp)
 
 #### API credits
 
-Settings → **Accounts & API credits** → **Add API key…**. Run sessions on API credits
+Settings → **Accounts & credits** → **Add API key…**. Run sessions on API credits
 ([billing per launch](#billing-per-launch)), enter the credit grants you receive, and see the
 balance, spending, burn rate and how long they will last. A standard key is a Claude Console
 **personal key** (`sk-ant-usr-…`, what the Console creates now) or an older workspace key
@@ -667,7 +677,7 @@ the score on its own.
 
 - **Pick your normal dates** on the card: a stretch when your limits felt normal. The median score
   of those windows is your **baseline**.
-- **Plan history** (Settings → **Limit health**): Pro, Max 5x, Max 20x or a custom multiplier, each
+- **Plan history** (Settings → **Usage & limits** → **Limit health**): Pro, Max 5x, Max 20x or a custom multiplier, each
   with a start date. Every window is compared with the baseline for the plan it ran on, so an upgrade
   never reads as a cut, and plan changes are marked on the chart. Codex has its own plan (detected
   from its logs, e.g. "Pro $100"), multipliers and baseline.
@@ -786,7 +796,7 @@ PC, with the same notes and the Codex limits warning.
   </tr>
 </table>
 
-**Set it up:** Settings → **Phone** → **Connect your phone…** walks you through it, checking each
+**Set it up:** Settings → **Phone & remote** → **Connect your phone…** walks you through it, checking each
 step:
 
 1. Install **Tailscale** on the PC (**Install for me** runs winget after you confirm) and sign in.
@@ -813,7 +823,7 @@ action. Details: [docs/DETAILS.md → Phone companion](docs/DETAILS.md#phone-com
 **What it does.** A real terminal on your PC from your phone, through **Windows' own OpenSSH
 Server**, reachable only over Tailscale. The dashboard never runs commands for the phone.
 
-**Set it up:** Settings → **Terminal access (SSH)** → **Set up terminal access…**. Each step checks
+**Set it up:** Settings → **Phone & remote** → **Terminal access** → **Set up terminal access…**. Each step checks
 itself, and each change shows its exact PowerShell script first; Windows then asks for
 administrator rights.
 
@@ -841,7 +851,7 @@ OneDrive, an external drive or a NAS. Your cloud app syncs it; the dashboard mak
 
 **How to use it.**
 
-1. Settings → **Backup** → **Choose folder…**. The app writes only inside its own
+1. Settings → **Archive & backup** → **Choose folder…**. The app writes only inside its own
    `ClaudeSessionDashboard Backup` folder there.
 2. Optionally set a **password** (AES-256; recommended for a cloud folder, since backups hold your
    transcripts). Tick **Remember on this PC** so scheduled backups run unattended. **A lost password
@@ -851,9 +861,9 @@ OneDrive, an external drive or a NAS. Your cloud app syncs it; the dashboard mak
 
 - **Incremental:** only new or changed content is copied, compressed.
 - **Catch-up:** a backup that came due while the app was closed runs two minutes after it starts,
-  with a notification. Settings → **Startup** → **Start with Windows** (off by default) keeps the app
+  with a notification. Settings → **General** → **Start with Windows** (off by default) keeps the app
   running in the tray from sign-in.
-- **Restore** (also on a new PC: choose the same folder): Settings → **Backup** → **Restore…**, pick a
+- **Restore** (also on a new PC: choose the same folder): Settings → **Archive & backup** → **Restore…**, pick a
   snapshot, see what would change, then **Restore and restart**. It writes only into the app's own
   data folder, never deletes a file, and keeps a copy of every file it replaces (cleanable after 30
   days).
@@ -864,7 +874,7 @@ OneDrive, an external drive or a NAS. Your cloud app syncs it; the dashboard mak
   to is gone, so resuming one of them can't re-read it. Details:
   [docs/DETAILS.md → Backups](docs/DETAILS.md#backups).
 
-![Settings → Backup](docs/images/settings-backup.webp)
+![Settings → Archive & backup](docs/images/settings-backup.webp)
 
 ### Providers and settings
 
@@ -886,7 +896,7 @@ OneDrive, an external drive or a NAS. Your cloud app syncs it; the dashboard mak
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/settings-dark.webp">
-  <img alt="Settings: appearance, startup and resume defaults" src="docs/images/settings-light.webp">
+  <img alt="Settings: one page in sections, with its menu, search and changed settings" src="docs/images/settings-light.webp">
 </picture>
 
 ---
@@ -985,7 +995,7 @@ you see before anything is sent differs:
 - **Ask across sessions (content questions):** every question is previewed, and only the snippets
   the preview shows are sent, after you click **Send** ([more](#the-preview)).
 - **Ask Claude about your usage:** aggregated numbers only. The preview is shown before questions
-  until you tick **Don't show again** (Settings → **Ask Claude** turns it back on)
+  until you tick **Don't show again** (Settings → **Summaries & Ask** → **Ask Claude** turns it back on)
   ([more](#ask-claude-about-your-usage)).
 
 Nothing is ever sent to Codex: `codex exec` can't be run without tools, so the app doesn't use it.
@@ -1013,7 +1023,7 @@ logs.
 
 Stopped distros aren't scanned by default, because reading one starts it. Open the distro once (for
 example `wsl -d Ubuntu`); the app re-checks every two minutes, or press <kbd>F5</kbd>. To scan
-stopped distros anyway, turn on Settings → **Scan sources** → **Scan stopped WSL distros**.
+stopped distros anyway, turn on Settings → **Providers & sources** → **Scan stopped WSL distros**.
 
 </details>
 
@@ -1040,7 +1050,7 @@ PC (teleported) does show. claude.ai chats can be imported from a claude.ai data
 <details>
 <summary><b>The phone can't connect</b></summary>
 
-Settings → **Phone** → **Troubleshooting** re-runs every check. The usual causes: the Tailscale VPN
+Settings → **Phone & remote** → **Troubleshooting** re-runs every check. The usual causes: the Tailscale VPN
 switch is off on the phone, HTTPS certificates are off for your tailnet, another program uses the
 port (change it under Advanced), or (home Wi-Fi) Windows treats the network as Public. **Copy AI help
 prompt** gives an AI assistant [read-only steps](docs/AI-SETUP-GUIDE.md) to help, without secrets.
@@ -1051,7 +1061,7 @@ prompt** gives an AI assistant [read-only steps](docs/AI-SETUP-GUIDE.md) to help
 <summary><b>Notifications don't show up</b></summary>
 
 On the PC: check Windows Settings → System → Notifications for the app and Do not disturb, and
-Settings → **Session alerts** (the events you picked, quiet hours, muted sessions, the minimum
+Settings → **Alerts** (the events you picked, quiet hours, muted sessions, the minimum
 working time for "finished"). `logs\notifications.jsonl` in the data folder records whether Windows
 showed each one. Without session alerts (hooks), states come from Claude Code's files and can lag a
 little. On the phone: turn on push alerts on that phone; on an iPhone, open the app from the Home
@@ -1091,7 +1101,7 @@ really ran fast get a **Fast** badge in the session's usage strip. See [fast mod
 <summary><b>A Codex session says "Needs approval?" with a question mark</b></summary>
 
 Codex doesn't log approval requests, so without its hook the app guesses from a command that waits
-for output. Settings → **Session alerts** → **Enable approval alerts** for that Codex home (then
+for output. Settings → **Alerts** → **Enable approval alerts** for that Codex home (then
 trust the hook in Codex's `/hooks`) makes it exact.
 
 </details>
@@ -1099,17 +1109,17 @@ trust the hook in Codex's `/hooks`) makes it exact.
 <details>
 <summary><b>Ask says content questions are off, or the index is still building</b></summary>
 
-Content questions are off until you turn them on (Ask screen, or Settings → **Ask**). The first
-index build runs in the background; local questions work meanwhile. **Rebuild** in Settings → **Ask**
-starts over. The index leaves out the oldest sessions past its size limit (Settings → **Ask**).
+Content questions are off until you turn them on (Ask screen, or Settings → **Summaries & Ask**). The first
+index build runs in the background; local questions work meanwhile. **Rebuild** in Settings → **Summaries & Ask**
+starts over. The index leaves out the oldest sessions past its size limit (Settings → **Summaries & Ask**).
 
 </details>
 
 <details>
 <summary><b>Nothing shows up at all</b></summary>
 
-Check Settings → **Scan sources**. If your `.claude` or `.codex` folder lives somewhere unusual,
-**Add folder…**. Also check Settings → **Providers** hasn't turned an agent off, and the All / Claude
+Check Settings → **Providers & sources**. If your `.claude` or `.codex` folder lives somewhere unusual,
+**Add folder…**. Also check Settings → **Providers & sources** hasn't turned an agent off, and the All / Claude
 / Codex switch.
 
 </details>
@@ -1130,14 +1140,14 @@ with the bridge and hook scripts and the readings and events they saved.
 
 **Before uninstalling**, undo what you turned on, while the app can still undo it exactly:
 
-1. Settings → **Live limits** → **Disable** for each environment (puts your previous `statusLine`
+1. Settings → **Usage & limits** → **Live limits** → **Disable** for each environment (puts your previous `statusLine`
    back in Claude Code's `settings.json`).
-2. Settings → **Session alerts** → **Disable** for each environment, and **Disable** approval alerts
+2. Settings → **Alerts** → **Disable** for each environment, and **Disable** approval alerts
    for each Codex home (takes the app's hooks out of `settings.json` and `~/.codex/hooks.json`).
-3. Settings → **Phone** → turn phone access off (removes the app's Tailscale serve rule, and offers
+3. Settings → **Phone & remote** → turn phone access off (removes the app's Tailscale serve rule, and offers
    to remove its firewall rule in home Wi-Fi mode).
-4. Settings → **Terminal access (SSH)** → **Turn off terminal access**, if you set it up.
-5. Settings → **Startup** → turn **Start with Windows** off.
+4. Settings → **Phone & remote** → **Terminal access** → **Turn off terminal access**, if you set it up.
+5. Settings → **General** → turn **Start with Windows** off.
 
 **Then** uninstall in Windows Settings → Apps → Claude Session Dashboard (this removes the program
 only). To remove the data too, delete `%APPDATA%\ClaudeSessionDashboard\` (this deletes your archive

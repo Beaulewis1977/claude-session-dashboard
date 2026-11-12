@@ -6,7 +6,7 @@ export const SHORTCUTS: { group: string; items: [string, string][] }[] = [
     items: [
       [`${MOD}+K`, 'Command palette'],
       ['/', 'Search sessions'],
-      [`${MOD}+,`, 'Settings'],
+      [`${MOD}+,`, 'Settings (when open: search them)'],
       [`${MOD}+U`, 'Usage & limits'],
       [`${MOD}+Shift+K`, 'Ask across sessions'],
       [`${MOD}+B`, 'Toggle sidebar'],
@@ -15,6 +15,15 @@ export const SHORTCUTS: { group: string; items: [string, string][] }[] = [
       ['Backspace', 'Back (when not typing)'],
       ['F5', 'Rescan sources'],
       ['?', 'Keyboard shortcuts']
+    ]
+  },
+  {
+    group: 'Settings',
+    items: [
+      [`${MOD}+F`, 'Search settings'],
+      ['Esc', 'Clear the search, then leave Settings'],
+      ['↑+↓', 'Move through the settings menu'],
+      ['Home+End', 'Top / bottom of the page (when not typing)']
     ]
   },
   {

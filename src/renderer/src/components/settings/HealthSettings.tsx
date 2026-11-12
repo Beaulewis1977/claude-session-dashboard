@@ -7,7 +7,7 @@ import { useApp } from '@/lib/store'
 import { Button } from '../ui/button'
 import { Switch } from '../ui/checkbox'
 import { Input } from '../ui/input'
-import { Row, Section } from '../SettingsView'
+import { Row, SettingItem } from './page'
 
 function Num({
   value,
@@ -49,7 +49,7 @@ function Num({
 
 const PLAN_OPTIONS: PlanName[] = ['pro', 'max5', 'max20', 'team', 'custom']
 
-function PlanHistory({ update }: { update: (p: Partial<AppSettings>) => Promise<void> }) {
+export function PlanHistory({ update }: { update: (p: Partial<AppSettings>) => Promise<void> }) {
   const settings = useApp((s) => s.settings)
   const [draft, setDraft] = useState<PlanChange>(() => ({
     from: toYmd(now()),
@@ -58,8 +58,8 @@ function PlanHistory({ update }: { update: (p: Partial<AppSettings>) => Promise<
   }))
   const list = settings.planHistory
   return (
-    <div>
-      <div className="text-[13px] font-medium">Plan history</div>
+    <SettingItem id="usage.plan-history">
+      <div className="text-[13px] font-medium">Plan changes</div>
       <div className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
         Each window is compared with the baseline × the multiplier of the plan it ran on, so an
         upgrade or downgrade doesn&apos;t read as a cut. With no history, your current plan applies
@@ -146,20 +146,23 @@ function PlanHistory({ update }: { update: (p: Partial<AppSettings>) => Promise<
           <Plus /> Add change
         </Button>
       </div>
-    </div>
+    </SettingItem>
   )
 }
 
-export function HealthSettings({ update }: { update: (p: Partial<AppSettings>) => Promise<void> }) {
-  const settings = useApp((s) => s.settings)
-  const h = settings.health
+type Update = (p: Partial<AppSettings>) => Promise<void>
+
+/** Usage & limits → Limit health. */
+export function LimitHealthSettings({ update }: { update: Update }) {
+  const h = useApp((s) => s.settings.health)
   const setH = (p: Partial<AppSettings['health']>): void => void update({ health: { ...h, ...p } })
   return (
     <>
-      <Section
-        title="Limit health"
-        description="Scores each 5-hour and weekly window as API-equivalent $ per 1% of the limit and compares it with the median of your normal dates (pick them on the Limit health card)."
-      >
+      <p className="text-xs leading-relaxed text-muted-foreground">
+        Scores each 5-hour and weekly window as API-equivalent $ per 1% of the limit and compares it
+        with the median of your normal dates (pick them on the Limit health card).
+      </p>
+      <SettingItem id="usage.health-threshold">
         <Row
           label="Flag threshold"
           hint={`A window is low when it buys less than 1/${h.threshold} of the baseline (${Math.round(100 / h.threshold)}%).`}
@@ -174,6 +177,8 @@ export function HealthSettings({ update }: { update: (p: Partial<AppSettings>) =
             onCommit={(threshold) => setH({ threshold })}
           />
         </Row>
+      </SettingItem>
+      <SettingItem id="usage.health-streak">
         <Row
           label="Low windows in a row"
           hint="How many finished windows in a row must be low before a possible reduction is flagged."
@@ -186,6 +191,8 @@ export function HealthSettings({ update }: { update: (p: Partial<AppSettings>) =
             onCommit={(streak) => setH({ streak })}
           />
         </Row>
+      </SettingItem>
+      <SettingItem id="usage.health-min">
         <Row label="Skip windows under" hint="Low percentages are too coarse to score.">
           <Num
             label="Minimum %"
@@ -196,6 +203,8 @@ export function HealthSettings({ update }: { update: (p: Partial<AppSettings>) =
             onCommit={(minPct) => setH({ minPct })}
           />
         </Row>
+      </SettingItem>
+      <SettingItem id="usage.health-elsewhere">
         <Row
           label="Leave out windows used elsewhere"
           hint={`Skip windows where at least ${h.untrackedLimit}% of the usage rose while nothing ran on this computer (claude.ai, mobile, cloud).`}
@@ -216,6 +225,8 @@ export function HealthSettings({ update }: { update: (p: Partial<AppSettings>) =
             />
           </span>
         </Row>
+      </SettingItem>
+      <SettingItem id="usage.family-pricing">
         <Row
           label="One price per model family"
           hint="Price every Opus (or Sonnet, Haiku) model at the newest one's rates, so a cheaper new model doesn't look like a smaller limit."
@@ -226,40 +237,60 @@ export function HealthSettings({ update }: { update: (p: Partial<AppSettings>) =
             aria-label="One price per model family"
           />
         </Row>
-        <PlanHistory update={update} />
-      </Section>
-      <Section
-        title="Pacing"
-        description="The gauges show where your usage should be by now to end each window at the cap."
-      >
+      </SettingItem>
+    </>
+  )
+}
+
+/** Usage & limits → Pacing. */
+export function PacingSettings({ update }: { update: Update }) {
+  const pace = useApp((s) => s.settings.pace)
+  return (
+    <>
+      <p className="text-xs leading-relaxed text-muted-foreground">
+        The gauges show where your usage should be by now to end each window at the cap.
+      </p>
+      <SettingItem id="usage.pace-cap">
         <Row label="Cap" hint="Target ceiling for both windows.">
           <Num
             label="Cap"
-            value={settings.pace.cap}
+            value={pace.cap}
             min={10}
             max={100}
             suffix="%"
-            onCommit={(cap) => void update({ pace: { ...settings.pace, cap } })}
+            onCommit={(cap) => void update({ pace: { ...pace, cap } })}
           />
         </Row>
+      </SettingItem>
+      <SettingItem id="usage.pace-tolerance">
         <Row
           label="On-pace tolerance"
           hint="Within this many points of the target counts as on pace."
         >
           <Num
             label="Tolerance"
-            value={settings.pace.tolerance}
+            value={pace.tolerance}
             min={0}
             max={50}
             suffix="points"
-            onCommit={(tolerance) => void update({ pace: { ...settings.pace, tolerance } })}
+            onCommit={(tolerance) => void update({ pace: { ...pace, tolerance } })}
           />
         </Row>
-      </Section>
-      <Section
-        title="Ask Claude"
-        description="Questions run through claude -p on your subscription with no tools, and send only aggregated numbers."
-      >
+      </SettingItem>
+    </>
+  )
+}
+
+/** Summaries & Ask → Ask Claude (the Usage screen's questions about your numbers). */
+export function AskClaudeSettings({ update }: { update: Update }) {
+  const settings = useApp((s) => s.settings)
+  return (
+    <>
+      <p className="text-xs leading-relaxed text-muted-foreground">
+        Questions on the Usage screen run through claude -p on your subscription with no tools, and
+        send only aggregated numbers.
+      </p>
+      <SettingItem id="ai.ask-preview">
         <Row
           label="Show what will be sent first"
           hint="A preview of the exact text before each question."
@@ -270,6 +301,8 @@ export function HealthSettings({ update }: { update: (p: Partial<AppSettings>) =
             aria-label="Show preview"
           />
         </Row>
+      </SettingItem>
+      <SettingItem id="ai.ask-timeout">
         <Row label="Timeout">
           <Num
             label="Timeout"
@@ -280,7 +313,7 @@ export function HealthSettings({ update }: { update: (p: Partial<AppSettings>) =
             onCommit={(askTimeoutSec) => void update({ askTimeoutSec })}
           />
         </Row>
-      </Section>
+      </SettingItem>
     </>
   )
 }

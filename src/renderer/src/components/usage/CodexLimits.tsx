@@ -38,14 +38,14 @@ export function CodexPlanChip({ codex }: { codex: CodexLimitsState }) {
   const detail =
     p.setting === 'auto'
       ? p.detectedCode
-        ? `Detected from plan_type "${p.detectedCode}" in your Codex logs${p.detectedSince ? ` (first seen ${dayFmt.format(p.detectedSince)})` : ''}. ${p.plan ? '' : "This code isn't one the app knows, so its multiplier is 1x. "}Change it in Settings → Codex usage.`
-        : 'No plan_type in your Codex logs yet: Plus is assumed. Change it in Settings → Codex usage.'
+        ? `Detected from plan_type "${p.detectedCode}" in your Codex logs${p.detectedSince ? ` (first seen ${dayFmt.format(p.detectedSince)})` : ''}. ${p.plan ? '' : "This code isn't one the app knows, so its multiplier is 1x. "}Change it in Settings → Usage & limits → Codex.`
+        : 'No plan_type in your Codex logs yet: Plus is assumed. Change it in Settings → Usage & limits → Codex.'
       : `Chosen in Settings${p.detectedCode ? `; the logs say ${codeLabel(p.detectedCode)}` : ''}.`
   return (
     <Tooltip content={`${detail} Limit health multiplier: ${p.mult}x of Plus.`}>
       <button
         type="button"
-        onClick={() => set({ view: 'settings', settingsSection: 'codex-usage' })}
+        onClick={() => set({ view: 'settings', settingsSection: 'usage.codex' })}
         className="inline-flex items-center gap-1 rounded-full border border-border px-2 py-px text-[11px] font-medium text-foreground/80 hover:bg-hover"
       >
         {p.label}

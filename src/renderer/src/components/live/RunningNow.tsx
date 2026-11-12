@@ -334,7 +334,7 @@ export function RunningView() {
             <Button
               size="sm"
               variant="outline"
-              onClick={() => set({ view: 'settings', settingsSection: 'alerts' })}
+              onClick={() => set({ view: 'settings', settingsSection: 'alerts.hooks' })}
             >
               Set up
             </Button>

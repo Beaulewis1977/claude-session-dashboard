@@ -56,7 +56,7 @@ export function StatusChip({
         live.background
           ? 'A background shell command is still running'
           : live.state === 'approval' && live.guess
-            ? 'Probably: a command that needs approval has waited a while. Turn on Codex alerts (Settings → Session alerts) for exact approvals.'
+            ? 'Probably: a command that needs approval has waited a while. Turn on Codex alerts (Settings → Alerts) for exact approvals.'
             : undefined
       }
     >

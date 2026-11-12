@@ -32,7 +32,7 @@ import {
   DEFAULT_CHOICE,
   sanitizeProjectModels
 } from '@shared/model-choice'
-import { isProviderView, sanitizeProviderToggles } from '@shared/provider'
+import { codexBypassDefaultOf, isProviderView, sanitizeProviderToggles } from '@shared/provider'
 import { normalizeProjectKey } from '@shared/project-key'
 import { isOpenIn, PROJECT_ID_RE, sanitizeProjectOpenIn } from '@shared/codex-app'
 import { sanitizeLiveAlerts } from '@shared/live-alerts'
@@ -145,6 +145,7 @@ export function providerSettings(
     | 'codexProjectModels'
     | 'codexOpenInDefault'
     | 'codexProjectOpenIn'
+    | 'codexBypassDefault'
   >
 > {
   return {
@@ -158,7 +159,8 @@ export function providerSettings(
     codexDefaultFast: cleanFastChoice(s.codexDefaultFast) ?? 'off',
     codexProjectModels: sanitizeProjectModels(s.codexProjectModels, CODEX_EFFORT_LEVELS),
     codexOpenInDefault: isOpenIn(s.codexOpenInDefault) ? s.codexOpenInDefault : 'terminal',
-    codexProjectOpenIn: sanitizeProjectOpenIn(s.codexProjectOpenIn)
+    codexProjectOpenIn: sanitizeProjectOpenIn(s.codexProjectOpenIn),
+    codexBypassDefault: codexBypassDefaultOf(s)
   }
 }
 
@@ -412,6 +414,7 @@ export function registerIpc(deps: IpcDeps): void {
         s.codexProjectOpenIn = sanitizeProjectOpenIn(p.codexProjectOpenIn)
       if (typeof p.skipPermissionsDefault === 'boolean')
         s.skipPermissionsDefault = p.skipPermissionsDefault
+      if (typeof p.codexBypassDefault === 'boolean') s.codexBypassDefault = p.codexBypassDefault
       if (TERMINALS.includes(p.terminal as TerminalPref)) s.terminal = p.terminal as TerminalPref
       if (THEMES.includes(p.theme as ThemePref)) s.theme = p.theme as ThemePref
       if (typeof p.scanStoppedDistros === 'boolean') s.scanStoppedDistros = p.scanStoppedDistros

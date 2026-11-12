@@ -175,8 +175,8 @@ export function AskTab() {
             </div>
             {enabled === false ? (
               <p className="mt-1 text-muted-foreground">
-                Ask on your PC: content questions are off there (Settings → Ask). Questions about
-                counts, dates, models, usage, limits, commits and plans work here.
+                Ask on your PC: content questions are off there (Settings → Summaries & Ask).
+                Questions about counts, dates, models, usage, limits, commits and plans work here.
               </p>
             ) : readOnly ? (
               <p className="mt-1 text-muted-foreground">

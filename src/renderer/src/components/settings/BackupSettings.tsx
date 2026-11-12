@@ -40,7 +40,8 @@ import { Checkbox } from '../ui/checkbox'
 import { Dialog, DialogContent, DialogFooter, DialogHeader } from '../ui/dialog'
 import { Input } from '../ui/input'
 import { Segmented } from '../ui/segmented'
-import { Row, Section } from '../SettingsView'
+import { storeSetting } from '@/lib/settings-actions'
+import { Row, SettingItem } from './page'
 
 const LOST_PASSWORD =
   'If you lose this password, these backups can’t be read. Nobody can recover it, not even with the app.'
@@ -1053,126 +1054,151 @@ export function BackupSettings() {
 
   const s = status
   const set = !!s?.setDir
+  const values = s
+    ? { schedule: s.schedule, keep: s.keep, autoCleanSafety: s.autoCleanSafety }
+    : null
+  const item = (id: string): ReturnType<typeof storeSetting> =>
+    storeSetting(id, values, (p) => api.backupUpdate(p).then(setStatus))
 
   return (
-    <Section
-      id="backup"
-      title="Backup"
-      description="Copies the archive, your names, descriptions and tags, usage and limit history, and the app’s settings to a folder you choose, such as OneDrive or an external drive. Only new or changed files are copied. API keys are never included, and the app makes no network calls."
-    >
-      <div className="flex items-center gap-3 rounded-lg border border-border px-3 py-3">
-        <div className="flex size-8 shrink-0 items-center justify-center rounded-md bg-secondary">
-          <DatabaseBackup className="size-4 text-muted-foreground" />
-        </div>
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2 text-[13px] font-medium">
-            {set
-              ? s?.available
-                ? `${s.snapshotCount} snapshot${s.snapshotCount === 1 ? '' : 's'}${s.setBytes != null ? ` · ${formatBytes(s.setBytes)}` : ''}`
-                : 'Backup folder not available'
-              : 'No backup folder yet'}
-            {s?.encrypted && (
-              <Badge variant="muted">
-                <Lock /> Encrypted
-              </Badge>
+    <>
+      <SettingItem id="archive.backup-folder" className="space-y-3">
+        <p className="text-xs leading-relaxed text-muted-foreground">
+          Backups copy the archive, your names, descriptions and tags, usage and limit history, and
+          the app’s settings to a folder you choose, such as OneDrive or an external drive. Only new
+          or changed files are copied. API keys are never included, and the app makes no network
+          calls.
+        </p>
+        <div className="flex items-center gap-3 rounded-lg border border-border px-3 py-3">
+          <div className="flex size-8 shrink-0 items-center justify-center rounded-md bg-secondary">
+            <DatabaseBackup className="size-4 text-muted-foreground" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2 text-[13px] font-medium">
+              {set
+                ? s?.available
+                  ? `${s.snapshotCount} snapshot${s.snapshotCount === 1 ? '' : 's'}${s.setBytes != null ? ` · ${formatBytes(s.setBytes)}` : ''}`
+                  : 'Backup folder not available'
+                : 'No backup folder yet'}
+              {s?.encrypted && (
+                <Badge variant="muted">
+                  <Lock /> Encrypted
+                </Badge>
+              )}
+            </div>
+            <div
+              className="selectable truncate font-mono text-[11px] text-muted-foreground"
+              title={s?.setDir}
+            >
+              {s?.setDir ?? 'Choose a folder to start backing up.'}
+            </div>
+            {s && set && !s.available && s.unavailableReason && (
+              <div className="mt-0.5 text-xs text-warning">{s.unavailableReason}</div>
+            )}
+            {s && s.damagedCount > 0 && (
+              <div className="mt-0.5 text-xs text-warning">
+                {s.damagedCount} snapshot file{s.damagedCount === 1 ? '' : 's'} can’t be read yet
+                (still syncing, or damaged). They’re left alone.
+              </div>
             )}
           </div>
-          <div
-            className="selectable truncate font-mono text-[11px] text-muted-foreground"
-            title={s?.setDir}
-          >
-            {s?.setDir ?? 'Choose a folder to start backing up.'}
-          </div>
-          {s && set && !s.available && s.unavailableReason && (
-            <div className="mt-0.5 text-xs text-warning">{s.unavailableReason}</div>
+          {set && (
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={!s?.available}
+              onClick={() => void api.backupOpenFolder()}
+            >
+              <FolderOpen /> Open folder
+            </Button>
           )}
-          {s && s.damagedCount > 0 && (
-            <div className="mt-0.5 text-xs text-warning">
-              {s.damagedCount} snapshot file{s.damagedCount === 1 ? '' : 's'} can’t be read yet
-              (still syncing, or damaged). They’re left alone.
-            </div>
+          <Button variant={set ? 'ghost' : 'outline'} size="sm" onClick={() => void pick()}>
+            <FolderSync /> {set ? 'Change…' : 'Choose folder…'}
+          </Button>
+          {set && (
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label="Stop backing up to this folder"
+              title="Stop backing up to this folder (nothing in it is deleted)"
+              onClick={() => void api.backupDisconnect().then(setStatus)}
+            >
+              <X />
+            </Button>
           )}
         </div>
-        {set && (
+
+        {s?.locked && (
+          <div className="flex items-center gap-3 rounded-lg border border-warning/30 bg-warning-soft px-3 py-2.5">
+            <Lock className="size-4 shrink-0 text-warning" />
+            <div className="min-w-0 flex-1 text-xs">
+              <div className="font-medium text-foreground">Enter the backup password</div>
+              <div className="text-muted-foreground">
+                Backups to this folder are encrypted. Scheduled backups wait until you enter it.
+              </div>
+            </div>
+            <Button variant="outline" size="sm" onClick={() => setPw('unlock')}>
+              <KeyRound /> Enter password…
+            </Button>
+          </div>
+        )}
+
+        {s?.paused && (
+          <PausedBanner
+            status={s}
+            onPassword={() => setPw('enable')}
+            onStatus={setStatus}
+            onPick={() => void pick()}
+          />
+        )}
+
+        <div className="flex items-start gap-3 rounded-lg border border-border px-3 py-3">
+          <div className="min-w-0 flex-1">{s && <LastRun status={s} />}</div>
           <Button
             variant="outline"
             size="sm"
-            disabled={!s?.available}
-            onClick={() => void api.backupOpenFolder()}
+            disabled={!s?.available || s.running || s.locked || !!s.paused}
+            onClick={() => void runNow()}
           >
-            <FolderOpen /> Open folder
-          </Button>
-        )}
-        <Button variant={set ? 'ghost' : 'outline'} size="sm" onClick={() => void pick()}>
-          <FolderSync /> {set ? 'Change…' : 'Choose folder…'}
-        </Button>
-        {set && (
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            aria-label="Stop backing up to this folder"
-            title="Stop backing up to this folder (nothing in it is deleted)"
-            onClick={() => void api.backupDisconnect().then(setStatus)}
-          >
-            <X />
-          </Button>
-        )}
-      </div>
-
-      {s?.locked && (
-        <div className="flex items-center gap-3 rounded-lg border border-warning/30 bg-warning-soft px-3 py-2.5">
-          <Lock className="size-4 shrink-0 text-warning" />
-          <div className="min-w-0 flex-1 text-xs">
-            <div className="font-medium text-foreground">Enter the backup password</div>
-            <div className="text-muted-foreground">
-              Backups to this folder are encrypted. Scheduled backups wait until you enter it.
-            </div>
-          </div>
-          <Button variant="outline" size="sm" onClick={() => setPw('unlock')}>
-            <KeyRound /> Enter password…
+            <RefreshCw className={cn(s?.running && 'animate-spin')} /> Back up now
           </Button>
         </div>
-      )}
+      </SettingItem>
 
-      {s?.paused && (
-        <PausedBanner
-          status={s}
-          onPassword={() => setPw('enable')}
-          onStatus={setStatus}
-          onPick={() => void pick()}
-        />
-      )}
-
-      <Row
-        label="Schedule"
-        hint={
-          s?.schedule !== 'off' && s?.nextDueAt && set
-            ? `Runs while the app is open. Next: ${nextLabel(s.nextDueAt)}.`
-            : 'Runs while the app is open.'
-        }
-      >
-        <Segmented
-          ariaLabel="Backup schedule"
-          value={s?.schedule ?? 'daily'}
-          onChange={(schedule) => void api.backupUpdate({ schedule }).then(setStatus)}
-          options={[
-            { value: 'off', label: 'Off' },
-            { value: 'daily', label: 'Daily' },
-            { value: 'weekly', label: 'Weekly' }
-          ]}
-        />
-      </Row>
-      <Row
-        label="Keep the last"
-        hint={`Older snapshots are deleted from the backup folder only. Nothing else is ever deleted. Default ${DEFAULT_KEEP}.`}
-      >
-        <KeepInput
-          key={s?.keep ?? DEFAULT_KEEP}
-          value={s?.keep ?? DEFAULT_KEEP}
-          onSave={(keep) => void api.backupUpdate({ keep }).then(setStatus)}
-        />
-      </Row>
-      <div>
+      <SettingItem id="archive.backup-schedule" {...item('archive.backup-schedule')}>
+        <Row
+          label="Schedule"
+          hint={
+            s?.schedule !== 'off' && s?.nextDueAt && set
+              ? `Runs while the app is open. Next: ${nextLabel(s.nextDueAt)}.`
+              : 'Runs while the app is open.'
+          }
+        >
+          <Segmented
+            ariaLabel="Backup schedule"
+            value={s?.schedule ?? 'daily'}
+            onChange={(schedule) => void api.backupUpdate({ schedule }).then(setStatus)}
+            options={[
+              { value: 'off', label: 'Off' },
+              { value: 'daily', label: 'Daily' },
+              { value: 'weekly', label: 'Weekly' }
+            ]}
+          />
+        </Row>
+      </SettingItem>
+      <SettingItem id="archive.backup-keep" {...item('archive.backup-keep')}>
+        <Row
+          label="Keep the last"
+          hint={`Older snapshots are deleted from the backup folder only. Nothing else is ever deleted. Default ${DEFAULT_KEEP}.`}
+        >
+          <KeepInput
+            key={s?.keep ?? DEFAULT_KEEP}
+            value={s?.keep ?? DEFAULT_KEEP}
+            onSave={(keep) => void api.backupUpdate({ keep }).then(setStatus)}
+          />
+        </Row>
+      </SettingItem>
+      <SettingItem id="archive.backup-password">
         <Row
           label="Password"
           hint={
@@ -1225,49 +1251,48 @@ export function BackupSettings() {
           </div>
         </Row>
         {s?.encrypted && <Warning className="mt-2">{LOST_PASSWORD}</Warning>}
-      </div>
+      </SettingItem>
 
-      <div className="flex items-start gap-3 rounded-lg border border-border px-3 py-3">
-        <div className="min-w-0 flex-1">{s && <LastRun status={s} />}</div>
-        <Button
-          variant="outline"
-          size="sm"
-          disabled={!s?.available || s.running || s.locked || !!s.paused}
-          onClick={() => void runNow()}
+      <SettingItem id="archive.restore" className="space-y-3">
+        <Row
+          label="Restore from a backup"
+          hint="Shows what would change first, and finishes at the next start. Every file it replaces is copied aside first; API keys, phone pairing and the status line, hooks or SSH setup are never changed."
         >
-          <RefreshCw className={cn(s?.running && 'animate-spin')} /> Back up now
-        </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          disabled={!s?.available || !s.snapshotCount || s.running}
-          onClick={() => setRestoring(true)}
-        >
-          <ArchiveRestore /> Restore…
-        </Button>
-      </div>
-
-      {s?.lastRestore && (
-        <div className="flex items-center gap-3 rounded-lg bg-secondary/70 px-3 py-2.5 text-xs text-muted-foreground">
-          <div className="min-w-0 flex-1">
-            {s.lastRestore.error ? (
-              <span className="text-warning">{s.lastRestore.error}</span>
-            ) : (
-              <>
-                Restored {s.lastRestore.written} file{s.lastRestore.written === 1 ? '' : 's'} from
-                the snapshot of {formatDateTime(s.lastRestore.snapshotCreatedAt)} on{' '}
-                {formatDateTime(s.lastRestore.at)}.
-              </>
-            )}{' '}
-            The files it replaced are kept in the app’s data folder.
-          </div>
-          <Button variant="ghost" size="sm" onClick={() => void api.backupOpenSafety()}>
-            <FolderOpen /> Show
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={!s?.available || !s.snapshotCount || s.running}
+            onClick={() => setRestoring(true)}
+          >
+            <ArchiveRestore /> Restore…
           </Button>
-        </div>
-      )}
+        </Row>
+        {s?.lastRestore && (
+          <div className="flex items-center gap-3 rounded-lg bg-secondary/70 px-3 py-2.5 text-xs text-muted-foreground">
+            <div className="min-w-0 flex-1">
+              {s.lastRestore.error ? (
+                <span className="text-warning">{s.lastRestore.error}</span>
+              ) : (
+                <>
+                  Restored {s.lastRestore.written} file{s.lastRestore.written === 1 ? '' : 's'} from
+                  the snapshot of {formatDateTime(s.lastRestore.snapshotCreatedAt)} on{' '}
+                  {formatDateTime(s.lastRestore.at)}.
+                </>
+              )}{' '}
+              The files it replaced are kept in the app’s data folder.
+            </div>
+            <Button variant="ghost" size="sm" onClick={() => void api.backupOpenSafety()}>
+              <FolderOpen /> Show
+            </Button>
+          </div>
+        )}
+      </SettingItem>
 
-      {s && <SafetyCopies status={s} />}
+      {s && (
+        <SettingItem id="archive.safety" {...item('archive.safety')}>
+          <SafetyCopies status={s} />
+        </SettingItem>
+      )}
 
       {candidate && s && (
         <ConnectDialog
@@ -1280,6 +1305,6 @@ export function BackupSettings() {
         <PasswordDialog mode={pw} canRemember={s.canRemember} onClose={() => setPw(null)} />
       )}
       {restoring && <RestoreDialog onClose={() => setRestoring(false)} />}
-    </Section>
+    </>
   )
 }

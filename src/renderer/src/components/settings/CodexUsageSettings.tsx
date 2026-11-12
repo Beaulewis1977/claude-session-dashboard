@@ -29,7 +29,7 @@ import { cn } from '@/lib/utils'
 import { Button } from '../ui/button'
 import { Input } from '../ui/input'
 import { Segmented } from '../ui/segmented'
-import { Row, Section } from '../SettingsView'
+import { Row, SettingItem } from './page'
 
 const dayFmt = new Intl.DateTimeFormat(undefined, {
   month: 'short',
@@ -104,37 +104,40 @@ export function CodexUsageSettings({
   const shown = showAll ? prices : prices.slice(0, 8)
 
   return (
-    <Section
-      id="codex-usage"
-      title="Codex usage & limits"
-      description="Codex writes its token counts and your plan limits into its own session logs, so they show here with no setup. Its plan, multipliers, normal dates and prices are its own: never mixed with Claude Code's."
-    >
-      <Row
-        label="Plan"
-        hint={
-          detected
-            ? `Your logs say ${codeLabel(detected)}${since ? `, since ${dayFmt.format(since)}` : ''}${seen.length > 1 ? ` (seen before: ${seen.slice(0, -1).map(codeLabel).join(', ')})` : ''}. "prolite" is taken to be Pro $100.`
-            : 'No plan_type in your Codex logs yet (it appears with a ChatGPT sign-in).'
-        }
-      >
-        <select
-          aria-label="Codex plan"
-          value={plan}
-          onChange={(e) => void update({ codexPlan: e.target.value as CodexPlanSetting })}
-          className="h-8 rounded-md border border-border-strong bg-background px-2 text-xs"
+    <>
+      <p className="text-xs leading-relaxed text-muted-foreground">
+        Codex writes its token counts and your plan limits into its own session logs, so they show
+        here with no setup. Its plan, multipliers, normal dates and prices are its own: never mixed
+        with Claude Code&apos;s.
+      </p>
+      <SettingItem id="usage.codex-plan">
+        <Row
+          label="Plan"
+          hint={
+            detected
+              ? `Your logs say ${codeLabel(detected)}${since ? `, since ${dayFmt.format(since)}` : ''}${seen.length > 1 ? ` (seen before: ${seen.slice(0, -1).map(codeLabel).join(', ')})` : ''}. "prolite" is taken to be Pro $100.`
+              : 'No plan_type in your Codex logs yet (it appears with a ChatGPT sign-in).'
+          }
         >
-          <option value="auto">
-            {detected ? `Detected: ${codeLabel(detected)}` : 'Detect from the logs'}
-          </option>
-          {CODEX_PLANS.map((p) => (
-            <option key={p} value={p}>
-              {CODEX_PLAN_LABEL[p]}
+          <select
+            aria-label="Codex plan"
+            value={plan}
+            onChange={(e) => void update({ codexPlan: e.target.value as CodexPlanSetting })}
+            className="h-8 rounded-md border border-border-strong bg-background px-2 text-xs"
+          >
+            <option value="auto">
+              {detected ? `Detected: ${codeLabel(detected)}` : 'Detect from the logs'}
             </option>
-          ))}
-        </select>
-      </Row>
+            {CODEX_PLANS.map((p) => (
+              <option key={p} value={p}>
+                {CODEX_PLAN_LABEL[p]}
+              </option>
+            ))}
+          </select>
+        </Row>
+      </SettingItem>
 
-      <div>
+      <SettingItem id="usage.codex-multipliers">
         <div className="text-[13px] font-medium">Plan multipliers</div>
         <div className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
           The size of each plan&apos;s limits relative to Plus, so a plan change doesn&apos;t read
@@ -174,92 +177,82 @@ export function CodexUsageSettings({
             <RotateCcw /> Reset multipliers
           </Button>
         )}
-      </div>
+      </SettingItem>
 
-      <Row
-        label="Normal dates"
-        hint={
-          health.baselineFrom
-            ? `${health.baselineFrom} to ${health.baselineTo ?? health.baselineFrom}. Pick them in the Codex limit health card; dates within your current plan work best.`
-            : 'Not picked yet. Dates within your current plan work best (a multiplier guess then cancels out).'
-        }
-      >
-        {since && (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() =>
-              void update({
-                codexHealth: { ...health, baselineFrom: toYmd(since), baselineTo: toYmd(now()) }
-              })
-            }
-          >
-            Use the current plan&apos;s dates
-          </Button>
-        )}
-      </Row>
-      <Row
-        label="Flag a possible reduction below"
-        hint="Baseline ÷ this, for the streak below (Codex's own; Claude Code's is set above)."
-      >
-        <span className="inline-flex items-center gap-2 text-xs">
-          <Num
-            value={health.threshold}
-            min={1.01}
-            label="Codex threshold"
-            className="w-16"
-            onCommit={(threshold) => void update({ codexHealth: { ...health, threshold } })}
+      <SettingItem id="usage.codex-dates">
+        <Row
+          label="Normal dates"
+          hint={
+            health.baselineFrom
+              ? `${health.baselineFrom} to ${health.baselineTo ?? health.baselineFrom}. Pick them in the Codex limit health card; dates within your current plan work best.`
+              : 'Not picked yet. Dates within your current plan work best (a multiplier guess then cancels out).'
+          }
+        >
+          {since && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() =>
+                void update({
+                  codexHealth: { ...health, baselineFrom: toYmd(since), baselineTo: toYmd(now()) }
+                })
+              }
+            >
+              Use the current plan&apos;s dates
+            </Button>
+          )}
+        </Row>
+      </SettingItem>
+      <SettingItem id="usage.codex-flag">
+        <Row
+          label="Flag a possible reduction below"
+          hint="Baseline ÷ this, for the streak below (Codex's own; Claude Code's is set above)."
+        >
+          <span className="inline-flex items-center gap-2 text-xs">
+            <Num
+              value={health.threshold}
+              min={1.01}
+              label="Codex threshold"
+              className="w-16"
+              onCommit={(threshold) => void update({ codexHealth: { ...health, threshold } })}
+            />
+            <span className="text-muted-foreground">for</span>
+            <Num
+              value={health.streak}
+              min={1}
+              label="Codex streak"
+              className="w-14"
+              onCommit={(streak) =>
+                void update({ codexHealth: { ...health, streak: Math.round(streak) } })
+              }
+            />
+            <span className="text-muted-foreground">windows in a row</span>
+          </span>
+        </Row>
+      </SettingItem>
+
+      <SettingItem id="usage.codex-accounts">
+        <Row
+          label="Different plans in the logs are"
+          hint={
+            (settings.codexAccounts ?? 'separate') === 'separate'
+              ? "Separate sign-ins: each plan_type keeps its own gauges and history (the gauges follow the newest). The logs can't tell a second sign-in from a plan change."
+              : 'One account that changed plan: one history, each window scored at the multiplier of its plan, so a Plus baseline carries over to Pro.'
+          }
+        >
+          <Segmented<'separate' | 'one'>
+            ariaLabel="Different plans in the logs are"
+            value={settings.codexAccounts ?? 'separate'}
+            onChange={(v) => void update({ codexAccounts: v })}
+            options={[
+              { value: 'separate', label: 'Separate sign-ins' },
+              { value: 'one', label: 'One account' }
+            ]}
           />
-          <span className="text-muted-foreground">for</span>
-          <Num
-            value={health.streak}
-            min={1}
-            label="Codex streak"
-            className="w-14"
-            onCommit={(streak) =>
-              void update({ codexHealth: { ...health, streak: Math.round(streak) } })
-            }
-          />
-          <span className="text-muted-foreground">windows in a row</span>
-        </span>
-      </Row>
+        </Row>
+      </SettingItem>
 
-      <Row
-        label="Different plans in the logs are"
-        hint={
-          (settings.codexAccounts ?? 'separate') === 'separate'
-            ? "Separate sign-ins: each plan_type keeps its own gauges and history (the gauges follow the newest). The logs can't tell a second sign-in from a plan change."
-            : 'One account that changed plan: one history, each window scored at the multiplier of its plan, so a Plus baseline carries over to Pro.'
-        }
-      >
-        <Segmented<'separate' | 'one'>
-          ariaLabel="Different plans in the logs are"
-          value={settings.codexAccounts ?? 'separate'}
-          onChange={(v) => void update({ codexAccounts: v })}
-          options={[
-            { value: 'separate', label: 'Separate sign-ins' },
-            { value: 'one', label: 'One account' }
-          ]}
-        />
-      </Row>
-
-      <Row
-        label="Tray, mini meter and status bar"
-        hint="Whose limits they show. Usage alerts (75% / 90%, set above) work for both."
-      >
-        <Segmented<MeterProvider>
-          ariaLabel="Meters show"
-          value={settings.meterProvider ?? 'claude'}
-          onChange={(v) => void update({ meterProvider: v })}
-          options={[
-            { value: 'claude', label: 'Claude' },
-            { value: 'codex', label: 'Codex' },
-            { value: 'both', label: 'Both' }
-          ]}
-        />
-      </Row>
-
-      <div>
+      <SettingItem id="usage.codex-prices">
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-1.5 text-[13px] font-medium">
             <Calculator className="size-3.5 text-muted-foreground" /> Codex prices
@@ -333,8 +326,36 @@ export function CodexUsageSettings({
             {showAll ? 'Show fewer' : `Show all ${prices.length} models`}
           </Button>
         )}
-      </div>
-    </Section>
+      </SettingItem>
+    </>
+  )
+}
+
+/** Usage & limits → Tray & meter: whose limits the tray icon, mini meter and status bar show. */
+export function MeterProviderSetting({
+  update
+}: {
+  update: (p: Partial<AppSettings>) => Promise<void>
+}) {
+  const meterProvider = useApp((s) => s.settings.meterProvider) ?? 'claude'
+  return (
+    <SettingItem id="usage.meter-provider">
+      <Row
+        label="Tray, mini meter and status bar"
+        hint="Whose limits they show. Limit alerts (set in Alerts) work for both."
+      >
+        <Segmented<MeterProvider>
+          ariaLabel="Meters show"
+          value={meterProvider}
+          onChange={(v) => void update({ meterProvider: v })}
+          options={[
+            { value: 'claude', label: 'Claude' },
+            { value: 'codex', label: 'Codex' },
+            { value: 'both', label: 'Both' }
+          ]}
+        />
+      </Row>
+    </SettingItem>
   )
 }
 

@@ -16,7 +16,7 @@ import { useApp } from '@/lib/store'
 import { cn } from '@/lib/utils'
 import { Button } from '../ui/button'
 import { Switch } from '../ui/checkbox'
-import { Row, Section } from '../SettingsView'
+import { Row, SettingItem } from './page'
 
 const GH_TEXT: Record<GhState, string> = {
   ask: 'Not decided yet: the Changes tab asks the first time a session is in a GitHub repo.',
@@ -59,38 +59,43 @@ export function GitSettings() {
   }
 
   return (
-    <Section
-      id="git"
-      title="Git"
-      description="Links each session to the commits, branches and pull requests it produced (the viewer’s Changes tab). Git is only read: the app never commits, fetches, checks out or changes a repo."
-    >
-      <Row
-        label="Link sessions to git commits"
-        hint="Reads each session’s repo in the background (git log, for the time its sessions cover). WSL repos are read with the distro’s own git, only while the distro is running."
-      >
-        <Switch
-          checked={cfg.enabled}
-          onCheckedChange={(v) => void update({ enabled: v })}
-          aria-label="Link sessions to git commits"
-        />
-      </Row>
-      <Row
-        label="Look up pull requests with the GitHub CLI"
-        hint={
-          <>
-            Runs <span className="font-mono">gh pr list</span> (read-only) for the branches of
-            sessions in GitHub repos. gh talks to GitHub with your own sign-in; nothing else leaves
-            your PC. {status ? GH_TEXT[status.gh] : ''}
-          </>
-        }
-      >
-        <Switch
-          checked={cfg.gh === 'on'}
-          disabled={!cfg.enabled}
-          onCheckedChange={(v) => void update({ gh: v ? 'on' : 'off' })}
-          aria-label="Look up pull requests with the GitHub CLI"
-        />
-      </Row>
+    <>
+      <p className="text-xs leading-relaxed text-muted-foreground">
+        Links each session to the commits, branches and pull requests it produced (the viewer’s
+        Changes tab). Git is only read: the app never commits, fetches, checks out or changes a
+        repo.
+      </p>
+      <SettingItem id="git.links">
+        <Row
+          label="Link sessions to git commits"
+          hint="Reads each session’s repo in the background (git log, for the time its sessions cover). WSL repos are read with the distro’s own git, only while the distro is running."
+        >
+          <Switch
+            checked={cfg.enabled}
+            onCheckedChange={(v) => void update({ enabled: v })}
+            aria-label="Link sessions to git commits"
+          />
+        </Row>
+      </SettingItem>
+      <SettingItem id="git.gh">
+        <Row
+          label="Look up pull requests with the GitHub CLI"
+          hint={
+            <>
+              Runs <span className="font-mono">gh pr list</span> (read-only) for the branches of
+              sessions in GitHub repos. gh talks to GitHub with your own sign-in; nothing else
+              leaves your PC. {status ? GH_TEXT[status.gh] : ''}
+            </>
+          }
+        >
+          <Switch
+            checked={cfg.gh === 'on'}
+            disabled={!cfg.enabled}
+            onCheckedChange={(v) => void update({ gh: v ? 'on' : 'off' })}
+            aria-label="Look up pull requests with the GitHub CLI"
+          />
+        </Row>
+      </SettingItem>
       {status && (
         <div className="space-y-1 rounded-lg border border-border px-3 py-2.5 text-xs">
           {status.git.map((g) => (
@@ -124,6 +129,6 @@ export function GitSettings() {
           <RefreshCw className={cn(busy && 'animate-spin')} /> Check all repos again
         </Button>
       </div>
-    </Section>
+    </>
   )
 }

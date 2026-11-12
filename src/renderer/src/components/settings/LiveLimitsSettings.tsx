@@ -18,7 +18,7 @@ import { Button } from '../ui/button'
 import { Switch } from '../ui/checkbox'
 import { Input } from '../ui/input'
 import { Segmented } from '../ui/segmented'
-import { Row, Section } from '../SettingsView'
+import { Row, SeeAlso, SettingItem } from './page'
 import { BridgeDialog } from './BridgeDialog'
 
 function EnvRow({ e, onAction }: { e: BridgeEnv; onAction: (a: 'install' | 'uninstall') => void }) {
@@ -91,40 +91,42 @@ const PLANS: { value: Plan; label: string }[] = [
   { value: 'team', label: 'Team / Ent.' }
 ]
 
-export function LiveLimitsSettings({
-  update
-}: {
-  update: (p: Partial<AppSettings>) => Promise<void>
-}) {
-  const settings = useApp((s) => s.settings)
+type Update = (p: Partial<AppSettings>) => Promise<void>
+
+/** Usage & limits → Plan. */
+export function PlanSetting({ update }: { update: Update }) {
+  const plan = useApp((s) => s.settings.plan)
+  return (
+    <SettingItem id="usage.claude-plan">
+      <Row label="Plan" hint="Used for labels and as the default billing name.">
+        <Segmented
+          ariaLabel="Plan"
+          value={plan}
+          onChange={(p) => void update({ plan: p })}
+          options={PLANS}
+        />
+      </Row>
+    </SettingItem>
+  )
+}
+
+/** Usage & limits → Live limits: the status line bridge for each environment. */
+export function LiveLimitsBridge() {
   const limits = useApp((s) => s.limits)
   const [dialog, setDialog] = useState<{ env: BridgeEnv; action: 'install' | 'uninstall' } | null>(
     null
   )
   const envs = limits?.envs ?? []
-  const [t1, t2] = [settings.alertThresholds[0] ?? 75, settings.alertThresholds[1] ?? 90]
-
   return (
-    <Section
-      title="Live limits"
-      description={
-        <>
-          Your real 5-hour and weekly percentages come from Claude Code&apos;s status line data.
-          Enabling it for an environment changes only the{' '}
-          <span className="font-mono">statusLine</span> setting in that environment&apos;s{' '}
-          <span className="font-mono">~/.claude/settings.json</span>, after you review the exact
-          change. Disable puts your previous setting back.
-        </>
-      }
-    >
-      <Row label="Plan" hint="Used for labels and as the default billing name.">
-        <Segmented
-          ariaLabel="Plan"
-          value={settings.plan}
-          onChange={(plan) => void update({ plan })}
-          options={PLANS}
-        />
-      </Row>
+    <SettingItem id="usage.status-line">
+      <p className="mb-3 text-xs leading-relaxed text-muted-foreground">
+        Your real 5-hour and weekly percentages come from Claude Code&apos;s status line data.
+        Enabling it for an environment changes only the{' '}
+        <span className="font-mono">statusLine</span> setting in that environment&apos;s{' '}
+        <span className="font-mono">~/.claude/settings.json</span>, after you review the exact
+        change. Disable puts your previous setting back.{' '}
+        <SeeAlso to="alerts.limits">Limit alerts</SeeAlso>
+      </p>
       <div className="divide-y divide-border overflow-hidden rounded-lg border border-border">
         {envs.map((e) => (
           <EnvRow key={e.sourceId} e={e} onAction={(action) => setDialog({ env: e, action })} />
@@ -135,7 +137,7 @@ export function LiveLimitsSettings({
           </div>
         )}
       </div>
-      <div className="flex items-center justify-between gap-4">
+      <div className="mt-3 flex items-center justify-between gap-4">
         <p className="text-xs text-muted-foreground">
           Backups of <span className="font-mono">settings.json</span> are kept in the app&apos;s
           data folder.
@@ -144,19 +146,39 @@ export function LiveLimitsSettings({
           <FolderOpen /> Backups
         </Button>
       </div>
+      {dialog && (
+        <BridgeDialog env={dialog.env} action={dialog.action} onClose={() => setDialog(null)} />
+      )}
+    </SettingItem>
+  )
+}
+
+/** Alerts → Limit alerts (moved from Live limits). */
+export function LimitAlertsSetting({ update }: { update: Update }) {
+  const settings = useApp((s) => s.settings)
+  const [t1, t2] = [settings.alertThresholds[0] ?? 75, settings.alertThresholds[1] ?? 90]
+  return (
+    <SettingItem id="alerts.limits">
       <Row
         label={
           <span className="flex items-center gap-1.5">
             <BellRing className="size-3.5 text-muted-foreground" /> Limit alerts
           </span>
         }
-        hint="A desktop notification when a window passes these percentages."
+        hint={
+          <>
+            A desktop notification when a window passes these percentages.
+            <span className="block">
+              <SeeAlso to="usage.live-limits">Usage &amp; limits</SeeAlso>
+            </span>
+          </>
+        }
       >
         <div className="flex items-center gap-2">
           {settings.alertsEnabled && (
             <>
               {[t1, t2].map((v, i) => (
-                <div key={i} className="relative w-[66px]">
+                <div key={`${i}:${v}`} className="relative w-[66px]">
                   <Input
                     type="number"
                     min={1}
@@ -185,9 +207,6 @@ export function LiveLimitsSettings({
           />
         </div>
       </Row>
-      {dialog && (
-        <BridgeDialog env={dialog.env} action={dialog.action} onClose={() => setDialog(null)} />
-      )}
-    </Section>
+    </SettingItem>
   )
 }

@@ -75,6 +75,28 @@ export function effectiveView(view: ProviderView, enabled: ProviderToggles): Pro
   return view
 }
 
+/**
+ * Codex launches' default for --dangerously-bypass-approvals-and-sandbox. It
+ * used to follow skipPermissionsDefault (one shared toggle), so a settings file
+ * from before it has its own value keeps that one: nothing changes until the
+ * Codex toggle is changed.
+ */
+export function codexBypassDefaultOf(s: {
+  skipPermissionsDefault?: boolean
+  codexBypassDefault?: boolean
+}): boolean {
+  if (typeof s.codexBypassDefault === 'boolean') return s.codexBypassDefault
+  return s.skipPermissionsDefault !== false
+}
+
+/** The bypass / skip-permissions default for a launch of this provider's session. */
+export function skipDefaultFor(
+  s: { skipPermissionsDefault?: boolean; codexBypassDefault?: boolean },
+  provider: ProviderId
+): boolean {
+  return provider === 'codex' ? codexBypassDefaultOf(s) : s.skipPermissionsDefault !== false
+}
+
 /** Providers that are on, in their usual order. */
 export function enabledProviders(enabled: ProviderToggles): ProviderId[] {
   return PROVIDER_IDS.filter((p) => enabled[p])

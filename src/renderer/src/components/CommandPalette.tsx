@@ -1,4 +1,7 @@
 import { useState, type ReactNode } from 'react'
+import { SETTINGS, sectionDef, subsectionTitle } from '@shared/settings-registry'
+import { useEnabledProviders } from '@/lib/scope'
+import { openSettingsTarget } from '@/lib/settings-actions'
 import { isViewOnly } from '@shared/view-only'
 import { Command } from 'cmdk'
 import { Dialog as D } from 'radix-ui'
@@ -107,6 +110,9 @@ function PaletteBody() {
   const setFilters = useApp((s) => s.setFilters)
   const requestFocus = useApp((s) => s.requestFocus)
   const [search, setSearch] = useState('')
+  /** "Open setting…": the palette lists the settings instead. */
+  const [page, setPage] = useState<'root' | 'settings'>('root')
+  const codexOn = useEnabledProviders().includes('codex')
 
   const selected = sessions.find((s) => s.key === selectedKey)
   const run = (fn: () => void) => () => {
@@ -130,16 +136,28 @@ function PaletteBody() {
     .sort((a, b) => Date.parse(b.lastActivityAt ?? '0') - Date.parse(a.lastActivityAt ?? '0'))
 
   return (
-    <Command loop className="flex max-h-[min(560px,70vh)] flex-col">
+    <Command
+      loop
+      className="flex max-h-[min(560px,70vh)] flex-col"
+      onKeyDown={(e) => {
+        // Backspace in an empty search goes back from the settings list.
+        if (page === 'settings' && e.key === 'Backspace' && !search) {
+          e.preventDefault()
+          setPage('root')
+        }
+      }}
+    >
       <div className="flex items-center gap-2.5 border-b border-border px-4">
         <Search className="size-4 shrink-0 text-subtle-foreground" />
         <Command.Input
           value={search}
           onValueChange={setSearch}
           placeholder={
-            selected
-              ? `Search sessions, or act on “${selected.title.slice(0, 40)}”…`
-              : 'Search sessions and commands…'
+            page === 'settings'
+              ? 'Open a setting…'
+              : selected
+                ? `Search sessions, or act on “${selected.title.slice(0, 40)}”…`
+                : 'Search sessions and commands…'
           }
           className="h-12 flex-1 bg-transparent text-[14px] outline-none placeholder:text-subtle-foreground"
         />
@@ -149,7 +167,29 @@ function PaletteBody() {
           No matches
         </Command.Empty>
 
-        {selected && (
+        {page === 'settings' && (
+          <Command.Group heading="Settings" className={groupClass}>
+            {SETTINGS.filter((d) => codexOn || !d.codex).map((d) => {
+              const where = [sectionDef(d.section)?.title, d.sub && subsectionTitle(d.sub)]
+                .filter(Boolean)
+                .join(' › ')
+              return (
+                <Item
+                  key={d.id}
+                  value={`setting ${d.id} ${d.label} ${where}`}
+                  keywords={[...(d.keywords ?? []), d.description ?? '']}
+                  icon={<Settings />}
+                  onSelect={run(() => openSettingsTarget(d.id))}
+                >
+                  {d.label}
+                  <span className="ml-2 text-xs text-muted-foreground">{where}</span>
+                </Item>
+              )
+            })}
+          </Command.Group>
+        )}
+
+        {page === 'root' && selected && (
           <Command.Group heading="Selected session" className={groupClass}>
             <Item
               value="resume session"
@@ -260,148 +300,162 @@ function PaletteBody() {
           </Command.Group>
         )}
 
-        <Command.Group heading="Sessions" className={groupClass}>
-          {recent.map((s) => (
-            <Command.Item
-              key={s.key}
-              value={`session ${s.key}`}
-              keywords={[
-                s.title,
-                s.projectName,
-                s.gitBranch ?? '',
-                ...(s.meta.tags ?? []),
-                s.summary ?? ''
-              ]}
-              onSelect={run(() => {
-                set({ view: 'sessions' })
-                select(s.key)
-              })}
-              className="flex h-9 cursor-default items-center gap-2.5 rounded-md px-2.5 text-[13px] data-[selected=true]:bg-hover"
-            >
-              <EnvDot env={s.env} />
-              <span className="min-w-0 flex-1 truncate">{s.title}</span>
-              <span className="max-w-[30%] shrink-0 truncate text-2xs text-muted-foreground">
-                {s.projectName}
-              </span>
-              <span className="w-12 shrink-0 text-right text-2xs whitespace-nowrap text-subtle-foreground tabular-nums">
-                {formatRelative(s.lastActivityAt)}
-              </span>
-            </Command.Item>
-          ))}
-        </Command.Group>
+        {page === 'root' && (
+          <>
+            <Command.Group heading="Sessions" className={groupClass}>
+              {recent.map((s) => (
+                <Command.Item
+                  key={s.key}
+                  value={`session ${s.key}`}
+                  keywords={[
+                    s.title,
+                    s.projectName,
+                    s.gitBranch ?? '',
+                    ...(s.meta.tags ?? []),
+                    s.summary ?? ''
+                  ]}
+                  onSelect={run(() => {
+                    set({ view: 'sessions' })
+                    select(s.key)
+                  })}
+                  className="flex h-9 cursor-default items-center gap-2.5 rounded-md px-2.5 text-[13px] data-[selected=true]:bg-hover"
+                >
+                  <EnvDot env={s.env} />
+                  <span className="min-w-0 flex-1 truncate">{s.title}</span>
+                  <span className="max-w-[30%] shrink-0 truncate text-2xs text-muted-foreground">
+                    {s.projectName}
+                  </span>
+                  <span className="w-12 shrink-0 text-right text-2xs whitespace-nowrap text-subtle-foreground tabular-nums">
+                    {formatRelative(s.lastActivityAt)}
+                  </span>
+                </Command.Item>
+              ))}
+            </Command.Group>
 
-        <Command.Group heading="Ask" className={groupClass}>
-          <Item
-            value="ask across sessions question search history answers"
-            icon={<MessageCircleQuestion />}
-            shortcut={`${MOD}+Shift+K`}
-            onSelect={run(() => set({ view: 'ask' }))}
-          >
-            Ask across sessions
-          </Item>
-        </Command.Group>
+            <Command.Group heading="Ask" className={groupClass}>
+              <Item
+                value="ask across sessions question search history answers"
+                icon={<MessageCircleQuestion />}
+                shortcut={`${MOD}+Shift+K`}
+                onSelect={run(() => set({ view: 'ask' }))}
+              >
+                Ask across sessions
+              </Item>
+            </Command.Group>
 
-        <Command.Group heading="Usage" className={groupClass}>
-          <Item
-            value="usage limits tokens cost"
-            icon={<ChartColumnBig />}
-            shortcut={`${MOD}+U`}
-            onSelect={run(() => set({ view: 'usage' }))}
-          >
-            Usage &amp; limits
-          </Item>
-          <Item
-            value="mini meter always on top"
-            icon={<PictureInPicture2 />}
-            onSelect={run(() => void api.toggleMiniMeter())}
-          >
-            Toggle the mini meter
-          </Item>
-          <Item
-            value="enable live limits status line bridge"
-            icon={<PlugZap />}
-            onSelect={run(() => set({ view: 'settings' }))}
-          >
-            Enable live limits…
-          </Item>
-        </Command.Group>
+            <Command.Group heading="Usage" className={groupClass}>
+              <Item
+                value="usage limits tokens cost"
+                icon={<ChartColumnBig />}
+                shortcut={`${MOD}+U`}
+                onSelect={run(() => set({ view: 'usage' }))}
+              >
+                Usage &amp; limits
+              </Item>
+              <Item
+                value="mini meter always on top"
+                icon={<PictureInPicture2 />}
+                onSelect={run(() => void api.toggleMiniMeter())}
+              >
+                Toggle the mini meter
+              </Item>
+              <Item
+                value="enable live limits status line bridge"
+                icon={<PlugZap />}
+                onSelect={run(() => openSettingsTarget('usage.live-limits'))}
+              >
+                Enable live limits…
+              </Item>
+            </Command.Group>
 
-        <Command.Group heading="Go to" className={groupClass}>
-          <Item
-            value="all sessions"
-            icon={<Inbox />}
-            onSelect={run(() => {
-              set({ view: 'sessions' })
-              setFilters({ visibility: 'visible' })
-            })}
-          >
-            All sessions
-          </Item>
-          <Item
-            value="archived only sessions"
-            icon={<Archive />}
-            onSelect={run(() => {
-              set({ view: 'sessions' })
-              setFilters({ visibility: 'archived' })
-            })}
-          >
-            Archived only
-          </Item>
-          <Item
-            value="hidden sessions"
-            icon={<EyeOff />}
-            onSelect={run(() => {
-              set({ view: 'sessions' })
-              setFilters({ visibility: 'hidden' })
-            })}
-          >
-            Hidden sessions
-          </Item>
-          <Item
-            value="settings preferences"
-            icon={<Settings />}
-            shortcut={`${MOD}+,`}
-            onSelect={run(() => set({ view: 'settings' }))}
-          >
-            Settings
-          </Item>
-        </Command.Group>
+            <Command.Group heading="Go to" className={groupClass}>
+              <Item
+                value="all sessions"
+                icon={<Inbox />}
+                onSelect={run(() => {
+                  set({ view: 'sessions' })
+                  setFilters({ visibility: 'visible' })
+                })}
+              >
+                All sessions
+              </Item>
+              <Item
+                value="archived only sessions"
+                icon={<Archive />}
+                onSelect={run(() => {
+                  set({ view: 'sessions' })
+                  setFilters({ visibility: 'archived' })
+                })}
+              >
+                Archived only
+              </Item>
+              <Item
+                value="hidden sessions"
+                icon={<EyeOff />}
+                onSelect={run(() => {
+                  set({ view: 'sessions' })
+                  setFilters({ visibility: 'hidden' })
+                })}
+              >
+                Hidden sessions
+              </Item>
+              <Item
+                value="settings preferences"
+                icon={<Settings />}
+                shortcut={`${MOD}+,`}
+                onSelect={run(() => set({ view: 'settings' }))}
+              >
+                Settings
+              </Item>
+              <Item
+                value="open setting search settings preferences option"
+                icon={<Search />}
+                onSelect={() => {
+                  setSearch('')
+                  setPage('settings')
+                }}
+              >
+                Open setting…
+              </Item>
+            </Command.Group>
 
-        <Command.Group heading="App" className={groupClass}>
-          <Item value="theme light" icon={<Sun />} onSelect={setTheme('light')}>
-            Light theme
-          </Item>
-          <Item value="theme dark" icon={<Moon />} onSelect={setTheme('dark')}>
-            Dark theme
-          </Item>
-          <Item value="theme system" icon={<Monitor />} onSelect={setTheme('system')}>
-            System theme
-          </Item>
-          <Item
-            value="toggle sidebar"
-            icon={<PanelLeft />}
-            shortcut={`${MOD}+B`}
-            onSelect={run(() => set({ sidebarOpen: !useApp.getState().sidebarOpen }))}
-          >
-            Toggle sidebar
-          </Item>
-          <Item
-            value="rescan sources refresh"
-            icon={<RefreshCw />}
-            shortcut="F5"
-            onSelect={run(() => void api.rescan())}
-          >
-            Rescan sources
-          </Item>
-          <Item
-            value="keyboard shortcuts help"
-            icon={<Keyboard />}
-            shortcut="?"
-            onSelect={run(() => set({ shortcutsOpen: true }))}
-          >
-            Keyboard shortcuts
-          </Item>
-        </Command.Group>
+            <Command.Group heading="App" className={groupClass}>
+              <Item value="theme light" icon={<Sun />} onSelect={setTheme('light')}>
+                Light theme
+              </Item>
+              <Item value="theme dark" icon={<Moon />} onSelect={setTheme('dark')}>
+                Dark theme
+              </Item>
+              <Item value="theme system" icon={<Monitor />} onSelect={setTheme('system')}>
+                System theme
+              </Item>
+              <Item
+                value="toggle sidebar"
+                icon={<PanelLeft />}
+                shortcut={`${MOD}+B`}
+                onSelect={run(() => set({ sidebarOpen: !useApp.getState().sidebarOpen }))}
+              >
+                Toggle sidebar
+              </Item>
+              <Item
+                value="rescan sources refresh"
+                icon={<RefreshCw />}
+                shortcut="F5"
+                onSelect={run(() => void api.rescan())}
+              >
+                Rescan sources
+              </Item>
+              <Item
+                value="keyboard shortcuts help"
+                icon={<Keyboard />}
+                shortcut="?"
+                onSelect={run(() => set({ shortcutsOpen: true }))}
+              >
+                Keyboard shortcuts
+              </Item>
+            </Command.Group>
+          </>
+        )}
       </Command.List>
       <div className="flex items-center gap-3 border-t border-border px-4 py-2 text-2xs text-subtle-foreground">
         <span className="flex items-center gap-1">

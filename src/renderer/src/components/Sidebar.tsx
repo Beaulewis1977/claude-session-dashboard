@@ -275,7 +275,7 @@ export function Sidebar() {
                       : src.key === 'desktop'
                         ? "Local sessions from the Claude desktop app's Code tab. Cloud sessions (claude.ai/code) and claude.ai chats aren't stored on this PC."
                         : src.key === 'cowork'
-                          ? 'Claude desktop Cowork tasks (view-only). Turn the source off in Settings → Sources.'
+                          ? 'Claude desktop Cowork tasks (view-only). Turn the source off in Settings → Providers & sources.'
                           : undefined
                   }
                   onClick={() => toggle('source', src.key)}
@@ -355,7 +355,7 @@ export function Sidebar() {
           <Item
             icon={<TriangleAlert className="text-warning" />}
             label={`${notices} source notice${notices === 1 ? '' : 's'}`}
-            onClick={() => set({ view: 'settings' })}
+            onClick={() => set({ view: 'settings', settingsSection: 'sources.folders' })}
             title={sources
               .filter((s) => s.status !== 'ok' && s.status !== 'missing')
               .map((s) => `${s.label}: ${s.statusMessage ?? s.status}`)

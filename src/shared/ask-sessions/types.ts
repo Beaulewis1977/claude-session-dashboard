@@ -124,11 +124,27 @@ export function patchAskSessions(
   patch: Record<string, unknown>
 ): AskSessionsSettings {
   const next = sanitizeAskSessions({ ...cur, ...patch })
-  if ('model' in patch && next.model !== cur.model) delete next.lastModel
-  if ('effort' in patch && next.effort !== cur.effort) delete next.lastEffort
+  // (A patch that names the remembered choice, like Settings' Undo, keeps that one.)
+  if ('model' in patch && !('lastModel' in patch) && next.model !== cur.model) delete next.lastModel
+  if ('effort' in patch && !('lastEffort' in patch) && next.effort !== cur.effort)
+    delete next.lastEffort
   // Turning content questions on needs the notice; turning them off keeps the acceptance.
   if (next.enabled && !next.noticeAccepted) next.enabled = false
   return next
+}
+
+/**
+ * What Settings → Ask saves for an ordinary change: the whole settings without
+ * the Ask screen's remembered model and effort, so a new default clears them
+ * (patchAskSessions keeps them only when a save names them, as reset and Undo do).
+ */
+export function askSettingsFormPatch(
+  cur: AskSessionsSettings,
+  patch: Partial<AskSessionsSettings>
+): Omit<AskSessionsSettings, 'lastModel' | 'lastEffort'> {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { lastModel, lastEffort, ...rest } = { ...cur, ...patch }
+  return rest
 }
 
 /** The model and effort the Ask screen starts with. */

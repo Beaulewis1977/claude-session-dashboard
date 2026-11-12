@@ -68,7 +68,7 @@ export function BillingPicker({
           ))}
           {accounts.length === 0 && (
             <div className="px-2 py-1.5 text-xs text-muted-foreground">
-              Add an API key in Settings → Accounts to run sessions on API credits.
+              Add an API key in Settings → Accounts & credits to run sessions on API credits.
             </div>
           )}
         </DropdownMenuRadioGroup>

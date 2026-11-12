@@ -46,8 +46,9 @@ export function PairScreen() {
         Connect to your PC
       </h1>
       <p className="mt-2 max-w-sm text-center text-[14px] leading-relaxed text-muted-foreground">
-        On your PC, open <span className="font-medium text-foreground">Settings → Phone</span> and
-        scan the pairing QR code, or type the code shown there.
+        On your PC, open{' '}
+        <span className="font-medium text-foreground">Settings → Phone &amp; remote</span> and scan
+        the pairing QR code, or type the code shown there.
       </p>
       <form
         className="mt-7 w-full max-w-sm space-y-3"

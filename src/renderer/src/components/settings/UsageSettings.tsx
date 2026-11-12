@@ -13,7 +13,7 @@ import { Button } from '../ui/button'
 import { Input } from '../ui/input'
 import { Segmented } from '../ui/segmented'
 import { Tooltip } from '../ui/tooltip'
-import { Row, Section } from '../SettingsView'
+import { Row, SettingItem } from './page'
 
 const PRICE_COLS: { key: keyof PriceTier; label: string }[] = [
   { key: 'input', label: 'Input' },
@@ -58,13 +58,34 @@ function NumberCell({
   )
 }
 
-export function UsageSettings({ update }: { update: (p: Partial<AppSettings>) => Promise<void> }) {
-  const settings = useApp((s) => s.settings)
+type Update = (p: Partial<AppSettings>) => Promise<void>
+
+/** Usage & limits → Plan: the first day of the week in charts. */
+export function WeekStartSetting({ update }: { update: Update }) {
+  const weekStart = useApp((s) => s.settings.weekStart)
+  return (
+    <SettingItem id="usage.week-start">
+      <Row label="Weeks start on">
+        <Segmented
+          ariaLabel="Week start"
+          value={weekStart}
+          onChange={(w) => void update({ weekStart: w })}
+          options={[
+            { value: 'monday', label: 'Monday' },
+            { value: 'sunday', label: 'Sunday' }
+          ]}
+        />
+      </Row>
+    </SettingItem>
+  )
+}
+
+/** Advanced → Recalculate usage, and the check against ccusage. */
+export function RecalculateUsage() {
   const [status, setStatus] = useState<UsageStatus | null>(null)
   const [busy, setBusy] = useState(false)
   const [cc, setCc] = useState<CcusageComparison | null>(null)
   const [ccBusy, setCcBusy] = useState(false)
-  const [showAll, setShowAll] = useState(false)
 
   useEffect(() => {
     const load = (): void => void api.getUsageStatus().then(setStatus)
@@ -72,28 +93,12 @@ export function UsageSettings({ update }: { update: (p: Partial<AppSettings>) =>
     return api.onUsageChanged(load)
   }, [])
 
-  const setPrice = (i: number, key: keyof PriceTier, v: number): void => {
-    const prices = settings.prices.map((p, j) => (j === i ? { ...p, [key]: v } : p))
-    void update({ prices })
-  }
-  const prices = showAll ? settings.prices : settings.prices.slice(0, 8)
-
   return (
-    <Section
-      title="Usage"
-      description="Token usage is read from every session log (and the archive), counted once per API response, and kept forever in the app's data folder."
-    >
-      <Row label="Weeks start on">
-        <Segmented
-          ariaLabel="Week start"
-          value={settings.weekStart}
-          onChange={(weekStart) => void update({ weekStart })}
-          options={[
-            { value: 'monday', label: 'Monday' },
-            { value: 'sunday', label: 'Sunday' }
-          ]}
-        />
-      </Row>
+    <SettingItem id="advanced.recalculate" className="space-y-3">
+      <p className="text-xs leading-relaxed text-muted-foreground">
+        Token usage is read from every session log (and the archive), counted once per API response,
+        and kept forever in the app&apos;s data folder.
+      </p>
       <Row
         label="Recalculate usage"
         hint={
@@ -183,115 +188,133 @@ export function UsageSettings({ update }: { update: (p: Partial<AppSettings>) =>
           )}
         </div>
       )}
+    </SettingItem>
+  )
+}
 
-      <div>
-        <div className="mb-1.5 flex items-center gap-1.5 text-[13px] font-medium">
-          Capacity weights
-          <Tooltip
-            content="How much each token type counts toward the older implied-capacity estimate (weighted tokens ÷ %). Limit health uses the price table instead."
-            side="right"
-          >
-            <Info className="size-3.5 text-subtle-foreground" aria-label="About capacity weights" />
-          </Tooltip>
-        </div>
-        <div className="flex flex-wrap items-end gap-3">
-          {WEIGHT_COLS.map((c) => (
-            <label key={c.key} className="w-24">
-              <span className="mb-1 block text-2xs text-muted-foreground">{c.label}</span>
-              <NumberCell
-                label={`${c.label} weight`}
-                value={settings.capacityWeights[c.key]}
-                onCommit={(v) =>
-                  void update({ capacityWeights: { ...settings.capacityWeights, [c.key]: v } })
-                }
-              />
-            </label>
-          ))}
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => void update({ capacityWeights: { ...DEFAULT_WEIGHTS } })}
-          >
-            <RotateCcw /> Defaults
-          </Button>
-        </div>
+/** Advanced → Capacity weights. */
+export function CapacityWeightsSetting({ update }: { update: Update }) {
+  const settings = useApp((s) => s.settings)
+  return (
+    <SettingItem id="advanced.weights">
+      <div className="mb-1.5 flex items-center gap-1.5 text-[13px] font-medium">
+        Capacity weights
+        <Tooltip
+          content="How much each token type counts toward the older implied-capacity estimate (weighted tokens ÷ %). Limit health uses the price table instead."
+          side="right"
+        >
+          <Info className="size-3.5 text-subtle-foreground" aria-label="About capacity weights" />
+        </Tooltip>
       </div>
+      <div className="flex flex-wrap items-end gap-3">
+        {WEIGHT_COLS.map((c) => (
+          <label key={c.key} className="w-24">
+            <span className="mb-1 block text-2xs text-muted-foreground">{c.label}</span>
+            <NumberCell
+              label={`${c.label} weight`}
+              value={settings.capacityWeights[c.key]}
+              onCommit={(v) =>
+                void update({ capacityWeights: { ...settings.capacityWeights, [c.key]: v } })
+              }
+            />
+          </label>
+        ))}
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => void update({ capacityWeights: { ...DEFAULT_WEIGHTS } })}
+        >
+          <RotateCcw /> Defaults
+        </Button>
+      </div>
+    </SettingItem>
+  )
+}
 
-      <div>
-        <div className="mb-1 flex items-center justify-between gap-3">
-          <div className="flex items-center gap-1.5 text-[13px] font-medium">
-            <Calculator className="size-3.5 text-muted-foreground" /> Prices for cost estimates
-          </div>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => void update({ prices: DEFAULT_PRICES.map((p) => ({ ...p })) })}
-          >
-            <RotateCcw /> Reset to snapshot prices
-          </Button>
+/** Usage & limits → Prices: Claude's price table for cost estimates. */
+export function PriceTable({ update }: { update: Update }) {
+  const settings = useApp((s) => s.settings)
+  const [showAll, setShowAll] = useState(false)
+  const setPrice = (i: number, key: keyof PriceTier, v: number): void => {
+    const prices = settings.prices.map((p, j) => (j === i ? { ...p, [key]: v } : p))
+    void update({ prices })
+  }
+  const prices = showAll ? settings.prices : settings.prices.slice(0, 8)
+  return (
+    <SettingItem id="usage.price-table">
+      <div className="mb-1 flex items-center justify-between gap-3">
+        <div className="flex items-center gap-1.5 text-[13px] font-medium">
+          <Calculator className="size-3.5 text-muted-foreground" /> Prices for cost estimates
         </div>
-        <p className="mb-2 text-xs text-muted-foreground">
-          USD per million tokens. Pre-filled from a bundled snapshot of LiteLLM&apos;s price data
-          (the source ccusage uses), dated{' '}
-          {new Date(`${PRICES_FILLED_IN}T12:00:00`).toLocaleDateString('en-US', {
-            month: 'long',
-            day: 'numeric',
-            year: 'numeric'
-          })}
-          ; Claude Fable 5.2 and Mythos 5.2 from Anthropic&apos;s pricing page. Prices are never
-          downloaded. Edit any value; models match by id prefix (a newer version never takes an
-          older one&apos;s prices).
-        </p>
-        <div className="overflow-x-auto rounded-lg border border-border">
-          <table className="w-full min-w-[620px] text-xs">
-            <thead className="bg-secondary/60 text-subtle-foreground">
-              <tr>
-                <th className="px-2.5 py-1.5 text-left font-medium">Model</th>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => void update({ prices: DEFAULT_PRICES.map((p) => ({ ...p })) })}
+        >
+          <RotateCcw /> Reset to snapshot prices
+        </Button>
+      </div>
+      <p className="mb-2 text-xs text-muted-foreground">
+        USD per million tokens. Pre-filled from a bundled snapshot of LiteLLM&apos;s price data (the
+        source ccusage uses), dated{' '}
+        {new Date(`${PRICES_FILLED_IN}T12:00:00`).toLocaleDateString('en-US', {
+          month: 'long',
+          day: 'numeric',
+          year: 'numeric'
+        })}
+        ; Claude Fable 5.2 and Mythos 5.2 from Anthropic&apos;s pricing page. Prices are never
+        downloaded. Edit any value; models match by id prefix (a newer version never takes an older
+        one&apos;s prices).
+      </p>
+      <div className="overflow-x-auto rounded-lg border border-border">
+        <table className="w-full min-w-[620px] text-xs">
+          <thead className="bg-secondary/60 text-subtle-foreground">
+            <tr>
+              <th className="px-2.5 py-1.5 text-left font-medium">Model</th>
+              {PRICE_COLS.map((c) => (
+                <th key={c.key} className="px-1.5 py-1.5 text-right font-medium">
+                  {c.label}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {prices.map((p, i) => (
+              <tr key={p.model} className="border-t border-border">
+                <td className="px-2.5 py-1">
+                  <div className="font-medium">{p.label}</div>
+                  <div className="font-mono text-[10.5px] text-subtle-foreground">{p.model}</div>
+                  {(p.fast || p.longContext) && (
+                    <div className="text-[10.5px] text-subtle-foreground">
+                      {[
+                        p.fast && `Fast mode ×${p.fast}`,
+                        p.longContext &&
+                          `Over ${formatTokens(p.longContext.above)} input: $${p.longContext.input} / $${p.longContext.output}`
+                      ]
+                        .filter(Boolean)
+                        .join(' · ')}
+                    </div>
+                  )}
+                </td>
                 {PRICE_COLS.map((c) => (
-                  <th key={c.key} className="px-1.5 py-1.5 text-right font-medium">
-                    {c.label}
-                  </th>
+                  <td key={c.key} className="w-[92px] px-1 py-1">
+                    <NumberCell
+                      label={`${p.label} ${c.label}`}
+                      value={p[c.key]}
+                      onCommit={(v) => setPrice(i, c.key, v)}
+                    />
+                  </td>
                 ))}
               </tr>
-            </thead>
-            <tbody>
-              {prices.map((p, i) => (
-                <tr key={p.model} className="border-t border-border">
-                  <td className="px-2.5 py-1">
-                    <div className="font-medium">{p.label}</div>
-                    <div className="font-mono text-[10.5px] text-subtle-foreground">{p.model}</div>
-                    {(p.fast || p.longContext) && (
-                      <div className="text-[10.5px] text-subtle-foreground">
-                        {[
-                          p.fast && `Fast mode ×${p.fast}`,
-                          p.longContext &&
-                            `Over ${formatTokens(p.longContext.above)} input: $${p.longContext.input} / $${p.longContext.output}`
-                        ]
-                          .filter(Boolean)
-                          .join(' · ')}
-                      </div>
-                    )}
-                  </td>
-                  {PRICE_COLS.map((c) => (
-                    <td key={c.key} className="w-[92px] px-1 py-1">
-                      <NumberCell
-                        label={`${p.label} ${c.label}`}
-                        value={p[c.key]}
-                        onCommit={(v) => setPrice(i, c.key, v)}
-                      />
-                    </td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        {settings.prices.length > 8 && (
-          <Button variant="ghost" size="xs" className="mt-1" onClick={() => setShowAll((v) => !v)}>
-            {showAll ? 'Show fewer' : `Show all ${settings.prices.length} models`}
-          </Button>
-        )}
+            ))}
+          </tbody>
+        </table>
       </div>
-    </Section>
+      {settings.prices.length > 8 && (
+        <Button variant="ghost" size="xs" className="mt-1" onClick={() => setShowAll((v) => !v)}>
+          {showAll ? 'Show fewer' : `Show all ${settings.prices.length} models`}
+        </Button>
+      )}
+    </SettingItem>
   )
 }

@@ -133,7 +133,7 @@ Several later features stay inside the rules:
   restored from the archive, and whether the working folder still exists. If it doesn't, choose
   another folder. Fork adds `--fork-session` so the original session stays untouched.
 - **Remote Control:** tick **Remote Control** in the Resume / Fork / Branch dialog (or turn it on by
-  default in Settings → Resume) to start Claude Code with `--remote-control "<session name>"`, so you
+  default in Settings → Launching) to start Claude Code with `--remote-control "<session name>"`, so you
   can continue the session in the Claude app or at claude.ai/code. The name is your name for the
   session (or its title), cleaned to letters, digits, spaces and `_ . -`. Remote Control needs Claude
   Code 2.1.51+ signed in with your Claude subscription, so it turns API billing off and removes
@@ -199,7 +199,7 @@ or cmd as your preferred terminal; they open in a new console window of their ow
   redirected console, so it's started in a hidden PowerShell window and its error text can't be
   shown. **Resume only:** with `--fork-session` it failed on a real session, so Fork isn't offered
   there. WSL sessions aren't in the desktop app's list, so they don't get the choice.
-- **Cowork (optional, off by default).** Settings → **Scan sources** → **Claude desktop (Cowork)
+- **Cowork (optional, off by default).** Settings → **Providers & sources** → **Claude desktop (Cowork)
   sessions**. Each Cowork task runs in its own Claude home under
   `%APPDATA%\Claude\local-agent-mode-sessions\<account>\<org>\…\local_*\.claude\`. Only
   `.claude\projects\<project>\<session>.jsonl` there is listed or read. Those homes also hold sign-in
@@ -252,7 +252,7 @@ compaction summary. Sessions without usage data show no size.
   own status line reading is used for the model it was taken for.
 
 **The warning** shows before resuming a session above the threshold (150K tokens by default,
-Settings → **Context size**): "Large session: about 180K tokens. Resuming may use about 12% of your
+Settings → **Launching** → **Large sessions**): "Large session: about 180K tokens. Resuming may use about 12% of your
 5-hour window", with **Continue fresh** (or **Summarize first** when there's no summary yet),
 **Fork · same size** (keeps the original), **Resume anyway** (one click) and **Don't warn for this
 session**. Switching to Fork or Continue fresh keeps the choices made in the dialog. The phone shows
@@ -310,7 +310,7 @@ What happens then:
 Codex sessions can open in the Codex desktop app (Windows) instead of a terminal: **Open in:
 Terminal / Codex app** in the Resume, Fork and Continue fresh dialogs. The choice is remembered per
 session; the menu next to it makes it the project's or every Codex session's default (also in
-Settings → **Resume**).
+Settings → **Launching**).
 
 - **What is read (never written):** the Codex app's `~/.codex/.codex-global-state.json` (only
   `local-projects`, `project-order` and `thread-project-assignments`), `config.toml` (parsed as TOML,
@@ -453,12 +453,12 @@ and they work even while content questions are off.
   question's scope. **Ask Claude instead** on a local answer sends a misread one down the content
   path.
 
-**Content questions** are off until you turn them on (the Ask screen, or Settings → **Ask**, after a
+**Content questions** are off until you turn them on (the Ask screen, or Settings → **Summaries & Ask**, after a
 one-time notice).
 
 - **The index** is built only then, in a worker thread (heap capped at 512 MB), and saved in
   `%APPDATA%\ClaudeSessionDashboard\cache\ask\` (`index-v1.json`; rebuildable, never backed up). A
-  size budget (300 MB of text by default, Settings → **Ask**) leaves the oldest sessions out. It opens
+  size budget (300 MB of text by default, Settings → **Summaries & Ask**) leaves the oldest sessions out. It opens
   only session files the session list names (`*.jsonl` / `*.jsonl.zst`), refuses credential-shaped
   paths, and writes nothing outside its folder. A session that keeps growing is indexed again at
   most every 30 seconds. For scale: about 40 MB for a history of ~2,500 sessions.
@@ -476,14 +476,14 @@ one-time notice).
 **The preview.** Every content question first shows "N snippets from M sessions will be sent", with
 the estimated tokens and share of your 5-hour window. Every snippet can be read and left out (one by
 one, or a whole session), common secret shapes are masked, and **Exact text** shows exactly what
-**Send** sends. Limits per question (Settings → **Ask**): 24 snippets, 40,000 characters and 4
+**Send** sends. Limits per question (Settings → **Summaries & Ask**): 24 snippets, 40,000 characters and 4
 snippets per session by default. The preview warns when the 5-hour limit is above the summaries'
 pause line.
 
 **Sending.** Only **Send** runs your own `claude -p`, with the same isolation as
 [summaries](#summaries-and-continue-fresh): the text on stdin, fixed flags (`--tools ""`,
 `--strict-mcp-config`, `--safe-mode`, `--setting-sources ""`, `--no-session-persistence`), a
-validated `--model` alias and `--effort` level (pickers next to Send; defaults in Settings → **Ask**,
+validated `--model` alias and `--effort` level (pickers next to Send; defaults in Settings → **Summaries & Ask**,
 the last choice remembered), the allowlisted environment, the subscription check, a timeout and
 **Cancel**. It sends exactly what the preview showed. Usage is recorded as **Ask (dashboard)** and
 counted by the 5-hour guard.
@@ -517,7 +517,7 @@ anyway, but if you also want Claude Code to keep them, add this to `%USERPROFILE
 
 ## Backups
 
-Settings → **Backup** copies the app's own data to a folder you pick. Since Claude Code deletes old
+Settings → **Archive & backup** copies the app's own data to a folder you pick. Since Claude Code deletes old
 sessions, the archive is often the only copy of older work; a backup on another drive or in a cloud
 folder keeps it safe if the PC fails.
 
@@ -747,7 +747,7 @@ full-screen session view you swipe back from. It updates live and can be added t
 
 ### Connect your phone, step by step
 
-Settings → **Phone** → **Connect your phone…** walks through it, checking each step as you go:
+Settings → **Phone & remote** → **Connect your phone…** walks through it, checking each step as you go:
 
 1. **Tailscale on this PC.** If it's missing, **Install for me** runs
    `winget install --id Tailscale.Tailscale -e` in a window you can watch (after you confirm), or use
@@ -807,7 +807,7 @@ Advanced), or (home Wi-Fi) Windows treats the network as Public.
 ## Terminal access (SSH)
 
 A real terminal on this PC from your phone, through **Windows' own OpenSSH Server**, reachable only
-over Tailscale. Settings → **Terminal access (SSH)** sets it up; the dashboard never runs commands
+over Tailscale. Settings → **Phone & remote** → **Terminal access** sets it up; the dashboard never runs commands
 for the phone.
 
 ### How a change is made
@@ -1485,9 +1485,10 @@ folder plus Codex's name index, `config.toml`, `archived_sessions` or `sessions/
   `codex resume <id>` / `codex fork <id>` in the session's folder (Windows Terminal + cmd with
   `codex.cmd` by full path; WSL via `wsl.exe --cd … -- bash -lic`), `-m <model>`,
   `-c model_reasoning_effort=<level>` (low … xhigh, max, ultra), and
-  `--dangerously-bypass-approvals-and-sandbox` when "Skip permission prompts" is on. Phone launches
+  `--dangerously-bypass-approvals-and-sandbox` when Codex's own default ("Codex: bypass approvals and
+  sandbox by default", or the launch's checkbox) is on. Phone launches
   never bypass: they add `-a on-request -s workspace-write`. Codex has its own model and effort
-  defaults (Settings → Resume) and project defaults, apart from Claude Code's. `CODEX_HOME` is
+  defaults (Settings → Launching → Codex) and project defaults, apart from Claude Code's. `CODEX_HOME` is
   always set to the session's own home (set in cmd itself on Windows, in front of the command in
   WSL, which also runs as the home's user), so a `CODEX_HOME` the app or a login profile already
   has can't send it to another home. In WSL the real binary runs (`command codex`), so a `codex`
@@ -1861,19 +1862,20 @@ They were taken with a Playwright script that isn't in the repo; `npm run screen
 `scripts/mobile-screenshots.mjs` and `scripts/terminal-screenshots.mjs` make PNG screenshots in
 `docs/` for checking the UI, which aren't committed unless a doc uses them.
 
-|                                                           |                                                       |
-| --------------------------------------------------------- | ----------------------------------------------------- |
-| ![Main screen (dark)](images/main-dark.webp)              | ![Main screen (light)](images/main-light.webp)        |
-| ![Search](images/search.webp)                             | ![Codex session](images/codex-session.webp)           |
-| ![Resume dialog](images/resume-dialog.webp)               | ![Already running](images/already-running.webp)       |
-| ![Context size warning](images/context-warning.webp)      | ![Branches](images/branches.webp)                     |
-| ![Summarize notice](images/summarize-notice.webp)         | ![Continue fresh](images/continue-fresh.webp)         |
-| ![Ask: local answer](images/ask-local.webp)               | ![Ask: cited answer](images/ask-answer.webp)          |
-| ![Running now (dark)](images/running-now-dark.webp)       | ![Running now (light)](images/running-now-light.webp) |
-| ![Limit gauges](images/limits.webp)                       | ![Compare two date ranges](images/limit-compare.webp) |
-| ![Settings → Session alerts](images/settings-alerts.webp) | ![Enable live limits](images/enable-live-limits.webp) |
-| ![Command palette](images/command-palette.webp)           | ![Keyboard shortcuts](images/shortcuts.webp)          |
+|                                                      |                                                       |
+| ---------------------------------------------------- | ----------------------------------------------------- |
+| ![Main screen (dark)](images/main-dark.webp)         | ![Main screen (light)](images/main-light.webp)        |
+| ![Search](images/search.webp)                        | ![Codex session](images/codex-session.webp)           |
+| ![Resume dialog](images/resume-dialog.webp)          | ![Already running](images/already-running.webp)       |
+| ![Context size warning](images/context-warning.webp) | ![Branches](images/branches.webp)                     |
+| ![Summarize notice](images/summarize-notice.webp)    | ![Continue fresh](images/continue-fresh.webp)         |
+| ![Ask: local answer](images/ask-local.webp)          | ![Ask: cited answer](images/ask-answer.webp)          |
+| ![Running now (dark)](images/running-now-dark.webp)  | ![Running now (light)](images/running-now-light.webp) |
+| ![Limit gauges](images/limits.webp)                  | ![Compare two date ranges](images/limit-compare.webp) |
+| ![Settings → Alerts](images/settings-alerts.webp)    | ![Enable live limits](images/enable-live-limits.webp) |
+| ![Command palette](images/command-palette.webp)      | ![Keyboard shortcuts](images/shortcuts.webp)          |
 
-|                                           |                                                      |                                                            |                                      |
-| ----------------------------------------- | ---------------------------------------------------- | ---------------------------------------------------------- | ------------------------------------ |
-| ![Phone: pairing](images/phone-pair.webp) | ![Phone: sessions](images/phone-sessions-light.webp) | ![Phone: Running (light)](images/phone-running-light.webp) | ![Phone: Ask](images/phone-ask.webp) |
+|                                                |                                                      |                                                            |                                      |
+| ---------------------------------------------- | ---------------------------------------------------- | ---------------------------------------------------------- | ------------------------------------ |
+| ![Phone: pairing](images/phone-pair.webp)      | ![Phone: sessions](images/phone-sessions-light.webp) | ![Phone: Running (light)](images/phone-running-light.webp) | ![Phone: Ask](images/phone-ask.webp) |
+| ![Phone: Settings](images/phone-settings.webp) |                                                      |                                                            |                                      |

@@ -256,7 +256,7 @@ export function AskPreviewCard({
             {preview.cut > 0 && (
               <div className="pl-6 text-xs text-muted-foreground">
                 {preview.cut} more matching passage{preview.cut === 1 ? '' : 's'} left out by the
-                size limits (Settings → Ask).
+                size limits (Settings → Summaries & Ask).
               </div>
             )}
             {open && (
@@ -303,14 +303,15 @@ export function AskPreviewCard({
         {preview.index.skipped > 0 && (
           <div className="text-xs text-muted-foreground">
             The index leaves out {formatInt(preview.index.skipped)} older session
-            {preview.index.skipped === 1 ? '' : 's'} to stay within its size limit (Settings → Ask).
+            {preview.index.skipped === 1 ? '' : 's'} to stay within its size limit (Settings →
+            Summaries & Ask).
           </div>
         )}
         {g?.above && (
           <div className="flex items-start gap-2 rounded-lg border border-warning/30 bg-warning-soft px-3 py-2 text-xs">
             <TriangleAlert className="mt-0.5 size-3.5 shrink-0 text-warning" />
             Your 5-hour limit is at about {Math.round(g.pct ?? 0)}%, above the pause line of{' '}
-            {g.limit}% (Settings → Summaries). Sending still uses your plan&apos;s usage.
+            {g.limit}% (Settings → Summaries & Ask). Sending still uses your plan&apos;s usage.
           </div>
         )}
         {g?.unknown && !g.above && (

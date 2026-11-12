@@ -43,6 +43,8 @@ import '/src/renderer/src/styles.css'
 
 const settings = structuredClone(APP_DEFAULTS)
 window.calls = []
+// What the app has saved (the store shows it; a failed save leaves it as it was).
+window.pc = settings
 window.mobile = {
   settings: { enabled: false, mode: 'tailscale', port: 47821, httpsPort: 8443, readOnly: false, confirmOnPc: false, autoStart: true },
   running: false,
@@ -57,9 +59,11 @@ const known = {
   remote: false,
   updateSettings: async (patch) => {
     window.calls.push(patch)
-    return { ...useApp.getState().settings, ...patch }
+    if (window.failApp) throw new Error('Couldn’t write settings.json')
+    window.pc = { ...window.pc, ...patch }
+    return window.pc
   },
-  getSettings: async () => useApp.getState().settings,
+  getSettings: async () => window.pc,
   updateGitSettings: async (p) => {
     const st = useApp.getState()
     st.set({ settings: { ...st.settings, gitLinks: { ...st.settings.gitLinks, ...p } } })
@@ -142,7 +146,7 @@ window.__t = {
   orphanRows: () => [...document.querySelectorAll('[data-settings-row]')].filter((r) => !r.closest('[data-setting-id]')).length,
   highlights: () => CSS.highlights?.get('settings-search')?.size ?? 0,
   set: (patch) => useApp.getState().set(patch),
-  setSettings: (patch) => { const st = useApp.getState(); st.set({ settings: { ...st.settings, ...patch } }) },
+  setSettings: (patch) => { const st = useApp.getState(); window.pc = { ...window.pc, ...patch }; st.set({ settings: window.pc }) },
   settings: () => useApp.getState().settings,
   app: () => { const s = useApp.getState(); return { view: s.view, settingsSection: s.settingsSection } },
   ui: () => { const s = useSettingsUi.getState(); return { query: s.query, active: s.active, collapsed: s.collapsed } },
@@ -613,6 +617,75 @@ describe('the Settings page', () => {
       await expect.poll(() => page.getByText('Couldn’t reset it').count()).toBe(1)
       expect(await page.getByRole('button', { name: 'Undo' }).count()).toBe(0)
       expect(await page.evaluate<boolean>('window.mobile.settings.autoStart')).toBe(false)
+    } finally {
+      await page.close()
+    }
+  })
+
+  it('a failed reset of an app setting shows what’s saved again, with no Undo', async ({
+    skip
+  }) => {
+    if (!browser) skip(unavailableReason)
+    const page = await open()
+    try {
+      await t(page, "setSettings({ terminal: 'cmd' })")
+      const terminal = page.locator('[data-setting-id="launching.terminal"]')
+      await expect.poll(() => terminal.locator('[data-changed-marker]').count()).toBe(1)
+      await page.evaluate('window.failApp = true')
+      await page.locator('[data-reset-setting="launching.terminal"]').click()
+      await expect.poll(() => page.getByText('Couldn’t reset it').count()).toBe(1)
+      expect(await page.getByRole('button', { name: 'Undo' }).count()).toBe(0)
+      await expect
+        .poll(() => t<{ terminal: string }>(page, 'settings()').then((s) => s.terminal))
+        .toBe('cmd')
+      await expect.poll(() => terminal.locator('[data-changed-marker]').count()).toBe(1)
+    } finally {
+      await page.close()
+    }
+  })
+
+  it('a section reset that fails part way offers Undo for what it already reset', async ({
+    skip
+  }) => {
+    if (!browser) skip(unavailableReason)
+    const page = await open()
+    try {
+      // An app setting (saved first, in one patch) and a phone server one (fails).
+      await page.evaluate(
+        'window.mobile = { ...window.mobile, settings: { ...window.mobile.settings, autoStart: false, port: 50000 } }'
+      )
+      await t(page, "set({ view: 'sessions' })")
+      await t(page, "set({ view: 'settings' })")
+      await expect
+        .poll(() => page.locator('[data-changed-count="advanced"]').textContent())
+        .toBe('1 changed')
+      await t(
+        page,
+        'setSettings({ capacityWeights: { input: 9, output: 9, cacheWrite: 9, cacheRead: 9 } })'
+      )
+      await expect
+        .poll(() => page.locator('[data-changed-count="advanced"]').textContent())
+        .toBe('2 changed')
+      await page.evaluate('window.failMobile = true')
+      await page.locator('[data-reset-section="advanced"]').click()
+      await page.getByRole('dialog').getByRole('button', { name: 'Reset 2 settings' }).click()
+      await expect.poll(() => page.getByText('Couldn’t reset everything').count()).toBe(1)
+      // The weights were reset; Undo on the error puts them back.
+      await expect
+        .poll(() =>
+          t<{ capacityWeights: { input: number } }>(page, 'settings()').then(
+            (s) => s.capacityWeights.input
+          )
+        )
+        .not.toBe(9)
+      await page.getByRole('button', { name: 'Undo' }).click()
+      await expect
+        .poll(() =>
+          t<{ capacityWeights: { input: number } }>(page, 'settings()').then(
+            (s) => s.capacityWeights.input
+          )
+        )
+        .toBe(9)
     } finally {
       await page.close()
     }

@@ -343,6 +343,8 @@ function ResetSectionDialog({
       )
     } catch (e) {
       // Some may have been reset already: say so, and offer to put those back.
+      // The dialog closes either way, so the message (and its Undo) can be used.
+      onOpenChange(false)
       toast.error('Couldn’t reset everything', {
         description: (e as Error).message,
         ...(undos.length

@@ -124,8 +124,10 @@ export function patchAskSessions(
   patch: Record<string, unknown>
 ): AskSessionsSettings {
   const next = sanitizeAskSessions({ ...cur, ...patch })
-  if ('model' in patch && next.model !== cur.model) delete next.lastModel
-  if ('effort' in patch && next.effort !== cur.effort) delete next.lastEffort
+  // (A patch that names the remembered choice, like Settings' Undo, keeps that one.)
+  if ('model' in patch && !('lastModel' in patch) && next.model !== cur.model) delete next.lastModel
+  if ('effort' in patch && !('lastEffort' in patch) && next.effort !== cur.effort)
+    delete next.lastEffort
   // Turning content questions on needs the notice; turning them off keeps the acceptance.
   if (next.enabled && !next.noticeAccepted) next.enabled = false
   return next

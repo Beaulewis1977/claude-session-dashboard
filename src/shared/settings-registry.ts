@@ -167,6 +167,13 @@ export interface SettingDef {
    * their own review-and-confirm flow.
    */
   never?: string
+  /**
+   * Values that saving this setting changes too, in the app (not shown or reset
+   * by it): a reset sends their current value along so the app leaves them as
+   * they are, and Undo puts back what they were. E.g. a plan change records a
+   * plan history entry unless the history comes with it.
+   */
+  keeps?: string[]
   /** The phone can change it too (MOBILE_SAFE_SETTINGS). */
   phone?: boolean
   /** Only while Codex is on. */
@@ -363,7 +370,9 @@ export const SETTINGS: SettingDef[] = [
     label: 'Plan',
     description: 'Your Claude plan, for labels and limit health.',
     keywords: ['pro', 'max', 'max5', 'max20', 'subscription', 'team'],
-    keys: ['plan']
+    keys: ['plan'],
+    // Saving a new plan records a plan change unless the history comes along.
+    keeps: ['planHistory']
   },
   {
     id: 'usage.plan-history',
@@ -761,7 +770,9 @@ export const SETTINGS: SettingDef[] = [
     sub: 'ai.ask-sessions',
     label: 'Ask model and effort',
     keywords: ['ask', 'model', 'effort', 'sonnet', 'opus'],
-    keys: ['askSessions.model', 'askSessions.effort']
+    keys: ['askSessions.model', 'askSessions.effort'],
+    // A new default replaces the Ask screen's remembered choice unless it comes along.
+    keeps: ['askSessions.lastModel', 'askSessions.lastEffort']
   },
   {
     id: 'ai.ask-snippets',
@@ -1356,8 +1367,21 @@ export function patchFrom(
   current: Record<string, unknown>,
   defaults: unknown
 ): Record<string, unknown> {
+  return patchOf(
+    keys.map((k) => [k, from]),
+    current,
+    defaults
+  )
+}
+
+/** Like patchFrom, each path with its own source of values. */
+function patchOf(
+  entries: [path: string, from: unknown][],
+  current: Record<string, unknown>,
+  defaults: unknown
+): Record<string, unknown> {
   let next: Record<string, unknown> = {}
-  for (const path of keys) {
+  for (const [path, from] of entries) {
     const top = path.split('.')[0]
     if (!(top in next)) {
       const cur = current[top]
@@ -1366,11 +1390,17 @@ export function patchFrom(
           ? { ...(getPath(defaults, top) as object), ...(cur as object) }
           : cur
     }
-    const v = valueOf(path, from, defaults)
-    next = setPath(next, path, v === undefined ? undefined : structuredCopy(v))
+    // A kept value that's absent gets no default invented for it.
+    const v = keptPaths.has(path) ? getPath(from, path) : valueOf(path, from, defaults)
+    // A kept value that was absent is sent as null (none), so the app clears it rather than keeping one set since.
+    const kept = keptPaths.has(path) && v === undefined ? null : v
+    next = setPath(next, path, kept === undefined ? undefined : structuredCopy(kept))
   }
   return next
 }
+
+/** Every path some setting keeps (see SettingDef.keeps). */
+const keptPaths = new Set(SETTINGS.flatMap((d) => d.keeps ?? []))
 
 function structuredCopy<T>(v: T): T {
   return v === undefined ? v : (JSON.parse(JSON.stringify(v)) as T)
@@ -1381,9 +1411,19 @@ export function resetPatch(
   defs: SettingDef[],
   current: Record<string, unknown>
 ): Record<string, unknown> {
-  const keys = defs.filter(canReset).flatMap((d) => d.keys ?? [])
+  const resettable = defs.filter(canReset)
+  const keys = resettable.flatMap((d) => d.keys ?? [])
   const defaults = defs.length ? defaultsFor(defs[0]) : APP_DEFAULTS
-  return patchFrom(keys, defaults, current, defaults)
+  // What saving them would also change goes along as it is now (unless it's reset too).
+  const kept = resettable.flatMap((d) => d.keeps ?? []).filter((k) => !keys.includes(k))
+  return patchOf(
+    [
+      ...keys.map((k): [string, unknown] => [k, defaults]),
+      ...kept.map((k): [string, unknown] => [k, current])
+    ],
+    current,
+    defaults
+  )
 }
 
 /** The patch that puts these settings back to what they were (`before`): an Undo. */
@@ -1392,7 +1432,8 @@ export function undoPatch(
   before: Record<string, unknown>,
   current: Record<string, unknown>
 ): Record<string, unknown> {
-  const keys = defs.filter(canReset).flatMap((d) => d.keys ?? [])
+  const resettable = defs.filter(canReset)
+  const keys = [...new Set(resettable.flatMap((d) => [...(d.keys ?? []), ...(d.keeps ?? [])]))]
   const defaults = defs.length ? defaultsFor(defs[0]) : APP_DEFAULTS
   return patchFrom(keys, before, current, defaults)
 }

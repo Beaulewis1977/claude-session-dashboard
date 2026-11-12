@@ -29,6 +29,7 @@ import {
 import { settingsAttention } from '../src/shared/settings-attention'
 import { MOBILE_SAFE_SETTINGS } from '../src/shared/mobile'
 import { codexBypassDefaultOf, skipDefaultFor } from '../src/shared/provider'
+import { patchAskSessions, sanitizeAskSessions } from '../src/shared/ask-sessions/types'
 import type { AppSettings, SourceInfo } from '../src/shared/types'
 import type { HookEnv } from '../src/shared/live'
 import type { LimitsState } from '../src/shared/usage/limits'
@@ -477,5 +478,61 @@ describe('Codex’s own bypass default', () => {
     }
     expect(isChanged(d, before)).toBe(true)
     expect(resetPatch([d], before as never)).toEqual({ codexBypassDefault: true })
+  })
+})
+
+describe('values a reset must leave alone', () => {
+  const app = (patch: Partial<AppSettings>): Record<string, unknown> =>
+    ({ ...structuredClone(APP_DEFAULTS), ...patch }) as unknown as Record<string, unknown>
+
+  it('resetting the plan sends the plan history along, so no change is recorded; Undo puts both back', () => {
+    const history = [{ from: '2026-09-01', plan: 'max20', mult: 20 }]
+    const before = app({ plan: 'max20', planHistory: history } as Partial<AppSettings>)
+    const plan = settingDef('usage.plan')!
+    const reset = resetPatch([plan], before)
+    // The app records a plan change only when planHistory isn't in the patch.
+    expect(reset).toEqual({ plan: 'max5', planHistory: history })
+    const after = { ...before, ...reset }
+    expect(undoPatch([plan], before, after)).toEqual({ plan: 'max20', planHistory: history })
+    // Reset section… on Usage & limits: the same (plan history is never reset).
+    const usage = SETTINGS.filter((d) => d.section === 'usage')
+    expect(resetPatch(usage, before)).toMatchObject({ plan: 'max5', planHistory: history })
+  })
+
+  it('resetting the Ask defaults keeps the Ask screen’s remembered choice; Undo restores it exactly', () => {
+    const ask = settingDef('ai.ask-model')!
+    const cur = sanitizeAskSessions({
+      ...APP_DEFAULTS.askSessions,
+      model: 'opus',
+      effort: 'high',
+      lastModel: 'haiku',
+      lastEffort: 'low'
+    })
+    const before = app({ askSessions: cur })
+    const reset = resetPatch([ask], before) as { askSessions: Record<string, unknown> }
+    // What the app does with it (the same function the settings handler uses).
+    const saved = patchAskSessions(cur, reset.askSessions)
+    expect(saved).toMatchObject({
+      model: 'sonnet',
+      effort: 'default',
+      lastModel: 'haiku',
+      lastEffort: 'low'
+    })
+    const undo = undoPatch([ask], before, app({ askSessions: saved })) as {
+      askSessions: Record<string, unknown>
+    }
+    expect(patchAskSessions(saved, undo.askSessions)).toEqual(cur)
+    // Without a remembered choice before, Undo clears one made since (null: none).
+    const plain = sanitizeAskSessions({ ...APP_DEFAULTS.askSessions, model: 'opus' })
+    const undo2 = undoPatch([ask], app({ askSessions: plain }), before) as {
+      askSessions: Record<string, unknown>
+    }
+    expect(undo2.askSessions.lastModel).toBeNull()
+    expect(patchAskSessions(cur, undo2.askSessions)).not.toHaveProperty('lastModel')
+  })
+
+  it('a changed default still clears the remembered choice when nothing says otherwise', () => {
+    const cur = sanitizeAskSessions({ ...APP_DEFAULTS.askSessions, lastModel: 'haiku' })
+    expect(patchAskSessions(cur, { model: 'opus' })).not.toHaveProperty('lastModel')
   })
 })

@@ -219,7 +219,7 @@ for (const theme of ['dark', 'light']) {
     // The enable dialog with the exact settings.json diff.
     await win.keyboard.press('Control+,')
     await win.waitForTimeout(500)
-    await win.getByText('Live limits', { exact: true }).scrollIntoViewIfNeeded()
+    await win.locator('[data-settings-sub-group="usage.live-limits"]').scrollIntoViewIfNeeded()
     await win.waitForTimeout(300)
     await shot('settings-live-limits')
     await win.getByRole('button', { name: 'Disable' }).first().click()

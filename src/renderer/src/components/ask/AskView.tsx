@@ -112,7 +112,7 @@ export function AskNotice({ onEnabled }: { onEnabled?: () => void }) {
           <Check /> Turn on content questions
         </Button>
         <span className="text-[11px] text-subtle-foreground">
-          You can turn this off in Settings → Ask.
+          You can turn this off in Settings → Summaries & Ask.
         </span>
       </div>
     </div>

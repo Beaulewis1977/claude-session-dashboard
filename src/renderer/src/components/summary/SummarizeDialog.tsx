@@ -65,7 +65,7 @@ export function EstimateCard({
         </div>
         <div>
           {estimate.pct5h === undefined
-            ? 'The % of the 5-hour window shows once limit health has a baseline (Settings → Limit health).'
+            ? 'The % of the 5-hour window shows once limit health has a baseline (Settings → Usage & limits).'
             : 'An estimate from your limit-health baseline: it varies with the model and what else runs.'}
         </div>
         {live !== undefined && (
@@ -272,7 +272,7 @@ function SummarizeDialogBody() {
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
             <Info className="size-3.5 shrink-0" />
             Written with {SUMMARY_MODEL_LABEL[sum.model]}. Change the model, the size limit and the
-            pause line in Settings → Summaries.
+            pause line in Settings → Summaries & Ask.
           </div>
 
           <div>

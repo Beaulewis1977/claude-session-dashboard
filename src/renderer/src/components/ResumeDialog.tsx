@@ -811,7 +811,7 @@ function ResumeDialogBody({ resume }: { resume: ResumeRequest }) {
                   <Tooltip
                     content={
                       codex
-                        ? "Saved for this session. Default uses the project's default, then Settings → Codex, then Codex's own (no -m / -c model_reasoning_effort / -c service_tier)."
+                        ? "Saved for this session. Default uses the project's default, then Settings → Launching, then Codex's own (no -m / -c model_reasoning_effort / -c service_tier)."
                         : "Saved for this session. Default uses the project's default, then Settings, then Claude Code's own (no flag). An effort level set with CLAUDE_CODE_EFFORT_LEVEL wins over --effort."
                     }
                     side="right"

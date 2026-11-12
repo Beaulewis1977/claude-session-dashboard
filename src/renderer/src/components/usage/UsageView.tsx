@@ -424,7 +424,7 @@ export function UsageView() {
   )
   const openPrices = remote
     ? undefined
-    : () => set({ view: 'settings', settingsSection: 'codex-usage' })
+    : () => set({ view: 'settings', settingsSection: 'usage.codex' })
 
   const subtitle =
     view === 'codex'

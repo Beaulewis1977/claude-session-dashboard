@@ -153,8 +153,8 @@ export function CreditsTab({ credits }: { credits: CreditsState | null }) {
       <Card className="p-8 text-center">
         <div className="text-sm font-medium">No API keys yet</div>
         <p className="mx-auto mt-1 max-w-sm text-xs text-muted-foreground">
-          Add an API key in Settings → Accounts to run sessions on API credits, enter your credit
-          grants, and see how long they last.
+          Add an API key in Settings → Accounts & credits to run sessions on API credits, enter your
+          credit grants, and see how long they last.
         </p>
         <Button
           variant="outline"
@@ -242,7 +242,7 @@ export function CreditsTab({ credits }: { credits: CreditsState | null }) {
               ))}
               {s.grants.length === 0 && (
                 <div className="text-xs text-muted-foreground">
-                  No grants entered (Settings → Accounts).
+                  No grants entered (Settings → Accounts & credits).
                 </div>
               )}
             </div>

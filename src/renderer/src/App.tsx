@@ -12,7 +12,7 @@ import { useLiveSessions } from '@/lib/live-sessions'
 import { amendNavigation, useNavigation } from '@/lib/navigation'
 import { useApp } from '@/lib/store'
 import { useThemeEffect } from '@/lib/theme'
-import { cn, MOD } from '@/lib/utils'
+import { MOD } from '@/lib/utils'
 import { ClaudeMark } from './components/brand'
 import { BranchIntroDialog } from './components/BranchIntroDialog'
 import { SummarizeDialog } from './components/summary/SummarizeDialog'
@@ -21,7 +21,8 @@ import { CommandPalette } from './components/CommandPalette'
 import { SessionList } from './components/list/SessionList'
 import { ResumeDialog } from './components/ResumeDialog'
 import { ShortcutsDialog } from './components/ShortcutsDialog'
-import { Sidebar } from './components/Sidebar'
+import { SidebarSlot } from './components/SidebarSlot'
+import { settingsUi } from './lib/settings-ui'
 import { TitleBar } from './components/TitleBar'
 import { Shortcut } from './components/ui/kbd'
 import { TooltipProvider } from './components/ui/tooltip'
@@ -236,9 +237,10 @@ export function App() {
     },
     { combo: 'mod+p', allowInInput: true, handler: () => set({ paletteOpen: true }) },
     {
+      // Opens Settings; while it's open, goes to its search.
       combo: 'mod+,',
       allowInInput: true,
-      handler: () => set({ view: view === 'settings' ? 'sessions' : 'settings' })
+      handler: () => (view === 'settings' ? settingsUi.focusSearch() : set({ view: 'settings' }))
     },
     { combo: 'mod+b', allowInInput: true, handler: () => set({ sidebarOpen: !sidebarOpen }) },
     {
@@ -300,16 +302,7 @@ export function App() {
       <div className="flex h-full flex-col">
         <TitleBar />
         <div className="flex min-h-0 flex-1">
-          <div
-            className={cn(
-              'shrink-0 overflow-hidden border-r border-border transition-[width] duration-200 ease-out',
-              sidebarOpen ? 'w-[232px]' : 'w-0 border-r-0'
-            )}
-          >
-            <div className="h-full w-[232px]">
-              <Sidebar />
-            </div>
-          </div>
+          <SidebarSlot />
           {view === 'settings' ? (
             <div className="min-w-0 flex-1">
               <Suspense fallback={null}>

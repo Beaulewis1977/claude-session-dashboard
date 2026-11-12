@@ -761,7 +761,7 @@ const FIXES: [string, string][] = [
   ],
   [
     'Port already in use',
-    'Another program or Tailscale serve rule uses the port. Change “Local port” or “Tailscale HTTPS port” under Settings → Phone → Advanced.'
+    'Another program or Tailscale serve rule uses the port. Change “Local port” or “Tailscale HTTPS port” under Settings → Advanced → Phone server ports.'
   ],
   [
     '“This phone is not paired” on the phone',

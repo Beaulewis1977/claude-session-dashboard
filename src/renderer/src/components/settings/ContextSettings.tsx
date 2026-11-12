@@ -1,4 +1,4 @@
-// Settings → Context size: the large-session warning before Resume.
+// Settings → Launching → Large sessions: the large-session warning before Resume.
 
 import {
   BAND_LIMITS,
@@ -11,7 +11,7 @@ import { formatInt, formatTokens } from '@shared/format'
 import type { AppSettings } from '@shared/types'
 import { useApp } from '@/lib/store'
 import { Switch } from '../ui/checkbox'
-import { Row, Section } from '../SettingsView'
+import { Row, SettingItem } from './page'
 import { NumberField } from './SummariesSettings'
 
 export function ContextSettings({
@@ -32,44 +32,43 @@ export function ContextSettings({
   }).join(', ')
 
   return (
-    <Section
-      id="context"
-      title="Context size"
-      description={
-        <>
-          Each session shows how big its context is ({bands}, XL from{' '}
-          {formatTokens(BAND_LIMITS[BAND_LIMITS.length - 1].below)} tokens). Resuming reloads all of
-          it, which can use a big part of your 5-hour window.
-        </>
-      }
-    >
-      <Row
-        label="Warn before resuming a large session"
-        hint="Resume shows the size, an estimate of what reloading it would use, and offers Continue fresh or Fork. It never blocks: Resume anyway is one click. You can turn it off for single sessions in the warning."
-      >
-        <Switch
-          checked={cw.enabled}
-          onCheckedChange={(enabled) => void set({ enabled })}
-          aria-label="Warn before resuming a large session"
-        />
-      </Row>
-      <Row
-        label="Warn from"
-        hint={
-          above > 0
-            ? `${formatInt(above)} visible session${above === 1 ? ' is' : 's are'} at or above this size now.`
-            : 'No visible session is this big right now.'
-        }
-      >
-        <NumberField
-          label="Warn from this many thousand tokens"
-          value={Math.round(cw.thresholdTokens / 1000)}
-          min={MIN_THRESHOLD / 1000}
-          max={MAX_THRESHOLD / 1000}
-          suffix="thousand tokens"
-          onCommit={(k) => void set({ thresholdTokens: k * 1000 })}
-        />
-      </Row>
-    </Section>
+    <>
+      <p className="text-xs leading-relaxed text-muted-foreground">
+        Each session shows how big its context is ({bands}, XL from{' '}
+        {formatTokens(BAND_LIMITS[BAND_LIMITS.length - 1].below)} tokens). Resuming reloads all of
+        it, which can use a big part of your 5-hour window.
+      </p>
+      <SettingItem id="launching.context-warning">
+        <Row
+          label="Warn before resuming a large session"
+          hint="Resume shows the size, an estimate of what reloading it would use, and offers Continue fresh or Fork. It never blocks: Resume anyway is one click. You can turn it off for single sessions in the warning."
+        >
+          <Switch
+            checked={cw.enabled}
+            onCheckedChange={(enabled) => void set({ enabled })}
+            aria-label="Warn before resuming a large session"
+          />
+        </Row>
+      </SettingItem>
+      <SettingItem id="launching.context-threshold">
+        <Row
+          label="Warn from"
+          hint={
+            above > 0
+              ? `${formatInt(above)} visible session${above === 1 ? ' is' : 's are'} at or above this size now.`
+              : 'No visible session is this big right now.'
+          }
+        >
+          <NumberField
+            label="Warn from this many thousand tokens"
+            value={Math.round(cw.thresholdTokens / 1000)}
+            min={MIN_THRESHOLD / 1000}
+            max={MAX_THRESHOLD / 1000}
+            suffix="thousand tokens"
+            onCommit={(k) => void set({ thresholdTokens: k * 1000 })}
+          />
+        </Row>
+      </SettingItem>
+    </>
   )
 }

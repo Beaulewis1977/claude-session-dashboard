@@ -566,3 +566,14 @@ kbd {
 .hljs-strong {
   font-weight: 600;
 }
+
+/* Settings search: matches in the visible settings (CSS Custom Highlight API). */
+::highlight(settings-search) {
+  background-color: var(--find);
+  color: inherit;
+}
+
+/* A group of settings with a heading (e.g. "Alert me when") hides when a search hides all of them. */
+[data-setting-group]:not(:has([data-setting-id]:not([hidden]))) {
+  display: none;
+}

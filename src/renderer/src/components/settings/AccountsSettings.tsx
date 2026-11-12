@@ -26,7 +26,7 @@ import { Button } from '../ui/button'
 import { Dialog, DialogContent, DialogFooter, DialogHeader } from '../ui/dialog'
 import { Input } from '../ui/input'
 import { Segmented } from '../ui/segmented'
-import { Row, Section } from '../SettingsView'
+import { Row, SeeAlso, SettingItem } from './page'
 import { BillingPicker } from '../BillingPicker'
 
 const dateFmt = new Intl.DateTimeFormat('en-US', {
@@ -449,85 +449,98 @@ export function AccountsSettings({
   const grants = (id: string): CreditGrant[] =>
     credits?.summaries.find((s) => s.accountId === id)?.grants ?? []
   return (
-    <Section
-      id="accounts"
-      title="Accounts & API credits"
-      description="Add API keys to run sessions on API credits and to track spending. Admin keys also pull your organization's usage and cost history from Anthropic."
-    >
-      {credits && !credits.encryptionAvailable && !info?.fixtures && (
-        <div className="flex items-start gap-2 rounded-lg border border-warning/30 bg-warning-soft px-3 py-2.5 text-xs">
-          <Lock className="mt-px size-3.5 shrink-0 text-warning" />
-          Encryption isn&apos;t available on this system, so new keys can&apos;t be stored. Keys are
-          never saved in plain text.
-        </div>
-      )}
-      <div className="space-y-2">
-        {accounts.map((a) => (
-          <AccountCard key={a.id} a={a} grants={grants(a.id)} />
-        ))}
-      </div>
-      <div>
-        <Button variant="outline" size="sm" onClick={() => setAdding(true)}>
-          <Plus /> Add API key…
-        </Button>
-      </div>
-      <Row
-        label="Default billing for launches"
-        hint="Used by Resume, Fork and New session unless a project has its own default."
-      >
-        <BillingPicker
-          align="end"
-          value={settings.defaultBilling}
-          onChange={(v) => void update({ defaultBilling: v })}
-        />
-      </Row>
-      {Object.keys(settings.projectBilling).length > 0 && (
-        <div className="rounded-lg border border-border px-3 py-2 text-xs">
-          <div className="mb-1 text-2xs font-medium tracking-wide text-subtle-foreground uppercase">
-            Project defaults
+    <>
+      <SettingItem id="accounts.keys" className="space-y-3">
+        <p className="text-xs leading-relaxed text-muted-foreground">
+          Add API keys to run sessions on API credits and to track spending. Admin keys also pull
+          your organization&apos;s usage and cost history from Anthropic.
+        </p>
+        {credits && !credits.encryptionAvailable && !info?.fixtures && (
+          <div className="flex items-start gap-2 rounded-lg border border-warning/30 bg-warning-soft px-3 py-2.5 text-xs">
+            <Lock className="mt-px size-3.5 shrink-0 text-warning" />
+            Encryption isn&apos;t available on this system, so new keys can&apos;t be stored. Keys
+            are never saved in plain text.
           </div>
-          {Object.entries(settings.projectBilling).map(([project, b]) => (
-            <div key={project} className="flex items-center gap-2 py-0.5">
-              <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-muted-foreground">
-                {projectKeyLabel(project)}
-              </span>
-              <span>
-                {b === 'subscription'
-                  ? 'Subscription'
-                  : (accounts.find((a) => a.id === b)?.nickname ?? 'Removed key')}
-              </span>
-              <Button
-                variant="ghost"
-                size="icon-xs"
-                aria-label="Remove project default"
-                onClick={() => {
-                  const next = { ...settings.projectBilling }
-                  delete next[project]
-                  void update({ projectBilling: next })
-                }}
-              >
-                <Trash2 />
-              </Button>
-            </div>
+        )}
+        <div className="space-y-2">
+          {accounts.map((a) => (
+            <AccountCard key={a.id} a={a} grants={grants(a.id)} />
           ))}
         </div>
-      )}
-      {accounts.some((a) => a.kind === 'admin') && (
-        <Row label="Refresh Admin reports" hint="Read-only calls to api.anthropic.com.">
-          <Segmented
-            ariaLabel="Refresh interval"
-            value={String(settings.adminRefreshMinutes)}
-            onChange={(v) => void update({ adminRefreshMinutes: Number(v) })}
-            options={[
-              { value: '0', label: 'Manually' },
-              { value: '15', label: '15 min' },
-              { value: '60', label: 'Hourly' },
-              { value: '360', label: '6 h' }
-            ]}
+        <div>
+          <Button variant="outline" size="sm" onClick={() => setAdding(true)}>
+            <Plus /> Add API key…
+          </Button>
+        </div>
+      </SettingItem>
+      <SettingItem id="accounts.billing" className="space-y-3">
+        <Row
+          label="Default billing for launches"
+          hint={
+            <>
+              Used by Resume, Fork and New session unless a project has its own default.
+              <span className="block">
+                <SeeAlso to="launching">Launching</SeeAlso>
+              </span>
+            </>
+          }
+        >
+          <BillingPicker
+            align="end"
+            value={settings.defaultBilling}
+            onChange={(v) => void update({ defaultBilling: v })}
           />
         </Row>
+        {Object.keys(settings.projectBilling).length > 0 && (
+          <div className="rounded-lg border border-border px-3 py-2 text-xs">
+            <div className="mb-1 text-2xs font-medium tracking-wide text-subtle-foreground uppercase">
+              Project defaults
+            </div>
+            {Object.entries(settings.projectBilling).map(([project, b]) => (
+              <div key={project} className="flex items-center gap-2 py-0.5">
+                <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-muted-foreground">
+                  {projectKeyLabel(project)}
+                </span>
+                <span>
+                  {b === 'subscription'
+                    ? 'Subscription'
+                    : (accounts.find((a) => a.id === b)?.nickname ?? 'Removed key')}
+                </span>
+                <Button
+                  variant="ghost"
+                  size="icon-xs"
+                  aria-label="Remove project default"
+                  onClick={() => {
+                    const next = { ...settings.projectBilling }
+                    delete next[project]
+                    void update({ projectBilling: next })
+                  }}
+                >
+                  <Trash2 />
+                </Button>
+              </div>
+            ))}
+          </div>
+        )}
+      </SettingItem>
+      {accounts.some((a) => a.kind === 'admin') && (
+        <SettingItem id="accounts.refresh">
+          <Row label="Refresh Admin reports" hint="Read-only calls to api.anthropic.com.">
+            <Segmented
+              ariaLabel="Refresh interval"
+              value={String(settings.adminRefreshMinutes)}
+              onChange={(v) => void update({ adminRefreshMinutes: Number(v) })}
+              options={[
+                { value: '0', label: 'Manually' },
+                { value: '15', label: '15 min' },
+                { value: '60', label: 'Hourly' },
+                { value: '360', label: '6 h' }
+              ]}
+            />
+          </Row>
+        </SettingItem>
       )}
       {adding && <AddKeyDialog onClose={() => setAdding(false)} />}
-    </Section>
+    </>
   )
 }

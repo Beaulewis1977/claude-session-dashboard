@@ -152,7 +152,8 @@ export function TerminalWizard({
           <div className="space-y-3">
             <p className="text-[13px] text-muted-foreground">
               Your phone reaches this PC’s SSH server through your private Tailscale network only.
-              The phone needs Tailscale too (Settings → Phone → Connect your phone covers that).
+              The phone needs Tailscale too (Settings → Phone & remote → Connect your phone covers
+              that).
             </p>
             {ts.loggedIn && ts.dnsName ? (
               <Status c="ok">

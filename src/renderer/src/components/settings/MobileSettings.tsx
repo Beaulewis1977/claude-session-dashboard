@@ -1,5 +1,6 @@
-// Settings → Phone: the companion server, its connection mode, paired phones,
-// security switches and the activity log. Desktop only.
+// Settings → Phone & remote: the companion server and its connection mode
+// (Phone access), paired phones, security switches and the activity log
+// (Paired phones). The ports are in Advanced (PhonePortsSetting). Desktop only.
 
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
@@ -32,7 +33,8 @@ import { Button } from '../ui/button'
 import { Switch } from '../ui/checkbox'
 import { Input } from '../ui/input'
 import { Segmented } from '../ui/segmented'
-import { Row, Section } from '../SettingsView'
+import { storeSetting } from '@/lib/settings-actions'
+import { Row, SeeAlso, SettingItem, SettingsSub } from './page'
 import { MobileWizard } from './MobileWizard'
 
 function ActivityLog() {
@@ -101,353 +103,398 @@ export function MobileSettingsSection() {
   }
   const update = (patch: Partial<MS>): Promise<void> =>
     run(async () => setStatus(await api.mobileUpdate(patch)))
+  const item = (id: string): ReturnType<typeof storeSetting> =>
+    storeSetting(id, s as unknown as Record<string, unknown>, (p) => update(p as Partial<MS>))
 
   if (!status || !s) return null
   const link = tailscaleLinkIn(status.error)
   const connected = status.devices.filter((d) => d.connected).length
 
   return (
-    <Section
-      title="Phone"
-      description={
-        <>
-          Use the dashboard on your phone: search and read sessions, check usage, and resume
-          sessions on this PC with Remote Control. Off by default. It's reachable only through your
-          own Tailscale network (or your home Wi-Fi, if you choose), and only by phones you pair.
-        </>
-      }
-    >
-      <div className="rounded-xl border border-border p-4">
-        <div className="flex items-center gap-3">
-          <div
-            className={cn(
-              'flex size-9 shrink-0 items-center justify-center rounded-lg',
-              status.running ? 'bg-success/10 text-success' : 'bg-secondary text-muted-foreground'
-            )}
-          >
-            <Smartphone className="size-4.5" />
-          </div>
-          <div className="min-w-0 flex-1">
-            <div className="text-[13px] font-semibold">
-              {status.running
-                ? status.url
-                  ? `On · ${connected} phone${connected === 1 ? '' : 's'} connected`
-                  : 'On · not reachable from the phone yet'
-                : 'Off'}
-            </div>
-            <div className="truncate text-xs text-muted-foreground">
-              {status.running
-                ? (status.url ?? `Listening on ${status.listening} (this PC only)`)
-                : 'Nothing listens for phones while this is off.'}
-            </div>
-          </div>
-          {status.url && (
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              aria-label="Copy address"
-              onClick={() => {
-                void api.copyText(status.url!)
-                setCopied(true)
-                setTimeout(() => setCopied(false), 1200)
-              }}
-            >
-              {copied ? <Check /> : <Copy />}
-            </Button>
-          )}
-          <Switch
-            checked={status.running}
-            disabled={busy}
-            onCheckedChange={(on) =>
-              void run(async () => setStatus(on ? await api.mobileStart() : await api.mobileStop()))
-            }
-            aria-label="Phone access"
-          />
-        </div>
-        {status.error && (
-          <div className="mt-3 flex items-start gap-2 rounded-lg border border-warning/30 bg-warning-soft px-3 py-2 text-xs">
-            <CircleAlert className="mt-px size-3.5 shrink-0 text-warning" />
-            <div className="min-w-0 flex-1 break-words">
-              {link
-                ? 'Tailscale needs you to turn on HTTPS certificates for your tailnet (one click).'
-                : status.error}
-            </div>
-            {link && (
-              <Button variant="outline" size="xs" onClick={() => void api.openTailscaleLink(link)}>
-                <ExternalLink /> Open Tailscale
-              </Button>
-            )}
-            {link && (
-              <Button
-                variant="ghost"
-                size="xs"
-                onClick={() => void run(async () => setStatus(await api.mobileRetryServe()))}
+    <>
+      <SettingsSub id="phone.access">
+        <SettingItem id="phone.access">
+          <p className="mb-3 text-xs leading-relaxed text-muted-foreground">
+            Use the dashboard on your phone: search and read sessions, check usage, and resume
+            sessions on this PC with Remote Control. Off by default. It&apos;s reachable only
+            through your own Tailscale network (or your home Wi-Fi, if you choose), and only by
+            phones you pair.{' '}
+            <SeeAlso to="launching.remote-control">Remote Control by default</SeeAlso>
+          </p>
+          <div className="rounded-xl border border-border p-4">
+            <div className="flex items-center gap-3">
+              <div
+                className={cn(
+                  'flex size-9 shrink-0 items-center justify-center rounded-lg',
+                  status.running
+                    ? 'bg-success/10 text-success'
+                    : 'bg-secondary text-muted-foreground'
+                )}
               >
-                Try again
+                <Smartphone className="size-4.5" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="text-[13px] font-semibold">
+                  {status.running
+                    ? status.url
+                      ? `On · ${connected} phone${connected === 1 ? '' : 's'} connected`
+                      : 'On · not reachable from the phone yet'
+                    : 'Off'}
+                </div>
+                <div className="truncate text-xs text-muted-foreground">
+                  {status.running
+                    ? (status.url ?? `Listening on ${status.listening} (this PC only)`)
+                    : 'Nothing listens for phones while this is off.'}
+                </div>
+              </div>
+              {status.url && (
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label="Copy address"
+                  onClick={() => {
+                    void api.copyText(status.url!)
+                    setCopied(true)
+                    setTimeout(() => setCopied(false), 1200)
+                  }}
+                >
+                  {copied ? <Check /> : <Copy />}
+                </Button>
+              )}
+              <Switch
+                checked={status.running}
+                disabled={busy}
+                onCheckedChange={(on) =>
+                  void run(async () =>
+                    setStatus(on ? await api.mobileStart() : await api.mobileStop())
+                  )
+                }
+                aria-label="Phone access"
+              />
+            </div>
+            {status.error && (
+              <div className="mt-3 flex items-start gap-2 rounded-lg border border-warning/30 bg-warning-soft px-3 py-2 text-xs">
+                <CircleAlert className="mt-px size-3.5 shrink-0 text-warning" />
+                <div className="min-w-0 flex-1 break-words">
+                  {link
+                    ? 'Tailscale needs you to turn on HTTPS certificates for your tailnet (one click).'
+                    : status.error}
+                </div>
+                {link && (
+                  <Button
+                    variant="outline"
+                    size="xs"
+                    onClick={() => void api.openTailscaleLink(link)}
+                  >
+                    <ExternalLink /> Open Tailscale
+                  </Button>
+                )}
+                {link && (
+                  <Button
+                    variant="ghost"
+                    size="xs"
+                    onClick={() => void run(async () => setStatus(await api.mobileRetryServe()))}
+                  >
+                    Try again
+                  </Button>
+                )}
+              </div>
+            )}
+            {status.webAppMissing && (
+              <div className="mt-3 text-xs text-warning">
+                The phone app isn't built yet: run <span className="font-mono">npm run build</span>{' '}
+                first.
+              </div>
+            )}
+            <div className="mt-3 flex flex-wrap gap-2">
+              <Button variant="primary" size="sm" onClick={() => setWizard('setup')}>
+                <Wand2 /> Connect your phone…
+              </Button>
+              <Button variant="ghost" size="sm" onClick={() => setWizard('troubleshoot')}>
+                Troubleshooting
+              </Button>
+              {busy && (
+                <Loader2 className="size-4 animate-spin self-center text-muted-foreground" />
+              )}
+            </div>
+          </div>
+        </SettingItem>
+
+        <SettingItem id="phone.connection" className="space-y-3" {...item('phone.connection')}>
+          <Row
+            label="Connection"
+            hint={
+              s.mode === 'tailscale'
+                ? 'Recommended. Your phone reaches this PC through your private Tailscale network, from anywhere, with a real HTTPS certificate. Never public.'
+                : 'Only phones on the same Wi-Fi. Uses a self-signed certificate (your phone warns once) and a Windows Firewall rule limited to private networks.'
+            }
+          >
+            <Segmented
+              ariaLabel="Connection"
+              value={s.mode}
+              onChange={(mode) => void update({ mode })}
+              options={[
+                { value: 'tailscale', label: 'Tailscale', icon: <Globe /> },
+                { value: 'lan', label: 'Home Wi-Fi', icon: <Wifi /> }
+              ]}
+            />
+          </Row>
+          {s.mode === 'lan' && (
+            <div className="space-y-3 rounded-lg border border-border p-3">
+              <Row label="Network address" hint="The PC's address on your home network.">
+                <select
+                  value={s.lanAddress ?? ''}
+                  onChange={(e) => void update({ lanAddress: e.target.value })}
+                  className="h-8 rounded-md border border-border-strong bg-background px-2 text-[13px]"
+                  aria-label="Network address"
+                >
+                  <option value="" disabled>
+                    Choose…
+                  </option>
+                  {lan.map((a) => (
+                    <option key={a.address} value={a.address}>
+                      {a.address} ({a.interface})
+                    </option>
+                  ))}
+                </select>
+              </Row>
+              {status.certFingerprint && (
+                <Row
+                  label="Certificate fingerprint"
+                  hint="When your phone warns about the certificate, its SHA-256 fingerprint must match this. Launches from a phone are confirmed here in this mode."
+                >
+                  <span className="selectable block max-w-[260px] font-mono text-[11px] break-all text-muted-foreground">
+                    {status.certFingerprint}
+                  </span>
+                </Row>
+              )}
+              <Row
+                label="Windows Firewall rule"
+                hint="Only this app, only its port, only from your local network, only on Private networks."
+              >
+                {status.firewallRule ? (
+                  <div className="flex items-center gap-2">
+                    <Badge variant="muted" className="text-success">
+                      <ShieldCheck /> Added
+                    </Badge>
+                    <Button
+                      variant="ghost"
+                      size="xs"
+                      onClick={() => void run(() => api.mobileFirewallRemove())}
+                    >
+                      Remove
+                    </Button>
+                  </div>
+                ) : (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={!s.lanAddress}
+                    onClick={() => void run(() => api.mobileFirewallAdd())}
+                  >
+                    Add rule…
+                  </Button>
+                )}
+              </Row>
+            </div>
+          )}
+        </SettingItem>
+      </SettingsSub>
+
+      <SettingsSub id="phone.paired">
+        <SettingItem id="phone.devices">
+          <div className="mb-2 flex items-center justify-between">
+            <span className="text-[13px] font-medium">Paired phones</span>
+            {status.running && (
+              <Button variant="ghost" size="xs" onClick={() => setWizard('setup')}>
+                Pair a phone…
               </Button>
             )}
           </div>
-        )}
-        {status.webAppMissing && (
-          <div className="mt-3 text-xs text-warning">
-            The phone app isn't built yet: run <span className="font-mono">npm run build</span>{' '}
-            first.
-          </div>
-        )}
-        <div className="mt-3 flex flex-wrap gap-2">
-          <Button variant="primary" size="sm" onClick={() => setWizard('setup')}>
-            <Wand2 /> Connect your phone…
-          </Button>
-          <Button variant="ghost" size="sm" onClick={() => setWizard('troubleshoot')}>
-            Troubleshooting
-          </Button>
-          {busy && <Loader2 className="size-4 animate-spin self-center text-muted-foreground" />}
-        </div>
-      </div>
-
-      <Row
-        label="Connection"
-        hint={
-          s.mode === 'tailscale'
-            ? 'Recommended. Your phone reaches this PC through your private Tailscale network, from anywhere, with a real HTTPS certificate. Never public.'
-            : 'Only phones on the same Wi-Fi. Uses a self-signed certificate (your phone warns once) and a Windows Firewall rule limited to private networks.'
-        }
-      >
-        <Segmented
-          ariaLabel="Connection"
-          value={s.mode}
-          onChange={(mode) => void update({ mode })}
-          options={[
-            { value: 'tailscale', label: 'Tailscale', icon: <Globe /> },
-            { value: 'lan', label: 'Home Wi-Fi', icon: <Wifi /> }
-          ]}
-        />
-      </Row>
-      {s.mode === 'lan' && (
-        <div className="space-y-3 rounded-lg border border-border p-3">
-          <Row label="Network address" hint="The PC's address on your home network.">
-            <select
-              value={s.lanAddress ?? ''}
-              onChange={(e) => void update({ lanAddress: e.target.value })}
-              className="h-8 rounded-md border border-border-strong bg-background px-2 text-[13px]"
-              aria-label="Network address"
-            >
-              <option value="" disabled>
-                Choose…
-              </option>
-              {lan.map((a) => (
-                <option key={a.address} value={a.address}>
-                  {a.address} ({a.interface})
-                </option>
-              ))}
-            </select>
-          </Row>
-          {status.certFingerprint && (
-            <Row
-              label="Certificate fingerprint"
-              hint="When your phone warns about the certificate, its SHA-256 fingerprint must match this. Launches from a phone are confirmed here in this mode."
-            >
-              <span className="selectable block max-w-[260px] font-mono text-[11px] break-all text-muted-foreground">
-                {status.certFingerprint}
-              </span>
-            </Row>
-          )}
-          <Row
-            label="Windows Firewall rule"
-            hint="Only this app, only its port, only from your local network, only on Private networks."
-          >
-            {status.firewallRule ? (
-              <div className="flex items-center gap-2">
-                <Badge variant="muted" className="text-success">
-                  <ShieldCheck /> Added
-                </Badge>
+          <div className="divide-y divide-border overflow-hidden rounded-lg border border-border">
+            {status.devices.map((d) => (
+              <div key={d.id} className="flex items-center gap-3 px-3 py-2.5">
+                <span
+                  className={cn(
+                    'size-2 shrink-0 rounded-full',
+                    d.connected ? 'bg-success' : 'bg-border-strong'
+                  )}
+                  title={d.connected ? 'Connected now' : 'Not connected'}
+                />
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2 text-[13px] font-medium">
+                    {d.name}
+                    {d.push && (
+                      <Badge
+                        variant="muted"
+                        className="text-success"
+                        title="Push alerts are on for this phone (it turned them on itself)"
+                      >
+                        <BellRing /> Push on
+                      </Badge>
+                    )}
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    Paired {formatDateTime(d.createdAt)} · last seen {formatRelative(d.lastSeenAt)}{' '}
+                    · forgotten after 30 days unused
+                  </div>
+                </div>
                 <Button
                   variant="ghost"
                   size="xs"
-                  onClick={() => void run(() => api.mobileFirewallRemove())}
+                  disabled={!d.connected}
+                  onClick={() =>
+                    void api
+                      .mobileSendTest(d.id)
+                      .then((n) => toast(n ? 'Test sent' : 'Not connected'))
+                  }
                 >
-                  Remove
+                  <Send /> Test
+                </Button>
+                {d.push && (
+                  <>
+                    <Button
+                      variant="ghost"
+                      size="xs"
+                      title="Send a test push alert to this phone"
+                      onClick={() =>
+                        void api
+                          .mobilePushTest(d.id)
+                          .then((n) => toast(n ? 'Test push sent' : "Couldn't send the push"))
+                      }
+                    >
+                      <BellRing /> Test push
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="xs"
+                      title="Turn push alerts off for this phone (it can turn them on again)"
+                      onClick={() =>
+                        void run(() => api.mobilePushOff(d.id)).then(() =>
+                          toast(`Push alerts off for “${d.name}”`)
+                        )
+                      }
+                    >
+                      <BellOff /> Push off
+                    </Button>
+                  </>
+                )}
+                <Button
+                  variant="ghost"
+                  size="xs"
+                  className="text-destructive"
+                  onClick={() =>
+                    void run(() => api.mobileRevoke(d.id)).then(() => toast(`Revoked “${d.name}”`))
+                  }
+                >
+                  <Trash2 /> Revoke
                 </Button>
               </div>
-            ) : (
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={!s.lanAddress}
-                onClick={() => void run(() => api.mobileFirewallAdd())}
-              >
-                Add rule…
-              </Button>
+            ))}
+            {status.devices.length === 0 && (
+              <div className="px-3 py-3 text-xs text-muted-foreground">No phones paired.</div>
             )}
-          </Row>
-        </div>
-      )}
+          </div>
+        </SettingItem>
 
-      <div>
-        <div className="mb-2 flex items-center justify-between">
-          <span className="text-[13px] font-medium">Paired phones</span>
-          {status.running && (
-            <Button variant="ghost" size="xs" onClick={() => setWizard('setup')}>
-              Pair a phone…
-            </Button>
-          )}
-        </div>
-        <div className="divide-y divide-border overflow-hidden rounded-lg border border-border">
-          {status.devices.map((d) => (
-            <div key={d.id} className="flex items-center gap-3 px-3 py-2.5">
-              <span
-                className={cn(
-                  'size-2 shrink-0 rounded-full',
-                  d.connected ? 'bg-success' : 'bg-border-strong'
-                )}
-                title={d.connected ? 'Connected now' : 'Not connected'}
-              />
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2 text-[13px] font-medium">
-                  {d.name}
-                  {d.push && (
-                    <Badge
-                      variant="muted"
-                      className="text-success"
-                      title="Push alerts are on for this phone (it turned them on itself)"
-                    >
-                      <BellRing /> Push on
-                    </Badge>
-                  )}
-                </div>
-                <div className="text-xs text-muted-foreground">
-                  Paired {formatDateTime(d.createdAt)} · last seen {formatRelative(d.lastSeenAt)} ·
-                  forgotten after 30 days unused
-                </div>
-              </div>
-              <Button
-                variant="ghost"
-                size="xs"
-                disabled={!d.connected}
-                onClick={() =>
-                  void api
-                    .mobileSendTest(d.id)
-                    .then((n) => toast(n ? 'Test sent' : 'Not connected'))
-                }
-              >
-                <Send /> Test
-              </Button>
-              {d.push && (
-                <>
-                  <Button
-                    variant="ghost"
-                    size="xs"
-                    title="Send a test push alert to this phone"
-                    onClick={() =>
-                      void api
-                        .mobilePushTest(d.id)
-                        .then((n) => toast(n ? 'Test push sent' : "Couldn't send the push"))
-                    }
-                  >
-                    <BellRing /> Test push
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="xs"
-                    title="Turn push alerts off for this phone (it can turn them on again)"
-                    onClick={() =>
-                      void run(() => api.mobilePushOff(d.id)).then(() =>
-                        toast(`Push alerts off for “${d.name}”`)
-                      )
-                    }
-                  >
-                    <BellOff /> Push off
-                  </Button>
-                </>
-              )}
-              <Button
-                variant="ghost"
-                size="xs"
-                className="text-destructive"
-                onClick={() =>
-                  void run(() => api.mobileRevoke(d.id)).then(() => toast(`Revoked “${d.name}”`))
-                }
-              >
-                <Trash2 /> Revoke
-              </Button>
-            </div>
-          ))}
-          {status.devices.length === 0 && (
-            <div className="px-3 py-3 text-xs text-muted-foreground">No phones paired.</div>
-          )}
-        </div>
-      </div>
-
-      <Row
-        label="Read-only mode"
-        hint="Phones can look and search, but can't rename, change settings or launch anything."
-      >
-        <Switch
-          checked={s.readOnly}
-          onCheckedChange={(v) => void update({ readOnly: v })}
-          aria-label="Read-only mode"
-        />
-      </Row>
-      <Row
-        label="Confirm launches on this PC"
-        hint="Each Resume, Fork or Branch from a phone waits until you click Allow here (1 minute, then it's refused)."
-      >
-        <Switch
-          checked={s.confirmOnPc}
-          onCheckedChange={(v) => void update({ confirmOnPc: v })}
-          aria-label="Confirm launches on this PC"
-        />
-      </Row>
-      <Row
-        label="Start with the app"
-        hint="If phone access was on when the app closed, turn it back on at startup."
-      >
-        <Switch
-          checked={s.autoStart}
-          onCheckedChange={(v) => void update({ autoStart: v })}
-          aria-label="Start with the app"
-        />
-      </Row>
-      <div className="flex items-start gap-2 rounded-lg bg-secondary/70 px-3 py-2.5 text-xs leading-relaxed text-muted-foreground">
-        <ShieldCheck className="mt-px size-3.5 shrink-0 text-success" />
-        Launches from a phone only ever run Resume, Fork or Branch for sessions on this PC, with
-        Remote Control on, on your Claude subscription, and with permission prompts on (never
-        --dangerously-skip-permissions). At most one every 10 seconds.
-      </div>
-
-      <details className="group">
-        <summary className="flex cursor-pointer list-none items-center gap-1.5 text-[13px] font-medium">
-          <Activity className="size-3.5 text-muted-foreground" /> Activity log
-          <span className="text-xs font-normal text-muted-foreground">
-            (every action from a phone)
-          </span>
-        </summary>
-        <div className="mt-2">
-          <ActivityLog />
-        </div>
-      </details>
-
-      <details>
-        <summary className="cursor-pointer list-none text-[13px] font-medium">Advanced</summary>
-        <div className="mt-3 space-y-3">
-          <Row label="Local port" hint="Where the companion listens on this PC (1024–65535).">
-            <PortInput value={s.port} onSave={(port) => void update({ port })} />
-          </Row>
+        <SettingItem id="phone.read-only" {...item('phone.read-only')}>
           <Row
-            label="Tailscale HTTPS port"
-            hint="The port on your tailnet. Change it if another serve rule uses it."
+            label="Read-only mode"
+            hint="Phones can look and search, but can't rename, change settings or launch anything."
           >
-            <PortInput
-              value={s.httpsPort}
-              onSave={(httpsPort) => void update({ httpsPort })}
-              allow443
+            <Switch
+              checked={s.readOnly}
+              onCheckedChange={(v) => void update({ readOnly: v })}
+              aria-label="Read-only mode"
             />
           </Row>
+        </SettingItem>
+        <SettingItem id="phone.confirm" {...item('phone.confirm')}>
+          <Row
+            label="Confirm launches on this PC"
+            hint="Each Resume, Fork or Branch from a phone waits until you click Allow here (1 minute, then it's refused)."
+          >
+            <Switch
+              checked={s.confirmOnPc}
+              onCheckedChange={(v) => void update({ confirmOnPc: v })}
+              aria-label="Confirm launches on this PC"
+            />
+          </Row>
+        </SettingItem>
+        <SettingItem id="phone.auto-start" {...item('phone.auto-start')}>
+          <Row
+            label="Start with the app"
+            hint="If phone access was on when the app closed, turn it back on at startup."
+          >
+            <Switch
+              checked={s.autoStart}
+              onCheckedChange={(v) => void update({ autoStart: v })}
+              aria-label="Start with the app"
+            />
+          </Row>
+        </SettingItem>
+        <div className="flex items-start gap-2 rounded-lg bg-secondary/70 px-3 py-2.5 text-xs leading-relaxed text-muted-foreground">
+          <ShieldCheck className="mt-px size-3.5 shrink-0 text-success" />
+          Launches from a phone only ever run Resume, Fork or Branch for sessions on this PC, with
+          Remote Control on, on your Claude subscription, and with permission prompts on (never
+          --dangerously-skip-permissions). At most one every 10 seconds.
         </div>
-      </details>
 
-      {wizard && <MobileWizard initial={wizard} onClose={() => setWizard(false)} />}
-    </Section>
+        <SettingItem id="phone.activity">
+          <details className="group">
+            <summary className="flex cursor-pointer list-none items-center gap-1.5 rounded text-[13px] font-medium focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:outline-none">
+              <Activity className="size-3.5 text-muted-foreground" /> Activity log
+              <span className="text-xs font-normal text-muted-foreground">
+                (every action from a phone)
+              </span>
+            </summary>
+            <div className="mt-2">
+              <ActivityLog />
+            </div>
+          </details>
+        </SettingItem>
+
+        {wizard && <MobileWizard initial={wizard} onClose={() => setWizard(false)} />}
+      </SettingsSub>
+    </>
+  )
+}
+
+/** Advanced → Phone server ports (moved from Phone's own Advanced fold). */
+export function PhonePortsSetting() {
+  const { status, setStatus } = useMobileStatus()
+  const s = status?.settings
+  if (!s) return null
+  const update = async (patch: Partial<MS>): Promise<void> => {
+    try {
+      setStatus(await api.mobileUpdate(patch))
+    } catch (err) {
+      toast.error('Couldn’t save', { description: (err as Error).message })
+    }
+  }
+  return (
+    <SettingItem
+      id="advanced.ports"
+      className="space-y-3"
+      {...storeSetting('advanced.ports', s as unknown as Record<string, unknown>, (p) =>
+        update(p as Partial<MS>)
+      )}
+    >
+      <Row label="Local port" hint="Where the phone companion listens on this PC (1024–65535).">
+        <PortInput key={s.port} value={s.port} onSave={(port) => void update({ port })} />
+      </Row>
+      <Row
+        label="Tailscale HTTPS port"
+        hint="The port on your tailnet. Change it if another serve rule uses it."
+      >
+        <PortInput
+          key={s.httpsPort}
+          value={s.httpsPort}
+          onSave={(httpsPort) => void update({ httpsPort })}
+          allow443
+        />
+      </Row>
+    </SettingItem>
   )
 }
 

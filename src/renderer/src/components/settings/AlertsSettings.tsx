@@ -1,5 +1,6 @@
-// Settings → Session alerts: the hook bridge per environment, which events
-// alert, where (desktop / phones), quiet hours and muted sessions.
+// Settings → Alerts: the session alerts hook bridge per environment, which
+// events alert, where (desktop / phones), quiet hours and muted sessions.
+// (Limit alerts are in LiveLimitsSettings.tsx.)
 
 import { useState } from 'react'
 import {
@@ -24,7 +25,7 @@ import { Badge } from '../ui/badge'
 import { Button } from '../ui/button'
 import { Switch } from '../ui/checkbox'
 import { Input } from '../ui/input'
-import { Row, Section } from '../SettingsView'
+import { Row, SettingItem } from './page'
 import { BridgeDialog } from './BridgeDialog'
 
 /** A Codex home's hook state: Codex runs it only once trusted in its /hooks. */
@@ -155,197 +156,223 @@ export function AlertsSettings({ update }: { update: (p: Partial<AppSettings>) =
   const muted = sessions.filter((s) => s.meta.muteAlerts)
 
   return (
-    <Section
-      id="alerts"
-      title="Session alerts"
-      description={
-        <>
-          Running now shows every Claude Code session that&apos;s running. Session alerts make it
-          exact: enabling them for an environment adds a few hooks to that environment&apos;s{' '}
-          <span className="font-mono">~/.claude/settings.json</span>, after you review the exact
-          change. Your own hooks stay as they are; Disable takes out exactly the app&apos;s.
-        </>
-      }
-    >
-      {codexEnvs.length > 0 && <div className="-mb-2 text-[13px] font-medium">Claude Code</div>}
-      <div className="divide-y divide-border overflow-hidden rounded-lg border border-border">
-        {envs.map((e) => (
-          <EnvRow key={e.sourceId} e={e} onAction={(action) => setDialog({ env: e, action })} />
-        ))}
-        {envs.length === 0 && (
-          <div className="px-3 py-4 text-xs text-muted-foreground">
-            No Claude Code homes found yet.
+    <>
+      <SettingItem id="alerts.hooks" className="space-y-4">
+        <div>
+          <div className="text-[13px] font-medium">Session alerts</div>
+          <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
+            Running now shows every Claude Code session that&apos;s running. Session alerts make it
+            exact: enabling them for an environment adds a few hooks to that environment&apos;s{' '}
+            <span className="font-mono">~/.claude/settings.json</span>, after you review the exact
+            change. Your own hooks stay as they are; Disable takes out exactly the app&apos;s.
+          </p>
+        </div>
+        {codexEnvs.length > 0 && <div className="-mb-2 text-[13px] font-medium">Claude Code</div>}
+        <div className="divide-y divide-border overflow-hidden rounded-lg border border-border">
+          {envs.map((e) => (
+            <EnvRow key={e.sourceId} e={e} onAction={(action) => setDialog({ env: e, action })} />
+          ))}
+          {envs.length === 0 && (
+            <div className="px-3 py-4 text-xs text-muted-foreground">
+              No Claude Code homes found yet.
+            </div>
+          )}
+        </div>
+        {codexEnvs.length > 0 && (
+          <div className="space-y-2">
+            <div>
+              <div className="text-[13px] font-medium">Codex</div>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                Codex threads show in Running now without any setup (from Codex&apos;s own session
+                files and thread locks, read only). Only &ldquo;needs approval&rdquo; is a guess
+                there. For exact approvals, the app can add one hook to that home&apos;s{' '}
+                <span className="font-mono">~/.codex/hooks.json</span>, after you review the change.
+                Codex runs it only once you trust it in Codex (type{' '}
+                <span className="font-mono">/hooks</span>); the app never does that for you, and
+                never changes <span className="font-mono">config.toml</span>. Codex folders added by
+                hand (Settings → Providers & sources) aren&apos;t listed here: the app adds its hook
+                only to a <span className="font-mono">~/.codex</span> home it found, so approvals
+                there stay guesses.
+              </p>
+            </div>
+            <div className="divide-y divide-border overflow-hidden rounded-lg border border-border">
+              {codexEnvs.map((e) => (
+                <EnvRow
+                  key={e.sourceId}
+                  e={e}
+                  onAction={(action) => setDialog({ env: e, action })}
+                />
+              ))}
+            </div>
           </div>
         )}
-      </div>
-      {codexEnvs.length > 0 && (
-        <div className="space-y-2">
-          <div>
-            <div className="text-[13px] font-medium">Codex</div>
-            <p className="mt-0.5 text-xs text-muted-foreground">
-              Codex threads show in Running now without any setup (from Codex&apos;s own session
-              files and thread locks, read only). Only &ldquo;needs approval&rdquo; is a guess
-              there. For exact approvals, the app can add one hook to that home&apos;s{' '}
-              <span className="font-mono">~/.codex/hooks.json</span>, after you review the change.
-              Codex runs it only once you trust it in Codex (type{' '}
-              <span className="font-mono">/hooks</span>); the app never does that for you, and never
-              changes <span className="font-mono">config.toml</span>. Codex folders added by hand
-              (Settings → Sources) aren&apos;t listed here: the app adds its hook only to a{' '}
-              <span className="font-mono">~/.codex</span> home it found, so approvals there stay
-              guesses.
-            </p>
-          </div>
-          <div className="divide-y divide-border overflow-hidden rounded-lg border border-border">
-            {codexEnvs.map((e) => (
-              <EnvRow key={e.sourceId} e={e} onAction={(action) => setDialog({ env: e, action })} />
-            ))}
-          </div>
+        <div className="flex items-center justify-between gap-4">
+          <p className="text-xs text-muted-foreground">
+            Backups of <span className="font-mono">settings.json</span>
+            {codexEnvs.length > 0 && (
+              <>
+                {' '}
+                and <span className="font-mono">hooks.json</span>
+              </>
+            )}{' '}
+            are kept in the app&apos;s data folder.
+          </p>
+          <Button variant="ghost" size="sm" onClick={() => void api.openBackupFolder()}>
+            <FolderOpen /> Backups
+          </Button>
         </div>
-      )}
-      <div className="flex items-center justify-between gap-4">
-        <p className="text-xs text-muted-foreground">
-          Backups of <span className="font-mono">settings.json</span>
-          {codexEnvs.length > 0 && (
-            <>
-              {' '}
-              and <span className="font-mono">hooks.json</span>
-            </>
-          )}{' '}
-          are kept in the app&apos;s data folder.
-        </p>
-        <Button variant="ghost" size="sm" onClick={() => void api.openBackupFolder()}>
-          <FolderOpen /> Backups
-        </Button>
-      </div>
+        {dialog && (
+          <BridgeDialog
+            kind={dialog.env.provider === 'codex' ? 'codexAlerts' : 'alerts'}
+            env={dialog.env}
+            action={dialog.action}
+            onClose={() => setDialog(null)}
+          />
+        )}
+      </SettingItem>
 
-      <div className="space-y-3">
+      <div className="space-y-3" data-setting-group>
         <div className="text-[13px] font-medium">Alert me when</div>
         <div className="grid grid-cols-1 gap-x-6 gap-y-2.5 sm:grid-cols-2">
           {EVENTS.map((ev) => (
-            <label key={ev.key} className="flex cursor-pointer items-start gap-2.5">
-              <Switch
-                checked={a[ev.key] as boolean}
-                onCheckedChange={(v) => set({ [ev.key]: v } as Partial<LiveAlertSettings>)}
-                aria-label={ev.label}
-                className="mt-0.5"
-              />
-              <span className="min-w-0">
-                <span className="block text-[13px]">{ev.label}</span>
-                <span className="block text-xs text-muted-foreground">{ev.hint}</span>
-              </span>
-            </label>
+            <SettingItem key={ev.key} id={`alerts.${ev.key}`}>
+              <label className="flex cursor-pointer items-start gap-2.5">
+                <Switch
+                  checked={a[ev.key] as boolean}
+                  onCheckedChange={(v) => set({ [ev.key]: v } as Partial<LiveAlertSettings>)}
+                  aria-label={ev.label}
+                  className="mt-0.5"
+                />
+                <span className="min-w-0">
+                  <span className="block text-[13px]">{ev.label}</span>
+                  <span className="block text-xs text-muted-foreground">{ev.hint}</span>
+                </span>
+              </label>
+            </SettingItem>
           ))}
         </div>
       </div>
 
-      <Row
-        label="“Finished” only after"
-        hint="Quick replies don't alert: only turns that took at least this long."
-      >
-        <div className="relative w-[84px]">
-          <Input
-            type="number"
-            min={0}
-            max={3600}
-            defaultValue={a.minWorkSec}
-            aria-label="Minimum working time in seconds"
-            className="h-7 pr-7 text-right tabular-nums"
-            onBlur={(e) => {
-              const n = Number(e.target.value)
-              if (n >= 0 && n <= 3600) set({ minWorkSec: Math.round(n) })
-            }}
-          />
-          <span className="pointer-events-none absolute top-1/2 right-2 -translate-y-1/2 text-xs text-muted-foreground">
-            sec
-          </span>
-        </div>
-      </Row>
-
-      <Row
-        label={
-          <span className="flex items-center gap-1.5">
-            <BellRing className="size-3.5 text-muted-foreground" /> Desktop notifications
-          </span>
-        }
-        hint="Windows notifications. Click one to open the session."
-      >
-        <Switch
-          checked={a.desktop}
-          onCheckedChange={(v) => set({ desktop: v })}
-          aria-label="Desktop notifications"
-        />
-      </Row>
-      <Row
-        label="Phone push alerts"
-        hint={
-          <>
-            To phones that turned push alerts on (on the phone: Running, or Settings → Session
-            alerts). A push says only what happened, like &ldquo;A session needs your
-            approval&rdquo;: no names, folders or text. Tapping it loads the details from this PC
-            over Tailscale.
-          </>
-        }
-      >
-        <Switch
-          checked={a.phone}
-          onCheckedChange={(v) => set({ phone: v })}
-          aria-label="Phone push alerts"
-        />
-      </Row>
-
-      <Row
-        label={
-          <span className="flex items-center gap-1.5">
-            <Moon className="size-3.5 text-muted-foreground" /> Quiet hours
-          </span>
-        }
-        hint="No alerts in this time (local time). Running now still shows everything."
-      >
-        <div className="flex items-center gap-2">
-          {a.quiet.enabled && (
-            <>
-              <Input
-                type="time"
-                defaultValue={a.quiet.from}
-                aria-label="Quiet from"
-                className="h-7 w-[92px] tabular-nums"
-                onBlur={(e) =>
-                  /^\d\d:\d\d$/.test(e.target.value) && setQuiet({ from: e.target.value })
-                }
-              />
-              <span className="text-xs text-muted-foreground">to</span>
-              <Input
-                type="time"
-                defaultValue={a.quiet.to}
-                aria-label="Quiet until"
-                className="h-7 w-[92px] tabular-nums"
-                onBlur={(e) =>
-                  /^\d\d:\d\d$/.test(e.target.value) && setQuiet({ to: e.target.value })
-                }
-              />
-            </>
-          )}
-          <Switch
-            checked={a.quiet.enabled}
-            onCheckedChange={(v) => setQuiet({ enabled: v })}
-            aria-label="Quiet hours"
-          />
-        </div>
-      </Row>
-      {a.quiet.enabled && (
+      <SettingItem id="alerts.min-work">
         <Row
-          label="Approvals during quiet hours"
-          hint="A session that needs approval is stuck until you answer."
+          label="“Finished” only after"
+          hint="Quick replies don't alert: only turns that took at least this long."
+        >
+          <div className="relative w-[84px]">
+            <Input
+              type="number"
+              min={0}
+              max={3600}
+              key={a.minWorkSec}
+              defaultValue={a.minWorkSec}
+              aria-label="Minimum working time in seconds"
+              className="h-7 pr-7 text-right tabular-nums"
+              onBlur={(e) => {
+                const n = Number(e.target.value)
+                if (n >= 0 && n <= 3600) set({ minWorkSec: Math.round(n) })
+              }}
+            />
+            <span className="pointer-events-none absolute top-1/2 right-2 -translate-y-1/2 text-xs text-muted-foreground">
+              sec
+            </span>
+          </div>
+        </Row>
+      </SettingItem>
+
+      <SettingItem id="alerts.desktop">
+        <Row
+          label={
+            <span className="flex items-center gap-1.5">
+              <BellRing className="size-3.5 text-muted-foreground" /> Desktop notifications
+            </span>
+          }
+          hint="Windows notifications. Click one to open the session."
         >
           <Switch
-            checked={a.quiet.allowApprovals}
-            onCheckedChange={(v) => setQuiet({ allowApprovals: v })}
-            aria-label="Approvals during quiet hours"
+            checked={a.desktop}
+            onCheckedChange={(v) => set({ desktop: v })}
+            aria-label="Desktop notifications"
           />
         </Row>
+      </SettingItem>
+      <SettingItem id="alerts.phone">
+        <Row
+          label="Phone push alerts"
+          hint={
+            <>
+              To phones that turned push alerts on (on the phone: Running, or Settings → alerts). A
+              push says only what happened, like &ldquo;A session needs your approval&rdquo;: no
+              names, folders or text. Tapping it loads the details from this PC over Tailscale.
+            </>
+          }
+        >
+          <Switch
+            checked={a.phone}
+            onCheckedChange={(v) => set({ phone: v })}
+            aria-label="Phone push alerts"
+          />
+        </Row>
+      </SettingItem>
+
+      <SettingItem id="alerts.quiet">
+        <Row
+          label={
+            <span className="flex items-center gap-1.5">
+              <Moon className="size-3.5 text-muted-foreground" /> Quiet hours
+            </span>
+          }
+          hint="No alerts in this time (local time). Running now still shows everything."
+        >
+          <div className="flex items-center gap-2">
+            {a.quiet.enabled && (
+              <>
+                <Input
+                  type="time"
+                  key={`from:${a.quiet.from}`}
+                  defaultValue={a.quiet.from}
+                  aria-label="Quiet from"
+                  className="h-7 w-[92px] tabular-nums"
+                  onBlur={(e) =>
+                    /^\d\d:\d\d$/.test(e.target.value) && setQuiet({ from: e.target.value })
+                  }
+                />
+                <span className="text-xs text-muted-foreground">to</span>
+                <Input
+                  type="time"
+                  key={`to:${a.quiet.to}`}
+                  defaultValue={a.quiet.to}
+                  aria-label="Quiet until"
+                  className="h-7 w-[92px] tabular-nums"
+                  onBlur={(e) =>
+                    /^\d\d:\d\d$/.test(e.target.value) && setQuiet({ to: e.target.value })
+                  }
+                />
+              </>
+            )}
+            <Switch
+              checked={a.quiet.enabled}
+              onCheckedChange={(v) => setQuiet({ enabled: v })}
+              aria-label="Quiet hours"
+            />
+          </div>
+        </Row>
+      </SettingItem>
+      {a.quiet.enabled && (
+        <SettingItem id="alerts.quiet-approvals">
+          <Row
+            label="Approvals during quiet hours"
+            hint="A session that needs approval is stuck until you answer."
+          >
+            <Switch
+              checked={a.quiet.allowApprovals}
+              onCheckedChange={(v) => setQuiet({ allowApprovals: v })}
+              aria-label="Approvals during quiet hours"
+            />
+          </Row>
+        </SettingItem>
       )}
 
-      <div>
+      <SettingItem id="alerts.muted">
         <div className="text-[13px] font-medium">Muted sessions</div>
         <p className="mt-0.5 text-xs text-muted-foreground">
           Mute a session from Running now (the bell). Muted sessions still show there.
@@ -370,15 +397,7 @@ export function AlertsSettings({ update }: { update: (p: Partial<AppSettings>) =
         ) : (
           <div className="mt-2 text-xs text-subtle-foreground">None.</div>
         )}
-      </div>
-      {dialog && (
-        <BridgeDialog
-          kind={dialog.env.provider === 'codex' ? 'codexAlerts' : 'alerts'}
-          env={dialog.env}
-          action={dialog.action}
-          onClose={() => setDialog(null)}
-        />
-      )}
-    </Section>
+      </SettingItem>
+    </>
   )
 }

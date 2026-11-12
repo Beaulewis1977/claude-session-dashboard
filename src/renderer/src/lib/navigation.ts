@@ -16,6 +16,7 @@ import { NavHistory, type Direction, type NavState, type UsageTab } from './nav-
 import { saveView } from './scope'
 import { useApp, type State as AppState } from './store'
 import { askTitle } from './ask-sessions'
+import { targetLabel } from '@shared/settings-registry'
 
 let history = new NavHistory()
 /** The Settings section last linked to (the store's settingsSection clears itself once scrolled to). */
@@ -337,17 +338,6 @@ const USAGE_TABS: Record<UsageTab, string> = {
   credits: 'Credits',
   raw: 'Raw table'
 }
-const SECTIONS: Record<string, string> = {
-  accounts: 'Accounts & API credits',
-  ask: 'Ask',
-  alerts: 'Session alerts',
-  backup: 'Backup',
-  'codex-usage': 'Codex usage & limits',
-  context: 'Context size',
-  git: 'Git',
-  providers: 'Providers',
-  summaries: 'Summaries'
-}
 
 function cut(s: string, n: number): string {
   return s.length > n ? `${s.slice(0, n - 1).trimEnd()}…` : s
@@ -365,9 +355,7 @@ export function describeEntry(
 ): string {
   let text: string
   if (s.view === 'settings')
-    text = s.settingsSection
-      ? `Settings › ${SECTIONS[s.settingsSection] ?? s.settingsSection}`
-      : 'Settings'
+    text = s.settingsSection ? `Settings › ${targetLabel(s.settingsSection)}` : 'Settings'
   else if (s.view === 'usage') text = `Usage & limits › ${USAGE_TABS[s.usageTab]}`
   else if (s.view === 'running') text = 'Running now'
   else if (s.view === 'ask') {

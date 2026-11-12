@@ -24,8 +24,9 @@ import { useApp } from '@/lib/store'
 import { Button } from '../ui/button'
 import { Switch } from '../ui/checkbox'
 import { Segmented } from '../ui/segmented'
-import { Row, Section } from '../SettingsView'
+import { Row, SettingItem } from './page'
 import { DefaultModelPickers } from '../ModelPicker'
+import { ProjectModelDefaults } from './ProjectModelDefaults'
 import { PROVIDER_ICON } from '@/lib/provider-icons'
 
 type Update = (patch: Partial<AppSettings>) => Promise<void>
@@ -42,11 +43,13 @@ export function ProvidersSettings({ update }: { update: Update }) {
   const on = sanitizeProviderToggles(settings.providers)
   const count = PROVIDER_IDS.filter((p) => on[p]).length
   return (
-    <Section
-      id="providers"
-      title="Providers"
-      description="Which coding agents the app reads. Turning one off stops scanning, watching and archiving its sessions and removes it from the switch and the phone. Your names, tags, summaries and archive copies are kept, so turning it back on brings everything back. The All / Claude / Codex switch in the sidebar only filters what you see."
-    >
+    <SettingItem id="sources.providers" className="space-y-4">
+      <p className="text-xs leading-relaxed text-muted-foreground">
+        Which coding agents the app reads. Turning one off stops scanning, watching and archiving
+        its sessions and removes it from the switch and the phone. Your names, tags, summaries and
+        archive copies are kept, so turning it back on brings everything back. The All / Claude /
+        Codex switch in the sidebar only filters what you see.
+      </p>
       {PROVIDER_IDS.map((p) => {
         const Icon = PROVIDER_ICON[p]
         return (
@@ -69,51 +72,53 @@ export function ProvidersSettings({ update }: { update: Update }) {
           </Row>
         )
       })}
-    </Section>
+    </SettingItem>
   )
 }
 
-/** Settings → Resume, for Codex: its own model and effort defaults. */
+/** Settings → Launching → Codex: where Codex sessions open, and its own model and effort defaults. */
 export function CodexLaunchSettings({ update }: { update: Update }) {
   const settings = useApp((s) => s.settings)
   if (!sanitizeProviderToggles(settings.providers).codex) return null
   const projectOpenIn = Object.keys(settings.codexProjectOpenIn ?? {}).length
   return (
     <>
-      <Row
-        label="Open Codex sessions in"
-        hint={
-          <>
-            Where Resume, Fork and Continue fresh open a Codex session, unless the session or its
-            project has its own choice (set in the launch dialog). The Codex app is offered only
-            when it can open that session (Windows, with the Codex desktop app installed); otherwise
-            a terminal is used.
-            {projectOpenIn > 0 && (
-              <>
-                {' '}
-                {projectOpenIn} project{projectOpenIn === 1 ? ' has' : 's have'} their own choice.{' '}
-                <button
-                  type="button"
-                  className="font-medium text-primary hover:underline"
-                  onClick={() => void update({ codexProjectOpenIn: {} })}
-                >
-                  Clear project choices
-                </button>
-              </>
-            )}
-          </>
-        }
-      >
-        <Segmented<OpenIn>
-          ariaLabel="Open Codex sessions in"
-          value={settings.codexOpenInDefault ?? 'terminal'}
-          onChange={(codexOpenInDefault) => void update({ codexOpenInDefault })}
-          options={[
-            { value: 'terminal', label: 'Terminal' },
-            { value: 'codex-app', label: 'Codex app' }
-          ]}
-        />
-      </Row>
+      <SettingItem id="launching.codex-open-in">
+        <Row
+          label="Open Codex sessions in"
+          hint={
+            <>
+              Where Resume, Fork and Continue fresh open a Codex session, unless the session or its
+              project has its own choice (set in the launch dialog). The Codex app is offered only
+              when it can open that session (Windows, with the Codex desktop app installed);
+              otherwise a terminal is used.
+              {projectOpenIn > 0 && (
+                <>
+                  {' '}
+                  {projectOpenIn} project{projectOpenIn === 1 ? ' has' : 's have'} their own choice.{' '}
+                  <button
+                    type="button"
+                    className="font-medium text-primary hover:underline"
+                    onClick={() => void update({ codexProjectOpenIn: {} })}
+                  >
+                    Clear project choices
+                  </button>
+                </>
+              )}
+            </>
+          }
+        >
+          <Segmented<OpenIn>
+            ariaLabel="Open Codex sessions in"
+            value={settings.codexOpenInDefault ?? 'terminal'}
+            onChange={(codexOpenInDefault) => void update({ codexOpenInDefault })}
+            options={[
+              { value: 'terminal', label: 'Terminal' },
+              { value: 'codex-app', label: 'Codex app' }
+            ]}
+          />
+        </Row>
+      </SettingItem>
       <CodexModelRow update={update} />
     </>
   )
@@ -122,28 +127,31 @@ export function CodexLaunchSettings({ update }: { update: Update }) {
 function CodexModelRow({ update }: { update: Update }) {
   const settings = useApp((s) => s.settings)
   return (
-    <Row
-      label="Codex model and effort"
-      hint={
-        <>
-          <span className="font-mono">-m</span> and{' '}
-          <span className="font-mono">-c model_reasoning_effort</span> for Codex launches, kept
-          apart from Claude Code&apos;s. &ldquo;Skip permission prompts&rdquo; above adds{' '}
-          <span className="font-mono">--dangerously-bypass-approvals-and-sandbox</span> for Codex
-          (never for launches from the phone).
-        </>
-      }
-    >
-      <DefaultModelPickers
-        agent="codex"
-        model={settings.codexDefaultModel ?? DEFAULT_CHOICE}
-        effort={settings.codexDefaultEffort ?? DEFAULT_CHOICE}
-        fast={settings.codexDefaultFast}
-        onModel={(codexDefaultModel) => void update({ codexDefaultModel })}
-        onEffort={(codexDefaultEffort) => void update({ codexDefaultEffort })}
-        onFast={(codexDefaultFast) => void update({ codexDefaultFast })}
-      />
-    </Row>
+    <SettingItem id="launching.codex-model">
+      <Row
+        label="Codex model and effort"
+        hint={
+          <>
+            <span className="font-mono">-m</span> and{' '}
+            <span className="font-mono">-c model_reasoning_effort</span> for Codex launches, kept
+            apart from Claude Code&apos;s.
+          </>
+        }
+      >
+        <DefaultModelPickers
+          agent="codex"
+          model={settings.codexDefaultModel ?? DEFAULT_CHOICE}
+          effort={settings.codexDefaultEffort ?? DEFAULT_CHOICE}
+          fast={settings.codexDefaultFast}
+          onModel={(codexDefaultModel) => void update({ codexDefaultModel })}
+          onEffort={(codexDefaultEffort) => void update({ codexDefaultEffort })}
+          onFast={(codexDefaultFast) => void update({ codexDefaultFast })}
+        />
+      </Row>
+      <div className="mt-3">
+        <ProjectModelDefaults field="codexProjectModels" update={update} />
+      </div>
+    </SettingItem>
   )
 }
 
@@ -205,7 +213,7 @@ export function CodexArchiveSettings({ update }: { update: Update }) {
   }
   const show = pending ?? mode
   return (
-    <div className="mt-2 rounded-lg border border-border px-3 py-3">
+    <SettingItem id="archive.codex" className="rounded-lg border border-border px-3 py-3">
       <div className="flex items-center gap-3">
         <div className="flex size-8 shrink-0 items-center justify-center rounded-md bg-secondary">
           <Archive className="size-4 text-muted-foreground" />
@@ -277,6 +285,6 @@ export function CodexArchiveSettings({ update }: { update: Update }) {
           </Button>
         </div>
       )}
-    </div>
+    </SettingItem>
   )
 }

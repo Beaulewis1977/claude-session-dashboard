@@ -5,6 +5,7 @@ import { guardPct, sanitizeSummarySettings, type GuardReading } from '@shared/su
 import { cleanupHandoffs, handoffStats } from './core/handoff'
 import type { JsonStore } from './core/json-store'
 import { handle } from './ipc-guard'
+import { toRenderer } from './outgoing'
 import type { LimitsService } from './services/limits'
 import type { PrintRunner } from './services/print-runner'
 import type { SessionService } from './services/sessions'
@@ -62,7 +63,7 @@ export function registerSummaryIpc(deps: {
     recordUsage: (recs) => deps.usage.addDashboardRecords(recs)
   })
   summaries.on('changed', () => {
-    const st = summaries.state()
+    const st = toRenderer(summaries.state())
     for (const w of BrowserWindow.getAllWindows()) w.webContents.send('summaries:changed', st)
   })
 

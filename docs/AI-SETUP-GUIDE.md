@@ -110,6 +110,6 @@ filters that itself), so WSL and other VMs **on the same PC** can reach it too; 
 ## Undo
 
 - **Terminal access:** each change has an Undo in its wizard step; **Turn off terminal access** in
-  Settings → Phone undoes everything the wizard changed (optionally removing the keys it added and
+  Settings → Terminal access (SSH) undoes everything the wizard changed (optionally removing the keys it added and
   uninstalling OpenSSH if it installed it). The Change log lists every change.
 - **Phone companion:** turning phone access off removes only the app's own `tailscale serve` rule.

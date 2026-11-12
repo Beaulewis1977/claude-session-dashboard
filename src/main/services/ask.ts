@@ -25,10 +25,8 @@ import { type AskRunner } from './cli-process'
 export {
   AUTH_TIMED_OUT,
   childEnv,
-  findClaudeCli,
   spawnRunner,
   type AskRunner,
-  type RunHandle,
   type RunResult
 } from './cli-process'
 

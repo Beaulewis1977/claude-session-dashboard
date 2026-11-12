@@ -66,15 +66,3 @@ export function useLiveData(enabled = true): void {
     }
   }, [set, enabled])
 }
-
-/** "API · Personal credits", "Max 5x" or undefined (unknown). */
-export function billingLabel(
-  billing: { mode: string; accountId?: string } | undefined,
-  accounts: { id: string; nickname: string }[],
-  planLabel: string
-): string | undefined {
-  if (!billing || billing.mode === 'unknown') return undefined
-  if (billing.mode === 'subscription') return planLabel
-  const a = accounts.find((x) => x.id === billing.accountId)
-  return a ? `API · ${a.nickname}` : 'API'
-}

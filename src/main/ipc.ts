@@ -56,6 +56,7 @@ import {
 import { archiveStats } from './core/archive'
 import type { JsonStore } from './core/json-store'
 import { handle } from './ipc-guard'
+import { toRenderer } from './outgoing'
 import { assertUserWrite, isInside } from './core/safe-paths'
 import { isValidDistroName, windowsPathToWsl } from './core/wsl'
 import type { Platform } from './platform'
@@ -268,7 +269,7 @@ export function registerIpc(deps: IpcDeps): void {
         const wc = w.webContents
         const prev = sent.get(wc.id)
         if (!prev) {
-          wc.send('sessions:changed', remember(wc.id, p))
+          wc.send('sessions:changed', toRenderer(remember(wc.id, p)))
           continue
         }
         const { delta, next } = sessionsDelta(prev.list, p)
@@ -283,7 +284,7 @@ export function registerIpc(deps: IpcDeps): void {
         if (same) continue
         const version = ++versions
         sent.set(wc.id, { list: next, sources, scan, version })
-        wc.send('sessions:delta', { ...delta, base: prev.version, version })
+        wc.send('sessions:delta', toRenderer({ ...delta, base: prev.version, version }))
       }
     },
     () => (sessions.scanning ? 1000 : 500)

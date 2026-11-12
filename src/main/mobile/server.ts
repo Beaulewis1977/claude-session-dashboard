@@ -19,6 +19,7 @@ import { originAllowed } from './network'
 import { RateLimiter } from './rate-limit'
 import type { RemoteLauncher } from './remote-launch'
 import { rpcMethod } from './rpc'
+import { toRenderer } from '../outgoing'
 
 export interface WebAssets {
   /** A file of the web app by URL path, or undefined. */
@@ -405,9 +406,17 @@ export class MobileServer {
   }
 
   private json(req: IncomingMessage, res: ServerResponse, status: number, value: unknown): void {
-    this.reply(req, res, status, JSON.stringify(value ?? null), 'application/json; charset=utf-8', {
-      'Cache-Control': 'no-store'
-    })
+    // Fixtures mode: the checkout's paths are shown as the sample PC's (outgoing.ts).
+    this.reply(
+      req,
+      res,
+      status,
+      JSON.stringify(toRenderer(value) ?? null),
+      'application/json; charset=utf-8',
+      {
+        'Cache-Control': 'no-store'
+      }
+    )
   }
 
   private async handle(req: IncomingMessage, res: ServerResponse): Promise<void> {

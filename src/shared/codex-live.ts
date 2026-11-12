@@ -657,14 +657,6 @@ export function computeCodexLive(inp: CodexLiveInputs): LiveSession[] {
   return [...rows.values()]
 }
 
-/**
- * Threads to keep an eye on: open now or in the last run (their rows), plus
- * those whose rollout changed recently. Used to decide how often to poll.
- */
-export function anyCodexActive(list: readonly LiveSession[]): boolean {
-  return list.some((s) => s.provider === 'codex' && s.state !== 'exited')
-}
-
 // -------------------------------------------------------------- hook trust
 
 /** Codex's hook trust for one handler, as config.toml's `[hooks.state."<key>"]` records it. */

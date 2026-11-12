@@ -2,13 +2,13 @@
 
 A Windows desktop app that collects every Claude Code session from Windows **and** WSL, shows them in a readable form, lets me name and describe each one, and resumes any session in a terminal with full context.
 
-This repo is built in a Claude Code cloud session (Linux). The app runs on **Windows 10/11**. Write the code so it works on Windows, and test the platform-specific parts with fixtures and mocks.
+This repo is developed on Windows (tests run from Git Bash), and the app runs on **Windows 10/11**. Write the code so it works on Windows, test the platform-specific parts with fixtures and mocks, and keep fixtures mode running on Linux too.
 
 ---
 
 ## Hard rules (safety)
 
-1. **The app never deletes or modifies anything** under any `.claude` directory. It only reads, plus one exception: restoring an archived session file that is *missing* (see Archive). It must never overwrite an existing file.
+1. **The app never deletes or modifies anything** under any `.claude` or `.codex` directory. It only reads, plus one exception: restoring an archived Claude Code session file that is *missing* (see Archive). It must never overwrite an existing file. (The narrow, opt-in exceptions below say exactly what else may change.)
 2. The app keeps its own data (archive, metadata) in `%APPDATA%\ClaudeSessionDashboard\` only.
 3. The app has no "delete session" feature. "Hide" is fine (it's a metadata flag only).
 4. No network calls. Everything stays local.
@@ -43,7 +43,7 @@ This repo is built in a Claude Code cloud session (Linux). The app runs on **Win
 - History in `ask-sessions-history.json` (in backups, like Ask Claude's history), searchable, deletable one by one.
 - **Phone:** reads the history and gets local answers (computed on the PC, not saved). A content question goes to `/api/ask` (blocked in read-only mode, rate-limited, logged) and only **waits on the PC** (the window comes forward); nothing is sent until I review that preview on the PC and click Send. Unanswered after 15 minutes, it expires.
 
-**Session summaries & Continue fresh:** summaries are written by Claude through the user's **own Claude Code** (`claude -p`), exactly like Ask Claude: prompt on stdin (never in arguments), fixed flags only (`--tools ""`, `--strict-mcp-config`, `--safe-mode`, `--setting-sources ""`, `--no-session-persistence`, a validated `--model` alias), an allowlisted environment, only after `claude auth status` confirms the Claude subscription, never `--dangerously-skip-permissions`, with a timeout and Cancel. The app itself makes no network call for this.
+**Session summaries & Continue fresh:** summaries are written by Claude through the user's **own Claude Code** (`claude -p`), like Ask Claude (plus `--no-session-persistence`, which Ask Claude doesn't pass, so its runs keep their session logs): prompt on stdin (never in arguments), fixed flags only (`--tools ""`, `--strict-mcp-config`, `--safe-mode`, `--setting-sources ""`, `--no-session-persistence`, a validated `--model` alias), an allowlisted environment, only after `claude auth status` confirms the Claude subscription, never `--dangerously-skip-permissions`, with a timeout and Cancel. The app itself makes no network call for this.
 - **Only when I ask** (Summarize, Summarize selected) or, opt-in and off by default, auto-summarize for big idle sessions. A one-time notice explains what is sent, with an exact preview; a previewed prompt is sent exactly as shown or not at all. A job keeps the session details, size limit and model of the moment it was queued, but an unpreviewed one sends the session's content as of when it runs (a known limit). Bulk runs show an estimate first (tokens, and the approximate % of the 5-hour window from the limit-health baseline) and can't start before it's shown unless I explicitly skip a failed estimate. The queue pauses when the 5-hour limit is above the threshold in Settings (with a Resume button), counting its own runs that finished after the latest live reading (the status line doesn't see them; without a baseline only subscription use sets the rate). If their share can't be worked out, the bulk queue pauses after the current job until I click Continue; auto-summarize skips while above the line or unsure. Cancel stops a job at any point before anything is sent, including while the sessions are still being read.
 - **What is sent:** user and assistant text plus one line per tool call (tool name and file path or command). Never tool output, thinking or images. Common secret shapes are masked first. Cut to a size limit keeping the start and the end.
 - **Stored** in the app's metadata (`metadata.json`, keyed by session id) with date and model; editable, regenerable, removable. **Never written to Claude's files.** Each run's token usage (from the CLI's JSON answer) is recorded in the app's usage data as "Summaries (dashboard)".
@@ -73,6 +73,8 @@ This repo is built in a Claude Code cloud session (Linux). The app runs on **Win
 - **The dashboard never runs commands for the phone.** SSH logins are handled entirely by Windows' OpenSSH. A paired phone can only *read* where to connect (`terminal:phoneInfo`) and *offer* its public key while the PC is waiting for one; the key is added only after I click Allow on the PC and confirm the change like any other.
 - "Open terminal here" on the desktop opens a plain local terminal in the session's folder (no Claude), built as an argument array like Resume.
 
+**Start with Windows (opt-in system change, off by default):** Settings → Start with Windows uses Electron's login item API, which writes or removes only the app's own `Claude Session Dashboard` value under `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` (and its own StartupApproved entry). Nothing else in Windows startup is touched, and the state shown is always read back from Windows. Installed and portable builds only.
+
 ---
 
 ## Stack
@@ -82,7 +84,7 @@ This repo is built in a Claude Code cloud session (Linux). The app runs on **Win
   - Metadata: a JSON file written atomically (write to a temp file, then rename).
   - Full-text search: MiniSearch (or similar pure-JS library), index built at startup and updated incrementally.
 - Packaging: electron-builder, Windows NSIS installer + portable exe.
-- Add a GitHub Actions workflow (`windows-latest`) that runs tests and builds the installer as a downloadable artifact on push to `main`.
+- No CI (no GitHub Actions workflow), on purpose: `npm run check` and `npm run dist` run locally on Windows, and releases are uploaded by hand.
 
 ---
 
@@ -98,6 +100,9 @@ Sources to scan:
   - Fall back to `\\wsl$\<distro>\...` if `\\wsl.localhost` fails.
   - Skip distros that aren't running or can't be read, without crashing, and show a small notice.
 - Settings screen: let me add extra folders to scan.
+- **OpenAI Codex:** `~/.codex` (`sessions\` and `archived_sessions\`, plain or `.jsonl.zst`) on Windows and in WSL, read only. Codex archiving into the app's archive is opt-in (off by default).
+- **Claude desktop:** Code-tab sessions are ordinary transcripts in `~/.claude/projects`; only the `cliSessionId` of `%APPDATA%\Claude\claude-code-sessions\…\local_<id>.json` is read, for the label. **Cowork** is an optional source (off by default): only `.claude\projects\<project>\<session>.jsonl` inside `%APPDATA%\Claude\local-agent-mode-sessions\…` is listed or read, never the sign-in files, uploads or outputs next to it. View only.
+- **claude.ai chats:** a claude.ai data export zip I pick is only read; its conversations go into the app's archive (`archive\claude-ai\`) as view-only sessions.
 
 Each JSONL line is one JSON event. Parse defensively, because the format changes between Claude Code versions:
 - Skip lines that fail to parse, and count them.
@@ -190,5 +195,5 @@ Claude Code deletes session files older than its `cleanupPeriodDays` setting (30
 
 ## Deliverables
 
-- Working app source, `README.md` with install/run/build steps for Windows, the GitHub Actions workflow, and tests passing.
+- Working app source, `README.md` with install/run/build steps for Windows, and tests passing (`npm run check`).
 - Commit in small, clear steps, then push.

@@ -1,5 +1,52 @@
 # Changelog
 
+## 1.17.0 (November 11, 2026)
+
+**A new Settings screen that's easy to find your way around, and a separate Codex permissions
+default.**
+
+### New Settings (PR #63)
+
+- **One page, with its own menu.** Opening Settings (<kbd>Ctrl</kbd>+<kbd>,</kbd>) turns the
+  sidebar into a Settings menu with "← Back to sessions" and 11 sections: General, Providers &
+  sources, Launching, Usage & limits, Alerts, Summaries & Ask, Git, Phone & remote, Accounts &
+  credits, Archive & backup, Advanced. The big ones have sub-items (for example Usage & limits →
+  Plan, Live limits, Limit health…). Leaving Settings brings the normal sidebar back exactly as it
+  was.
+- **Easy to move around:** the menu highlights the section you're in as you scroll, section
+  headers stay pinned, sections fold (and stay folded), and a **↑ Top** button appears further
+  down. <kbd>Home</kbd> / <kbd>End</kbd> work when you're not typing.
+- **Search** at the top of the menu (<kbd>Ctrl</kbd>+<kbd>F</kbd>) filters the page as you type,
+  by name, description or a related word ("hook", "ssh", "fast", "quiet hours"), highlights the
+  matches and shows how many there are. <kbd>Esc</kbd> clears it.
+- **"Changed" markers:** a setting you changed says so, with a reset to its default and an Undo.
+  Each section shows "N changed" with **Reset section…** behind a confirm. API keys, paired phones,
+  backup folders and passwords, security choices and system changes (hooks, status line, SSH,
+  Start with Windows) are never reset.
+- **Amber dots** in the menu mark what needs attention (a source that can't be read, a Codex hook
+  not trusted yet, stale live limits, a backup that's paused, failed or overdue, phone access on
+  with no phone paired, an API key to reconnect); clicking one goes straight to the setting.
+- **Links land on the exact setting** and light it up: from Running now, Usage, the amber dots,
+  "See also" links between related settings, and the new **Open setting…** in the command palette.
+  Back / Forward return to the section and scroll position, and Settings reopens where you left it.
+- **Moved:** Limit alerts are in Alerts, Ask Claude in Summaries & Ask, the archive in Archive &
+  backup, and the phone server's ports in Advanced. Codex's project model defaults are now listed
+  (and removable) too.
+- **Codex has its own permissions default:** "Codex: bypass approvals and sandbox by default" in
+  Launching → Codex, next to Claude Code's "Skip permission prompts by default". It starts with the
+  value the two used to share, so nothing changes until you change it. Phone launches never use it.
+- **On the phone:** Settings has the same sections in the same order and the same search, with
+  "Changed" and reset where the phone may change a setting.
+
+### Housekeeping (PR #62)
+
+- **Sample-data (fixtures) mode no longer shows real folder paths**: it shows the sample PC's
+  (`C:\Users\alex\…`), so screenshots never show where the app's code really is.
+- **Screenshots refreshed** (including the new Settings and the phone's Settings), and 81 images no
+  doc used any more were removed.
+- **Unused code removed**, and the docs (README, details, roadmap, CLAUDE.md) brought up to date.
+- **Browser tests no longer leave temp folders behind** in %TEMP%.
+
 ## 1.16.4 (November 11, 2026)
 
 **Big sessions open much faster, and the app uses less memory.**
@@ -22,14 +69,14 @@
   and the usage reader thread stops right after a scan instead of 20 seconds later. **Every usage
   and limits number is the same as before**, to the last digit.
 
-| | Before (1.16.3) | After (1.16.4) |
-|---|---|---|
-| Biggest session (715 messages): sent to the viewer | 14.5 MB | 2.7 MB |
-| …opens in | 445 ms | 368 ms |
-| Idle memory: main process | 798 MB | 428–472 MB |
-| Idle memory: all processes | 1,156 MB | 812–846 MB |
-| On Usage (All): all processes | 1,384 MB | 1,286 MB |
-| On Usage (Claude Code): all processes | 1,545 MB | 1,392 MB |
+|                                                    | Before (1.16.3) | After (1.16.4) |
+| -------------------------------------------------- | --------------- | -------------- |
+| Biggest session (715 messages): sent to the viewer | 14.5 MB         | 2.7 MB         |
+| …opens in                                          | 445 ms          | 368 ms         |
+| Idle memory: main process                          | 798 MB          | 428–472 MB     |
+| Idle memory: all processes                         | 1,156 MB        | 812–846 MB     |
+| On Usage (All): all processes                      | 1,384 MB        | 1,286 MB       |
+| On Usage (Claude Code): all processes              | 1,545 MB        | 1,392 MB       |
 
 Measured on a real history (148k Codex + 16k Claude Code responses, 2,575 sessions), built app,
 same steps.
@@ -69,24 +116,24 @@ idle takes about 0.3 s (the session is read again).
 - **Smaller installers:** only the built app is packed (a build check now fails if anything else
   gets in), no `node_modules` ship, and only the English locale.
 
-| | Before (1.16.2) | After (1.16.3) |
-|---|---|---|
-| Open Usage: Claude / Codex / All | 0.8 / 5.7 / 6.0 s | 0.05–0.2 / 0.33 / 0.34 s |
-| Range switch: Claude | 0.6–4.2 s | 85–103 ms |
-| Range switch: Codex / All | 2.3–11.9 s | 72–197 ms |
-| Day / Week / Month | 0.6–3.5 s | 43–87 ms |
-| Sub-tabs | 40–1,290 ms | 23–192 ms |
-| Longest freeze on Usage (renderer) | 423 ms | 51 ms |
-| Main-process stalls over 50 ms / over 500 ms / worst | 98 / 49 / 3.9 s | 16 / 0 / 465 ms |
-| Installer / portable | 108.9 / 108.6 MB | 100.4 / 100.1 MB |
-| Installed size | 365.5 MB (75 files) | 315.2 MB (21 files) |
+|                                                      | Before (1.16.2)     | After (1.16.3)           |
+| ---------------------------------------------------- | ------------------- | ------------------------ |
+| Open Usage: Claude / Codex / All                     | 0.8 / 5.7 / 6.0 s   | 0.05–0.2 / 0.33 / 0.34 s |
+| Range switch: Claude                                 | 0.6–4.2 s           | 85–103 ms                |
+| Range switch: Codex / All                            | 2.3–11.9 s          | 72–197 ms                |
+| Day / Week / Month                                   | 0.6–3.5 s           | 43–87 ms                 |
+| Sub-tabs                                             | 40–1,290 ms         | 23–192 ms                |
+| Longest freeze on Usage (renderer)                   | 423 ms              | 51 ms                    |
+| Main-process stalls over 50 ms / over 500 ms / worst | 98 / 49 / 3.9 s     | 16 / 0 / 465 ms          |
+| Installer / portable                                 | 108.9 / 108.6 MB    | 100.4 / 100.1 MB         |
+| Installed size                                       | 365.5 MB (75 files) | 315.2 MB (21 files)      |
 
 Measured on a real history (148k Codex + 15k Claude Code responses, 2,593 sessions), built app,
 same steps. Startup time is unchanged (the session scan dominates).
 
 **Known limits:** memory on the Usage screen (All) is still about 1.75 GB at peak (most of it
 garbage that is collected later), and the biggest transcripts are still large because of long tool
-*inputs* (for example whole written files). These are on the roadmap.
+_inputs_ (for example whole written files). These are on the roadmap.
 
 ### Also in this release
 

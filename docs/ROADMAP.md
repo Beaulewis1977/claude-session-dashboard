@@ -397,10 +397,15 @@ Run typecheck, lint, tests and the build. Commit, push the branch and open a PR 
   usage reports and the Codex fork check, the parser thread let go after a scan (PR #60, v1.16.4)
 
 - ✅ README rewrite (PR #52)
+- ✅ Cleanup audit: fixtures mode shows the sample PC's paths, browser tests leave nothing in
+  %TEMP%, unused code and images removed, docs up to date (PR #62, v1.17.0)
+- ✅ Settings redesign: one page with a sidebar menu, search, "Changed" and reset with Undo,
+  amber attention dots, links to the exact setting, the phone's Settings in the same sections, and
+  a separate Codex bypass default (PR #63, v1.17.0)
 
 **Next up:**
 
-1. Cleanup audit (PR from `chore/cleanup-audit`).
+1. Package upgrades, in their own PR (nothing was upgraded in the cleanup audit).
 
 Then the loose ends below.
 
@@ -423,7 +428,8 @@ Then the loose ends below.
 - Memory: opening Usage still briefly takes the main heap to ~600 MB of garbage (source not yet
   found). The session search index (~60–70 MB, loaded at startup) could load on the first search.
 - Tests: `summarize-dialog.browser.test.ts` (preparation progress) can hit its 15 s timeout under
-  full-suite load; it passes alone.
+  full-suite load; it passes alone. `temp-cleanup.test.ts` (its late-save probe) sometimes fails
+  the same way on Windows (`ENOTEMPTY` removing its temp folder); it passes on a rerun.
 - Startup (left after the loose-ends PR): the main process can still be busy for up to ~0.4 s at a
   time during the first scan (indexing one very big session, pure-JS zstd decompression). Usage
   parsing already runs in a worker thread (v1.16.3); moving the catalogue and search parsing there

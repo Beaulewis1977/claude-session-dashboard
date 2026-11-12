@@ -1,5 +1,52 @@
 # Changelog
 
+## 1.17.0 (November 11, 2026)
+
+**A new Settings screen that's easy to find your way around, and a separate Codex permissions
+default.**
+
+### New Settings (PR #63)
+
+- **One page, with its own menu.** Opening Settings (<kbd>Ctrl</kbd>+<kbd>,</kbd>) turns the
+  sidebar into a Settings menu with "← Back to sessions" and 11 sections: General, Providers &
+  sources, Launching, Usage & limits, Alerts, Summaries & Ask, Git, Phone & remote, Accounts &
+  credits, Archive & backup, Advanced. The big ones have sub-items (for example Usage & limits →
+  Plan, Live limits, Limit health…). Leaving Settings brings the normal sidebar back exactly as it
+  was.
+- **Easy to move around:** the menu highlights the section you're in as you scroll, section
+  headers stay pinned, sections fold (and stay folded), and a **↑ Top** button appears further
+  down. <kbd>Home</kbd> / <kbd>End</kbd> work when you're not typing.
+- **Search** at the top of the menu (<kbd>Ctrl</kbd>+<kbd>F</kbd>) filters the page as you type,
+  by name, description or a related word ("hook", "ssh", "fast", "quiet hours"), highlights the
+  matches and shows how many there are. <kbd>Esc</kbd> clears it.
+- **"Changed" markers:** a setting you changed says so, with a reset to its default and an Undo.
+  Each section shows "N changed" with **Reset section…** behind a confirm. API keys, paired phones,
+  backup folders and passwords, security choices and system changes (hooks, status line, SSH,
+  Start with Windows) are never reset.
+- **Amber dots** in the menu mark what needs attention (a source that can't be read, a Codex hook
+  not trusted yet, stale live limits, a backup that's paused, failed or overdue, phone access on
+  with no phone paired, an API key to reconnect); clicking one goes straight to the setting.
+- **Links land on the exact setting** and light it up: from Running now, Usage, the amber dots,
+  "See also" links between related settings, and the new **Open setting…** in the command palette.
+  Back / Forward return to the section and scroll position, and Settings reopens where you left it.
+- **Moved:** Limit alerts are in Alerts, Ask Claude in Summaries & Ask, the archive in Archive &
+  backup, and the phone server's ports in Advanced. Codex's project model defaults are now listed
+  (and removable) too.
+- **Codex has its own permissions default:** "Codex: bypass approvals and sandbox by default" in
+  Launching → Codex, next to Claude Code's "Skip permission prompts by default". It starts with the
+  value the two used to share, so nothing changes until you change it. Phone launches never use it.
+- **On the phone:** Settings has the same sections in the same order and the same search, with
+  "Changed" and reset where the phone may change a setting.
+
+### Housekeeping (PR #62)
+
+- **Sample-data (fixtures) mode no longer shows real folder paths**: it shows the sample PC's
+  (`C:\Users\alex\…`), so screenshots never show where the app's code really is.
+- **Screenshots refreshed** (including the new Settings and the phone's Settings), and 81 images no
+  doc used any more were removed.
+- **Unused code removed**, and the docs (README, details, roadmap, CLAUDE.md) brought up to date.
+- **Browser tests no longer leave temp folders behind** in %TEMP%.
+
 ## 1.16.4 (November 11, 2026)
 
 **Big sessions open much faster, and the app uses less memory.**

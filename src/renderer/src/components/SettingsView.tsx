@@ -763,7 +763,7 @@ export function SettingsView() {
           <SettingsSection id="phone">
             <MobileSettingsSection />
             <SettingsSub id="phone.terminal">
-              <SettingItem id="phone.terminal">
+              <SettingItem id="phone.terminal-access">
                 <p className="mb-3 text-xs leading-relaxed text-muted-foreground">
                   A real terminal on this PC from your phone, through Windows’ own OpenSSH Server,
                   over Tailscale only. Every change is shown first and can be undone.

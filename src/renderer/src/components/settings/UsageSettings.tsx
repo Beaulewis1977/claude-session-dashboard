@@ -241,7 +241,7 @@ export function PriceTable({ update }: { update: Update }) {
   }
   const prices = showAll ? settings.prices : settings.prices.slice(0, 8)
   return (
-    <SettingItem id="usage.prices">
+    <SettingItem id="usage.price-table">
       <div className="mb-1 flex items-center justify-between gap-3">
         <div className="flex items-center gap-1.5 text-[13px] font-medium">
           <Calculator className="size-3.5 text-muted-foreground" /> Prices for cost estimates

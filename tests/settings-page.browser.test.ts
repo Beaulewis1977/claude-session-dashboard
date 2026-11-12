@@ -265,7 +265,7 @@ describe('the Settings page', () => {
         .poll(() => page.locator('[data-setting-id="alerts.quiet"]').textContent())
         .toContain('Matches “dnd”')
       await search(page).fill('ssh')
-      await expect.poll(() => t<string[]>(page, 'shown()')).toContain('phone.terminal')
+      await expect.poll(() => t<string[]>(page, 'shown()')).toContain('phone.terminal-access')
       await search(page).fill('fast')
       await expect.poll(() => t<string[]>(page, 'shown()')).toContain('launching.model')
       await search(page).fill('hook')
@@ -677,6 +677,35 @@ describe('the Settings page', () => {
       await expect
         .poll(() => page.locator('[data-settings-sidebar]').getAttribute('inert'))
         .toBeNull()
+    } finally {
+      await page.close()
+    }
+  })
+
+  it('links to a setting light up the setting, links to its sub-heading the heading', async ({
+    skip
+  }) => {
+    if (!browser) skip(unavailableReason)
+    const page = await open()
+    try {
+      for (const id of [
+        'usage.claude-plan',
+        'usage.price-table',
+        'usage.meter-provider',
+        'phone.access-switch',
+        'phone.terminal-access'
+      ]) {
+        await t(page, `set({ settingsSection: '${id}' })`)
+        await expect
+          .poll(() => page.locator(`[data-setting-id="${id}"]`).getAttribute('data-highlighted'), {
+            message: id
+          })
+          .toBe('true')
+      }
+      await t(page, "set({ settingsSection: 'usage.prices' })")
+      await expect.poll(() => t<string | null>(page, 'current()')).toBe('usage.prices')
+      const heading = await t<number>(page, `offset('[data-settings-sub-group="usage.prices"]')`)
+      expect(Math.abs(heading - 48)).toBeLessThan(4)
     } finally {
       await page.close()
     }

@@ -103,7 +103,8 @@ export function settingsAttention(i: AttentionInput): Partial<Record<SectionId, 
 
   const m = i.mobile
   if (m?.settings.enabled) {
-    if (m.error) add('phone', { message: `Phone access: ${m.error}`, target: 'phone.access' })
+    if (m.error)
+      add('phone', { message: `Phone access: ${m.error}`, target: 'phone.access-switch' })
     if (m.devices.length === 0)
       add('phone', {
         message: 'Phone access is on, but no phone is paired yet.',

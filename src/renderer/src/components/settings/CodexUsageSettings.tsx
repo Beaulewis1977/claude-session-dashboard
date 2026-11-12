@@ -339,7 +339,7 @@ export function MeterProviderSetting({
 }) {
   const meterProvider = useApp((s) => s.settings.meterProvider) ?? 'claude'
   return (
-    <SettingItem id="usage.meter">
+    <SettingItem id="usage.meter-provider">
       <Row
         label="Tray, mini meter and status bar"
         hint="Whose limits they show. Limit alerts (set in Alerts) work for both."

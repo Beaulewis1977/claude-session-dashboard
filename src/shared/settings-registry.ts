@@ -364,7 +364,7 @@ export const SETTINGS: SettingDef[] = [
 
   // Usage & limits · Plan
   {
-    id: 'usage.plan',
+    id: 'usage.claude-plan',
     section: 'usage',
     sub: 'usage.plan',
     label: 'Plan',
@@ -478,7 +478,7 @@ export const SETTINGS: SettingDef[] = [
   },
   // Usage & limits · Prices
   {
-    id: 'usage.prices',
+    id: 'usage.price-table',
     section: 'usage',
     sub: 'usage.prices',
     label: 'API prices',
@@ -549,7 +549,7 @@ export const SETTINGS: SettingDef[] = [
   },
   // Usage & limits · Tray & meter
   {
-    id: 'usage.meter',
+    id: 'usage.meter-provider',
     section: 'usage',
     sub: 'usage.meter',
     label: 'Tray, mini meter and status bar',
@@ -828,7 +828,7 @@ export const SETTINGS: SettingDef[] = [
 
   // Phone & remote · Phone access
   {
-    id: 'phone.access',
+    id: 'phone.access-switch',
     section: 'phone',
     sub: 'phone.access',
     label: 'Phone access',
@@ -907,7 +907,7 @@ export const SETTINGS: SettingDef[] = [
   },
   // Phone & remote · Terminal access
   {
-    id: 'phone.terminal',
+    id: 'phone.terminal-access',
     section: 'phone',
     sub: 'phone.terminal',
     label: 'Terminal access (SSH)',

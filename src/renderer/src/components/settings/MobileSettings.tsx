@@ -121,7 +121,7 @@ export function MobileSettingsSection() {
   return (
     <>
       <SettingsSub id="phone.access">
-        <SettingItem id="phone.access">
+        <SettingItem id="phone.access-switch">
           <p className="mb-3 text-xs leading-relaxed text-muted-foreground">
             Use the dashboard on your phone: search and read sessions, check usage, and resume
             sessions on this PC with Remote Control. Off by default. It&apos;s reachable only

@@ -97,7 +97,7 @@ type Update = (p: Partial<AppSettings>) => Promise<void>
 export function PlanSetting({ update }: { update: Update }) {
   const plan = useApp((s) => s.settings.plan)
   return (
-    <SettingItem id="usage.plan">
+    <SettingItem id="usage.claude-plan">
       <Row label="Plan" hint="Used for labels and as the default billing name.">
         <Segmented
           ariaLabel="Plan"

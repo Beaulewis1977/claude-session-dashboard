@@ -135,6 +135,26 @@ describe('the settings map', () => {
     }
   })
 
+  it('gives every setting its own id: a link to it lands on it, never on a heading', () => {
+    const headings = new Set(
+      SECTIONS.flatMap((s) => [s.id as string, ...(s.subsections ?? []).map((u) => u.id)])
+    )
+    for (const d of [...SETTINGS, ...PHONE_LOCAL_SETTINGS]) {
+      expect(headings.has(d.id), d.id).toBe(false)
+      if (SETTINGS.includes(d))
+        expect(resolveTarget(d.id), d.id).toEqual({ kind: 'setting', id: d.id, section: d.section })
+    }
+    // The sub-headings that had a setting of the same id still lead to the heading.
+    for (const sub of [
+      'usage.plan',
+      'usage.prices',
+      'usage.meter',
+      'phone.access',
+      'phone.terminal'
+    ])
+      expect(resolveTarget(sub)?.kind, sub).toBe('sub')
+  })
+
   it('lists the sections in the agreed order', () => {
     expect(SECTIONS.map((s) => s.title)).toEqual([
       'General',
@@ -190,8 +210,8 @@ describe('the settings map', () => {
       'phone.devices',
       'archive.backup-password',
       'archive.backup-folder',
-      'phone.access',
-      'phone.terminal',
+      'phone.access-switch',
+      'phone.terminal-access',
       'alerts.hooks',
       'usage.status-line',
       'general.startup',
@@ -241,7 +261,7 @@ describe('settings search', () => {
 
   it('finds settings by keywords and synonyms, and says so', () => {
     expect(ids('hook')).toEqual(['alerts.hooks'])
-    expect(ids('ssh')).toContain('phone.terminal')
+    expect(ids('ssh')).toContain('phone.terminal-access')
     expect(ids('ssh', PHONE_LOCAL_SETTINGS)).toEqual(['phone-local.ssh-key'])
     expect(ids('fast')).toEqual(
       expect.arrayContaining(['launching.model', 'launching.codex-model'])
@@ -435,7 +455,7 @@ describe('status dots', () => {
     ).toMatch(/paused/)
     expect(
       settingsAttention({ now: NOW, mobile: mobile({ error: 'serve failed' }) }).phone?.[0]
-    ).toMatchObject({ target: 'phone.access' })
+    ).toMatchObject({ target: 'phone.access-switch' })
     // Weekly backups aren't overdue after three days.
     expect(
       settingsAttention({
@@ -492,7 +512,7 @@ describe('values a reset must leave alone', () => {
   it('resetting the plan sends the plan history along, so no change is recorded; Undo puts both back', () => {
     const history = [{ from: '2026-09-01', plan: 'max20', mult: 20 }]
     const before = app({ plan: 'max20', planHistory: history } as Partial<AppSettings>)
-    const plan = settingDef('usage.plan')!
+    const plan = settingDef('usage.claude-plan')!
     const reset = resetPatch([plan], before)
     // The app records a plan change only when planHistory isn't in the patch.
     expect(reset).toEqual({ plan: 'max5', planHistory: history })
